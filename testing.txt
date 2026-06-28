@@ -5,6 +5,7 @@ local CoreGui = game:GetService("CoreGui")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
+local SoundService = game:GetService("SoundService")
 
 local Player = Players.LocalPlayer
 local InterfaceScale = 1.18
@@ -236,15 +237,16 @@ SwooshSound.Parent = MainFrame
 local ToggleSound = Instance.new("Sound")
 ToggleSound.SoundId = "rbxassetid://113194405128446"
 ToggleSound.Volume = 0.75
-ToggleSound.Parent = MainFrame
+ToggleSound.Parent = SoundService
 
 local function PlayClick() ClickSound:Play() end
 local function PlaySwoosh() SwooshSound:Play() end
 
 local NotificationHolder = Instance.new("Frame")
 NotificationHolder.Name = "NotificationHolder"
-NotificationHolder.Size = UDim2.new(0, 230, 0, 220)
-NotificationHolder.Position = UDim2.new(1, -246, 0, 22)
+NotificationHolder.Size = UDim2.new(0, 220, 0, 160)
+NotificationHolder.Position = UDim2.new(0.5, 0, 0, 16)
+NotificationHolder.AnchorPoint = Vector2.new(0.5, 0)
 NotificationHolder.BackgroundTransparency = 1
 NotificationHolder.BorderSizePixel = 0
 NotificationHolder.ZIndex = 250
@@ -254,31 +256,41 @@ NotificationScale.Scale = GuiScaleFromValue(GuiSizeValue)
 
 local NotificationLayout = Instance.new("UIListLayout")
 NotificationLayout.SortOrder = Enum.SortOrder.LayoutOrder
-NotificationLayout.Padding = UDim.new(0, 7)
-NotificationLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+NotificationLayout.Padding = UDim.new(0, 5)
+NotificationLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 NotificationLayout.VerticalAlignment = Enum.VerticalAlignment.Top
 NotificationLayout.Parent = NotificationHolder
 
 local NotificationCount = 0
+local LastToggleNotification = {Name = nil, Enabled = nil, Time = 0}
 local function PlayToggleSound()
-	ToggleSound.TimePosition = 0
-	ToggleSound:Play()
+	pcall(function()
+		ToggleSound.TimePosition = 0
+		ToggleSound:Play()
+	end)
 end
 
 local function ShowToggleNotification(featureName, enabled)
+	featureName = tostring(featureName or "Feature")
+	if LastToggleNotification.Name == featureName and LastToggleNotification.Enabled == enabled and os.clock() - LastToggleNotification.Time < 0.2 then
+		return
+	end
+	LastToggleNotification.Name = featureName
+	LastToggleNotification.Enabled = enabled
+	LastToggleNotification.Time = os.clock()
 	NotificationCount = NotificationCount + 1
 	PlayToggleSound()
 
 	local toast = Instance.new("Frame")
 	toast.Name = "ToggleNotification"
-	toast.Size = UDim2.new(0, 220, 0, 42)
+	toast.Size = UDim2.new(0, 190, 0, 34)
 	toast.BackgroundColor3 = FrameThemeColor:Lerp(Color3.new(0, 0, 0), 0.08)
 	toast.BackgroundTransparency = 1
 	toast.BorderSizePixel = 0
 	toast.LayoutOrder = -NotificationCount
 	toast.ZIndex = 251
 	toast.Parent = NotificationHolder
-	Instance.new("UICorner", toast).CornerRadius = UDim.new(0, 8)
+	Instance.new("UICorner", toast).CornerRadius = UDim.new(0, 7)
 
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = enabled and AccentColor or Color3.fromRGB(255, 115, 115)
@@ -287,33 +299,33 @@ local function ShowToggleNotification(featureName, enabled)
 	stroke.Parent = toast
 
 	local title = Instance.new("TextLabel")
-	title.Size = UDim2.new(1, -16, 0, 16)
-	title.Position = UDim2.new(0, 8, 0, 6)
+	title.Size = UDim2.new(1, -14, 0, 14)
+	title.Position = UDim2.new(0, 7, 0, 4)
 	title.BackgroundTransparency = 1
 	title.BorderSizePixel = 0
-	title.Text = tostring(featureName or "Feature")
+	title.Text = featureName
 	title.Font = Enum.Font.GothamBold
-	title.TextSize = 11
+	title.TextSize = 10
 	title.TextColor3 = Color3.fromRGB(255, 255, 255)
 	title.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 	title.TextStrokeTransparency = 0.45
-	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.TextXAlignment = Enum.TextXAlignment.Center
 	title.TextTruncate = Enum.TextTruncate.AtEnd
 	title.ZIndex = 252
 	title.Parent = toast
 
 	local state = Instance.new("TextLabel")
-	state.Size = UDim2.new(1, -16, 0, 13)
-	state.Position = UDim2.new(0, 8, 0, 23)
+	state.Size = UDim2.new(1, -14, 0, 12)
+	state.Position = UDim2.new(0, 7, 0, 19)
 	state.BackgroundTransparency = 1
 	state.BorderSizePixel = 0
 	state.Text = enabled and "Enabled" or "Disabled"
 	state.Font = Enum.Font.GothamMedium
-	state.TextSize = 9
+	state.TextSize = 8
 	state.TextColor3 = enabled and AccentColor or Color3.fromRGB(255, 145, 145)
 	state.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 	state.TextStrokeTransparency = 0.5
-	state.TextXAlignment = Enum.TextXAlignment.Left
+	state.TextXAlignment = Enum.TextXAlignment.Center
 	state.ZIndex = 252
 	state.Parent = toast
 
@@ -2298,6 +2310,7 @@ local function ToggleAutoLock()
 	AutoLockEnabled = not AutoLockEnabled
 	AutoLockToggleBtn.Text = AutoLockEnabled and "On" or "Off"
 	AutoLockTitle.TextColor3 = AutoLockEnabled and AccentColor or InactiveTextColor()
+	ShowToggleNotification("Auto Lock", AutoLockEnabled)
 end
 AutoLockToggleBtn.MouseButton1Click:Connect(function() PlayClick() ToggleAutoLock() end)
 
@@ -2349,6 +2362,7 @@ local function ToggleESP()
 	ESPEnabled = not ESPEnabled
 	ESPToggleBtn.Text = ESPEnabled and "On" or "Off"
 	ESPTitle.TextColor3 = ESPEnabled and AccentColor or InactiveTextColor()
+	ShowToggleNotification("ESP", ESPEnabled)
 	if not ESPEnabled then
 		ThemeObjects.ClearESPAdornments()
 		for _, p in pairs(Players:GetPlayers()) do
@@ -4945,6 +4959,7 @@ local function ToggleSpeed()
 	SpeedEnabled = not SpeedEnabled
 	SpeedToggleBtn.Text = SpeedEnabled and "On" or "Off"
 	SpeedTitle.TextColor3 = SpeedEnabled and AccentColor or InactiveTextColor()
+	ShowToggleNotification("Speed", SpeedEnabled)
 end
 SpeedToggleBtn.MouseButton1Click:Connect(function() PlayClick() ToggleSpeed() end)
 
@@ -4952,6 +4967,7 @@ local function ToggleNoclip()
 	NoclipEnabled = not NoclipEnabled
 	NoclipToggleBtn.Text = NoclipEnabled and "On" or "Off"
 	NoclipTitle.TextColor3 = NoclipEnabled and AccentColor or InactiveTextColor()
+	ShowToggleNotification("Noclip", NoclipEnabled)
 end
 NoclipToggleBtn.MouseButton1Click:Connect(function() PlayClick() ToggleNoclip() end)
 
@@ -4984,6 +5000,7 @@ function ThemeObjects.FreeCam.Enable()
 	if root then root.AssemblyLinearVelocity = Vector3.zero root.AssemblyAngularVelocity = Vector3.zero end
 	ThemeObjects.FreeCam.Toggle.Text = "On"
 	ThemeObjects.FreeCam.Title.TextColor3 = AccentColor
+	ShowToggleNotification("FreeCam", true)
 	game:GetService("ContextActionService"):BindActionAtPriority(
 		"HqydeuFreeCamSink",
 		function() return Enum.ContextActionResult.Sink end,
@@ -5013,6 +5030,7 @@ function ThemeObjects.FreeCam.Disable()
 	end
 	ThemeObjects.FreeCam.Toggle.Text = "Off"
 	ThemeObjects.FreeCam.Title.TextColor3 = InactiveTextColor()
+	ShowToggleNotification("FreeCam", false)
 	task.defer(function()
 		-- Apply once more after Roblox's camera controller finishes this frame.
 		if not ThemeObjects.FreeCam.Enabled then
@@ -5064,6 +5082,7 @@ local function ToggleFly()
 	FlyEnabled = not FlyEnabled
 	FlyToggleBtn.Text = FlyEnabled and "On" or "Off"
 	FlyTitle.TextColor3 = FlyEnabled and AccentColor or InactiveTextColor()
+	ShowToggleNotification("Fly", FlyEnabled)
 	local Character = Player.Character 
 	local RootPart = Character and Character:FindFirstChild("HumanoidRootPart")
 	if FlyEnabled then
@@ -6103,6 +6122,7 @@ local function Cleanup()
 	end
 	for _, connection in pairs(Connections) do if connection then connection:Disconnect() end end
 	if CoinFarmConnection then CoinFarmConnection:Disconnect() end
+	if ToggleSound then ToggleSound:Destroy() end
 	ScreenGui:Destroy()
 end
 DestroyBtn.MouseButton1Click:Connect(Cleanup)
