@@ -1,0 +1,56 @@
+-- hqydeu Quiet Or Die module
+-- Upload this file to GitHub, then put its RAW URL into the main loader.
+
+return function(ctx)
+	local Players = ctx.Players
+	local RunService = ctx.RunService
+	local Player = ctx.Player
+	local MainFrame = ctx.MainFrame
+	local PageHeader = ctx.PageHeader
+	local ThemeObjects = ctx.ThemeObjects
+	local Connections = ctx.Connections
+	local PlayClick = ctx.PlayClick
+	local AccentColor = ctx.GetAccentColor()
+	local InactiveTextColor = ctx.InactiveTextColor
+
+	if ctx.Modules.QuietOrDieLoaded then
+		if ctx.Modules.QuietOrDie and ctx.Modules.QuietOrDie.Open then
+			ctx.Modules.QuietOrDie.Open()
+		end
+		return ctx.Modules.QuietOrDie
+	end
+	ctx.Modules.QuietOrDieLoaded = true
+
+	local api = {}
+	ctx.Modules.QuietOrDie = api
+
+	local quietPage = MainFrame:FindFirstChild("QuietOrDiePage")
+	if not quietPage then
+		quietPage = Instance.new("ScrollingFrame")
+		quietPage.Name = "QuietOrDiePage"
+		quietPage.Size = UDim2.new(0, 346, 1, -54)
+		quietPage.Position = UDim2.new(0, 114, 0, 54)
+		quietPage.BackgroundTransparency = 1
+		quietPage.BorderSizePixel = 0
+		quietPage.ClipsDescendants = true
+		quietPage.ScrollBarThickness = 3
+		quietPage.ScrollBarImageColor3 = AccentColor
+		quietPage.CanvasSize = UDim2.new(0, 0, 0, 292)
+		quietPage.Parent = MainFrame
+	end
+
+	function api.Open()
+		quietPage.Visible = true
+		quietPage.Position = UDim2.new(0, 114, 0, 54)
+	end
+
+	function api.Cleanup()
+		-- Put Quiet-Or-Die-only disconnects/cleanup here when you move the full code over.
+	end
+
+	-- Paste Quiet Or Die-only feature code here later.
+	-- Keep its variables local inside this returned function; they will NOT count against the main script.
+
+	api.Open()
+	return api
+end
