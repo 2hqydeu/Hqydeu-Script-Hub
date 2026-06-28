@@ -1,3 +1,43 @@
+-- Diagnostic bootstrap for compact register-safe HqydeuLoader
+
+local CoreGui = game:GetService("CoreGui")
+pcall(function() local old = CoreGui:FindFirstChild("HqydeuLoaderDiagnostic") if old then old:Destroy() end end)
+
+local DiagnosticGui = Instance.new("ScreenGui")
+DiagnosticGui.Name = "HqydeuLoaderDiagnostic"
+DiagnosticGui.ResetOnSpawn = false
+DiagnosticGui.Parent = CoreGui
+
+local Panel = Instance.new("Frame")
+Panel.Size = UDim2.new(0, 430, 0, 175)
+Panel.Position = UDim2.new(0.5, -215, 0.5, -88)
+Panel.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
+Panel.BorderSizePixel = 0
+Panel.Parent = DiagnosticGui
+Instance.new("UICorner", Panel).CornerRadius = UDim.new(0, 10)
+
+local Status = Instance.new("TextLabel")
+Status.Size = UDim2.new(1, -24, 1, -24)
+Status.Position = UDim2.new(0, 12, 0, 12)
+Status.BackgroundTransparency = 1
+Status.Text = "Compact register-safe loader diagnostic booting..."
+Status.Font = Enum.Font.GothamBold
+Status.TextSize = 14
+Status.TextColor3 = Color3.fromRGB(245, 245, 245)
+Status.TextWrapped = true
+Status.TextXAlignment = Enum.TextXAlignment.Left
+Status.TextYAlignment = Enum.TextYAlignment.Top
+Status.Parent = Panel
+
+local function showFailure(kind, message)
+	Status.Text = kind .. "\n\n" .. tostring(message)
+	Status.TextColor3 = Color3.fromRGB(255, 115, 115)
+end
+
+if type(loadstring) ~= "function" then showFailure("loadstring is not available", "Run the non-diagnostic compact register-safe file instead, or tell Codex this message.") return end
+
+local source = [=[
+-- Services
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
@@ -97,6 +137,7 @@ function SafeFeatureSystem.RunInitializers()
 	end
 end
 
+-- Main Container
 pcall(function()
 	local oldGui = CoreGui:FindFirstChild("HqydeuLoader")
 	if oldGui then oldGui:Destroy() end
@@ -107,6 +148,7 @@ ScreenGui.Name = "HqydeuLoader"
 ScreenGui.Parent = CoreGui
 ScreenGui.ResetOnSpawn = false
 
+-- Title Screen
 SplashFrame = Instance.new("Frame")
 SplashFrame.Size = UDim2.new(0, 0, 0, 0)
 SplashFrame.Position = UDim2.new(0.5, 200, 0.5, 200)
@@ -149,12 +191,14 @@ SplashText.TextColor3 = Color3.fromRGB(240, 240, 240)
 SplashText.TextTransparency = 1
 SplashText.Parent = SplashFrame
 
+-- Startup Sound
 StartupSound = Instance.new("Sound")
 StartupSound.SoundId = "rbxassetid://111102990253594"
 StartupSound.Volume = 0.8
 StartupSound.Parent = ScreenGui
 StartupSound:Play()
 
+-- Main GUI Window
 MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 460, 0, 300)
 MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
@@ -180,6 +224,8 @@ MainTextureStroke.Thickness = 2.25
 MainTextureStroke.Transparency = 1
 MainTextureStroke.Parent = MainFrame
 
+-- Accent emblem used on the main bar, minimized bar, and startup splash.
+-- This is intentionally separate from the removed background-pattern system.
 MainPatternLines = {}
 do
 	local pattern = Instance.new("Frame")
@@ -244,6 +290,7 @@ end
 
 TargetTextureGradient
 
+-- Sound Effects
 ClickSound = Instance.new("Sound")
 ClickSound.SoundId = "rbxassetid://6895079853"
 ClickSound.Volume = 0.5
@@ -257,6 +304,7 @@ SwooshSound.Parent = MainFrame
 function PlayClick() ClickSound:Play() end
 function PlaySwoosh() SwooshSound:Play() end
 
+-- Theme Management
 ThemeObjects = { Backgrounds = {}, Texts = {}, Accents = {}, AccentBackgrounds = {}, StateTexts = {} }
 
 ThemeObjects.ApplyMainGradient = function(intensity)
@@ -336,7 +384,7 @@ function UpdateTheme(instant)
 	local textColor = lightTheme and Color3.fromRGB(45, 45, 45) or Color3.fromRGB(240, 240, 240)
 	local subTextColor = InactiveTextColor()
 	local tweenInfo = TweenInfo.new(instant and 0 or 0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-
+	
 	TweenService:Create(MainFrame, tweenInfo, {BackgroundColor3 = bgColor}):Play()
 	if SplashFrame and SplashFrame.Parent then SplashFrame.BackgroundColor3 = bgColor end
 	ThemeObjects.ApplyMainGradient(0.5)
@@ -412,6 +460,7 @@ function UpdateTheme(instant)
 	end
 end
 
+-- Variables
 CurrentCFrameSpeed = 1
 SpeedEnabled = false
 SpeedKeybind = LoadKeybind("Speed")
@@ -477,6 +526,7 @@ Connections.GradientPulse = RunService.Heartbeat:Connect(function(deltaTime)
 end)
 ThemeObjects.FreeCam = {Enabled = false, Keybind = LoadKeybind("FreeCam"), Binding = false}
 
+-- Top Bar
 MiniButton = Instance.new("TextButton")
 MiniButton.Size = UDim2.new(0, 18, 0, 18)
 MiniButton.Position = UDim2.new(1, -26, 0, 8)
@@ -562,6 +612,7 @@ PageHeader.TextXAlignment = Enum.TextXAlignment.Left
 PageHeader.Parent = MainFrame
 table.insert(ThemeObjects.Texts, PageHeader)
 
+-- Pages
 MovementPage = Instance.new("Frame")
 MovementPage.Name = "MovementPage"
 MovementPage.Size = UDim2.new(0, 346, 1, -54)
@@ -1009,6 +1060,7 @@ Connections.FullBright = RunService.Heartbeat:Connect(function()
 end)
 ThemeObjects.RestoreFullBright = ThemeObjects.ExtrasFeature.Restore
 
+-- Games hub
 GamesTabButton
 SelectedGame
 
@@ -2008,6 +2060,7 @@ SettingsPage.BackgroundTransparency = 1
 SettingsPage.BorderSizePixel = 0
 SettingsPage.Parent = MainFrame
 
+-- Combat Page Content
 AutoLockTitle = Instance.new("TextLabel")
 AutoLockTitle.Size = UDim2.new(0, 84, 0, 23)
 AutoLockTitle.Position = UDim2.new(0, 12, 0, 8)
@@ -2175,6 +2228,8 @@ AutoLockToggleBtn.MouseButton1Click:Connect(function() PlayClick() ToggleAutoLoc
 
 ThemeObjects.ResolveESPCharacter = function(targetPlayer)
 	if not targetPlayer then return nil end
+	-- Infinite Yield follows Player.Character first. QOD's PlayersFolder may contain
+	-- an incomplete/hidden proxy while the local player is the killer.
 	local character = targetPlayer.Character
 	if character and character:IsA("Model") then return character end
 	local playersFolder = workspace:FindFirstChild("PlayersFolder")
@@ -2279,6 +2334,7 @@ table.insert(ThemeObjects.Backgrounds, AntiFlingBtn)
 table.insert(ThemeObjects.Texts, AntiFlingBtn)
 Instance.new("UICorner", AntiFlingBtn).CornerRadius = UDim.new(0, 4)
 
+-- Full-width vertical combat rows
 do
 	local function CreateCombatRow(name, y)
 		local row = Instance.new("Frame")
@@ -2867,6 +2923,7 @@ UserInputService.InputChanged:Connect(function(input)
 	end
 end)
 
+
 FlingBindBtn.MouseButton1Click:Connect(function()
 	PlayClick()
 	IsBindingFlingMenu = true
@@ -2916,6 +2973,7 @@ UserInputService.InputChanged:Connect(function(input)
 	end
 end)
 
+-- Teleport Page
 PlayerSearch = Instance.new("TextBox")
 PlayerSearch.Name = "PlayerSearch"
 PlayerSearch.Size = UDim2.new(1, -248, 0, 28)
@@ -3006,6 +3064,7 @@ ThemeObjects.PlayerTP.BindButton.MouseButton1Click:Connect(function()
 		end
 	end)
 end)
+
 
 PlayerScroll = Instance.new("ScrollingFrame")
 PlayerScroll.Name = "PlayerScroll"
@@ -3383,6 +3442,7 @@ ThemeObjects.PlayerTP.RefreshWaypoints = function()
 	ThemeObjects.PlayerTP.WaypointScroll.CanvasSize = UDim2.new(0, 0, 0, ThemeObjects.PlayerTP.WaypointLayout.AbsoluteContentSize.Y + 2)
 end
 
+
 ThemeObjects.ExtrasFeature.AddWaypoint = function(part)
 	if not part or not part:IsA("BasePart") then return end
 	local segments = ThemeObjects.WaypointUI.GetSegments(part)
@@ -3515,6 +3575,7 @@ end)
 Players.PlayerAdded:Connect(UpdatePlayerList)
 Players.PlayerRemoving:Connect(UpdatePlayerList)
 
+-- ==================== COIN FARM ====================
 CoinFarmTitle = Instance.new("TextLabel")
 CoinFarmTitle.Size = UDim2.new(0, 80, 0, 17)
 CoinFarmTitle.Position = UDim2.new(0, 12, 0, 94)
@@ -3592,17 +3653,17 @@ function StartCoinFarm()
 	CurrentCoin = nil
 	CurrentCoinStartedAt = 0
 	SkippedCoins = {}
-
+	
 	CoinFarmConnection = RunService.Heartbeat:Connect(function()
 		if not CoinFarmEnabled then return end
 		if AutoGunPickupBusy then return end
-
+		
 		local coins = GetAllCoins()
 		if #coins == 0 then
 			CoinFarmStatus.Text = "0"
 			return
 		end
-
+		
 		local root = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
 		if not root then return end
 		local now = os.clock()
@@ -3619,11 +3680,11 @@ function StartCoinFarm()
 			CoinFarmStatus.Text = tostring(#coins)
 			return
 		end
-
+		
 		table.sort(availableCoins, function(a, b)
 			return (root.Position - a.Position).Magnitude < (root.Position - b.Position).Magnitude
 		end)
-
+		
 		local target = availableCoins[1]
 		if target and target.Parent then
 			if CurrentCoin ~= target then
@@ -3638,6 +3699,7 @@ function StartCoinFarm()
 
 			CoinFarmStatus.Text = tostring(#coins)
 			root.CFrame = target.CFrame * CFrame.new(0, -3.5, 0)
+			-- Extremely minimal delay for maximum speed
 			task.wait(0.001)
 		end
 	end)
@@ -3647,7 +3709,7 @@ function ToggleCoinFarm()
 	CoinFarmEnabled = not CoinFarmEnabled
 	CoinFarmToggle.Text = CoinFarmEnabled and "On" or "Off"
 	CoinFarmTitle.TextColor3 = CoinFarmEnabled and AccentColor or InactiveTextColor()
-
+	
 	if CoinFarmEnabled then
 		CoinFarmStatus.Text = "0"
 		local root = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
@@ -4231,6 +4293,7 @@ do
 	table.insert(ThemeObjects.Texts, autoShootToggle)
 	Instance.new("UICorner", autoShootToggle).CornerRadius = UDim.new(0, 4)
 
+	-- Larger MM2 controls live in a dedicated scrolling area below the role reveal.
 	local MM2ControlsScroll = Instance.new("ScrollingFrame")
 	MM2ControlsScroll.Name = "MM2ControlsScroll"
 	MM2ControlsScroll.Size = UDim2.new(1, -12, 1, -74)
@@ -4362,6 +4425,8 @@ do
 		local shotOrigin = raycastAttachment and raycastAttachment.WorldCFrame or nil
 		if not shotOrigin or not HasClearGunLine(shotOrigin.Position, targetCharacter, targetPart) then return end
 
+		-- Take a second movement sample before firing. Sharp reversals cancel this
+		-- attempt, preventing a quick juke from baiting a stale shot.
 		local confirmedMurderer = CurrentMurderer
 		local firstPosition = targetPart.Position
 		local firstVelocity = targetPart.AssemblyLinearVelocity
@@ -4402,6 +4467,7 @@ do
 	end)
 end
 
+-- Movement Page Content
 do
 	for _, cardInfo in ipairs({
 		{Name = "SpeedMovementCard", X = 4, Y = 4},
@@ -4582,8 +4648,8 @@ table.insert(ThemeObjects.Accents, ThemeObjects.FreeCam.Bind)
 Instance.new("UICorner", ThemeObjects.FreeCam.Bind).CornerRadius = UDim.new(0, 4)
 
 FlyTitle = Instance.new("TextLabel")
-FlyTitle.Size = UDim2.new(0, 48, 0, 22)
-FlyTitle.Position = UDim2.new(0, 24, 0, 59)
+FlyTitle.Size = UDim2.new(0, 48, 0, 22) 
+FlyTitle.Position = UDim2.new(0, 24, 0, 59) 
 FlyTitle.BackgroundTransparency = 1
 FlyTitle.BorderSizePixel = 0
 FlyTitle.Text = "Fly:"
@@ -4596,7 +4662,7 @@ table.insert(ThemeObjects.Texts, FlyTitle)
 
 FlyInput = Instance.new("TextBox")
 FlyInput.Size = UDim2.new(0, 46, 0, 22)
-FlyInput.Position = UDim2.new(0, 82, 0, 60)
+FlyInput.Position = UDim2.new(0, 82, 0, 60) 
 FlyInput.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
 FlyInput.BackgroundTransparency = 0.8
 FlyInput.BorderSizePixel = 0
@@ -4759,6 +4825,7 @@ do
 	end)
 end
 
+-- Movement Logic
 function SetupBinding(button, type)
 	button.MouseButton1Click:Connect(function()
 		PlayClick()
@@ -4769,7 +4836,7 @@ function SetupBinding(button, type)
 		elseif type == "FreeCam" then ThemeObjects.FreeCam.Binding = true
 		elseif type == "AutoLock" then IsBindingAutoLock = true
 		elseif type == "ESP" then IsBindingESP = true end
-
+		
 		local conn
 		conn = UserInputService.InputBegan:Connect(function(input)
 			if input.UserInputType == Enum.UserInputType.Keyboard then
@@ -4783,7 +4850,7 @@ function SetupBinding(button, type)
 				elseif type == "FreeCam" then ThemeObjects.FreeCam.Keybind = selectedKey; ThemeObjects.FreeCam.Binding = false
 				elseif type == "AutoLock" then AutoLockKeybind = selectedKey; IsBindingAutoLock = false
 				elseif type == "ESP" then ESPKeybind = selectedKey; IsBindingESP = false end
-
+				
 				SaveKeybind(type, selectedKey)
 				button.Text = KeybindText(selectedKey)
 				conn:Disconnect()
@@ -4856,6 +4923,8 @@ function ThemeObjects.FreeCam.Disable()
 	if not ThemeObjects.FreeCam.Enabled then return end
 	ThemeObjects.FreeCam.Enabled = false
 	game:GetService("ContextActionService"):UnbindAction("HqydeuFreeCamSink")
+	-- Always release the RMB camera lock. Restoring a captured LockCenter state can
+	-- leave the cursor pinned after Free Cam is turned off.
 	UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 	UserInputService.MouseIconEnabled = true
 	local camera = workspace.CurrentCamera
@@ -4870,6 +4939,7 @@ function ThemeObjects.FreeCam.Disable()
 	ThemeObjects.FreeCam.Toggle.Text = "Off"
 	ThemeObjects.FreeCam.Title.TextColor3 = InactiveTextColor()
 	task.defer(function()
+		-- Apply once more after Roblox's camera controller finishes this frame.
 		if not ThemeObjects.FreeCam.Enabled then
 			UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 			UserInputService.MouseIconEnabled = true
@@ -4919,7 +4989,7 @@ function ToggleFly()
 	FlyEnabled = not FlyEnabled
 	FlyToggleBtn.Text = FlyEnabled and "On" or "Off"
 	FlyTitle.TextColor3 = FlyEnabled and AccentColor or InactiveTextColor()
-	local Character = Player.Character
+	local Character = Player.Character 
 	local RootPart = Character and Character:FindFirstChild("HumanoidRootPart")
 	if FlyEnabled then
 		if RootPart then
@@ -4954,19 +5024,20 @@ function GetClosestPlayerToMouse()
 	return nearest
 end
 
+-- Rendering Loop
 Connections.MainLoop = RunService.RenderStepped:Connect(function()
-	local Character = Player.Character
-    local RootPart = Character and Character:FindFirstChild("HumanoidRootPart")
-    local Humanoid = Character and Character:FindFirstChild("Humanoid")
+	local Character = Player.Character 
+    local RootPart = Character and Character:FindFirstChild("HumanoidRootPart") 
+    local Humanoid = Character and Character:FindFirstChild("Humanoid") 
     local Camera = workspace.CurrentCamera
 
     if SpeedEnabled and RootPart and Humanoid then
-		local MoveDir = Humanoid.MoveDirection
-        if MoveDir.Magnitude > 0 then
-            RootPart.CFrame = RootPart.CFrame + (MoveDir * (CurrentCFrameSpeed / 10))
+		local MoveDir = Humanoid.MoveDirection 
+        if MoveDir.Magnitude > 0 then 
+            RootPart.CFrame = RootPart.CFrame + (MoveDir * (CurrentCFrameSpeed / 10)) 
         end
 	end
-
+    
 	if FlyEnabled and RootPart and BodyGyro then
 		local MoveDir = Vector3.new(0,0,0)
 		if UserInputService:IsKeyDown(Enum.KeyCode.W) then MoveDir = MoveDir + Camera.CFrame.LookVector end
@@ -4978,7 +5049,7 @@ Connections.MainLoop = RunService.RenderStepped:Connect(function()
 		if MoveDir.Magnitude > 0 then RootPart.CFrame = RootPart.CFrame + (MoveDir * (FlySpeed / 50)) end
 		BodyGyro.CFrame = Camera.CFrame RootPart.Velocity = Vector3.new(0, 0, 0)
 	end
-
+	
 	if AutoLockEnabled and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) and RootPart then
 		local target = GetClosestPlayerToMouse()
 		if target and target.Character and target.Character:FindFirstChild("Head") then
@@ -5010,7 +5081,7 @@ Connections.MainLoop = RunService.RenderStepped:Connect(function()
 					end
 				end
 			end
-
+            
 			local isMurdererRoleESP = MurdererRoleESPEnabled and p == CurrentMurderer
 			local isSheriffRoleESP = SheriffRoleESPEnabled and p == CurrentSheriff
 			local roleColor = nil
@@ -5021,6 +5092,9 @@ Connections.MainLoop = RunService.RenderStepped:Connect(function()
 			end
 			local showPlayerESP = ESPEnabled or roleColor ~= nil
 
+			-- Infinite Yield-style body ESP. These adornments live under CoreGui
+			-- instead of the character, so local transparency/hide effects used by
+			-- games such as QOD do not erase the overlay for the killer.
 			if ThemeObjects.DeepESP.Enabled and roleColor == nil and refreshESPBody then
 				local adornments = ThemeObjects.ESPAdornments[p]
 				if not adornments then
@@ -5104,13 +5178,14 @@ Connections.MainLoop = RunService.RenderStepped:Connect(function()
     end
 end)
 
+-- Main Toggle/Minimizing logic
 settingsOpen = false
 minimized = false
 
 function ToggleSettings(forceClose)
 	settingsOpen = forceClose and false or not settingsOpen
 	if not forceClose then PlayClick() end
-	local posMove = settingsOpen and 1.1 or 0
+	local posMove = settingsOpen and 1.1 or 0 
     local posSet = settingsOpen and 0 or 1.1
 	local activeX = 114
 	MovementPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true)
@@ -5163,6 +5238,7 @@ function ToggleGUI()
 end
 MiniButton.MouseButton1Click:Connect(ToggleGUI)
 
+-- Input Listener
 Connections.InputBegan = UserInputService.InputBegan:Connect(function(input, processed)
 	if processed or IsBindingSpeed or IsBindingFly or IsBindingNoclip or ThemeObjects.FreeCam.Binding or IsBindingAutoLock or IsBindingESP or IsBindingFlingMenu or ThemeObjects.PlayerTP.Binding then return end
 	if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
@@ -5174,10 +5250,11 @@ Connections.InputBegan = UserInputService.InputBegan:Connect(function(input, pro
     elseif input.KeyCode == ESPKeybind then ToggleESP()
 	elseif input.KeyCode == FlingMenuKeybind then ToggleFlingMenu()
 	elseif input.KeyCode == ThemeObjects.PlayerTP.Keybind then ThemeObjects.PlayerTP.Toggle()
-    elseif input.KeyCode == Enum.KeyCode.LeftControl then ToggleGUI()
+    elseif input.KeyCode == Enum.KeyCode.LeftControl then ToggleGUI() 
     end
 end)
 
+-- Tab Setup
 TabNames = {"Movement", "Combat", "Camera", "Teleport", "Games", "Extras"}
 for i, name in ipairs(TabNames) do
 	local TabBtn = Instance.new("TextButton")
@@ -5196,14 +5273,14 @@ for i, name in ipairs(TabNames) do
 	table.insert(ThemeObjects.Backgrounds, TabBtn)
 	table.insert(ThemeObjects.Texts, TabBtn)
 	Instance.new("UICorner", TabBtn).CornerRadius = UDim.new(0, 6)
-
-	TabBtn.MouseButton1Click:Connect(function()
-		PlayClick()
+	
+	TabBtn.MouseButton1Click:Connect(function() 
+		PlayClick() 
 		if settingsOpen then ToggleSettings(true) end
 		local openingSelectedGame = name == "Games" and SelectedGame ~= nil
 		PageHeader.Text = openingSelectedGame and SelectedGame or name
 		MM2BackButton.Visible = openingSelectedGame
-		MovementPage.Visible = (name == "Movement")
+		MovementPage.Visible = (name == "Movement") 
 		CombatPage.Visible = (name == "Combat")
 		ThemeObjects.CameraPage.Visible = (name == "Camera")
 		TeleportPage.Visible = (name == "Teleport")
@@ -5227,7 +5304,7 @@ for i, name in ipairs(TabNames) do
 		if name == "Movement" then MovementPage.Position = UDim2.new(0, 114, 0, 54)
 		else MovementPage.Position = UDim2.new(1.1, 0, 0, 54) end
 
-		if name == "Combat" then CombatPage.Position = UDim2.new(0, 114, 0, 54)
+		if name == "Combat" then CombatPage.Position = UDim2.new(0, 114, 0, 54) 
 		else CombatPage.Position = UDim2.new(1.1, 0, 0, 54) end
 
 		if name == "Camera" then ThemeObjects.CameraPage.Position = UDim2.new(0, 114, 0, 54)
@@ -5235,7 +5312,7 @@ for i, name in ipairs(TabNames) do
 
 		if name == "Teleport" then
 			if not ThemeObjects.PlayerListReady then UpdatePlayerList() end
-			TeleportPage.Position = UDim2.new(0, 114, 0, 54)
+			TeleportPage.Position = UDim2.new(0, 114, 0, 54) 
 		else TeleportPage.Position = UDim2.new(1.1, 0, 0, 54) end
 
 		if extrasPage then
@@ -5256,6 +5333,7 @@ for i, name in ipairs(TabNames) do
 	end)
 end
 
+-- Settings Page
 DestroyBtn
 function BuildSettingsPage()
 DestroyBtn = Instance.new("TextButton")
@@ -5458,6 +5536,7 @@ ServerHopBtn.MouseButton1Click:Connect(function()
 			return
 		end
 
+		-- Directly selecting a public JobId bypasses Roblox's friend-preferred routing.
 		local destination = availableServers[math.random(1, #availableServers)]
 		ServerHopBtn.Text = "Joining New Server..."
 		local success = pcall(function()
@@ -5931,8 +6010,8 @@ function Cleanup()
 	if Character then
 		local Hum = Character:FindFirstChild("Humanoid") local Root = Character:FindFirstChild("HumanoidRootPart")
 		if Hum then Hum.WalkSpeed = 16 end
-		if Root then
-			Root.Velocity = Vector3.new(0,0,0)
+		if Root then 
+			Root.Velocity = Vector3.new(0,0,0) 
 			if Root:FindFirstChildOfClass("BodyVelocity") then Root:FindFirstChildOfClass("BodyVelocity"):Destroy() end
 			if Root:FindFirstChildOfClass("BodyGyro") then Root:FindFirstChildOfClass("BodyGyro"):Destroy() end
 		end
@@ -5953,6 +6032,7 @@ function Cleanup()
 end
 DestroyBtn.MouseButton1Click:Connect(Cleanup)
 
+-- Keep feature tiles in the same translucent style as the Camera page.
 for _, surface in ipairs(MainFrame:GetDescendants()) do
 	if surface:IsA("Frame") and surface.BackgroundTransparency < 0.9 then
 		local name = surface.Name
@@ -5966,10 +6046,12 @@ CompactGuiText(ScreenGui)
 UpdateTheme()
 SafeFeatureSystem.RunInitializers()
 
+-- Dragging
 dragging, dragStart, startPos
 MainFrame.InputBegan:Connect(function(input) if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then dragging = true dragStart = input.Position startPos = MainFrame.Position input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false end end) end end)
 UserInputService.InputChanged:Connect(function(input) if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then local delta = input.Position - dragStart MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y) end end)
 
+-- FLY-IN TITLE SEQUENCE
 task.spawn(function()
 	SafeFeatureSystem.Run("Startup animation", function()
 		SplashFrame.Rotation = -540
@@ -6005,3 +6087,11 @@ task.spawn(function()
 	if SplashFrame and SplashFrame.Parent then SplashFrame:Destroy() end
 	MainFrame.Visible = true
 end)
+
+]=]
+local runner, compileError = loadstring(source)
+if not runner then showFailure("Compile error in compact register-safe GUI", compileError) return end
+Status.Text = "Compiled. Running compact register-safe GUI..."
+local ok, runtimeError = xpcall(runner, function(err) if debug and type(debug.traceback) == "function" then return debug.traceback(tostring(err), 2) end return tostring(err) end)
+if not ok then showFailure("Runtime error in compact register-safe GUI", runtimeError) return end
+DiagnosticGui:Destroy()
