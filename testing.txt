@@ -233,8 +233,151 @@ SwooshSound.SoundId = "rbxassetid://107710687218353"
 SwooshSound.Volume = 0.6
 SwooshSound.Parent = MainFrame
 
+local ToggleSound = Instance.new("Sound")
+ToggleSound.SoundId = "rbxassetid://113194405128446"
+ToggleSound.Volume = 0.75
+ToggleSound.Parent = MainFrame
+
 local function PlayClick() ClickSound:Play() end
 local function PlaySwoosh() SwooshSound:Play() end
+
+local NotificationHolder = Instance.new("Frame")
+NotificationHolder.Name = "NotificationHolder"
+NotificationHolder.Size = UDim2.new(0, 230, 0, 220)
+NotificationHolder.Position = UDim2.new(1, -246, 0, 22)
+NotificationHolder.BackgroundTransparency = 1
+NotificationHolder.BorderSizePixel = 0
+NotificationHolder.ZIndex = 250
+NotificationHolder.Parent = ScreenGui
+local NotificationScale = Instance.new("UIScale", NotificationHolder)
+NotificationScale.Scale = GuiScaleFromValue(GuiSizeValue)
+
+local NotificationLayout = Instance.new("UIListLayout")
+NotificationLayout.SortOrder = Enum.SortOrder.LayoutOrder
+NotificationLayout.Padding = UDim.new(0, 7)
+NotificationLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+NotificationLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+NotificationLayout.Parent = NotificationHolder
+
+local NotificationCount = 0
+local function PlayToggleSound()
+	ToggleSound.TimePosition = 0
+	ToggleSound:Play()
+end
+
+local function ShowToggleNotification(featureName, enabled)
+	NotificationCount = NotificationCount + 1
+	PlayToggleSound()
+
+	local toast = Instance.new("Frame")
+	toast.Name = "ToggleNotification"
+	toast.Size = UDim2.new(0, 220, 0, 42)
+	toast.BackgroundColor3 = FrameThemeColor:Lerp(Color3.new(0, 0, 0), 0.08)
+	toast.BackgroundTransparency = 1
+	toast.BorderSizePixel = 0
+	toast.LayoutOrder = -NotificationCount
+	toast.ZIndex = 251
+	toast.Parent = NotificationHolder
+	Instance.new("UICorner", toast).CornerRadius = UDim.new(0, 8)
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = enabled and AccentColor or Color3.fromRGB(255, 115, 115)
+	stroke.Thickness = 1.4
+	stroke.Transparency = 1
+	stroke.Parent = toast
+
+	local title = Instance.new("TextLabel")
+	title.Size = UDim2.new(1, -16, 0, 16)
+	title.Position = UDim2.new(0, 8, 0, 6)
+	title.BackgroundTransparency = 1
+	title.BorderSizePixel = 0
+	title.Text = tostring(featureName or "Feature")
+	title.Font = Enum.Font.GothamBold
+	title.TextSize = 11
+	title.TextColor3 = Color3.fromRGB(255, 255, 255)
+	title.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	title.TextStrokeTransparency = 0.45
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.TextTruncate = Enum.TextTruncate.AtEnd
+	title.ZIndex = 252
+	title.Parent = toast
+
+	local state = Instance.new("TextLabel")
+	state.Size = UDim2.new(1, -16, 0, 13)
+	state.Position = UDim2.new(0, 8, 0, 23)
+	state.BackgroundTransparency = 1
+	state.BorderSizePixel = 0
+	state.Text = enabled and "Enabled" or "Disabled"
+	state.Font = Enum.Font.GothamMedium
+	state.TextSize = 9
+	state.TextColor3 = enabled and AccentColor or Color3.fromRGB(255, 145, 145)
+	state.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	state.TextStrokeTransparency = 0.5
+	state.TextXAlignment = Enum.TextXAlignment.Left
+	state.ZIndex = 252
+	state.Parent = toast
+
+	TweenService:Create(toast, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {BackgroundTransparency = 0.08}):Play()
+	TweenService:Create(stroke, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Transparency = 0.12}):Play()
+	task.delay(1.8, function()
+		if not toast.Parent then return end
+		TweenService:Create(toast, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {BackgroundTransparency = 1}):Play()
+		TweenService:Create(stroke, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {Transparency = 1}):Play()
+		TweenService:Create(title, TweenInfo.new(0.18), {TextTransparency = 1, TextStrokeTransparency = 1}):Play()
+		TweenService:Create(state, TweenInfo.new(0.18), {TextTransparency = 1, TextStrokeTransparency = 1}):Play()
+		task.delay(0.24, function()
+			if toast.Parent then toast:Destroy() end
+		end)
+	end)
+end
+
+local ToggleNotificationButtons = {}
+local function ToggleStateFromText(text)
+	text = tostring(text or ""):lower()
+	if text == "on" or text:match(":%s*on$") then return true end
+	if text == "off" or text:match(":%s*off$") then return false end
+	return nil
+end
+
+local function CleanToggleName(text)
+	text = tostring(text or ""):gsub(":", ""):gsub("%s+", " ")
+	text = text:gsub("^%s+", ""):gsub("%s+$", "")
+	return text ~= "" and text or nil
+end
+
+local function FindToggleName(button)
+	local textName = CleanToggleName(button.Text:gsub(":%s*[Oo][NnFf]+$", ""))
+	if textName and textName:lower() ~= "on" and textName:lower() ~= "off" then
+		return textName
+	end
+	local parent = button.Parent
+	if parent then
+		for _, sibling in ipairs(parent:GetChildren()) do
+			if sibling ~= button and sibling:IsA("TextLabel") then
+				local siblingName = CleanToggleName(sibling.Text)
+				if siblingName then return siblingName end
+			end
+		end
+	end
+	local name = button.Name:gsub("Toggle", ""):gsub("Button", ""):gsub("Btn", "")
+	return CleanToggleName(name) or "Feature"
+end
+
+local function WatchToggleNotification(button)
+	if ToggleNotificationButtons[button] or not button:IsA("TextButton") then return end
+	ToggleNotificationButtons[button] = true
+	task.defer(function()
+		if not button.Parent then return end
+		local lastState = ToggleStateFromText(button.Text)
+		button:GetPropertyChangedSignal("Text"):Connect(function()
+			local currentState = ToggleStateFromText(button.Text)
+			if currentState ~= nil and lastState ~= nil and currentState ~= lastState then
+				ShowToggleNotification(FindToggleName(button), currentState)
+			end
+			if currentState ~= nil then lastState = currentState end
+		end)
+	end)
+end
 
 -- Theme Management
 local ThemeObjects = { Backgrounds = {}, Texts = {}, Accents = {}, AccentBackgrounds = {}, StateTexts = {} }
@@ -5590,7 +5733,7 @@ local function ApplyGuiSize(value)
 	GuiSizeValue = math.clamp(value, 20, 100)
 	GuiSizeValueLabel.Text = tostring(GuiSizeValue)
 	local targetScale = GuiScaleFromValue(GuiSizeValue)
-	for _, scaleObject in ipairs({MainScaleObject, TargetScaleObject, ThemeObjects.PlayerTP.Scale, SplashScaleObject, ThemeObjects.PickerDockScale, ThemeObjects.GuiSizeDockScale, ThemeObjects.ExtrasFeature.CopyScale}) do
+	for _, scaleObject in ipairs({MainScaleObject, TargetScaleObject, ThemeObjects.PlayerTP.Scale, SplashScaleObject, ThemeObjects.PickerDockScale, ThemeObjects.GuiSizeDockScale, ThemeObjects.ExtrasFeature.CopyScale, NotificationScale}) do
 		if scaleObject and scaleObject.Parent then
 			TweenService:Create(scaleObject, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Scale = targetScale}):Play()
 		end
@@ -5975,6 +6118,12 @@ for _, surface in ipairs(MainFrame:GetDescendants()) do
 end
 
 CompactGuiText(ScreenGui)
+for _, object in ipairs(ScreenGui:GetDescendants()) do
+	WatchToggleNotification(object)
+end
+Connections.ToggleNotifications = ScreenGui.DescendantAdded:Connect(function(object)
+	WatchToggleNotification(object)
+end)
 UpdateTheme()
 
 -- Dragging
