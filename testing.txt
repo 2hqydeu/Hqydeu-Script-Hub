@@ -5,7 +5,6 @@ local CoreGui = game:GetService("CoreGui")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
-local SoundService = game:GetService("SoundService")
 
 local Player = Players.LocalPlayer
 local InterfaceScale = 1.18
@@ -234,114 +233,8 @@ SwooshSound.SoundId = "rbxassetid://107710687218353"
 SwooshSound.Volume = 0.6
 SwooshSound.Parent = MainFrame
 
-local ToggleSound = Instance.new("Sound")
-ToggleSound.SoundId = "rbxassetid://113194405128446"
-ToggleSound.Volume = 0.75
-ToggleSound.Parent = SoundService
-
 local function PlayClick() ClickSound:Play() end
 local function PlaySwoosh() SwooshSound:Play() end
-
-local NotificationHolder = Instance.new("Frame")
-NotificationHolder.Name = "NotificationHolder"
-NotificationHolder.Size = UDim2.new(0, 220, 0, 160)
-NotificationHolder.Position = UDim2.new(0.5, 0, 0, 16)
-NotificationHolder.AnchorPoint = Vector2.new(0.5, 0)
-NotificationHolder.BackgroundTransparency = 1
-NotificationHolder.BorderSizePixel = 0
-NotificationHolder.ZIndex = 250
-NotificationHolder.Parent = ScreenGui
-local NotificationScale = Instance.new("UIScale", NotificationHolder)
-NotificationScale.Scale = GuiScaleFromValue(GuiSizeValue)
-
-local NotificationLayout = Instance.new("UIListLayout")
-NotificationLayout.SortOrder = Enum.SortOrder.LayoutOrder
-NotificationLayout.Padding = UDim.new(0, 5)
-NotificationLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-NotificationLayout.VerticalAlignment = Enum.VerticalAlignment.Top
-NotificationLayout.Parent = NotificationHolder
-
-local NotificationCount = 0
-local LastToggleNotification = {Name = nil, Enabled = nil, Time = 0}
-local function PlayToggleSound()
-	pcall(function()
-		ToggleSound.TimePosition = 0
-		ToggleSound:Play()
-	end)
-end
-
-local function ShowToggleNotification(featureName, enabled)
-	featureName = tostring(featureName or "Feature")
-	if LastToggleNotification.Name == featureName and LastToggleNotification.Enabled == enabled and os.clock() - LastToggleNotification.Time < 0.2 then
-		return
-	end
-	LastToggleNotification.Name = featureName
-	LastToggleNotification.Enabled = enabled
-	LastToggleNotification.Time = os.clock()
-	NotificationCount = NotificationCount + 1
-	PlayToggleSound()
-
-	local toast = Instance.new("Frame")
-	toast.Name = "ToggleNotification"
-	toast.Size = UDim2.new(0, 190, 0, 34)
-	toast.BackgroundColor3 = FrameThemeColor:Lerp(Color3.new(0, 0, 0), 0.08)
-	toast.BackgroundTransparency = 1
-	toast.BorderSizePixel = 0
-	toast.LayoutOrder = -NotificationCount
-	toast.ZIndex = 251
-	toast.Parent = NotificationHolder
-	Instance.new("UICorner", toast).CornerRadius = UDim.new(0, 7)
-
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = enabled and AccentColor or Color3.fromRGB(255, 115, 115)
-	stroke.Thickness = 1.4
-	stroke.Transparency = 1
-	stroke.Parent = toast
-
-	local title = Instance.new("TextLabel")
-	title.Size = UDim2.new(1, -14, 0, 14)
-	title.Position = UDim2.new(0, 7, 0, 4)
-	title.BackgroundTransparency = 1
-	title.BorderSizePixel = 0
-	title.Text = featureName
-	title.Font = Enum.Font.GothamBold
-	title.TextSize = 10
-	title.TextColor3 = Color3.fromRGB(255, 255, 255)
-	title.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-	title.TextStrokeTransparency = 0.45
-	title.TextXAlignment = Enum.TextXAlignment.Center
-	title.TextTruncate = Enum.TextTruncate.AtEnd
-	title.ZIndex = 252
-	title.Parent = toast
-
-	local state = Instance.new("TextLabel")
-	state.Size = UDim2.new(1, -14, 0, 12)
-	state.Position = UDim2.new(0, 7, 0, 19)
-	state.BackgroundTransparency = 1
-	state.BorderSizePixel = 0
-	state.Text = enabled and "Enabled" or "Disabled"
-	state.Font = Enum.Font.GothamMedium
-	state.TextSize = 8
-	state.TextColor3 = enabled and AccentColor or Color3.fromRGB(255, 145, 145)
-	state.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-	state.TextStrokeTransparency = 0.5
-	state.TextXAlignment = Enum.TextXAlignment.Center
-	state.ZIndex = 252
-	state.Parent = toast
-
-	TweenService:Create(toast, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {BackgroundTransparency = 0.08}):Play()
-	TweenService:Create(stroke, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Transparency = 0.12}):Play()
-	task.delay(1.8, function()
-		if not toast.Parent then return end
-		TweenService:Create(toast, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {BackgroundTransparency = 1}):Play()
-		TweenService:Create(stroke, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {Transparency = 1}):Play()
-		TweenService:Create(title, TweenInfo.new(0.18), {TextTransparency = 1, TextStrokeTransparency = 1}):Play()
-		TweenService:Create(state, TweenInfo.new(0.18), {TextTransparency = 1, TextStrokeTransparency = 1}):Play()
-		task.delay(0.24, function()
-			if toast.Parent then toast:Destroy() end
-		end)
-	end)
-end
 
 -- Theme Management
 local ThemeObjects = { Backgrounds = {}, Texts = {}, Accents = {}, AccentBackgrounds = {}, StateTexts = {} }
@@ -2262,7 +2155,6 @@ local function ToggleAutoLock()
 	AutoLockEnabled = not AutoLockEnabled
 	AutoLockToggleBtn.Text = AutoLockEnabled and "On" or "Off"
 	AutoLockTitle.TextColor3 = AutoLockEnabled and AccentColor or InactiveTextColor()
-	ShowToggleNotification("Auto Lock", AutoLockEnabled)
 end
 AutoLockToggleBtn.MouseButton1Click:Connect(function() PlayClick() ToggleAutoLock() end)
 
@@ -2314,7 +2206,6 @@ local function ToggleESP()
 	ESPEnabled = not ESPEnabled
 	ESPToggleBtn.Text = ESPEnabled and "On" or "Off"
 	ESPTitle.TextColor3 = ESPEnabled and AccentColor or InactiveTextColor()
-	ShowToggleNotification("ESP", ESPEnabled)
 	if not ESPEnabled then
 		ThemeObjects.ClearESPAdornments()
 		for _, p in pairs(Players:GetPlayers()) do
@@ -2687,9 +2578,9 @@ local function RefreshFlingTargets()
 	UpdateTheme()
 end
 
-TargetSearch:GetPropertyChangedSignal("Text"):Connect(RefreshFlingTargets)
-Players.PlayerAdded:Connect(RefreshFlingTargets)
-Players.PlayerRemoving:Connect(RefreshFlingTargets)
+Connections.FlingTargetSearch = TargetSearch:GetPropertyChangedSignal("Text"):Connect(RefreshFlingTargets)
+Connections.FlingPlayerAdded = Players.PlayerAdded:Connect(RefreshFlingTargets)
+Connections.FlingPlayerRemoving = Players.PlayerRemoving:Connect(RefreshFlingTargets)
 
 local function ToggleFlingMenu()
 	PlaySwoosh()
@@ -2937,14 +2828,14 @@ ThemeObjects.PlayerTP.Toggle = function()
 	ThemeObjects.PlayerTP.Frame.Visible = not ThemeObjects.PlayerTP.Frame.Visible
 end
 
-ThemeObjects.PlayerTP.Search:GetPropertyChangedSignal("Text"):Connect(ThemeObjects.PlayerTP.Refresh)
-ThemeObjects.PlayerTP.WaypointSearch:GetPropertyChangedSignal("Text"):Connect(function()
+Connections.PlayerTPSearch = ThemeObjects.PlayerTP.Search:GetPropertyChangedSignal("Text"):Connect(ThemeObjects.PlayerTP.Refresh)
+Connections.PlayerTPWaypointSearch = ThemeObjects.PlayerTP.WaypointSearch:GetPropertyChangedSignal("Text"):Connect(function()
 	if ThemeObjects.PlayerTP.RefreshWaypoints then ThemeObjects.PlayerTP.RefreshWaypoints() end
 end)
 ThemeObjects.PlayerTP.PlayersTab.MouseButton1Click:Connect(function() PlayClick() ThemeObjects.PlayerTP.ShowTab("Players") end)
 ThemeObjects.PlayerTP.WaypointsTab.MouseButton1Click:Connect(function() PlayClick() ThemeObjects.PlayerTP.ShowTab("Waypoints") end)
-Players.PlayerAdded:Connect(ThemeObjects.PlayerTP.Refresh)
-Players.PlayerRemoving:Connect(ThemeObjects.PlayerTP.Refresh)
+Connections.PlayerTPPlayerAdded = Players.PlayerAdded:Connect(ThemeObjects.PlayerTP.Refresh)
+Connections.PlayerTPPlayerRemoving = Players.PlayerRemoving:Connect(ThemeObjects.PlayerTP.Refresh)
 ThemeObjects.PlayerTP.Close.MouseButton1Click:Connect(function() PlaySwoosh() ThemeObjects.PlayerTP.Frame.Visible = false end)
 
 ThemeObjects.PlayerTP.Header.InputBegan:Connect(function(input)
@@ -2957,7 +2848,7 @@ ThemeObjects.PlayerTP.Header.InputBegan:Connect(function(input)
 		end)
 	end
 end)
-UserInputService.InputChanged:Connect(function(input)
+Connections.PlayerTPDrag = UserInputService.InputChanged:Connect(function(input)
 	if ThemeObjects.PlayerTP.Dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 		local delta = input.Position - ThemeObjects.PlayerTP.DragStart
 		ThemeObjects.PlayerTP.Frame.Position = UDim2.new(ThemeObjects.PlayerTP.StartPosition.X.Scale, ThemeObjects.PlayerTP.StartPosition.X.Offset + delta.X, ThemeObjects.PlayerTP.StartPosition.Y.Scale, ThemeObjects.PlayerTP.StartPosition.Y.Offset + delta.Y)
@@ -3007,7 +2898,7 @@ TargetHeader.InputBegan:Connect(function(input)
 		end)
 	end
 end)
-UserInputService.InputChanged:Connect(function(input)
+Connections.TargetFrameDrag = UserInputService.InputChanged:Connect(function(input)
 	if targetDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 		local delta = input.Position - targetDragStart
 		TargetFrame.Position = UDim2.new(targetStartPosition.X.Scale, targetStartPosition.X.Offset + delta.X, targetStartPosition.Y.Scale, targetStartPosition.Y.Offset + delta.Y)
@@ -3613,8 +3504,8 @@ PlayerSearch:GetPropertyChangedSignal("Text"):Connect(function()
 	PlayerScroll.CanvasSize = UDim2.new(0, 0, 0, PlayerListLayout.AbsoluteContentSize.Y)
 end)
 
-Players.PlayerAdded:Connect(UpdatePlayerList)
-Players.PlayerRemoving:Connect(UpdatePlayerList)
+Connections.PlayerListPlayerAdded = Players.PlayerAdded:Connect(UpdatePlayerList)
+Connections.PlayerListPlayerRemoving = Players.PlayerRemoving:Connect(UpdatePlayerList)
 
 -- ==================== COIN FARM ====================
 local CoinFarmTitle = Instance.new("TextLabel")
@@ -4911,7 +4802,6 @@ local function ToggleSpeed()
 	SpeedEnabled = not SpeedEnabled
 	SpeedToggleBtn.Text = SpeedEnabled and "On" or "Off"
 	SpeedTitle.TextColor3 = SpeedEnabled and AccentColor or InactiveTextColor()
-	ShowToggleNotification("Speed", SpeedEnabled)
 end
 SpeedToggleBtn.MouseButton1Click:Connect(function() PlayClick() ToggleSpeed() end)
 
@@ -4919,7 +4809,6 @@ local function ToggleNoclip()
 	NoclipEnabled = not NoclipEnabled
 	NoclipToggleBtn.Text = NoclipEnabled and "On" or "Off"
 	NoclipTitle.TextColor3 = NoclipEnabled and AccentColor or InactiveTextColor()
-	ShowToggleNotification("Noclip", NoclipEnabled)
 end
 NoclipToggleBtn.MouseButton1Click:Connect(function() PlayClick() ToggleNoclip() end)
 
@@ -4952,7 +4841,6 @@ function ThemeObjects.FreeCam.Enable()
 	if root then root.AssemblyLinearVelocity = Vector3.zero root.AssemblyAngularVelocity = Vector3.zero end
 	ThemeObjects.FreeCam.Toggle.Text = "On"
 	ThemeObjects.FreeCam.Title.TextColor3 = AccentColor
-	ShowToggleNotification("FreeCam", true)
 	game:GetService("ContextActionService"):BindActionAtPriority(
 		"HqydeuFreeCamSink",
 		function() return Enum.ContextActionResult.Sink end,
@@ -4982,7 +4870,6 @@ function ThemeObjects.FreeCam.Disable()
 	end
 	ThemeObjects.FreeCam.Toggle.Text = "Off"
 	ThemeObjects.FreeCam.Title.TextColor3 = InactiveTextColor()
-	ShowToggleNotification("FreeCam", false)
 	task.defer(function()
 		-- Apply once more after Roblox's camera controller finishes this frame.
 		if not ThemeObjects.FreeCam.Enabled then
@@ -5034,7 +4921,6 @@ local function ToggleFly()
 	FlyEnabled = not FlyEnabled
 	FlyToggleBtn.Text = FlyEnabled and "On" or "Off"
 	FlyTitle.TextColor3 = FlyEnabled and AccentColor or InactiveTextColor()
-	ShowToggleNotification("Fly", FlyEnabled)
 	local Character = Player.Character 
 	local RootPart = Character and Character:FindFirstChild("HumanoidRootPart")
 	if FlyEnabled then
@@ -5704,7 +5590,7 @@ local function ApplyGuiSize(value)
 	GuiSizeValue = math.clamp(value, 20, 100)
 	GuiSizeValueLabel.Text = tostring(GuiSizeValue)
 	local targetScale = GuiScaleFromValue(GuiSizeValue)
-	for _, scaleObject in ipairs({MainScaleObject, TargetScaleObject, ThemeObjects.PlayerTP.Scale, SplashScaleObject, ThemeObjects.PickerDockScale, ThemeObjects.GuiSizeDockScale, ThemeObjects.ExtrasFeature.CopyScale, NotificationScale}) do
+	for _, scaleObject in ipairs({MainScaleObject, TargetScaleObject, ThemeObjects.PlayerTP.Scale, SplashScaleObject, ThemeObjects.PickerDockScale, ThemeObjects.GuiSizeDockScale, ThemeObjects.ExtrasFeature.CopyScale}) do
 		if scaleObject and scaleObject.Parent then
 			TweenService:Create(scaleObject, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Scale = targetScale}):Play()
 		end
@@ -5954,14 +5840,14 @@ HueInput.InputBegan:Connect(function(input)
 		UpdateHueFromPosition(input.Position)
 	end
 end)
-UserInputService.InputChanged:Connect(function(input)
+Connections.ThemePickerInputChanged = UserInputService.InputChanged:Connect(function(input)
 	if DraggingSV and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 		UpdateSVFromPosition(input.Position)
 	elseif DraggingHue and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 		UpdateHueFromPosition(input.Position)
 	end
 end)
-UserInputService.InputEnded:Connect(function(input)
+Connections.ThemePickerInputEnded = UserInputService.InputEnded:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 		if DraggingSV or DraggingHue then SaveThemeColors() end
 		DraggingSV = false
@@ -6074,7 +5960,6 @@ local function Cleanup()
 	end
 	for _, connection in pairs(Connections) do if connection then connection:Disconnect() end end
 	if CoinFarmConnection then CoinFarmConnection:Disconnect() end
-	if ToggleSound then ToggleSound:Destroy() end
 	ScreenGui:Destroy()
 end
 DestroyBtn.MouseButton1Click:Connect(Cleanup)
@@ -6095,7 +5980,7 @@ UpdateTheme()
 -- Dragging
 local dragging, dragStart, startPos
 MainFrame.InputBegan:Connect(function(input) if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then dragging = true dragStart = input.Position startPos = MainFrame.Position input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false end end) end end)
-UserInputService.InputChanged:Connect(function(input) if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then local delta = input.Position - dragStart MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y) end end)
+Connections.MainFrameDrag = UserInputService.InputChanged:Connect(function(input) if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then local delta = input.Position - dragStart MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y) end end)
 
 -- FLY-IN TITLE SEQUENCE
 task.spawn(function()
