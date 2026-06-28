@@ -1271,49 +1271,6 @@ WhiteBtn.MouseButton1Click:Connect(function() PlayClick() ESPColor = Color3.from
 GreenBtn.MouseButton1Click:Connect(function() PlayClick() ESPColor = Color3.fromRGB(100, 255, 100) end)
 
 ThemeObjects.DeepESP = {Enabled = false}
-ThemeObjects.DeepESP.Row = Instance.new("Frame")
-ThemeObjects.DeepESP.Row.Name = "QuietOrDieDeepESPRow"
-ThemeObjects.DeepESP.Row.Size = UDim2.new(1, -8, 0, 38)
-ThemeObjects.DeepESP.Row.Position = UDim2.new(0, 4, 0, 118)
-ThemeObjects.DeepESP.Row.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
-ThemeObjects.DeepESP.Row.BackgroundTransparency = 0.92
-ThemeObjects.DeepESP.Row.BorderSizePixel = 0
-ThemeObjects.DeepESP.Row.Parent = MainFrame:FindFirstChild("QuietOrDiePage")
-table.insert(ThemeObjects.Backgrounds, ThemeObjects.DeepESP.Row)
-Instance.new("UICorner", ThemeObjects.DeepESP.Row).CornerRadius = UDim.new(0, 6)
-
-ThemeObjects.DeepESP.Title = Instance.new("TextLabel")
-ThemeObjects.DeepESP.Title.Size = UDim2.new(0, 82, 0, 24)
-ThemeObjects.DeepESP.Title.Position = UDim2.new(0, 8, 0, 7)
-ThemeObjects.DeepESP.Title.BackgroundTransparency = 1
-ThemeObjects.DeepESP.Title.Text = "Survivor ESP"
-ThemeObjects.DeepESP.Title.Font = Enum.Font.GothamBold
-ThemeObjects.DeepESP.Title.TextSize = 11
-ThemeObjects.DeepESP.Title.TextXAlignment = Enum.TextXAlignment.Left
-ThemeObjects.DeepESP.Title.Parent = ThemeObjects.DeepESP.Row
-table.insert(ThemeObjects.Texts, ThemeObjects.DeepESP.Title)
-
-ThemeObjects.DeepESP.Toggle = Instance.new("TextButton")
-ThemeObjects.DeepESP.Toggle.Size = UDim2.new(0, 38, 0, 22)
-ThemeObjects.DeepESP.Toggle.Position = UDim2.new(1, -46, 0, 8)
-ThemeObjects.DeepESP.Toggle.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
-ThemeObjects.DeepESP.Toggle.BackgroundTransparency = 0.8
-ThemeObjects.DeepESP.Toggle.BorderSizePixel = 0
-ThemeObjects.DeepESP.Toggle.Text = "Off"
-ThemeObjects.DeepESP.Toggle.Font = Enum.Font.GothamBold
-ThemeObjects.DeepESP.Toggle.TextSize = 9
-ThemeObjects.DeepESP.Toggle.Parent = ThemeObjects.DeepESP.Row
-table.insert(ThemeObjects.Backgrounds, ThemeObjects.DeepESP.Toggle)
-table.insert(ThemeObjects.Texts, ThemeObjects.DeepESP.Toggle)
-Instance.new("UICorner", ThemeObjects.DeepESP.Toggle).CornerRadius = UDim.new(0, 3)
-
-ThemeObjects.DeepESP.Toggle.MouseButton1Click:Connect(function()
-	PlayClick()
-	ThemeObjects.DeepESP.Enabled = not ThemeObjects.DeepESP.Enabled
-	ThemeObjects.DeepESP.Toggle.Text = ThemeObjects.DeepESP.Enabled and "On" or "Off"
-	ThemeObjects.DeepESP.Title.TextColor3 = ThemeObjects.DeepESP.Enabled and AccentColor or InactiveTextColor()
-	if not ThemeObjects.DeepESP.Enabled and ThemeObjects.ClearESPAdornments then ThemeObjects.ClearESPAdornments() end
-end)
 
 function ToggleAutoLock()
 	AutoLockEnabled = not AutoLockEnabled
