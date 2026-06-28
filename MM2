@@ -1,0 +1,43 @@
+-- hqydeu MM2 module
+-- Upload this file to GitHub, then put its RAW URL into the main loader.
+-- Expected usage from main script:
+--   local moduleFactory = loadstring(game:HttpGet(url))()
+--   moduleFactory(ctx)
+
+return function(ctx)
+	local Players = ctx.Players
+	local RunService = ctx.RunService
+	local Player = ctx.Player
+	local MainFrame = ctx.MainFrame
+	local MM2Page = ctx.MM2Page
+	local ThemeObjects = ctx.ThemeObjects
+	local Connections = ctx.Connections
+	local PlayClick = ctx.PlayClick
+	local AccentColor = ctx.GetAccentColor()
+	local InactiveTextColor = ctx.InactiveTextColor
+
+	if ctx.Modules.MM2Loaded then
+		MM2Page.Visible = true
+		return ctx.Modules.MM2
+	end
+	ctx.Modules.MM2Loaded = true
+
+	local api = {}
+	ctx.Modules.MM2 = api
+
+	function api.Open()
+		MM2Page.Visible = true
+		MM2Page.Position = UDim2.new(0, 114, 0, 54)
+	end
+
+	function api.Cleanup()
+		-- Put MM2-only disconnects/cleanup here when you move the full MM2 code over.
+	end
+
+	-- Paste the MM2-only feature code here later.
+	-- Start with the Auto Gun / Coin Farm / Auto Stab / Auto Shoot section.
+	-- Keep variables local inside this returned function; they will NOT count against the main script.
+
+	api.Open()
+	return api
+end
