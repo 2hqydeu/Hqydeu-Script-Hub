@@ -343,54 +343,6 @@ local function ShowToggleNotification(featureName, enabled)
 	end)
 end
 
-local ToggleNotificationButtons = {}
-local function ToggleStateFromText(text)
-	text = tostring(text or ""):lower()
-	if text == "on" or text:match(":%s*on$") then return true end
-	if text == "off" or text:match(":%s*off$") then return false end
-	return nil
-end
-
-local function CleanToggleName(text)
-	text = tostring(text or ""):gsub(":", ""):gsub("%s+", " ")
-	text = text:gsub("^%s+", ""):gsub("%s+$", "")
-	return text ~= "" and text or nil
-end
-
-local function FindToggleName(button)
-	local textName = CleanToggleName(button.Text:gsub(":%s*[Oo][NnFf]+$", ""))
-	if textName and textName:lower() ~= "on" and textName:lower() ~= "off" then
-		return textName
-	end
-	local parent = button.Parent
-	if parent then
-		for _, sibling in ipairs(parent:GetChildren()) do
-			if sibling ~= button and sibling:IsA("TextLabel") then
-				local siblingName = CleanToggleName(sibling.Text)
-				if siblingName then return siblingName end
-			end
-		end
-	end
-	local name = button.Name:gsub("Toggle", ""):gsub("Button", ""):gsub("Btn", "")
-	return CleanToggleName(name) or "Feature"
-end
-
-local function WatchToggleNotification(button)
-	if ToggleNotificationButtons[button] or not button:IsA("TextButton") then return end
-	ToggleNotificationButtons[button] = true
-	task.defer(function()
-		if not button.Parent then return end
-		local lastState = ToggleStateFromText(button.Text)
-		button:GetPropertyChangedSignal("Text"):Connect(function()
-			local currentState = ToggleStateFromText(button.Text)
-			if currentState ~= nil and lastState ~= nil and currentState ~= lastState then
-				ShowToggleNotification(FindToggleName(button), currentState)
-			end
-			if currentState ~= nil then lastState = currentState end
-		end)
-	end)
-end
-
 -- Theme Management
 local ThemeObjects = { Backgrounds = {}, Texts = {}, Accents = {}, AccentBackgrounds = {}, StateTexts = {} }
 
@@ -6138,12 +6090,6 @@ for _, surface in ipairs(MainFrame:GetDescendants()) do
 end
 
 CompactGuiText(ScreenGui)
-for _, object in ipairs(ScreenGui:GetDescendants()) do
-	WatchToggleNotification(object)
-end
-Connections.ToggleNotifications = ScreenGui.DescendantAdded:Connect(function(object)
-	WatchToggleNotification(object)
-end)
 UpdateTheme()
 
 -- Dragging
