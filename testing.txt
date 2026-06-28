@@ -1026,8 +1026,8 @@ GamesTabButton
 SelectedGame
 LoadedGameModules = LoadedGameModules or {}
 GameModuleUrls = {
-	MM2 = "PASTE_MM2_RAW_GITHUB_URL_HERE",
-	QuietOrDie = "PASTE_QUIET_OR_DIE_RAW_GITHUB_URL_HERE",
+	MM2 = "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/MM2",
+	QuietOrDie = "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/QOD",
 }
 
 function BuildGameContext()
