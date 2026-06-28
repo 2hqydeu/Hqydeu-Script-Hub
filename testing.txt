@@ -1,50 +1,3 @@
--- Diagnostic bootstrap for HqydeuLoader
--- This tiny loader appears first, then runs the full GUI inside protected error handling.
-
-local CoreGui = game:GetService("CoreGui")
-
-pcall(function()
-	local old = CoreGui:FindFirstChild("HqydeuLoaderDiagnostic")
-	if old then old:Destroy() end
-end)
-
-local DiagnosticGui = Instance.new("ScreenGui")
-DiagnosticGui.Name = "HqydeuLoaderDiagnostic"
-DiagnosticGui.ResetOnSpawn = false
-DiagnosticGui.Parent = CoreGui
-
-local Panel = Instance.new("Frame")
-Panel.Size = UDim2.new(0, 420, 0, 170)
-Panel.Position = UDim2.new(0.5, -210, 0.5, -85)
-Panel.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
-Panel.BorderSizePixel = 0
-Panel.Parent = DiagnosticGui
-Instance.new("UICorner", Panel).CornerRadius = UDim.new(0, 10)
-
-local Status = Instance.new("TextLabel")
-Status.Size = UDim2.new(1, -24, 1, -24)
-Status.Position = UDim2.new(0, 12, 0, 12)
-Status.BackgroundTransparency = 1
-Status.Text = "Hqydeu Loader diagnostic booting..."
-Status.Font = Enum.Font.GothamBold
-Status.TextSize = 14
-Status.TextColor3 = Color3.fromRGB(245, 245, 245)
-Status.TextWrapped = true
-Status.TextXAlignment = Enum.TextXAlignment.Left
-Status.TextYAlignment = Enum.TextYAlignment.Top
-Status.Parent = Panel
-
-local function showFailure(kind, message)
-	Status.Text = kind .. "\n\n" .. tostring(message)
-	Status.TextColor3 = Color3.fromRGB(255, 115, 115)
-end
-
-if type(loadstring) ~= "function" then
-	showFailure("loadstring is not available", "This diagnostic wrapper needs loadstring. Tell Codex this exact message.")
-	return
-end
-
-local source = [=[
 -- Services
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -5358,7 +5311,7 @@ DestroyBtn.Parent = SettingsPage
 table.insert(ThemeObjects.Backgrounds, DestroyBtn)
 Instance.new("UICorner", DestroyBtn).CornerRadius = UDim.new(0, 6)
 
-local AccentColorBtn = Instance.new("TextButton")
+AccentColorBtn = Instance.new("TextButton")
 AccentColorBtn.Size = UDim2.new(0, 150, 0, 20)
 AccentColorBtn.Position = UDim2.new(0, 10, 0, 8)
 AccentColorBtn.BackgroundColor3 = Color3.fromRGB(210, 18, 18)
@@ -5370,7 +5323,7 @@ AccentColorBtn.TextSize = 10
 AccentColorBtn.Parent = SettingsPage
 Instance.new("UICorner", AccentColorBtn).CornerRadius = UDim.new(0, 5)
 
-local ResetThemeBtn = Instance.new("TextButton")
+ResetThemeBtn = Instance.new("TextButton")
 ResetThemeBtn.Size = UDim2.new(0, 114, 0, 18)
 ResetThemeBtn.Position = UDim2.new(0, 10, 0, 116)
 ResetThemeBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
@@ -5384,7 +5337,7 @@ table.insert(ThemeObjects.Backgrounds, ResetThemeBtn)
 table.insert(ThemeObjects.Texts, ResetThemeBtn)
 Instance.new("UICorner", ResetThemeBtn).CornerRadius = UDim.new(0, 5)
 
-local ClearKeybindsBtn = Instance.new("TextButton")
+ClearKeybindsBtn = Instance.new("TextButton")
 ClearKeybindsBtn.Name = "ClearKeybindsBtn"
 ClearKeybindsBtn.Size = UDim2.new(0, 150, 0, 24)
 ClearKeybindsBtn.Position = UDim2.new(0, 170, 0, 76)
@@ -5399,7 +5352,7 @@ ClearKeybindsBtn.Parent = SettingsPage
 table.insert(ThemeObjects.Backgrounds, ClearKeybindsBtn)
 Instance.new("UICorner", ClearKeybindsBtn).CornerRadius = UDim.new(0, 5)
 
-local ResetCharacterBtn = Instance.new("TextButton")
+ResetCharacterBtn = Instance.new("TextButton")
 ResetCharacterBtn.Name = "ResetCharacterBtn"
 ResetCharacterBtn.Size = UDim2.new(0, 150, 0, 24)
 ResetCharacterBtn.Position = UDim2.new(0, 10, 0, 76)
@@ -5413,7 +5366,7 @@ ResetCharacterBtn.Parent = SettingsPage
 table.insert(ThemeObjects.Backgrounds, ResetCharacterBtn)
 Instance.new("UICorner", ResetCharacterBtn).CornerRadius = UDim.new(0, 6)
 
-local RejoinBtn = Instance.new("TextButton")
+RejoinBtn = Instance.new("TextButton")
 RejoinBtn.Name = "RejoinBtn"
 RejoinBtn.Size = UDim2.new(0, 150, 0, 24)
 RejoinBtn.Position = UDim2.new(0, 170, 0, 40)
@@ -5427,7 +5380,7 @@ RejoinBtn.Parent = SettingsPage
 table.insert(ThemeObjects.Backgrounds, RejoinBtn)
 Instance.new("UICorner", RejoinBtn).CornerRadius = UDim.new(0, 6)
 
-local ServerHopBtn = Instance.new("TextButton")
+ServerHopBtn = Instance.new("TextButton")
 ServerHopBtn.Name = "ServerHopBtn"
 ServerHopBtn.Size = UDim2.new(0, 150, 0, 24)
 ServerHopBtn.Position = UDim2.new(0, 10, 0, 40)
@@ -5441,7 +5394,7 @@ ServerHopBtn.Parent = SettingsPage
 table.insert(ThemeObjects.Backgrounds, ServerHopBtn)
 Instance.new("UICorner", ServerHopBtn).CornerRadius = UDim.new(0, 6)
 
-local GuiSizeBtn = Instance.new("TextButton")
+GuiSizeBtn = Instance.new("TextButton")
 GuiSizeBtn.Name = "GuiSizeBtn"
 GuiSizeBtn.Size = UDim2.new(0, 150, 0, 20)
 GuiSizeBtn.Position = UDim2.new(0, 170, 0, 8)
@@ -5559,7 +5512,7 @@ ServerHopBtn.MouseButton1Click:Connect(function()
 	end)
 end)
 
-local GuiSizeFrame = Instance.new("Frame")
+GuiSizeFrame = Instance.new("Frame")
 GuiSizeFrame.Name = "GuiSizeDock"
 GuiSizeFrame.Size = UDim2.new(0, 130, 0, 80)
 GuiSizeFrame.AnchorPoint = Vector2.new(1, 0)
@@ -5572,13 +5525,13 @@ GuiSizeFrame.Parent = ScreenGui
 ThemeObjects.GuiSizeDock = GuiSizeFrame
 table.insert(ThemeObjects.Backgrounds, GuiSizeFrame)
 Instance.new("UICorner", GuiSizeFrame).CornerRadius = UDim.new(0, 9)
-local GuiSizeDockStroke = Instance.new("UIStroke")
+GuiSizeDockStroke = Instance.new("UIStroke")
 GuiSizeDockStroke.Color = AccentColor
 GuiSizeDockStroke.Thickness = 1.5
 GuiSizeDockStroke.Transparency = 0
 GuiSizeDockStroke.Parent = GuiSizeFrame
 table.insert(ThemeObjects.Accents, GuiSizeDockStroke)
-local GuiSizeDockScale = Instance.new("UIScale", GuiSizeFrame)
+GuiSizeDockScale = Instance.new("UIScale", GuiSizeFrame)
 GuiSizeDockScale.Scale = GuiScaleFromValue(GuiSizeValue)
 ThemeObjects.GuiSizeDockScale = GuiSizeDockScale
 
@@ -5590,7 +5543,7 @@ MainFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(ThemeObjects.Upda
 MainFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(ThemeObjects.UpdateGuiSizeDockPosition)
 ThemeObjects.UpdateGuiSizeDockPosition()
 
-local GuiSizeTitle = Instance.new("TextLabel")
+GuiSizeTitle = Instance.new("TextLabel")
 GuiSizeTitle.Size = UDim2.new(0, 114, 0, 12)
 GuiSizeTitle.Position = UDim2.new(0, 8, 0, 8)
 GuiSizeTitle.BackgroundTransparency = 1
@@ -5602,7 +5555,7 @@ GuiSizeTitle.ZIndex = 81
 GuiSizeTitle.Parent = GuiSizeFrame
 table.insert(ThemeObjects.Texts, GuiSizeTitle)
 
-local GuiSizeMinusBtn = Instance.new("TextButton")
+GuiSizeMinusBtn = Instance.new("TextButton")
 GuiSizeMinusBtn.Size = UDim2.new(0, 28, 0, 20)
 GuiSizeMinusBtn.Position = UDim2.new(0, 8, 0, 26)
 GuiSizeMinusBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
@@ -5617,7 +5570,7 @@ table.insert(ThemeObjects.Backgrounds, GuiSizeMinusBtn)
 table.insert(ThemeObjects.Texts, GuiSizeMinusBtn)
 Instance.new("UICorner", GuiSizeMinusBtn).CornerRadius = UDim.new(0, 5)
 
-local GuiSizeValueLabel = Instance.new("TextLabel")
+GuiSizeValueLabel = Instance.new("TextLabel")
 GuiSizeValueLabel.Size = UDim2.new(0, 46, 0, 20)
 GuiSizeValueLabel.Position = UDim2.new(0, 42, 0, 26)
 GuiSizeValueLabel.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
@@ -5632,7 +5585,7 @@ table.insert(ThemeObjects.Backgrounds, GuiSizeValueLabel)
 table.insert(ThemeObjects.Texts, GuiSizeValueLabel)
 Instance.new("UICorner", GuiSizeValueLabel).CornerRadius = UDim.new(0, 5)
 
-local GuiSizePlusBtn = Instance.new("TextButton")
+GuiSizePlusBtn = Instance.new("TextButton")
 GuiSizePlusBtn.Size = UDim2.new(0, 28, 0, 20)
 GuiSizePlusBtn.Position = UDim2.new(0, 94, 0, 26)
 GuiSizePlusBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
@@ -5647,7 +5600,7 @@ table.insert(ThemeObjects.Backgrounds, GuiSizePlusBtn)
 table.insert(ThemeObjects.Texts, GuiSizePlusBtn)
 Instance.new("UICorner", GuiSizePlusBtn).CornerRadius = UDim.new(0, 5)
 
-local GuiSizeResetBtn = Instance.new("TextButton")
+GuiSizeResetBtn = Instance.new("TextButton")
 GuiSizeResetBtn.Size = UDim2.new(0, 114, 0, 18)
 GuiSizeResetBtn.Position = UDim2.new(0, 8, 0, 54)
 GuiSizeResetBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
@@ -5682,7 +5635,7 @@ GuiSizeMinusBtn.MouseButton1Click:Connect(function() PlayClick() ApplyGuiSize(Gu
 GuiSizePlusBtn.MouseButton1Click:Connect(function() PlayClick() ApplyGuiSize(GuiSizeValue + 5) end)
 GuiSizeResetBtn.MouseButton1Click:Connect(function() PlayClick() ApplyGuiSize(50) end)
 
-local PickerFrame = Instance.new("Frame")
+PickerFrame = Instance.new("Frame")
 PickerFrame.Name = "AccentPickerDock"
 PickerFrame.Size = UDim2.new(0, 130, 0, 140)
 PickerFrame.AnchorPoint = Vector2.new(1, 0)
@@ -5695,13 +5648,13 @@ PickerFrame.Parent = ScreenGui
 ThemeObjects.PickerDock = PickerFrame
 table.insert(ThemeObjects.Backgrounds, PickerFrame)
 Instance.new("UICorner", PickerFrame).CornerRadius = UDim.new(0, 9)
-local PickerDockStroke = Instance.new("UIStroke")
+PickerDockStroke = Instance.new("UIStroke")
 PickerDockStroke.Color = AccentColor
 PickerDockStroke.Thickness = 1.5
 PickerDockStroke.Transparency = 0
 PickerDockStroke.Parent = PickerFrame
 table.insert(ThemeObjects.Accents, PickerDockStroke)
-local PickerScaleObject = Instance.new("UIScale", PickerFrame)
+PickerScaleObject = Instance.new("UIScale", PickerFrame)
 PickerScaleObject.Scale = GuiScaleFromValue(GuiSizeValue)
 ThemeObjects.PickerDockScale = PickerScaleObject
 
@@ -5718,7 +5671,7 @@ ResetThemeBtn.Position = UDim2.new(0, 8, 0, 112)
 ResetThemeBtn.Size = UDim2.new(0, 114, 0, 20)
 ResetThemeBtn.ZIndex = 81
 
-local SVWheel = Instance.new("Frame")
+SVWheel = Instance.new("Frame")
 SVWheel.Size = UDim2.new(0, 84, 0, 84)
 SVWheel.Position = UDim2.new(0, 8, 0, 10)
 SVWheel.BorderSizePixel = 0
@@ -5726,45 +5679,45 @@ SVWheel.Parent = PickerFrame
 SVWheel.ZIndex = 81
 Instance.new("UICorner", SVWheel).CornerRadius = UDim.new(1, 0)
 
-local SVWhite = Instance.new("Frame")
+SVWhite = Instance.new("Frame")
 SVWhite.Size = UDim2.new(1, 0, 1, 0)
 SVWhite.BackgroundColor3 = Color3.new(1, 1, 1)
 SVWhite.BorderSizePixel = 0
 SVWhite.Parent = SVWheel
 Instance.new("UICorner", SVWhite).CornerRadius = UDim.new(1, 0)
-local SVWhiteGradient = Instance.new("UIGradient")
+SVWhiteGradient = Instance.new("UIGradient")
 SVWhiteGradient.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1)})
 SVWhiteGradient.Parent = SVWhite
 
-local SVBlack = Instance.new("Frame")
+SVBlack = Instance.new("Frame")
 SVBlack.Size = UDim2.new(1, 0, 1, 0)
 SVBlack.BackgroundColor3 = Color3.new(0, 0, 0)
 SVBlack.BorderSizePixel = 0
 SVBlack.Parent = SVWheel
 Instance.new("UICorner", SVBlack).CornerRadius = UDim.new(1, 0)
-local SVBlackGradient = Instance.new("UIGradient")
+SVBlackGradient = Instance.new("UIGradient")
 SVBlackGradient.Rotation = 90
 SVBlackGradient.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0)})
 SVBlackGradient.Parent = SVBlack
 
-local SVInput = Instance.new("TextButton")
+SVInput = Instance.new("TextButton")
 SVInput.Size = UDim2.new(1, 0, 1, 0)
 SVInput.BackgroundTransparency = 1
 SVInput.Text = ""
 SVInput.Parent = SVWheel
 
-local SVMarker = Instance.new("Frame")
+SVMarker = Instance.new("Frame")
 SVMarker.Size = UDim2.new(0, 8, 0, 8)
 SVMarker.AnchorPoint = Vector2.new(0.5, 0.5)
 SVMarker.BackgroundTransparency = 1
 SVMarker.Parent = SVInput
-local SVMarkerStroke = Instance.new("UIStroke")
+SVMarkerStroke = Instance.new("UIStroke")
 SVMarkerStroke.Color = Color3.new(1, 1, 1)
 SVMarkerStroke.Thickness = 1.5
 SVMarkerStroke.Parent = SVMarker
 Instance.new("UICorner", SVMarker).CornerRadius = UDim.new(1, 0)
 
-local HueBar = Instance.new("Frame")
+HueBar = Instance.new("Frame")
 HueBar.Size = UDim2.new(0, 18, 0, 84)
 HueBar.Position = UDim2.new(0, 104, 0, 10)
 HueBar.BackgroundColor3 = Color3.new(1, 1, 1)
@@ -5772,7 +5725,7 @@ HueBar.BorderSizePixel = 0
 HueBar.Parent = PickerFrame
 HueBar.ZIndex = 81
 Instance.new("UICorner", HueBar).CornerRadius = UDim.new(0, 4)
-local HueGradient = Instance.new("UIGradient")
+HueGradient = Instance.new("UIGradient")
 HueGradient.Rotation = 90
 HueGradient.Color = ColorSequence.new({
 	ColorSequenceKeypoint.new(0, Color3.fromHSV(0, 1, 1)),
@@ -5785,13 +5738,13 @@ HueGradient.Color = ColorSequence.new({
 })
 HueGradient.Parent = HueBar
 
-local HueInput = Instance.new("TextButton")
+HueInput = Instance.new("TextButton")
 HueInput.Size = UDim2.new(1, 0, 1, 0)
 HueInput.BackgroundTransparency = 1
 HueInput.Text = ""
 HueInput.Parent = HueBar
 
-local HueMarker = Instance.new("Frame")
+HueMarker = Instance.new("Frame")
 HueMarker.Size = UDim2.new(1, 4, 0, 2)
 HueMarker.Position = UDim2.new(0, -2, 0, 0)
 HueMarker.BackgroundColor3 = Color3.new(1, 1, 1)
@@ -5802,14 +5755,14 @@ for _, pickerObject in ipairs(PickerFrame:GetDescendants()) do
 	if pickerObject:IsA("GuiObject") then pickerObject.ZIndex = 81 end
 end
 
-local ConfirmClearFrame = Instance.new("Frame")
+ConfirmClearFrame = Instance.new("Frame")
 ConfirmClearFrame.Size = UDim2.new(0, 150, 0, 70)
 ConfirmClearFrame.Position = UDim2.new(0, 10, 0, 8)
 ConfirmClearFrame.BackgroundTransparency = 1
 ConfirmClearFrame.Visible = false
 ConfirmClearFrame.Parent = SettingsPage
 
-local ConfirmClearText = Instance.new("TextLabel")
+ConfirmClearText = Instance.new("TextLabel")
 ConfirmClearText.Size = UDim2.new(0, 150, 0, 32)
 ConfirmClearText.BackgroundTransparency = 1
 ConfirmClearText.Text = "Are you sure? Remove all keybinds?"
@@ -5819,7 +5772,7 @@ ConfirmClearText.TextWrapped = true
 ConfirmClearText.Parent = ConfirmClearFrame
 table.insert(ThemeObjects.Texts, ConfirmClearText)
 
-local ConfirmYesBtn = Instance.new("TextButton")
+ConfirmYesBtn = Instance.new("TextButton")
 ConfirmYesBtn.Size = UDim2.new(0, 50, 0, 22)
 ConfirmYesBtn.Position = UDim2.new(0, 20, 0, 42)
 ConfirmYesBtn.BackgroundColor3 = Color3.fromRGB(80, 170, 100)
@@ -5830,7 +5783,7 @@ ConfirmYesBtn.Font = Enum.Font.GothamBold
 ConfirmYesBtn.Parent = ConfirmClearFrame
 Instance.new("UICorner", ConfirmYesBtn).CornerRadius = UDim.new(0, 4)
 
-local ConfirmNoBtn = Instance.new("TextButton")
+ConfirmNoBtn = Instance.new("TextButton")
 ConfirmNoBtn.Size = UDim2.new(0, 50, 0, 22)
 ConfirmNoBtn.Position = UDim2.new(0, 80, 0, 42)
 ConfirmNoBtn.BackgroundColor3 = Color3.fromRGB(150, 75, 75)
@@ -5853,10 +5806,10 @@ table.insert(ThemeObjects.StateTexts, {Object = CoinFarmTitle, IsEnabled = funct
 table.insert(ThemeObjects.StateTexts, {Object = AutoGunTitle, IsEnabled = function() return AutoGunPickupEnabled end})
 table.insert(ThemeObjects.StateTexts, {Object = KillTitle, IsEnabled = function() return KillEnabled end})
 
-local PickerTarget = "Accent"
-local PickerH, PickerS, PickerV = 0, 0, 1
-local DraggingSV = false
-local DraggingHue = false
+PickerTarget = "Accent"
+PickerH, PickerS, PickerV = 0, 0, 1
+DraggingSV = false
+DraggingHue = false
 
 local function RefreshThemePreviews()
 	AccentColorBtn.BackgroundColor3 = AccentColor
@@ -6055,7 +6008,7 @@ UpdateTheme()
 SafeFeatureSystem.RunInitializers()
 
 -- Dragging
-local dragging, dragStart, startPos
+dragging, dragStart, startPos = false, nil, nil
 MainFrame.InputBegan:Connect(function(input) if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then dragging = true dragStart = input.Position startPos = MainFrame.Position input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false end end) end end)
 UserInputService.InputChanged:Connect(function(input) if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then local delta = input.Position - dragStart MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y) end end)
 
@@ -6095,26 +6048,3 @@ task.spawn(function()
 	if SplashFrame and SplashFrame.Parent then SplashFrame:Destroy() end
 	MainFrame.Visible = true
 end)
-
-]=]
-
-local runner, compileError = loadstring(source)
-if not runner then
-	showFailure("Compile error in main GUI", compileError)
-	return
-end
-
-Status.Text = "Compiled. Running main GUI..."
-local ok, runtimeError = xpcall(runner, function(err)
-	if debug and type(debug.traceback) == "function" then
-		return debug.traceback(tostring(err), 2)
-	end
-	return tostring(err)
-end)
-
-if not ok then
-	showFailure("Runtime error in main GUI", runtimeError)
-	return
-end
-
-DiagnosticGui:Destroy()
