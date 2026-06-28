@@ -1,4 +1,3 @@
--- Services
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
@@ -22,12 +21,12 @@ if CanPersistKeybinds then
 	end)
 end
 
-local GuiSizeValue = math.clamp(tonumber(SavedKeybinds.GuiSize) or 50, 20, 100)
-local function GuiScaleFromValue(value)
+GuiSizeValue = math.clamp(tonumber(SavedKeybinds.GuiSize) or 50, 20, 100)
+function GuiScaleFromValue(value)
 	return InterfaceScale * (value / 50)
 end
 
-local function LoadKeybind(featureName)
+function LoadKeybind(featureName)
 	local savedName = SavedKeybinds[featureName]
 	if type(savedName) == "string" then
 		local success, keyCode = pcall(function() return Enum.KeyCode[savedName] end)
@@ -36,18 +35,18 @@ local function LoadKeybind(featureName)
 	return Enum.KeyCode.Unknown
 end
 
-local function SavePersistentSettings()
+function SavePersistentSettings()
 	if CanPersistKeybinds then
 		pcall(function() writefile(KeybindStorageFile, HttpService:JSONEncode(SavedKeybinds)) end)
 	end
 end
 
-local function SaveKeybind(featureName, keyCode)
+function SaveKeybind(featureName, keyCode)
 	SavedKeybinds[featureName] = keyCode.Name
 	SavePersistentSettings()
 end
 
-local function LoadColor(settingName, fallback)
+function LoadColor(settingName, fallback)
 	local saved = SavedKeybinds[settingName]
 	if type(saved) == "table" and tonumber(saved.R) and tonumber(saved.G) and tonumber(saved.B) then
 		return Color3.fromRGB(saved.R, saved.G, saved.B)
@@ -55,12 +54,12 @@ local function LoadColor(settingName, fallback)
 	return fallback
 end
 
-local DefaultFrameColor = Color3.fromRGB(28, 28, 38)
-local DefaultAccentColor = Color3.fromRGB(0, 210, 255)
-local FrameThemeColor = DefaultFrameColor
-local AccentColor = LoadColor("ThemeAccent", DefaultAccentColor)
+DefaultFrameColor = Color3.fromRGB(28, 28, 38)
+DefaultAccentColor = Color3.fromRGB(0, 210, 255)
+FrameThemeColor = DefaultFrameColor
+AccentColor = LoadColor("ThemeAccent", DefaultAccentColor)
 
-local function SaveThemeColors()
+function SaveThemeColors()
 	SavedKeybinds.ThemeFrame = nil
 	SavedKeybinds.ThemeAccent = {
 		R = math.floor(AccentColor.R * 255 + 0.5),
@@ -70,11 +69,11 @@ local function SaveThemeColors()
 	SavePersistentSettings()
 end
 
-local function KeybindText(keyCode)
+function KeybindText(keyCode)
 	return keyCode == Enum.KeyCode.Unknown and "..." or keyCode.Name
 end
 
-local SafeFeatureSystem = {Initializers = {}, Errors = {}}
+SafeFeatureSystem = {Initializers = {}, Errors = {}}
 
 function SafeFeatureSystem.Run(label, callback)
 	local ok, err = pcall(callback)
@@ -98,29 +97,27 @@ function SafeFeatureSystem.RunInitializers()
 	end
 end
 
--- Main Container
 pcall(function()
 	local oldGui = CoreGui:FindFirstChild("HqydeuLoader")
 	if oldGui then oldGui:Destroy() end
 end)
 
-local ScreenGui = Instance.new("ScreenGui")
+ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "HqydeuLoader"
 ScreenGui.Parent = CoreGui
 ScreenGui.ResetOnSpawn = false
 
--- Title Screen
-local SplashFrame = Instance.new("Frame")
+SplashFrame = Instance.new("Frame")
 SplashFrame.Size = UDim2.new(0, 0, 0, 0)
 SplashFrame.Position = UDim2.new(0.5, 200, 0.5, 200)
 SplashFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 SplashFrame.BackgroundColor3 = FrameThemeColor
 SplashFrame.BorderSizePixel = 0
 SplashFrame.Parent = ScreenGui
-local SplashScaleObject = Instance.new("UIScale", SplashFrame)
+SplashScaleObject = Instance.new("UIScale", SplashFrame)
 SplashScaleObject.Scale = GuiScaleFromValue(GuiSizeValue)
 
-local SplashCorner = Instance.new("UICorner")
+SplashCorner = Instance.new("UICorner")
 SplashCorner.CornerRadius = UDim.new(1, 0)
 SplashCorner.Parent = SplashFrame
 
@@ -141,7 +138,7 @@ do
 	splashStroke.Parent = SplashFrame
 end
 
-local SplashText = Instance.new("TextLabel")
+SplashText = Instance.new("TextLabel")
 SplashText.Size = UDim2.new(1, 0, 1, 0)
 SplashText.BackgroundTransparency = 1
 SplashText.BorderSizePixel = 0
@@ -152,15 +149,13 @@ SplashText.TextColor3 = Color3.fromRGB(240, 240, 240)
 SplashText.TextTransparency = 1
 SplashText.Parent = SplashFrame
 
--- Startup Sound
-local StartupSound = Instance.new("Sound")
+StartupSound = Instance.new("Sound")
 StartupSound.SoundId = "rbxassetid://111102990253594"
 StartupSound.Volume = 0.8
 StartupSound.Parent = ScreenGui
 StartupSound:Play()
 
--- Main GUI Window
-local MainFrame = Instance.new("Frame")
+MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 460, 0, 300)
 MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -169,25 +164,23 @@ MainFrame.ClipsDescendants = true
 MainFrame.BorderSizePixel = 0
 MainFrame.Visible = false
 MainFrame.Parent = ScreenGui
-local MainScaleObject = Instance.new("UIScale", MainFrame)
+MainScaleObject = Instance.new("UIScale", MainFrame)
 MainScaleObject.Scale = GuiScaleFromValue(GuiSizeValue)
 
-local MainCorner = Instance.new("UICorner")
+MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = UDim.new(0, 12)
 MainCorner.Parent = MainFrame
 
-local MainTextureGradient = Instance.new("UIGradient")
+MainTextureGradient = Instance.new("UIGradient")
 MainTextureGradient.Rotation = 125
 MainTextureGradient.Parent = MainFrame
 
-local MainTextureStroke = Instance.new("UIStroke")
+MainTextureStroke = Instance.new("UIStroke")
 MainTextureStroke.Thickness = 2.25
 MainTextureStroke.Transparency = 1
 MainTextureStroke.Parent = MainFrame
 
--- Accent emblem used on the main bar, minimized bar, and startup splash.
--- This is intentionally separate from the removed background-pattern system.
-local MainPatternLines = {}
+MainPatternLines = {}
 do
 	local pattern = Instance.new("Frame")
 	pattern.Name = "MinimalPattern"
@@ -249,24 +242,22 @@ do
 	SplashText.ZIndex = 2
 end
 
-local TargetTextureGradient
+TargetTextureGradient
 
--- Sound Effects
-local ClickSound = Instance.new("Sound")
+ClickSound = Instance.new("Sound")
 ClickSound.SoundId = "rbxassetid://6895079853"
 ClickSound.Volume = 0.5
 ClickSound.Parent = MainFrame
 
-local SwooshSound = Instance.new("Sound")
+SwooshSound = Instance.new("Sound")
 SwooshSound.SoundId = "rbxassetid://107710687218353"
 SwooshSound.Volume = 0.6
 SwooshSound.Parent = MainFrame
 
-local function PlayClick() ClickSound:Play() end
-local function PlaySwoosh() SwooshSound:Play() end
+function PlayClick() ClickSound:Play() end
+function PlaySwoosh() SwooshSound:Play() end
 
--- Theme Management
-local ThemeObjects = { Backgrounds = {}, Texts = {}, Accents = {}, AccentBackgrounds = {}, StateTexts = {} }
+ThemeObjects = { Backgrounds = {}, Texts = {}, Accents = {}, AccentBackgrounds = {}, StateTexts = {} }
 
 ThemeObjects.ApplyMainGradient = function(intensity)
 	intensity = math.clamp(intensity or 0.5, 0, 0.5)
@@ -282,11 +273,11 @@ ThemeObjects.ApplyMainGradient = function(intensity)
 	if ThemeObjects.PlayerTP and ThemeObjects.PlayerTP.Gradient then ThemeObjects.PlayerTP.Gradient.Color = MainTextureGradient.Color end
 end
 
-local function IsFrameLight()
+function IsFrameLight()
 	return (FrameThemeColor.R * 0.299 + FrameThemeColor.G * 0.587 + FrameThemeColor.B * 0.114) > 0.58
 end
 
-local function InactiveTextColor()
+function InactiveTextColor()
 	return IsFrameLight() and Color3.fromRGB(90, 90, 90) or Color3.fromRGB(180, 180, 180)
 end
 
@@ -318,7 +309,7 @@ ThemeObjects.StyleControlOutline = function(obj)
 	outline.Parent = obj
 end
 
-local function CompactGuiText(root)
+function CompactGuiText(root)
 	for _, obj in ipairs(root:GetDescendants()) do
 		ThemeObjects.StyleTextOutline(obj)
 		ThemeObjects.StyleControlOutline(obj)
@@ -338,14 +329,14 @@ local function CompactGuiText(root)
 	end
 end
 
-local function UpdateTheme(instant)
+function UpdateTheme(instant)
 	local bgColor = FrameThemeColor
 	local lightTheme = IsFrameLight()
 	local secBgColor = bgColor:Lerp(Color3.new(0, 0, 0), 0.22)
 	local textColor = lightTheme and Color3.fromRGB(45, 45, 45) or Color3.fromRGB(240, 240, 240)
 	local subTextColor = InactiveTextColor()
 	local tweenInfo = TweenInfo.new(instant and 0 or 0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-	
+
 	TweenService:Create(MainFrame, tweenInfo, {BackgroundColor3 = bgColor}):Play()
 	if SplashFrame and SplashFrame.Parent then SplashFrame.BackgroundColor3 = bgColor end
 	ThemeObjects.ApplyMainGradient(0.5)
@@ -421,36 +412,35 @@ local function UpdateTheme(instant)
 	end
 end
 
--- Variables
-local CurrentCFrameSpeed = 1
-local SpeedEnabled = false
-local SpeedKeybind = LoadKeybind("Speed")
-local IsBindingSpeed = false
-local NoclipEnabled = false
-local NoclipKeybind = LoadKeybind("Noclip")
-local IsBindingNoclip = false
-local FlyEnabled = false
-local FlySpeed = 10
-local FlyKeybind = LoadKeybind("Fly")
-local IsBindingFly = false
+CurrentCFrameSpeed = 1
+SpeedEnabled = false
+SpeedKeybind = LoadKeybind("Speed")
+IsBindingSpeed = false
+NoclipEnabled = false
+NoclipKeybind = LoadKeybind("Noclip")
+IsBindingNoclip = false
+FlyEnabled = false
+FlySpeed = 10
+FlyKeybind = LoadKeybind("Fly")
+IsBindingFly = false
 
-local AutoLockEnabled = false
-local AutoLockKeybind = LoadKeybind("AutoLock")
-local IsBindingAutoLock = false
+AutoLockEnabled = false
+AutoLockKeybind = LoadKeybind("AutoLock")
+IsBindingAutoLock = false
 
-local ESPEnabled = false
-local ESPKeybind = LoadKeybind("ESP")
-local IsBindingESP = false
-local ESPColor = Color3.fromRGB(100, 255, 100)
-local AntiFlingEnabled = false
-local Flinging = false
-local AntiFlingOriginalCollision = {}
-local FlingMenuKeybind = LoadKeybind("FlingMenu")
-local IsBindingFlingMenu = false
+ESPEnabled = false
+ESPKeybind = LoadKeybind("ESP")
+IsBindingESP = false
+ESPColor = Color3.fromRGB(100, 255, 100)
+AntiFlingEnabled = false
+Flinging = false
+AntiFlingOriginalCollision = {}
+FlingMenuKeybind = LoadKeybind("FlingMenu")
+IsBindingFlingMenu = false
 ThemeObjects.PlayerTP = {Keybind = LoadKeybind("PlayerTPMenu"), Binding = false, Dragging = false}
-local BodyVelocity = nil
-local BodyGyro = nil
-local Connections = {}
+BodyVelocity = nil
+BodyGyro = nil
+Connections = {}
 Connections.TextOutline = ScreenGui.DescendantAdded:Connect(function(object)
 	ThemeObjects.StyleTextOutline(object)
 	ThemeObjects.StyleControlOutline(object)
@@ -487,8 +477,7 @@ Connections.GradientPulse = RunService.Heartbeat:Connect(function(deltaTime)
 end)
 ThemeObjects.FreeCam = {Enabled = false, Keybind = LoadKeybind("FreeCam"), Binding = false}
 
--- Top Bar
-local MiniButton = Instance.new("TextButton")
+MiniButton = Instance.new("TextButton")
 MiniButton.Size = UDim2.new(0, 18, 0, 18)
 MiniButton.Position = UDim2.new(1, -26, 0, 8)
 MiniButton.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
@@ -501,7 +490,7 @@ table.insert(ThemeObjects.Backgrounds, MiniButton)
 table.insert(ThemeObjects.Texts, MiniButton)
 Instance.new("UICorner", MiniButton).CornerRadius = UDim.new(0, 5)
 
-local ToggleHint = Instance.new("TextLabel")
+ToggleHint = Instance.new("TextLabel")
 ToggleHint.Name = "ToggleHint"
 ToggleHint.Size = UDim2.new(0, 50, 0, 18)
 ToggleHint.Position = UDim2.new(1, -82, 0, 8)
@@ -514,7 +503,7 @@ ToggleHint.TextXAlignment = Enum.TextXAlignment.Right
 ToggleHint.Parent = MainFrame
 table.insert(ThemeObjects.Texts, ToggleHint)
 
-local SettingsBtn = Instance.new("TextButton")
+SettingsBtn = Instance.new("TextButton")
 SettingsBtn.Size = UDim2.new(0, 18, 0, 18)
 SettingsBtn.Position = UDim2.new(0, 8, 0, 8)
 SettingsBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
@@ -527,7 +516,7 @@ table.insert(ThemeObjects.Backgrounds, SettingsBtn)
 table.insert(ThemeObjects.Texts, SettingsBtn)
 Instance.new("UICorner", SettingsBtn).CornerRadius = UDim.new(0, 5)
 
-local TabScroll = Instance.new("ScrollingFrame")
+TabScroll = Instance.new("ScrollingFrame")
 TabScroll.Name = "TabScroll"
 TabScroll.Size = UDim2.new(0, 112, 0, 252)
 TabScroll.Position = UDim2.new(0, 2, 0, 32)
@@ -552,7 +541,7 @@ do
 	padding.Parent = TabScroll
 end
 
-local TabListLayout = Instance.new("UIListLayout")
+TabListLayout = Instance.new("UIListLayout")
 TabListLayout.Parent = TabScroll
 TabListLayout.FillDirection = Enum.FillDirection.Vertical
 TabListLayout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -560,7 +549,7 @@ TabListLayout.Padding = UDim.new(0, 6)
 TabListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 TabListLayout.VerticalAlignment = Enum.VerticalAlignment.Top
 
-local PageHeader = Instance.new("TextLabel")
+PageHeader = Instance.new("TextLabel")
 PageHeader.Name = "PageHeader"
 PageHeader.Size = UDim2.new(0, 330, 0, 18)
 PageHeader.Position = UDim2.new(0, 120, 0, 32)
@@ -573,8 +562,7 @@ PageHeader.TextXAlignment = Enum.TextXAlignment.Left
 PageHeader.Parent = MainFrame
 table.insert(ThemeObjects.Texts, PageHeader)
 
--- Pages
-local MovementPage = Instance.new("Frame")
+MovementPage = Instance.new("Frame")
 MovementPage.Name = "MovementPage"
 MovementPage.Size = UDim2.new(0, 346, 1, -54)
 MovementPage.Position = UDim2.new(0, 114, 0, 54)
@@ -584,7 +572,7 @@ MovementPage.ClipsDescendants = true
 MovementPage.Visible = true
 MovementPage.Parent = MainFrame
 
-local CombatPage = Instance.new("Frame")
+CombatPage = Instance.new("Frame")
 CombatPage.Name = "CombatPage"
 CombatPage.Size = UDim2.new(0, 346, 1, -54)
 CombatPage.Position = UDim2.new(1.1, 0, 0, 54)
@@ -604,7 +592,7 @@ ThemeObjects.CameraPage.BorderSizePixel = 0
 ThemeObjects.CameraPage.ClipsDescendants = true
 ThemeObjects.CameraPage.Parent = MainFrame
 
-local TeleportPage = Instance.new("Frame")
+TeleportPage = Instance.new("Frame")
 TeleportPage.Name = "TeleportPage"
 TeleportPage.Size = UDim2.new(0, 346, 1, -54)
 TeleportPage.Position = UDim2.new(1.1, 0, 0, 54)
@@ -614,7 +602,7 @@ TeleportPage.BorderSizePixel = 0
 TeleportPage.ClipsDescendants = true
 TeleportPage.Parent = MainFrame
 
-local GamesPage = Instance.new("Frame")
+GamesPage = Instance.new("Frame")
 GamesPage.Name = "GamesPage"
 GamesPage.Size = UDim2.new(0, 346, 1, -54)
 GamesPage.Position = UDim2.new(1.1, 0, 0, 54)
@@ -624,7 +612,7 @@ GamesPage.ClipsDescendants = true
 GamesPage.Visible = false
 GamesPage.Parent = MainFrame
 
-local MM2Page = Instance.new("Frame")
+MM2Page = Instance.new("Frame")
 MM2Page.Name = "MM2Page"
 MM2Page.Size = UDim2.new(0, 346, 1, -54)
 MM2Page.Position = UDim2.new(1.1, 0, 0, 54)
@@ -1021,11 +1009,10 @@ Connections.FullBright = RunService.Heartbeat:Connect(function()
 end)
 ThemeObjects.RestoreFullBright = ThemeObjects.ExtrasFeature.Restore
 
--- Games hub
-local GamesTabButton
-local SelectedGame
+GamesTabButton
+SelectedGame
 
-local MM2GameButton = Instance.new("TextButton")
+MM2GameButton = Instance.new("TextButton")
 MM2GameButton.Name = "MM2GameButton"
 MM2GameButton.Size = UDim2.new(1, -8, 0, 38)
 MM2GameButton.Position = UDim2.new(0, 4, 0, 4)
@@ -1041,14 +1028,14 @@ table.insert(ThemeObjects.Backgrounds, MM2GameButton)
 table.insert(ThemeObjects.Accents, MM2GameButton)
 Instance.new("UICorner", MM2GameButton).CornerRadius = UDim.new(0, 7)
 
-local MM2GameStroke = Instance.new("UIStroke")
+MM2GameStroke = Instance.new("UIStroke")
 MM2GameStroke.Name = "ControlOutline"
 MM2GameStroke.Color = Color3.fromRGB(0, 0, 0)
 MM2GameStroke.Thickness = 1.25
 MM2GameStroke.Transparency = 0.12
 MM2GameStroke.Parent = MM2GameButton
 
-local MM2BackButton = Instance.new("TextButton")
+MM2BackButton = Instance.new("TextButton")
 MM2BackButton.Name = "MM2BackButton"
 MM2BackButton.Size = UDim2.new(0, 22, 0, 18)
 MM2BackButton.Position = UDim2.new(1, -22, 0, 0)
@@ -2014,15 +2001,14 @@ MM2BackButton.MouseButton1Click:Connect(function()
 	GamesPage.Position = UDim2.new(0, 114, 0, 54)
 end)
 
-local SettingsPage = Instance.new("Frame")
+SettingsPage = Instance.new("Frame")
 SettingsPage.Size = UDim2.new(0, 330, 1, -32)
 SettingsPage.Position = UDim2.new(1.1, 80, 0, 32)
 SettingsPage.BackgroundTransparency = 1
 SettingsPage.BorderSizePixel = 0
 SettingsPage.Parent = MainFrame
 
--- Combat Page Content
-local AutoLockTitle = Instance.new("TextLabel")
+AutoLockTitle = Instance.new("TextLabel")
 AutoLockTitle.Size = UDim2.new(0, 84, 0, 23)
 AutoLockTitle.Position = UDim2.new(0, 12, 0, 8)
 AutoLockTitle.BackgroundTransparency = 1
@@ -2035,7 +2021,7 @@ AutoLockTitle.TextXAlignment = Enum.TextXAlignment.Left
 AutoLockTitle.Parent = CombatPage
 table.insert(ThemeObjects.Texts, AutoLockTitle)
 
-local AutoLockToggleBtn = Instance.new("TextButton")
+AutoLockToggleBtn = Instance.new("TextButton")
 AutoLockToggleBtn.Size = UDim2.new(0, 48, 0, 23)
 AutoLockToggleBtn.Position = UDim2.new(0, 104, 0, 8)
 AutoLockToggleBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
@@ -2048,7 +2034,7 @@ table.insert(ThemeObjects.Backgrounds, AutoLockToggleBtn)
 table.insert(ThemeObjects.Texts, AutoLockToggleBtn)
 Instance.new("UICorner", AutoLockToggleBtn).CornerRadius = UDim.new(0, 4)
 
-local AutoLockBindBtn = Instance.new("TextButton")
+AutoLockBindBtn = Instance.new("TextButton")
 AutoLockBindBtn.Size = UDim2.new(0, 40, 0, 23)
 AutoLockBindBtn.Position = UDim2.new(0, 160, 0, 8)
 AutoLockBindBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
@@ -2062,7 +2048,7 @@ table.insert(ThemeObjects.Backgrounds, AutoLockBindBtn)
 table.insert(ThemeObjects.Accents, AutoLockBindBtn)
 Instance.new("UICorner", AutoLockBindBtn).CornerRadius = UDim.new(0, 4)
 
-local ESPTitle = Instance.new("TextLabel")
+ESPTitle = Instance.new("TextLabel")
 ESPTitle.Size = UDim2.new(0, 84, 0, 23)
 ESPTitle.Position = UDim2.new(0, 12, 0, 38)
 ESPTitle.BackgroundTransparency = 1
@@ -2075,7 +2061,7 @@ ESPTitle.TextXAlignment = Enum.TextXAlignment.Left
 ESPTitle.Parent = CombatPage
 table.insert(ThemeObjects.Texts, ESPTitle)
 
-local ESPToggleBtn = Instance.new("TextButton")
+ESPToggleBtn = Instance.new("TextButton")
 ESPToggleBtn.Size = UDim2.new(0, 48, 0, 23)
 ESPToggleBtn.Position = UDim2.new(0, 104, 0, 38)
 ESPToggleBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
@@ -2088,7 +2074,7 @@ table.insert(ThemeObjects.Backgrounds, ESPToggleBtn)
 table.insert(ThemeObjects.Texts, ESPToggleBtn)
 Instance.new("UICorner", ESPToggleBtn).CornerRadius = UDim.new(0, 4)
 
-local ESPBindBtn = Instance.new("TextButton")
+ESPBindBtn = Instance.new("TextButton")
 ESPBindBtn.Size = UDim2.new(0, 40, 0, 23)
 ESPBindBtn.Position = UDim2.new(0, 160, 0, 38)
 ESPBindBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
@@ -2102,20 +2088,20 @@ table.insert(ThemeObjects.Backgrounds, ESPBindBtn)
 table.insert(ThemeObjects.Accents, ESPBindBtn)
 Instance.new("UICorner", ESPBindBtn).CornerRadius = UDim.new(0, 4)
 
-local ColorContainer = Instance.new("Frame")
+ColorContainer = Instance.new("Frame")
 ColorContainer.Size = UDim2.new(0, 88, 0, 14)
 ColorContainer.Position = UDim2.new(0, 12, 0, 66)
 ColorContainer.BackgroundTransparency = 1
 ColorContainer.Parent = CombatPage
 
-local RedBtn = Instance.new("TextButton")
+RedBtn = Instance.new("TextButton")
 RedBtn.Size = UDim2.new(0, 24, 0, 14)
 RedBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
 RedBtn.Text = ""
 RedBtn.Parent = ColorContainer
 Instance.new("UICorner", RedBtn).CornerRadius = UDim.new(0, 3)
 
-local WhiteBtn = Instance.new("TextButton")
+WhiteBtn = Instance.new("TextButton")
 WhiteBtn.Size = UDim2.new(0, 24, 0, 14)
 WhiteBtn.Position = UDim2.new(0, 32, 0, 0)
 WhiteBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
@@ -2123,7 +2109,7 @@ WhiteBtn.Text = ""
 WhiteBtn.Parent = ColorContainer
 Instance.new("UICorner", WhiteBtn).CornerRadius = UDim.new(0, 3)
 
-local GreenBtn = Instance.new("TextButton")
+GreenBtn = Instance.new("TextButton")
 GreenBtn.Size = UDim2.new(0, 24, 0, 14)
 GreenBtn.Position = UDim2.new(0, 64, 0, 0)
 GreenBtn.BackgroundColor3 = Color3.fromRGB(100, 255, 100)
@@ -2180,7 +2166,7 @@ ThemeObjects.DeepESP.Toggle.MouseButton1Click:Connect(function()
 	if not ThemeObjects.DeepESP.Enabled and ThemeObjects.ClearESPAdornments then ThemeObjects.ClearESPAdornments() end
 end)
 
-local function ToggleAutoLock()
+function ToggleAutoLock()
 	AutoLockEnabled = not AutoLockEnabled
 	AutoLockToggleBtn.Text = AutoLockEnabled and "On" or "Off"
 	AutoLockTitle.TextColor3 = AutoLockEnabled and AccentColor or InactiveTextColor()
@@ -2189,8 +2175,6 @@ AutoLockToggleBtn.MouseButton1Click:Connect(function() PlayClick() ToggleAutoLoc
 
 ThemeObjects.ResolveESPCharacter = function(targetPlayer)
 	if not targetPlayer then return nil end
-	-- Infinite Yield follows Player.Character first. QOD's PlayersFolder may contain
-	-- an incomplete/hidden proxy while the local player is the killer.
 	local character = targetPlayer.Character
 	if character and character:IsA("Model") then return character end
 	local playersFolder = workspace:FindFirstChild("PlayersFolder")
@@ -2231,7 +2215,7 @@ ThemeObjects.ClearESPAdornments = function(targetPlayer)
 	end
 end
 
-local function ToggleESP()
+function ToggleESP()
 	ESPEnabled = not ESPEnabled
 	ESPToggleBtn.Text = ESPEnabled and "On" or "Off"
 	ESPTitle.TextColor3 = ESPEnabled and AccentColor or InactiveTextColor()
@@ -2255,7 +2239,7 @@ Connections.ESPPlayerRemoving = Players.PlayerRemoving:Connect(function(leavingP
 	ThemeObjects.ClearESPAdornments(leavingPlayer)
 end)
 
-local FlingTargetBtn = Instance.new("TextButton")
+FlingTargetBtn = Instance.new("TextButton")
 FlingTargetBtn.Size = UDim2.new(0, 70, 0, 23)
 FlingTargetBtn.Position = UDim2.new(0, 212, 0, 8)
 FlingTargetBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
@@ -2268,7 +2252,7 @@ table.insert(ThemeObjects.Backgrounds, FlingTargetBtn)
 table.insert(ThemeObjects.Texts, FlingTargetBtn)
 Instance.new("UICorner", FlingTargetBtn).CornerRadius = UDim.new(0, 4)
 
-local FlingBindBtn = Instance.new("TextButton")
+FlingBindBtn = Instance.new("TextButton")
 FlingBindBtn.Size = UDim2.new(0, 30, 0, 23)
 FlingBindBtn.Position = UDim2.new(0, 290, 0, 8)
 FlingBindBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
@@ -2282,7 +2266,7 @@ table.insert(ThemeObjects.Backgrounds, FlingBindBtn)
 table.insert(ThemeObjects.Accents, FlingBindBtn)
 Instance.new("UICorner", FlingBindBtn).CornerRadius = UDim.new(0, 4)
 
-local AntiFlingBtn = Instance.new("TextButton")
+AntiFlingBtn = Instance.new("TextButton")
 AntiFlingBtn.Size = UDim2.new(0, 108, 0, 23)
 AntiFlingBtn.Position = UDim2.new(0, 212, 0, 38)
 AntiFlingBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
@@ -2295,7 +2279,6 @@ table.insert(ThemeObjects.Backgrounds, AntiFlingBtn)
 table.insert(ThemeObjects.Texts, AntiFlingBtn)
 Instance.new("UICorner", AntiFlingBtn).CornerRadius = UDim.new(0, 4)
 
--- Full-width vertical combat rows
 do
 	local function CreateCombatRow(name, y)
 		local row = Instance.new("Frame")
@@ -2391,7 +2374,7 @@ do
 	AntiFlingBtn.Parent = antiFlingRow
 end
 
-local TargetFrame = Instance.new("Frame")
+TargetFrame = Instance.new("Frame")
 TargetFrame.Name = "FlingTargetFrame"
 TargetFrame.Size = UDim2.new(0, 210, 0, 175)
 TargetFrame.Position = UDim2.new(0.5, -105, 0.5, -88)
@@ -2400,7 +2383,7 @@ TargetFrame.BackgroundTransparency = 0.8
 TargetFrame.BorderSizePixel = 0
 TargetFrame.Visible = false
 TargetFrame.Parent = ScreenGui
-local TargetScaleObject = Instance.new("UIScale", TargetFrame)
+TargetScaleObject = Instance.new("UIScale", TargetFrame)
 TargetScaleObject.Scale = GuiScaleFromValue(GuiSizeValue)
 table.insert(ThemeObjects.Backgrounds, TargetFrame)
 Instance.new("UICorner", TargetFrame).CornerRadius = UDim.new(0, 10)
@@ -2408,14 +2391,14 @@ Instance.new("UICorner", TargetFrame).CornerRadius = UDim.new(0, 10)
 TargetTextureGradient = Instance.new("UIGradient")
 TargetTextureGradient.Rotation = 135
 TargetTextureGradient.Parent = TargetFrame
-local TargetTextureStroke = Instance.new("UIStroke")
+TargetTextureStroke = Instance.new("UIStroke")
 TargetTextureStroke.Thickness = 1
 TargetTextureStroke.Transparency = 0.72
 TargetTextureStroke.Color = AccentColor
 TargetTextureStroke.Parent = TargetFrame
 table.insert(ThemeObjects.Accents, TargetTextureStroke)
 
-local TargetHeader = Instance.new("TextLabel")
+TargetHeader = Instance.new("TextLabel")
 TargetHeader.Size = UDim2.new(1, -34, 0, 28)
 TargetHeader.Position = UDim2.new(0, 10, 0, 0)
 TargetHeader.BackgroundTransparency = 1
@@ -2426,7 +2409,7 @@ TargetHeader.TextXAlignment = Enum.TextXAlignment.Left
 TargetHeader.Parent = TargetFrame
 table.insert(ThemeObjects.Texts, TargetHeader)
 
-local TargetCloseBtn = Instance.new("TextButton")
+TargetCloseBtn = Instance.new("TextButton")
 TargetCloseBtn.Size = UDim2.new(0, 20, 0, 20)
 TargetCloseBtn.Position = UDim2.new(1, -26, 0, 4)
 TargetCloseBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
@@ -2439,7 +2422,7 @@ table.insert(ThemeObjects.Backgrounds, TargetCloseBtn)
 table.insert(ThemeObjects.Texts, TargetCloseBtn)
 Instance.new("UICorner", TargetCloseBtn).CornerRadius = UDim.new(0, 4)
 
-local TargetSearch = Instance.new("TextBox")
+TargetSearch = Instance.new("TextBox")
 TargetSearch.Size = UDim2.new(1, -16, 0, 20)
 TargetSearch.Position = UDim2.new(0, 8, 0, 30)
 TargetSearch.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
@@ -2454,7 +2437,7 @@ table.insert(ThemeObjects.Backgrounds, TargetSearch)
 table.insert(ThemeObjects.Texts, TargetSearch)
 Instance.new("UICorner", TargetSearch).CornerRadius = UDim.new(0, 4)
 
-local TargetScroll = Instance.new("ScrollingFrame")
+TargetScroll = Instance.new("ScrollingFrame")
 TargetScroll.Size = UDim2.new(1, -16, 1, -58)
 TargetScroll.Position = UDim2.new(0, 8, 0, 54)
 TargetScroll.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
@@ -2466,7 +2449,7 @@ TargetScroll.Parent = TargetFrame
 table.insert(ThemeObjects.Backgrounds, TargetScroll)
 Instance.new("UICorner", TargetScroll).CornerRadius = UDim.new(0, 6)
 
-local TargetListLayout = Instance.new("UIListLayout")
+TargetListLayout = Instance.new("UIListLayout")
 TargetListLayout.Padding = UDim.new(0, 2)
 TargetListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 TargetListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
@@ -2481,14 +2464,14 @@ do
 	padding.Parent = TargetScroll
 end
 
-local function RestoreAntiFlingCollisions()
+function RestoreAntiFlingCollisions()
 	for part, originalCanCollide in pairs(AntiFlingOriginalCollision) do
 		if part and part.Parent then part.CanCollide = originalCanCollide end
 	end
 	AntiFlingOriginalCollision = {}
 end
 
-local function FlingPlayer(targetPlayer)
+function FlingPlayer(targetPlayer)
 	if Flinging or not targetPlayer or targetPlayer == Player then return end
 	local character = Player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -2550,7 +2533,7 @@ local function FlingPlayer(targetPlayer)
 	Flinging = false
 end
 
-local function RefreshFlingTargets()
+function RefreshFlingTargets()
 	for _, child in ipairs(TargetScroll:GetChildren()) do
 		if child:IsA("Frame") then child:Destroy() end
 	end
@@ -2611,7 +2594,7 @@ TargetSearch:GetPropertyChangedSignal("Text"):Connect(RefreshFlingTargets)
 Players.PlayerAdded:Connect(RefreshFlingTargets)
 Players.PlayerRemoving:Connect(RefreshFlingTargets)
 
-local function ToggleFlingMenu()
+function ToggleFlingMenu()
 	PlaySwoosh()
 	if not TargetFrame.Visible then RefreshFlingTargets() end
 	TargetFrame.Visible = not TargetFrame.Visible
@@ -2884,7 +2867,6 @@ UserInputService.InputChanged:Connect(function(input)
 	end
 end)
 
-
 FlingBindBtn.MouseButton1Click:Connect(function()
 	PlayClick()
 	IsBindingFlingMenu = true
@@ -2914,9 +2896,9 @@ AntiFlingBtn.MouseButton1Click:Connect(function()
 	if not AntiFlingEnabled then RestoreAntiFlingCollisions() end
 end)
 
-local targetDragging = false
-local targetDragStart
-local targetStartPosition
+targetDragging = false
+targetDragStart
+targetStartPosition
 TargetHeader.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 		targetDragging = true
@@ -2934,8 +2916,7 @@ UserInputService.InputChanged:Connect(function(input)
 	end
 end)
 
--- Teleport Page
-local PlayerSearch = Instance.new("TextBox")
+PlayerSearch = Instance.new("TextBox")
 PlayerSearch.Name = "PlayerSearch"
 PlayerSearch.Size = UDim2.new(1, -248, 0, 28)
 PlayerSearch.Position = UDim2.new(0, 4, 0, 4)
@@ -2950,7 +2931,7 @@ PlayerSearch.Parent = TeleportPage
 table.insert(ThemeObjects.Backgrounds, PlayerSearch)
 table.insert(ThemeObjects.Texts, PlayerSearch)
 
-local SearchCorner = Instance.new("UICorner")
+SearchCorner = Instance.new("UICorner")
 SearchCorner.CornerRadius = UDim.new(0, 4)
 SearchCorner.Parent = PlayerSearch
 
@@ -3026,8 +3007,7 @@ ThemeObjects.PlayerTP.BindButton.MouseButton1Click:Connect(function()
 	end)
 end)
 
-
-local PlayerScroll = Instance.new("ScrollingFrame")
+PlayerScroll = Instance.new("ScrollingFrame")
 PlayerScroll.Name = "PlayerScroll"
 PlayerScroll.Size = UDim2.new(1, -8, 1, -40)
 PlayerScroll.Position = UDim2.new(0, 4, 0, 36)
@@ -3039,11 +3019,11 @@ PlayerScroll.ScrollBarThickness = 2
 PlayerScroll.Parent = TeleportPage
 table.insert(ThemeObjects.Backgrounds, PlayerScroll)
 
-local PlayerScrollCorner = Instance.new("UICorner")
+PlayerScrollCorner = Instance.new("UICorner")
 PlayerScrollCorner.CornerRadius = UDim.new(0, 6)
 PlayerScrollCorner.Parent = PlayerScroll
 
-local PlayerListLayout = Instance.new("UIListLayout")
+PlayerListLayout = Instance.new("UIListLayout")
 PlayerListLayout.Parent = PlayerScroll
 PlayerListLayout.Padding = UDim.new(0, 6)
 PlayerListLayout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -3403,7 +3383,6 @@ ThemeObjects.PlayerTP.RefreshWaypoints = function()
 	ThemeObjects.PlayerTP.WaypointScroll.CanvasSize = UDim2.new(0, 0, 0, ThemeObjects.PlayerTP.WaypointLayout.AbsoluteContentSize.Y + 2)
 end
 
-
 ThemeObjects.ExtrasFeature.AddWaypoint = function(part)
 	if not part or not part:IsA("BasePart") then return end
 	local segments = ThemeObjects.WaypointUI.GetSegments(part)
@@ -3457,7 +3436,7 @@ ThemeObjects.WaypointToggleButton.MouseButton1Click:Connect(function()
 end)
 ThemeObjects.ShowWaypointsPage(false)
 
-local function UpdatePlayerList()
+function UpdatePlayerList()
 	ThemeObjects.PlayerListReady = true
 	for _, item in pairs(PlayerScroll:GetChildren()) do
 		if item:IsA("Frame") then item:Destroy() end
@@ -3536,8 +3515,7 @@ end)
 Players.PlayerAdded:Connect(UpdatePlayerList)
 Players.PlayerRemoving:Connect(UpdatePlayerList)
 
--- ==================== COIN FARM ====================
-local CoinFarmTitle = Instance.new("TextLabel")
+CoinFarmTitle = Instance.new("TextLabel")
 CoinFarmTitle.Size = UDim2.new(0, 80, 0, 17)
 CoinFarmTitle.Position = UDim2.new(0, 12, 0, 94)
 CoinFarmTitle.BackgroundTransparency = 1
@@ -3549,7 +3527,7 @@ CoinFarmTitle.TextXAlignment = Enum.TextXAlignment.Left
 CoinFarmTitle.Parent = MM2Page
 table.insert(ThemeObjects.Texts, CoinFarmTitle)
 
-local CoinFarmToggle = Instance.new("TextButton")
+CoinFarmToggle = Instance.new("TextButton")
 CoinFarmToggle.Size = UDim2.new(0, 32, 0, 17)
 CoinFarmToggle.Position = UDim2.new(0, 80, 0, 94)
 CoinFarmToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 68)
@@ -3562,7 +3540,7 @@ table.insert(ThemeObjects.Backgrounds, CoinFarmToggle)
 table.insert(ThemeObjects.Texts, CoinFarmToggle)
 Instance.new("UICorner", CoinFarmToggle).CornerRadius = UDim.new(0, 4)
 
-local CoinFarmStatus = Instance.new("TextLabel")
+CoinFarmStatus = Instance.new("TextLabel")
 CoinFarmStatus.Size = UDim2.new(0, 140, 0, 11)
 CoinFarmStatus.Position = UDim2.new(0, 12, 0, 116)
 CoinFarmStatus.BackgroundTransparency = 1
@@ -3574,17 +3552,17 @@ CoinFarmStatus.TextXAlignment = Enum.TextXAlignment.Left
 CoinFarmStatus.Parent = MM2Page
 table.insert(ThemeObjects.Texts, CoinFarmStatus)
 
-local CoinFarmEnabled = false
-local CoinFarmConnection = nil
-local LastCoinRefresh = 0
-local CachedCoins = {}
-local CurrentCoin = nil
-local CurrentCoinStartedAt = 0
-local CoinCollectionTimeout = 1.25
-local SkippedCoins = {}
-local AutoGunPickupBusy = false
+CoinFarmEnabled = false
+CoinFarmConnection = nil
+LastCoinRefresh = 0
+CachedCoins = {}
+CurrentCoin = nil
+CurrentCoinStartedAt = 0
+CoinCollectionTimeout = 1.25
+SkippedCoins = {}
+AutoGunPickupBusy = false
 
-local function GetAllCoins()
+function GetAllCoins()
 	local now = os.clock()
 	if now - LastCoinRefresh < 0.5 then
 		return CachedCoins
@@ -3599,7 +3577,7 @@ local function GetAllCoins()
 	return CachedCoins
 end
 
-local function EnableUndergroundMode(root)
+function EnableUndergroundMode(root)
 	if not root then return end
 	root.CanCollide = false
 	for _, part in pairs(Player.Character:GetDescendants()) do
@@ -3609,22 +3587,22 @@ local function EnableUndergroundMode(root)
 	end
 end
 
-local function StartCoinFarm()
+function StartCoinFarm()
 	if CoinFarmConnection then CoinFarmConnection:Disconnect() end
 	CurrentCoin = nil
 	CurrentCoinStartedAt = 0
 	SkippedCoins = {}
-	
+
 	CoinFarmConnection = RunService.Heartbeat:Connect(function()
 		if not CoinFarmEnabled then return end
 		if AutoGunPickupBusy then return end
-		
+
 		local coins = GetAllCoins()
 		if #coins == 0 then
 			CoinFarmStatus.Text = "0"
 			return
 		end
-		
+
 		local root = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
 		if not root then return end
 		local now = os.clock()
@@ -3641,11 +3619,11 @@ local function StartCoinFarm()
 			CoinFarmStatus.Text = tostring(#coins)
 			return
 		end
-		
+
 		table.sort(availableCoins, function(a, b)
 			return (root.Position - a.Position).Magnitude < (root.Position - b.Position).Magnitude
 		end)
-		
+
 		local target = availableCoins[1]
 		if target and target.Parent then
 			if CurrentCoin ~= target then
@@ -3660,17 +3638,16 @@ local function StartCoinFarm()
 
 			CoinFarmStatus.Text = tostring(#coins)
 			root.CFrame = target.CFrame * CFrame.new(0, -3.5, 0)
-			-- Extremely minimal delay for maximum speed
 			task.wait(0.001)
 		end
 	end)
 end
 
-local function ToggleCoinFarm()
+function ToggleCoinFarm()
 	CoinFarmEnabled = not CoinFarmEnabled
 	CoinFarmToggle.Text = CoinFarmEnabled and "On" or "Off"
 	CoinFarmTitle.TextColor3 = CoinFarmEnabled and AccentColor or InactiveTextColor()
-	
+
 	if CoinFarmEnabled then
 		CoinFarmStatus.Text = "0"
 		local root = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
@@ -3697,7 +3674,7 @@ CoinFarmToggle.MouseButton1Click:Connect(function()
 	ToggleCoinFarm()
 end)
 
-local AutoGunTitle = Instance.new("TextLabel")
+AutoGunTitle = Instance.new("TextLabel")
 AutoGunTitle.Size = UDim2.new(0, 56, 0, 17)
 AutoGunTitle.Position = UDim2.new(0, 176, 0, 94)
 AutoGunTitle.BackgroundTransparency = 1
@@ -3709,7 +3686,7 @@ AutoGunTitle.TextXAlignment = Enum.TextXAlignment.Left
 AutoGunTitle.Parent = MM2Page
 table.insert(ThemeObjects.Texts, AutoGunTitle)
 
-local AutoGunToggle = Instance.new("TextButton")
+AutoGunToggle = Instance.new("TextButton")
 AutoGunToggle.Size = UDim2.new(0, 32, 0, 17)
 AutoGunToggle.Position = UDim2.new(0, 240, 0, 94)
 AutoGunToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 68)
@@ -3722,13 +3699,13 @@ table.insert(ThemeObjects.Backgrounds, AutoGunToggle)
 table.insert(ThemeObjects.Texts, AutoGunToggle)
 Instance.new("UICorner", AutoGunToggle).CornerRadius = UDim.new(0, 4)
 
-local GunDropESP = {Enabled = false, Highlight = nil, Adornee = nil, LastCheck = 0}
+GunDropESP = {Enabled = false, Highlight = nil, Adornee = nil, LastCheck = 0}
 
-local AutoGunPickupEnabled = false
-local LastGunDrop = nil
-local GunPickupDelay = 0.5
+AutoGunPickupEnabled = false
+LastGunDrop = nil
+GunPickupDelay = 0.5
 
-local function FindGunDrop()
+function FindGunDrop()
 	for _, map in ipairs(workspace:GetChildren()) do
 		local gunDrop = map:FindFirstChild("GunDrop")
 		if gunDrop then return gunDrop end
@@ -3797,7 +3774,7 @@ Connections.GunDropESP = RunService.Heartbeat:Connect(function()
 	GunDropESP.Refresh()
 end)
 
-local function GetGunDropCFrame(gunDrop)
+function GetGunDropCFrame(gunDrop)
 	if gunDrop:IsA("BasePart") then
 		return gunDrop.CFrame
 	elseif gunDrop:IsA("Model") then
@@ -3807,7 +3784,7 @@ local function GetGunDropCFrame(gunDrop)
 	return nil
 end
 
-local function IsAliveAndInsideActiveMap(gunDrop)
+function IsAliveAndInsideActiveMap(gunDrop)
 	local character = Player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	local root = character and character:FindFirstChild("HumanoidRootPart")
@@ -3829,7 +3806,7 @@ local function IsAliveAndInsideActiveMap(gunDrop)
 	return false
 end
 
-local function TryPickUpGun(gunDrop)
+function TryPickUpGun(gunDrop)
 	if AutoGunPickupBusy or not AutoGunPickupEnabled or not gunDrop or not gunDrop.Parent then return end
 	if not IsAliveAndInsideActiveMap(gunDrop) then return end
 	local root = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
@@ -3876,7 +3853,7 @@ AutoGunToggle.MouseButton1Click:Connect(function()
 	end
 end)
 
-local KillTitle = Instance.new("TextLabel")
+KillTitle = Instance.new("TextLabel")
 KillTitle.Size = UDim2.new(0, 60, 0, 17)
 KillTitle.Position = UDim2.new(0, 12, 0, 70)
 KillTitle.BackgroundTransparency = 1
@@ -3888,7 +3865,7 @@ KillTitle.TextXAlignment = Enum.TextXAlignment.Left
 KillTitle.Parent = MM2Page
 table.insert(ThemeObjects.Texts, KillTitle)
 
-local KillToggle = Instance.new("TextButton")
+KillToggle = Instance.new("TextButton")
 KillToggle.Size = UDim2.new(0, 32, 0, 17)
 KillToggle.Position = UDim2.new(0, 80, 0, 70)
 KillToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 68)
@@ -3901,12 +3878,12 @@ table.insert(ThemeObjects.Backgrounds, KillToggle)
 table.insert(ThemeObjects.Texts, KillToggle)
 Instance.new("UICorner", KillToggle).CornerRadius = UDim.new(0, 4)
 
-local KillEnabled = false
-local KillHitboxOriginals = {}
-local LastKnifeSwing = 0
-local StabTargetIndex = 0
+KillEnabled = false
+KillHitboxOriginals = {}
+LastKnifeSwing = 0
+StabTargetIndex = 0
 
-local MurdererAvatar = Instance.new("ImageLabel")
+MurdererAvatar = Instance.new("ImageLabel")
 MurdererAvatar.Size = UDim2.new(0, 58, 0, 58)
 MurdererAvatar.Position = UDim2.new(0, 8, 0, 5)
 MurdererAvatar.BackgroundColor3 = Color3.fromRGB(50, 50, 68)
@@ -3916,7 +3893,7 @@ MurdererAvatar.Image = ""
 MurdererAvatar.Parent = MM2Page
 Instance.new("UICorner", MurdererAvatar).CornerRadius = UDim.new(0, 7)
 
-local SheriffAvatar = Instance.new("ImageLabel")
+SheriffAvatar = Instance.new("ImageLabel")
 SheriffAvatar.Size = UDim2.new(0, 58, 0, 58)
 SheriffAvatar.Position = UDim2.new(0, 168, 0, 5)
 SheriffAvatar.BackgroundColor3 = Color3.fromRGB(50, 50, 68)
@@ -3926,7 +3903,7 @@ SheriffAvatar.Image = ""
 SheriffAvatar.Parent = MM2Page
 Instance.new("UICorner", SheriffAvatar).CornerRadius = UDim.new(0, 7)
 
-local MurdererRoleLabel = Instance.new("TextLabel")
+MurdererRoleLabel = Instance.new("TextLabel")
 MurdererRoleLabel.Size = UDim2.new(0, 90, 0, 36)
 MurdererRoleLabel.Position = UDim2.new(0, 72, 0, 4)
 MurdererRoleLabel.BackgroundTransparency = 1
@@ -3938,7 +3915,7 @@ MurdererRoleLabel.TextWrapped = true
 MurdererRoleLabel.TextXAlignment = Enum.TextXAlignment.Left
 MurdererRoleLabel.Parent = MM2Page
 
-local SheriffRoleLabel = Instance.new("TextLabel")
+SheriffRoleLabel = Instance.new("TextLabel")
 SheriffRoleLabel.Size = UDim2.new(0, 90, 0, 36)
 SheriffRoleLabel.Position = UDim2.new(0, 232, 0, 4)
 SheriffRoleLabel.BackgroundTransparency = 1
@@ -3950,7 +3927,7 @@ SheriffRoleLabel.TextWrapped = true
 SheriffRoleLabel.TextXAlignment = Enum.TextXAlignment.Left
 SheriffRoleLabel.Parent = MM2Page
 
-local MurdererESPBtn = Instance.new("TextButton")
+MurdererESPBtn = Instance.new("TextButton")
 MurdererESPBtn.Size = UDim2.new(0, 50, 0, 19)
 MurdererESPBtn.Position = UDim2.new(0, 72, 0, 43)
 MurdererESPBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 68)
@@ -3964,7 +3941,7 @@ MurdererESPBtn.Parent = MM2Page
 table.insert(ThemeObjects.Backgrounds, MurdererESPBtn)
 Instance.new("UICorner", MurdererESPBtn).CornerRadius = UDim.new(0, 3)
 
-local SheriffESPBtn = Instance.new("TextButton")
+SheriffESPBtn = Instance.new("TextButton")
 SheriffESPBtn.Size = UDim2.new(0, 50, 0, 19)
 SheriffESPBtn.Position = UDim2.new(0, 232, 0, 43)
 SheriffESPBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 68)
@@ -3978,12 +3955,12 @@ SheriffESPBtn.Parent = MM2Page
 table.insert(ThemeObjects.Backgrounds, SheriffESPBtn)
 Instance.new("UICorner", SheriffESPBtn).CornerRadius = UDim.new(0, 3)
 
-local MurdererRoleESPEnabled = false
-local SheriffRoleESPEnabled = false
-local CurrentMurderer = nil
-local CurrentSheriff = nil
+MurdererRoleESPEnabled = false
+SheriffRoleESPEnabled = false
+CurrentMurderer = nil
+CurrentSheriff = nil
 
-local function UpdateRoleHighlights()
+function UpdateRoleHighlights()
 	for _, targetPlayer in ipairs(Players:GetPlayers()) do
 		local character = targetPlayer.Character
 		if character then
@@ -4047,7 +4024,7 @@ SheriffESPBtn.MouseButton1Click:Connect(function()
 	UpdateRoleHighlights()
 end)
 
-local function PlayerHasRoleTool(targetPlayer, toolName)
+function PlayerHasRoleTool(targetPlayer, toolName)
 	local wantedName = toolName:lower()
 	local function ContainerHasTool(container)
 		if container then
@@ -4060,22 +4037,22 @@ local function PlayerHasRoleTool(targetPlayer, toolName)
 	return ContainerHasTool(targetPlayer.Character) or ContainerHasTool(targetPlayer:FindFirstChild("Backpack"))
 end
 
-local function FindRoleHolder(toolName)
+function FindRoleHolder(toolName)
 	for _, targetPlayer in ipairs(Players:GetPlayers()) do
 		if PlayerHasRoleTool(targetPlayer, toolName) then return targetPlayer end
 	end
 	return nil
 end
 
-local function FormatRolePlayer(targetPlayer)
+function FormatRolePlayer(targetPlayer)
 	if not targetPlayer then return "Unknown" end
 	return string.format("%s (@%s)", targetPlayer.DisplayName or targetPlayer.Name, targetPlayer.Name)
 end
 
-local LastMurdererAvatarId = 0
-local LastSheriffAvatarId = 0
+LastMurdererAvatarId = 0
+LastSheriffAvatarId = 0
 
-local function UpdateRoleAvatar(imageLabel, targetPlayer, roleName)
+function UpdateRoleAvatar(imageLabel, targetPlayer, roleName)
 	imageLabel.Image = ""
 	if not targetPlayer then return end
 	local expectedUserId = targetPlayer.UserId
@@ -4089,7 +4066,7 @@ local function UpdateRoleAvatar(imageLabel, targetPlayer, roleName)
 	end)
 end
 
-local LastRoleCheck = 0
+LastRoleCheck = 0
 Connections.MM2RoleDetector = RunService.Heartbeat:Connect(function()
 	local now = os.clock()
 	if now - LastRoleCheck < 0.5 then return end
@@ -4111,7 +4088,7 @@ Connections.MM2RoleDetector = RunService.Heartbeat:Connect(function()
 	UpdateRoleHighlights()
 end)
 
-local function RestoreKillHitboxes()
+function RestoreKillHitboxes()
 	for part, original in pairs(KillHitboxOriginals) do
 		if part and part.Parent then
 			part.Size = original.Size
@@ -4124,7 +4101,7 @@ local function RestoreKillHitboxes()
 	KillHitboxOriginals = {}
 end
 
-local function GetLocalKnife()
+function GetLocalKnife()
 	local character = Player.Character
 	local backpack = Player:FindFirstChild("Backpack")
 	local knife = character and character:FindFirstChild("Knife")
@@ -4132,7 +4109,7 @@ local function GetLocalKnife()
 	return knife and knife:IsA("Tool") and knife or nil
 end
 
-local function SetKillEnabled(enabled)
+function SetKillEnabled(enabled)
 	KillEnabled = enabled
 	KillToggle.Text = enabled and "On" or "Off"
 	KillTitle.TextColor3 = enabled and Color3.fromRGB(255, 80, 80) or InactiveTextColor()
@@ -4254,7 +4231,6 @@ do
 	table.insert(ThemeObjects.Texts, autoShootToggle)
 	Instance.new("UICorner", autoShootToggle).CornerRadius = UDim.new(0, 4)
 
-	-- Larger MM2 controls live in a dedicated scrolling area below the role reveal.
 	local MM2ControlsScroll = Instance.new("ScrollingFrame")
 	MM2ControlsScroll.Name = "MM2ControlsScroll"
 	MM2ControlsScroll.Size = UDim2.new(1, -12, 1, -74)
@@ -4386,8 +4362,6 @@ do
 		local shotOrigin = raycastAttachment and raycastAttachment.WorldCFrame or nil
 		if not shotOrigin or not HasClearGunLine(shotOrigin.Position, targetCharacter, targetPart) then return end
 
-		-- Take a second movement sample before firing. Sharp reversals cancel this
-		-- attempt, preventing a quick juke from baiting a stale shot.
 		local confirmedMurderer = CurrentMurderer
 		local firstPosition = targetPart.Position
 		local firstVelocity = targetPart.AssemblyLinearVelocity
@@ -4428,7 +4402,6 @@ do
 	end)
 end
 
--- Movement Page Content
 do
 	for _, cardInfo in ipairs({
 		{Name = "SpeedMovementCard", X = 4, Y = 4},
@@ -4470,7 +4443,7 @@ ThemeObjects.CameraFOV.Card.Parent = ThemeObjects.CameraPage
 table.insert(ThemeObjects.Backgrounds, ThemeObjects.CameraFOV.Card)
 Instance.new("UICorner", ThemeObjects.CameraFOV.Card).CornerRadius = UDim.new(0, 6)
 
-local SpeedTitle = Instance.new("TextLabel")
+SpeedTitle = Instance.new("TextLabel")
 SpeedTitle.Size = UDim2.new(0, 48, 0, 22)
 SpeedTitle.Position = UDim2.new(0, 24, 0, 15)
 SpeedTitle.BackgroundTransparency = 1
@@ -4483,7 +4456,7 @@ SpeedTitle.TextXAlignment = Enum.TextXAlignment.Left
 SpeedTitle.Parent = MovementPage
 table.insert(ThemeObjects.Texts, SpeedTitle)
 
-local SpeedInput = Instance.new("TextBox")
+SpeedInput = Instance.new("TextBox")
 SpeedInput.Size = UDim2.new(0, 46, 0, 22)
 SpeedInput.Position = UDim2.new(0, 82, 0, 16)
 SpeedInput.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
@@ -4503,7 +4476,7 @@ SpeedInput.FocusLost:Connect(function()
     end
 end)
 
-local SpeedBindBtn = Instance.new("TextButton")
+SpeedBindBtn = Instance.new("TextButton")
 SpeedBindBtn.Size = UDim2.new(0, 56, 0, 22)
 SpeedBindBtn.Position = UDim2.new(0, 254, 0, 16)
 SpeedBindBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
@@ -4517,7 +4490,7 @@ table.insert(ThemeObjects.Backgrounds, SpeedBindBtn)
 table.insert(ThemeObjects.Accents, SpeedBindBtn)
 Instance.new("UICorner", SpeedBindBtn).CornerRadius = UDim.new(0, 4)
 
-local SpeedToggleBtn = Instance.new("TextButton")
+SpeedToggleBtn = Instance.new("TextButton")
 SpeedToggleBtn.Size = UDim2.new(0, 44, 0, 22)
 SpeedToggleBtn.Position = UDim2.new(0, 204, 0, 16)
 SpeedToggleBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
@@ -4530,7 +4503,7 @@ table.insert(ThemeObjects.Backgrounds, SpeedToggleBtn)
 table.insert(ThemeObjects.Texts, SpeedToggleBtn)
 Instance.new("UICorner", SpeedToggleBtn).CornerRadius = UDim.new(0, 4)
 
-local NoclipTitle = Instance.new("TextLabel")
+NoclipTitle = Instance.new("TextLabel")
 NoclipTitle.Size = UDim2.new(0, 70, 0, 22)
 NoclipTitle.Position = UDim2.new(0, 24, 0, 103)
 NoclipTitle.BackgroundTransparency = 1
@@ -4543,7 +4516,7 @@ NoclipTitle.TextXAlignment = Enum.TextXAlignment.Left
 NoclipTitle.Parent = MovementPage
 table.insert(ThemeObjects.Texts, NoclipTitle)
 
-local NoclipToggleBtn = Instance.new("TextButton")
+NoclipToggleBtn = Instance.new("TextButton")
 NoclipToggleBtn.Size = UDim2.new(0, 44, 0, 22)
 NoclipToggleBtn.Position = UDim2.new(0, 204, 0, 104)
 NoclipToggleBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
@@ -4557,7 +4530,7 @@ table.insert(ThemeObjects.Backgrounds, NoclipToggleBtn)
 table.insert(ThemeObjects.Texts, NoclipToggleBtn)
 Instance.new("UICorner", NoclipToggleBtn).CornerRadius = UDim.new(0, 4)
 
-local NoclipBindBtn = Instance.new("TextButton")
+NoclipBindBtn = Instance.new("TextButton")
 NoclipBindBtn.Size = UDim2.new(0, 56, 0, 22)
 NoclipBindBtn.Position = UDim2.new(0, 254, 0, 104)
 NoclipBindBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
@@ -4608,9 +4581,9 @@ table.insert(ThemeObjects.Backgrounds, ThemeObjects.FreeCam.Bind)
 table.insert(ThemeObjects.Accents, ThemeObjects.FreeCam.Bind)
 Instance.new("UICorner", ThemeObjects.FreeCam.Bind).CornerRadius = UDim.new(0, 4)
 
-local FlyTitle = Instance.new("TextLabel")
-FlyTitle.Size = UDim2.new(0, 48, 0, 22) 
-FlyTitle.Position = UDim2.new(0, 24, 0, 59) 
+FlyTitle = Instance.new("TextLabel")
+FlyTitle.Size = UDim2.new(0, 48, 0, 22)
+FlyTitle.Position = UDim2.new(0, 24, 0, 59)
 FlyTitle.BackgroundTransparency = 1
 FlyTitle.BorderSizePixel = 0
 FlyTitle.Text = "Fly:"
@@ -4621,9 +4594,9 @@ FlyTitle.TextXAlignment = Enum.TextXAlignment.Left
 FlyTitle.Parent = MovementPage
 table.insert(ThemeObjects.Texts, FlyTitle)
 
-local FlyInput = Instance.new("TextBox")
+FlyInput = Instance.new("TextBox")
 FlyInput.Size = UDim2.new(0, 46, 0, 22)
-FlyInput.Position = UDim2.new(0, 82, 0, 60) 
+FlyInput.Position = UDim2.new(0, 82, 0, 60)
 FlyInput.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
 FlyInput.BackgroundTransparency = 0.8
 FlyInput.BorderSizePixel = 0
@@ -4639,7 +4612,7 @@ FlyInput.FocusLost:Connect(function()
     if val then FlySpeed = val end
 end)
 
-local FlyBindBtn = Instance.new("TextButton")
+FlyBindBtn = Instance.new("TextButton")
 FlyBindBtn.Size = UDim2.new(0, 56, 0, 22)
 FlyBindBtn.Position = UDim2.new(0, 254, 0, 60)
 FlyBindBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
@@ -4653,7 +4626,7 @@ table.insert(ThemeObjects.Backgrounds, FlyBindBtn)
 table.insert(ThemeObjects.Accents, FlyBindBtn)
 Instance.new("UICorner", FlyBindBtn).CornerRadius = UDim.new(0, 4)
 
-local FlyToggleBtn = Instance.new("TextButton")
+FlyToggleBtn = Instance.new("TextButton")
 FlyToggleBtn.Size = UDim2.new(0, 44, 0, 22)
 FlyToggleBtn.Position = UDim2.new(0, 204, 0, 60)
 FlyToggleBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
@@ -4786,8 +4759,7 @@ do
 	end)
 end
 
--- Movement Logic
-local function SetupBinding(button, type)
+function SetupBinding(button, type)
 	button.MouseButton1Click:Connect(function()
 		PlayClick()
 		button.Text = "..."
@@ -4797,7 +4769,7 @@ local function SetupBinding(button, type)
 		elseif type == "FreeCam" then ThemeObjects.FreeCam.Binding = true
 		elseif type == "AutoLock" then IsBindingAutoLock = true
 		elseif type == "ESP" then IsBindingESP = true end
-		
+
 		local conn
 		conn = UserInputService.InputBegan:Connect(function(input)
 			if input.UserInputType == Enum.UserInputType.Keyboard then
@@ -4811,7 +4783,7 @@ local function SetupBinding(button, type)
 				elseif type == "FreeCam" then ThemeObjects.FreeCam.Keybind = selectedKey; ThemeObjects.FreeCam.Binding = false
 				elseif type == "AutoLock" then AutoLockKeybind = selectedKey; IsBindingAutoLock = false
 				elseif type == "ESP" then ESPKeybind = selectedKey; IsBindingESP = false end
-				
+
 				SaveKeybind(type, selectedKey)
 				button.Text = KeybindText(selectedKey)
 				conn:Disconnect()
@@ -4827,14 +4799,14 @@ SetupBinding(ThemeObjects.FreeCam.Bind, "FreeCam")
 SetupBinding(AutoLockBindBtn, "AutoLock")
 SetupBinding(ESPBindBtn, "ESP")
 
-local function ToggleSpeed()
+function ToggleSpeed()
 	SpeedEnabled = not SpeedEnabled
 	SpeedToggleBtn.Text = SpeedEnabled and "On" or "Off"
 	SpeedTitle.TextColor3 = SpeedEnabled and AccentColor or InactiveTextColor()
 end
 SpeedToggleBtn.MouseButton1Click:Connect(function() PlayClick() ToggleSpeed() end)
 
-local function ToggleNoclip()
+function ToggleNoclip()
 	NoclipEnabled = not NoclipEnabled
 	NoclipToggleBtn.Text = NoclipEnabled and "On" or "Off"
 	NoclipTitle.TextColor3 = NoclipEnabled and AccentColor or InactiveTextColor()
@@ -4884,8 +4856,6 @@ function ThemeObjects.FreeCam.Disable()
 	if not ThemeObjects.FreeCam.Enabled then return end
 	ThemeObjects.FreeCam.Enabled = false
 	game:GetService("ContextActionService"):UnbindAction("HqydeuFreeCamSink")
-	-- Always release the RMB camera lock. Restoring a captured LockCenter state can
-	-- leave the cursor pinned after Free Cam is turned off.
 	UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 	UserInputService.MouseIconEnabled = true
 	local camera = workspace.CurrentCamera
@@ -4900,7 +4870,6 @@ function ThemeObjects.FreeCam.Disable()
 	ThemeObjects.FreeCam.Toggle.Text = "Off"
 	ThemeObjects.FreeCam.Title.TextColor3 = InactiveTextColor()
 	task.defer(function()
-		-- Apply once more after Roblox's camera controller finishes this frame.
 		if not ThemeObjects.FreeCam.Enabled then
 			UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 			UserInputService.MouseIconEnabled = true
@@ -4946,11 +4915,11 @@ Connections.FreeCam = RunService.RenderStepped:Connect(function(deltaTime)
 	camera.Focus = cameraCFrame * CFrame.new(0, 0, -512)
 end)
 
-local function ToggleFly()
+function ToggleFly()
 	FlyEnabled = not FlyEnabled
 	FlyToggleBtn.Text = FlyEnabled and "On" or "Off"
 	FlyTitle.TextColor3 = FlyEnabled and AccentColor or InactiveTextColor()
-	local Character = Player.Character 
+	local Character = Player.Character
 	local RootPart = Character and Character:FindFirstChild("HumanoidRootPart")
 	if FlyEnabled then
 		if RootPart then
@@ -4965,7 +4934,7 @@ local function ToggleFly()
 end
 FlyToggleBtn.MouseButton1Click:Connect(function() PlayClick() ToggleFly() end)
 
-local function GetClosestPlayerToMouse()
+function GetClosestPlayerToMouse()
 	local nearest = nil
 	local lastDist = math.huge
 	local Camera = workspace.CurrentCamera
@@ -4985,20 +4954,19 @@ local function GetClosestPlayerToMouse()
 	return nearest
 end
 
--- Rendering Loop
 Connections.MainLoop = RunService.RenderStepped:Connect(function()
-	local Character = Player.Character 
-    local RootPart = Character and Character:FindFirstChild("HumanoidRootPart") 
-    local Humanoid = Character and Character:FindFirstChild("Humanoid") 
+	local Character = Player.Character
+    local RootPart = Character and Character:FindFirstChild("HumanoidRootPart")
+    local Humanoid = Character and Character:FindFirstChild("Humanoid")
     local Camera = workspace.CurrentCamera
 
     if SpeedEnabled and RootPart and Humanoid then
-		local MoveDir = Humanoid.MoveDirection 
-        if MoveDir.Magnitude > 0 then 
-            RootPart.CFrame = RootPart.CFrame + (MoveDir * (CurrentCFrameSpeed / 10)) 
+		local MoveDir = Humanoid.MoveDirection
+        if MoveDir.Magnitude > 0 then
+            RootPart.CFrame = RootPart.CFrame + (MoveDir * (CurrentCFrameSpeed / 10))
         end
 	end
-    
+
 	if FlyEnabled and RootPart and BodyGyro then
 		local MoveDir = Vector3.new(0,0,0)
 		if UserInputService:IsKeyDown(Enum.KeyCode.W) then MoveDir = MoveDir + Camera.CFrame.LookVector end
@@ -5010,7 +4978,7 @@ Connections.MainLoop = RunService.RenderStepped:Connect(function()
 		if MoveDir.Magnitude > 0 then RootPart.CFrame = RootPart.CFrame + (MoveDir * (FlySpeed / 50)) end
 		BodyGyro.CFrame = Camera.CFrame RootPart.Velocity = Vector3.new(0, 0, 0)
 	end
-	
+
 	if AutoLockEnabled and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) and RootPart then
 		local target = GetClosestPlayerToMouse()
 		if target and target.Character and target.Character:FindFirstChild("Head") then
@@ -5042,7 +5010,7 @@ Connections.MainLoop = RunService.RenderStepped:Connect(function()
 					end
 				end
 			end
-            
+
 			local isMurdererRoleESP = MurdererRoleESPEnabled and p == CurrentMurderer
 			local isSheriffRoleESP = SheriffRoleESPEnabled and p == CurrentSheriff
 			local roleColor = nil
@@ -5053,9 +5021,6 @@ Connections.MainLoop = RunService.RenderStepped:Connect(function()
 			end
 			local showPlayerESP = ESPEnabled or roleColor ~= nil
 
-			-- Infinite Yield-style body ESP. These adornments live under CoreGui
-			-- instead of the character, so local transparency/hide effects used by
-			-- games such as QOD do not erase the overlay for the killer.
 			if ThemeObjects.DeepESP.Enabled and roleColor == nil and refreshESPBody then
 				local adornments = ThemeObjects.ESPAdornments[p]
 				if not adornments then
@@ -5139,14 +5104,13 @@ Connections.MainLoop = RunService.RenderStepped:Connect(function()
     end
 end)
 
--- Main Toggle/Minimizing logic
-local settingsOpen = false
-local minimized = false
+settingsOpen = false
+minimized = false
 
-local function ToggleSettings(forceClose)
+function ToggleSettings(forceClose)
 	settingsOpen = forceClose and false or not settingsOpen
 	if not forceClose then PlayClick() end
-	local posMove = settingsOpen and 1.1 or 0 
+	local posMove = settingsOpen and 1.1 or 0
     local posSet = settingsOpen and 0 or 1.1
 	local activeX = 114
 	MovementPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true)
@@ -5172,7 +5136,7 @@ SettingsBtn.MouseButton1Click:Connect(function()
 	ToggleSettings()
 end)
 
-local function ToggleGUI()
+function ToggleGUI()
 	minimized = not minimized PlaySwoosh()
 	if minimized and settingsOpen then ToggleSettings(true) end
 	TabScroll.Visible = not minimized
@@ -5199,7 +5163,6 @@ local function ToggleGUI()
 end
 MiniButton.MouseButton1Click:Connect(ToggleGUI)
 
--- Input Listener
 Connections.InputBegan = UserInputService.InputBegan:Connect(function(input, processed)
 	if processed or IsBindingSpeed or IsBindingFly or IsBindingNoclip or ThemeObjects.FreeCam.Binding or IsBindingAutoLock or IsBindingESP or IsBindingFlingMenu or ThemeObjects.PlayerTP.Binding then return end
 	if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
@@ -5211,12 +5174,11 @@ Connections.InputBegan = UserInputService.InputBegan:Connect(function(input, pro
     elseif input.KeyCode == ESPKeybind then ToggleESP()
 	elseif input.KeyCode == FlingMenuKeybind then ToggleFlingMenu()
 	elseif input.KeyCode == ThemeObjects.PlayerTP.Keybind then ThemeObjects.PlayerTP.Toggle()
-    elseif input.KeyCode == Enum.KeyCode.LeftControl then ToggleGUI() 
+    elseif input.KeyCode == Enum.KeyCode.LeftControl then ToggleGUI()
     end
 end)
 
--- Tab Setup
-local TabNames = {"Movement", "Combat", "Camera", "Teleport", "Games", "Extras"}
+TabNames = {"Movement", "Combat", "Camera", "Teleport", "Games", "Extras"}
 for i, name in ipairs(TabNames) do
 	local TabBtn = Instance.new("TextButton")
 	TabBtn.Name = "NavTabButton"
@@ -5234,14 +5196,14 @@ for i, name in ipairs(TabNames) do
 	table.insert(ThemeObjects.Backgrounds, TabBtn)
 	table.insert(ThemeObjects.Texts, TabBtn)
 	Instance.new("UICorner", TabBtn).CornerRadius = UDim.new(0, 6)
-	
-	TabBtn.MouseButton1Click:Connect(function() 
-		PlayClick() 
+
+	TabBtn.MouseButton1Click:Connect(function()
+		PlayClick()
 		if settingsOpen then ToggleSettings(true) end
 		local openingSelectedGame = name == "Games" and SelectedGame ~= nil
 		PageHeader.Text = openingSelectedGame and SelectedGame or name
 		MM2BackButton.Visible = openingSelectedGame
-		MovementPage.Visible = (name == "Movement") 
+		MovementPage.Visible = (name == "Movement")
 		CombatPage.Visible = (name == "Combat")
 		ThemeObjects.CameraPage.Visible = (name == "Camera")
 		TeleportPage.Visible = (name == "Teleport")
@@ -5265,7 +5227,7 @@ for i, name in ipairs(TabNames) do
 		if name == "Movement" then MovementPage.Position = UDim2.new(0, 114, 0, 54)
 		else MovementPage.Position = UDim2.new(1.1, 0, 0, 54) end
 
-		if name == "Combat" then CombatPage.Position = UDim2.new(0, 114, 0, 54) 
+		if name == "Combat" then CombatPage.Position = UDim2.new(0, 114, 0, 54)
 		else CombatPage.Position = UDim2.new(1.1, 0, 0, 54) end
 
 		if name == "Camera" then ThemeObjects.CameraPage.Position = UDim2.new(0, 114, 0, 54)
@@ -5273,7 +5235,7 @@ for i, name in ipairs(TabNames) do
 
 		if name == "Teleport" then
 			if not ThemeObjects.PlayerListReady then UpdatePlayerList() end
-			TeleportPage.Position = UDim2.new(0, 114, 0, 54) 
+			TeleportPage.Position = UDim2.new(0, 114, 0, 54)
 		else TeleportPage.Position = UDim2.new(1.1, 0, 0, 54) end
 
 		if extrasPage then
@@ -5294,9 +5256,8 @@ for i, name in ipairs(TabNames) do
 	end)
 end
 
--- Settings Page
-local DestroyBtn
-local function BuildSettingsPage()
+DestroyBtn
+function BuildSettingsPage()
 DestroyBtn = Instance.new("TextButton")
 DestroyBtn.Name = "DestroyBtn"
 DestroyBtn.Size = UDim2.new(0, 310, 0, 24)
@@ -5497,7 +5458,6 @@ ServerHopBtn.MouseButton1Click:Connect(function()
 			return
 		end
 
-		-- Directly selecting a public JobId bypasses Roblox's friend-preferred routing.
 		local destination = availableServers[math.random(1, #availableServers)]
 		ServerHopBtn.Text = "Joining New Server..."
 		local success = pcall(function()
@@ -5615,7 +5575,7 @@ table.insert(ThemeObjects.Backgrounds, GuiSizeResetBtn)
 table.insert(ThemeObjects.Texts, GuiSizeResetBtn)
 Instance.new("UICorner", GuiSizeResetBtn).CornerRadius = UDim.new(0, 4)
 
-local function ApplyGuiSize(value)
+function ApplyGuiSize(value)
 	GuiSizeValue = math.clamp(value, 20, 100)
 	GuiSizeValueLabel.Text = tostring(GuiSizeValue)
 	local targetScale = GuiScaleFromValue(GuiSizeValue)
@@ -5811,18 +5771,18 @@ PickerH, PickerS, PickerV = 0, 0, 1
 DraggingSV = false
 DraggingHue = false
 
-local function RefreshThemePreviews()
+function RefreshThemePreviews()
 	AccentColorBtn.BackgroundColor3 = AccentColor
 	AccentColorBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 end
 
-local function RefreshPickerMarkers()
+function RefreshPickerMarkers()
 	SVWheel.BackgroundColor3 = Color3.fromHSV(PickerH, 1, 1)
 	SVMarker.Position = UDim2.new(PickerS, 0, 1 - PickerV, 0)
 	HueMarker.Position = UDim2.new(0, -2, PickerH, -1)
 end
 
-local function ApplyPickerColor()
+function ApplyPickerColor()
 	local selectedColor = Color3.fromHSV(PickerH, PickerS, PickerV)
 	AccentColor = selectedColor
 	RefreshThemePreviews()
@@ -5830,7 +5790,7 @@ local function ApplyPickerColor()
 	UpdateTheme(true)
 end
 
-local function OpenColorPicker(target)
+function OpenColorPicker(target)
 	PickerTarget = "Accent"
 	GuiSizeFrame.Visible = false
 	if ThemeObjects.ExtrasFeature.CopyFrame and ThemeObjects.ExtrasFeature.CopyFrame.Visible then
@@ -5844,7 +5804,7 @@ local function OpenColorPicker(target)
 	RefreshPickerMarkers()
 end
 
-local function UpdateSVFromPosition(position)
+function UpdateSVFromPosition(position)
 	local x = math.clamp((position.X - SVInput.AbsolutePosition.X) / SVInput.AbsoluteSize.X, 0, 1)
 	local y = math.clamp((position.Y - SVInput.AbsolutePosition.Y) / SVInput.AbsoluteSize.Y, 0, 1)
 	PickerS = x
@@ -5852,7 +5812,7 @@ local function UpdateSVFromPosition(position)
 	ApplyPickerColor()
 end
 
-local function UpdateHueFromPosition(position)
+function UpdateHueFromPosition(position)
 	PickerH = math.clamp((position.Y - HueInput.AbsolutePosition.Y) / HueInput.AbsoluteSize.Y, 0, 1)
 	ApplyPickerColor()
 end
@@ -5957,7 +5917,7 @@ RefreshThemePreviews()
 end
 BuildSettingsPage()
 
-local function Cleanup()
+function Cleanup()
 	if ThemeObjects.FreeCam and ThemeObjects.FreeCam.Enabled then ThemeObjects.FreeCam.Disable() end
 	if ThemeObjects.ClearESPAdornments then ThemeObjects.ClearESPAdornments() end
 	RestoreAntiFlingCollisions()
@@ -5971,8 +5931,8 @@ local function Cleanup()
 	if Character then
 		local Hum = Character:FindFirstChild("Humanoid") local Root = Character:FindFirstChild("HumanoidRootPart")
 		if Hum then Hum.WalkSpeed = 16 end
-		if Root then 
-			Root.Velocity = Vector3.new(0,0,0) 
+		if Root then
+			Root.Velocity = Vector3.new(0,0,0)
 			if Root:FindFirstChildOfClass("BodyVelocity") then Root:FindFirstChildOfClass("BodyVelocity"):Destroy() end
 			if Root:FindFirstChildOfClass("BodyGyro") then Root:FindFirstChildOfClass("BodyGyro"):Destroy() end
 		end
@@ -5993,7 +5953,6 @@ local function Cleanup()
 end
 DestroyBtn.MouseButton1Click:Connect(Cleanup)
 
--- Keep feature tiles in the same translucent style as the Camera page.
 for _, surface in ipairs(MainFrame:GetDescendants()) do
 	if surface:IsA("Frame") and surface.BackgroundTransparency < 0.9 then
 		local name = surface.Name
@@ -6007,12 +5966,10 @@ CompactGuiText(ScreenGui)
 UpdateTheme()
 SafeFeatureSystem.RunInitializers()
 
--- Dragging
-dragging, dragStart, startPos = false, nil, nil
+dragging, dragStart, startPos
 MainFrame.InputBegan:Connect(function(input) if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then dragging = true dragStart = input.Position startPos = MainFrame.Position input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false end end) end end)
 UserInputService.InputChanged:Connect(function(input) if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then local delta = input.Position - dragStart MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y) end end)
 
--- FLY-IN TITLE SEQUENCE
 task.spawn(function()
 	SafeFeatureSystem.Run("Startup animation", function()
 		SplashFrame.Rotation = -540
