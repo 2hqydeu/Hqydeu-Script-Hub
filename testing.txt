@@ -233,8 +233,75 @@ SwooshSound.SoundId = "rbxassetid://107710687218353"
 SwooshSound.Volume = 0.6
 SwooshSound.Parent = MainFrame
 
+local ToggleSound = Instance.new("Sound")
+ToggleSound.SoundId = "rbxassetid://87437544236708"
+ToggleSound.Volume = 0.75
+ToggleSound.Parent = ScreenGui
+
 local function PlayClick() ClickSound:Play() end
 local function PlaySwoosh() SwooshSound:Play() end
+
+local NotificationContainer = Instance.new("Frame")
+NotificationContainer.Name = "NotificationContainer"
+NotificationContainer.Size = UDim2.new(0, 190, 1, -24)
+NotificationContainer.Position = UDim2.new(1, -202, 0, 12)
+NotificationContainer.BackgroundTransparency = 1
+NotificationContainer.BorderSizePixel = 0
+NotificationContainer.ZIndex = 200
+NotificationContainer.Parent = ScreenGui
+
+local NotificationLayout = Instance.new("UIListLayout")
+NotificationLayout.Padding = UDim.new(0, 6)
+NotificationLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+NotificationLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+NotificationLayout.SortOrder = Enum.SortOrder.LayoutOrder
+NotificationLayout.Parent = NotificationContainer
+
+local function NotifyFeatureToggle(featureName, enabled)
+	ToggleSound:Play()
+
+	local toast = Instance.new("Frame")
+	toast.Name = "FeatureNotification"
+	toast.Size = UDim2.new(0, 0, 0, 34)
+	toast.BackgroundColor3 = FrameThemeColor:Lerp(Color3.new(0, 0, 0), 0.12)
+	toast.BackgroundTransparency = 0.08
+	toast.BorderSizePixel = 0
+	toast.ClipsDescendants = true
+	toast.ZIndex = 201
+	toast.Parent = NotificationContainer
+	Instance.new("UICorner", toast).CornerRadius = UDim.new(0, 8)
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = enabled and AccentColor or Color3.fromRGB(120, 120, 130)
+	stroke.Thickness = 1.25
+	stroke.Transparency = 0.08
+	stroke.Parent = toast
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -16, 1, 0)
+	label.Position = UDim2.new(0, 8, 0, 0)
+	label.BackgroundTransparency = 1
+	label.Text = string.format("%s: %s", featureName, enabled and "On" or "Off")
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 11
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	label.TextStrokeTransparency = 0.45
+	label.ZIndex = 202
+	label.Parent = toast
+
+	TweenService:Create(toast, TweenInfo.new(0.18, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = UDim2.new(0, 190, 0, 34)}):Play()
+	task.delay(2.2, function()
+		if not toast.Parent then return end
+		TweenService:Create(toast, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {Size = UDim2.new(0, 0, 0, 34), BackgroundTransparency = 1}):Play()
+		TweenService:Create(label, TweenInfo.new(0.16), {TextTransparency = 1, TextStrokeTransparency = 1}):Play()
+		TweenService:Create(stroke, TweenInfo.new(0.16), {Transparency = 1}):Play()
+		task.delay(0.24, function()
+			if toast.Parent then toast:Destroy() end
+		end)
+	end)
+end
 
 -- Theme Management
 local ThemeObjects = { Backgrounds = {}, Texts = {}, Accents = {}, AccentBackgrounds = {}, StateTexts = {} }
@@ -687,6 +754,7 @@ ThemeObjects.ExtrasFeature.Toggle.MouseButton1Click:Connect(function()
 	ThemeObjects.ExtrasFeature.Enabled = not ThemeObjects.ExtrasFeature.Enabled
 	ThemeObjects.ExtrasFeature.Toggle.Text = ThemeObjects.ExtrasFeature.Enabled and "On" or "Off"
 	ThemeObjects.ExtrasFeature.Title.TextColor3 = ThemeObjects.ExtrasFeature.Enabled and AccentColor or InactiveTextColor()
+	NotifyFeatureToggle("Extras", ThemeObjects.ExtrasFeature.Enabled)
 	if ThemeObjects.ExtrasFeature.Enabled then ThemeObjects.ExtrasFeature.Apply() else ThemeObjects.ExtrasFeature.Restore() end
 end)
 
@@ -905,6 +973,7 @@ ThemeObjects.ExtrasFeature.PartToggle.MouseButton1Click:Connect(function()
 	PlayClick()
 	if ThemeObjects.ExtrasFeature.Selecting then ThemeObjects.ExtrasFeature.EndSelection(true)
 	else ThemeObjects.ExtrasFeature.BeginSelection("Copy") end
+	NotifyFeatureToggle("Part Select", ThemeObjects.ExtrasFeature.Selecting)
 end)
 
 Connections.ExtrasPartHover = RunService.RenderStepped:Connect(function()
@@ -1465,6 +1534,7 @@ do
 		ThemeObjects.QODReveal.LastFire = 0
 		ThemeObjects.QODReveal.Toggle.Text = ThemeObjects.QODReveal.Enabled and "On" or "Off"
 		ThemeObjects.QODReveal.Title.TextColor3 = ThemeObjects.QODReveal.Enabled and AccentColor or InactiveTextColor()
+		NotifyFeatureToggle("QOD Reveal", ThemeObjects.QODReveal.Enabled)
 		if ThemeObjects.QODReveal.Enabled then
 			if ThemeObjects.DisableRegularESP then ThemeObjects.DisableRegularESP()
 			else ESPEnabled = false end
@@ -1623,6 +1693,7 @@ do
 		killState.Enabled = not killState.Enabled
 		killToggle.Text = killState.Enabled and "On" or "Off"
 		killTitle.TextColor3 = killState.Enabled and AccentColor or InactiveTextColor()
+		NotifyFeatureToggle("QOD Auto Kill", killState.Enabled)
 	end)
 	table.insert(ThemeObjects.StateTexts, {Object = killTitle, IsEnabled = function() return killState.Enabled end})
 	reviveToggle.MouseButton1Click:Connect(function()
@@ -1630,6 +1701,7 @@ do
 		reviveState.Enabled = not reviveState.Enabled
 		reviveToggle.Text = reviveState.Enabled and "On" or "Off"
 		reviveTitle.TextColor3 = reviveState.Enabled and AccentColor or InactiveTextColor()
+		NotifyFeatureToggle("QOD Auto Revive", reviveState.Enabled)
 	end)
 	table.insert(ThemeObjects.StateTexts, {Object = reviveTitle, IsEnabled = function() return reviveState.Enabled end})
 
@@ -1640,6 +1712,7 @@ do
 			eventState.Enabled = false
 			eventToggle.Text = "Off"
 			eventTitle.TextColor3 = InactiveTextColor()
+			NotifyFeatureToggle("QOD Auto Event", false)
 		end
 		farmState.DroppedCharacter = nil
 		farmState.SurvivorSince = 0
@@ -1648,6 +1721,7 @@ do
 		end
 		farmToggle.Text = farmState.Enabled and "On" or "Off"
 		farmTitle.TextColor3 = farmState.Enabled and AccentColor or InactiveTextColor()
+		NotifyFeatureToggle("QOD Auto Farm", farmState.Enabled)
 	end)
 	table.insert(ThemeObjects.StateTexts, {Object = farmTitle, IsEnabled = function() return farmState.Enabled end})
 
@@ -1659,9 +1733,11 @@ do
 			eventState.Enabled = false
 			eventToggle.Text = "Off"
 			eventTitle.TextColor3 = InactiveTextColor()
+			NotifyFeatureToggle("QOD Auto Event", false)
 		end
 		safePlaceToggle.Text = farmState.SafePlace and "Safe Space: On" or "Safe Space: Off"
 		safePlaceToggle.TextColor3 = farmState.SafePlace and AccentColor or InactiveTextColor()
+		NotifyFeatureToggle("Safe Space", farmState.SafePlace)
 	end)
 	table.insert(ThemeObjects.StateTexts, {Object = safePlaceToggle, IsEnabled = function() return farmState.SafePlace end})
 
@@ -1671,6 +1747,7 @@ do
 		unclutterToggle.Text = farmState.MuteAudio and "Unmute" or "Mute"
 		unclutterToggle.TextColor3 = farmState.MuteAudio and AccentColor or InactiveTextColor()
 		if farmState.SetUnclutter then farmState.SetUnclutter(farmState.MuteAudio) end
+		NotifyFeatureToggle("QOD Audio Mute", farmState.MuteAudio)
 	end)
 	table.insert(ThemeObjects.StateTexts, {Object = unclutterToggle, IsEnabled = function() return farmState.MuteAudio end})
 
@@ -1681,11 +1758,13 @@ do
 			farmState.Enabled = false
 			farmToggle.Text = "Off"
 			farmTitle.TextColor3 = InactiveTextColor()
+			NotifyFeatureToggle("QOD Auto Farm", false)
 		end
 		eventState.Current = nil
 		eventState.Started = 0
 		eventToggle.Text = eventState.Enabled and "On" or "Off"
 		eventTitle.TextColor3 = eventState.Enabled and AccentColor or InactiveTextColor()
+		NotifyFeatureToggle("QOD Auto Event", eventState.Enabled)
 	end)
 	table.insert(ThemeObjects.StateTexts, {Object = eventTitle, IsEnabled = function() return eventState.Enabled end})
 
@@ -2148,6 +2227,7 @@ ThemeObjects.DeepESP.Toggle.MouseButton1Click:Connect(function()
 	ThemeObjects.DeepESP.Enabled = not ThemeObjects.DeepESP.Enabled
 	ThemeObjects.DeepESP.Toggle.Text = ThemeObjects.DeepESP.Enabled and "On" or "Off"
 	ThemeObjects.DeepESP.Title.TextColor3 = ThemeObjects.DeepESP.Enabled and AccentColor or InactiveTextColor()
+	NotifyFeatureToggle("Deep ESP", ThemeObjects.DeepESP.Enabled)
 	if not ThemeObjects.DeepESP.Enabled and ThemeObjects.ClearESPAdornments then ThemeObjects.ClearESPAdornments() end
 end)
 
@@ -2155,6 +2235,7 @@ local function ToggleAutoLock()
 	AutoLockEnabled = not AutoLockEnabled
 	AutoLockToggleBtn.Text = AutoLockEnabled and "On" or "Off"
 	AutoLockTitle.TextColor3 = AutoLockEnabled and AccentColor or InactiveTextColor()
+	NotifyFeatureToggle("Auto Lock", AutoLockEnabled)
 end
 AutoLockToggleBtn.MouseButton1Click:Connect(function() PlayClick() ToggleAutoLock() end)
 
@@ -2206,6 +2287,7 @@ local function ToggleESP()
 	ESPEnabled = not ESPEnabled
 	ESPToggleBtn.Text = ESPEnabled and "On" or "Off"
 	ESPTitle.TextColor3 = ESPEnabled and AccentColor or InactiveTextColor()
+	NotifyFeatureToggle("ESP", ESPEnabled)
 	if not ESPEnabled then
 		ThemeObjects.ClearESPAdornments()
 		for _, p in pairs(Players:GetPlayers()) do
@@ -2883,6 +2965,7 @@ AntiFlingBtn.MouseButton1Click:Connect(function()
 	AntiFlingBtn.Text = AntiFlingEnabled and "On" or "Off"
 	if ThemeObjects.AntiFlingTitle then ThemeObjects.AntiFlingTitle.TextColor3 = AntiFlingEnabled and AccentColor or Color3.fromRGB(255, 255, 255) end
 	if not AntiFlingEnabled then RestoreAntiFlingCollisions() end
+	NotifyFeatureToggle("Anti Fling", AntiFlingEnabled)
 end)
 
 local targetDragging = false
@@ -3641,6 +3724,7 @@ local function ToggleCoinFarm()
 	CoinFarmEnabled = not CoinFarmEnabled
 	CoinFarmToggle.Text = CoinFarmEnabled and "On" or "Off"
 	CoinFarmTitle.TextColor3 = CoinFarmEnabled and AccentColor or InactiveTextColor()
+	NotifyFeatureToggle("MM2 Coin Farm", CoinFarmEnabled)
 	
 	if CoinFarmEnabled then
 		CoinFarmStatus.Text = "0"
@@ -3840,6 +3924,7 @@ AutoGunToggle.MouseButton1Click:Connect(function()
 	AutoGunPickupEnabled = not AutoGunPickupEnabled
 	AutoGunToggle.Text = AutoGunPickupEnabled and "On" or "Off"
 	AutoGunTitle.TextColor3 = AutoGunPickupEnabled and AccentColor or InactiveTextColor()
+	NotifyFeatureToggle("Auto Gun", AutoGunPickupEnabled)
 	if AutoGunPickupEnabled then
 		LastGunDrop = nil
 	else
@@ -4006,6 +4091,7 @@ MurdererESPBtn.MouseButton1Click:Connect(function()
 	PlayClick()
 	MurdererRoleESPEnabled = not MurdererRoleESPEnabled
 	MurdererESPBtn.Text = MurdererRoleESPEnabled and "ON" or "ESP"
+	NotifyFeatureToggle("Murderer ESP", MurdererRoleESPEnabled)
 	UpdateRoleHighlights()
 end)
 
@@ -4015,6 +4101,7 @@ SheriffESPBtn.MouseButton1Click:Connect(function()
 	SheriffESPBtn.Text = SheriffRoleESPEnabled and "ON" or "ESP"
 	GunDropESP.Enabled = SheriffRoleESPEnabled
 	GunDropESP.Refresh()
+	NotifyFeatureToggle("Sheriff ESP", SheriffRoleESPEnabled)
 	UpdateRoleHighlights()
 end)
 
@@ -4104,10 +4191,12 @@ local function GetLocalKnife()
 end
 
 local function SetKillEnabled(enabled)
+	local changed = KillEnabled ~= enabled
 	KillEnabled = enabled
 	KillToggle.Text = enabled and "On" or "Off"
 	KillTitle.TextColor3 = enabled and Color3.fromRGB(255, 80, 80) or InactiveTextColor()
 	if not enabled then RestoreKillHitboxes() end
+	if changed then NotifyFeatureToggle("Auto Stab", enabled) end
 end
 
 KillToggle.MouseButton1Click:Connect(function()
@@ -4319,10 +4408,12 @@ do
 	end
 
 	local function SetAutoShootEnabled(enabled)
+		local changed = autoShootEnabled ~= enabled
 		autoShootEnabled = enabled
 		autoShootToggle.Text = enabled and "On" or "Off"
 		autoShootTitle.TextColor3 = enabled and Color3.fromRGB(90, 150, 255) or InactiveTextColor()
 		if enabled and AutoLockEnabled then ToggleAutoLock() end
+		if changed then NotifyFeatureToggle("Auto Shoot", enabled) end
 	end
 
 	autoShootToggle.MouseButton1Click:Connect(function()
@@ -4802,6 +4893,7 @@ local function ToggleSpeed()
 	SpeedEnabled = not SpeedEnabled
 	SpeedToggleBtn.Text = SpeedEnabled and "On" or "Off"
 	SpeedTitle.TextColor3 = SpeedEnabled and AccentColor or InactiveTextColor()
+	NotifyFeatureToggle("Speed", SpeedEnabled)
 end
 SpeedToggleBtn.MouseButton1Click:Connect(function() PlayClick() ToggleSpeed() end)
 
@@ -4809,6 +4901,7 @@ local function ToggleNoclip()
 	NoclipEnabled = not NoclipEnabled
 	NoclipToggleBtn.Text = NoclipEnabled and "On" or "Off"
 	NoclipTitle.TextColor3 = NoclipEnabled and AccentColor or InactiveTextColor()
+	NotifyFeatureToggle("Noclip", NoclipEnabled)
 end
 NoclipToggleBtn.MouseButton1Click:Connect(function() PlayClick() ToggleNoclip() end)
 
@@ -4880,7 +4973,9 @@ function ThemeObjects.FreeCam.Disable()
 end
 
 function ThemeObjects.FreeCam.ToggleState()
+	local wasEnabled = ThemeObjects.FreeCam.Enabled
 	if ThemeObjects.FreeCam.Enabled then ThemeObjects.FreeCam.Disable() else ThemeObjects.FreeCam.Enable() end
+	if ThemeObjects.FreeCam.Enabled ~= wasEnabled then NotifyFeatureToggle("Free Cam", ThemeObjects.FreeCam.Enabled) end
 end
 
 ThemeObjects.FreeCam.Toggle.MouseButton1Click:Connect(function() PlayClick() ThemeObjects.FreeCam.ToggleState() end)
@@ -4921,6 +5016,7 @@ local function ToggleFly()
 	FlyEnabled = not FlyEnabled
 	FlyToggleBtn.Text = FlyEnabled and "On" or "Off"
 	FlyTitle.TextColor3 = FlyEnabled and AccentColor or InactiveTextColor()
+	NotifyFeatureToggle("Fly", FlyEnabled)
 	local Character = Player.Character 
 	local RootPart = Character and Character:FindFirstChild("HumanoidRootPart")
 	if FlyEnabled then
