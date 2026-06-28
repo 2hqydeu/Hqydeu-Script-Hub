@@ -1,3 +1,42 @@
+-- Diagnostic bootstrap for external game shell
+
+local CoreGui = game:GetService("CoreGui")
+pcall(function() local old = CoreGui:FindFirstChild("HqydeuLoaderDiagnostic") if old then old:Destroy() end end)
+
+local DiagnosticGui = Instance.new("ScreenGui")
+DiagnosticGui.Name = "HqydeuLoaderDiagnostic"
+DiagnosticGui.ResetOnSpawn = false
+DiagnosticGui.Parent = CoreGui
+
+local Panel = Instance.new("Frame")
+Panel.Size = UDim2.new(0, 430, 0, 175)
+Panel.Position = UDim2.new(0.5, -215, 0.5, -88)
+Panel.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
+Panel.BorderSizePixel = 0
+Panel.Parent = DiagnosticGui
+Instance.new("UICorner", Panel).CornerRadius = UDim.new(0, 10)
+
+local Status = Instance.new("TextLabel")
+Status.Size = UDim2.new(1, -24, 1, -24)
+Status.Position = UDim2.new(0, 12, 0, 12)
+Status.BackgroundTransparency = 1
+Status.Text = "External shell diagnostic booting..."
+Status.Font = Enum.Font.GothamBold
+Status.TextSize = 14
+Status.TextColor3 = Color3.fromRGB(245, 245, 245)
+Status.TextWrapped = true
+Status.TextXAlignment = Enum.TextXAlignment.Left
+Status.TextYAlignment = Enum.TextYAlignment.Top
+Status.Parent = Panel
+
+local function showFailure(kind, message)
+	Status.Text = kind .. "\n\n" .. tostring(message)
+	Status.TextColor3 = Color3.fromRGB(255, 115, 115)
+end
+
+if type(loadstring) ~= "function" then showFailure("loadstring is not available", "Run the non-diagnostic external shell instead, or tell Codex this message.") return end
+
+local source = [=[
 -- Services
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -4250,3 +4289,11 @@ task.spawn(function()
 	if SplashFrame and SplashFrame.Parent then SplashFrame:Destroy() end
 	MainFrame.Visible = true
 end)
+
+]=]
+local runner, compileError = loadstring(source)
+if not runner then showFailure("Compile error in external shell", compileError) return end
+Status.Text = "Compiled. Running external shell..."
+local ok, runtimeError = xpcall(runner, function(err) if debug and type(debug.traceback) == "function" then return debug.traceback(tostring(err), 2) end return tostring(err) end)
+if not ok then showFailure("Runtime error in external shell", runtimeError) return end
+DiagnosticGui:Destroy()
