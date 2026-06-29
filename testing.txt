@@ -240,6 +240,22 @@ local function PlaySwoosh() SwooshSound:Play() end
 local ThemeObjects = { Backgrounds = {}, Texts = {}, Accents = {}, AccentBackgrounds = {}, StateTexts = {} }
 local HubState = {}
 
+HubState.Notifications = {}
+HubState.NotificationHolder = Instance.new("Frame")
+HubState.NotificationHolder.Name = "NotificationHolder"
+HubState.NotificationHolder.Size = UDim2.new(0, 280, 0, 88)
+HubState.NotificationHolder.Position = UDim2.new(0.5, 0, 0, 14)
+HubState.NotificationHolder.AnchorPoint = Vector2.new(0.5, 0)
+HubState.NotificationHolder.BackgroundTransparency = 1
+HubState.NotificationHolder.BorderSizePixel = 0
+HubState.NotificationHolder.ZIndex = 200
+HubState.NotificationHolder.Parent = ScreenGui
+
+HubState.NotificationSound = Instance.new("Sound")
+HubState.NotificationSound.SoundId = SwooshSound.SoundId
+HubState.NotificationSound.Volume = 0.55
+HubState.NotificationSound.Parent = HubState.NotificationHolder
+
 ThemeObjects.ApplyMainGradient = function(intensity)
 	intensity = math.clamp(intensity or 0.5, 0, 0.5)
 	local bgColor = FrameThemeColor
@@ -260,6 +276,111 @@ end
 
 local function InactiveTextColor()
 	return IsFrameLight() and Color3.fromRGB(90, 90, 90) or Color3.fromRGB(180, 180, 180)
+end
+
+ThemeObjects.IsStateTextObject = function(target)
+	for _, entry in ipairs(ThemeObjects.StateTexts) do
+		if entry.Object == target then return true end
+	end
+	return false
+end
+
+ThemeObjects.LayoutNotifications = function()
+	for index, item in ipairs(HubState.Notifications) do
+		if item.Frame and item.Frame.Parent then
+			TweenService:Create(item.Frame, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+				Position = UDim2.new(0, 0, 0, (index - 1) * 40),
+			}):Play()
+		end
+	end
+end
+
+ThemeObjects.RemoveNotification = function(item)
+	if item.Removing then return end
+	item.Removing = true
+	for index = #HubState.Notifications, 1, -1 do
+		if HubState.Notifications[index] == item then
+			table.remove(HubState.Notifications, index)
+			break
+		end
+	end
+	ThemeObjects.LayoutNotifications()
+	if item.Stroke then
+		TweenService:Create(item.Stroke, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Transparency = 1}):Play()
+	end
+	if item.Label then
+		TweenService:Create(item.Label, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {TextTransparency = 1, TextStrokeTransparency = 1}):Play()
+	end
+	if item.Frame then
+		TweenService:Create(item.Frame, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {BackgroundTransparency = 1}):Play()
+		task.delay(0.2, function()
+			if item.Frame then item.Frame:Destroy() end
+		end)
+	end
+end
+
+ThemeObjects.ShowNotification = function(message)
+	if not HubState.NotificationHolder or not HubState.NotificationHolder.Parent then return end
+	HubState.NotificationSound:Play()
+	local item = {}
+	item.Frame = Instance.new("Frame")
+	item.Frame.Size = UDim2.new(1, 0, 0, 34)
+	item.Frame.Position = UDim2.new(0, 0, 0, 44)
+	item.Frame.BackgroundColor3 = FrameThemeColor
+	item.Frame.BackgroundTransparency = 1
+	item.Frame.BorderSizePixel = 0
+	item.Frame.ZIndex = 201
+	item.Frame.Parent = HubState.NotificationHolder
+	Instance.new("UICorner", item.Frame).CornerRadius = UDim.new(0, 7)
+	item.Stroke = Instance.new("UIStroke")
+	item.Stroke.Color = AccentColor
+	item.Stroke.Thickness = 1.4
+	item.Stroke.Transparency = 1
+	item.Stroke.Parent = item.Frame
+	item.Label = Instance.new("TextLabel")
+	item.Label.Size = UDim2.new(1, -20, 1, 0)
+	item.Label.Position = UDim2.new(0, 10, 0, 0)
+	item.Label.BackgroundTransparency = 1
+	item.Label.Text = tostring(message)
+	item.Label.Font = Enum.Font.GothamBold
+	item.Label.TextSize = 12
+	item.Label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	item.Label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	item.Label.TextStrokeTransparency = 1
+	item.Label.TextTransparency = 1
+	item.Label.TextTruncate = Enum.TextTruncate.AtEnd
+	item.Label.ZIndex = 202
+	item.Label.Parent = item.Frame
+	table.insert(HubState.Notifications, item)
+	while #HubState.Notifications > 2 do
+		ThemeObjects.RemoveNotification(HubState.Notifications[1])
+	end
+	ThemeObjects.LayoutNotifications()
+	TweenService:Create(item.Frame, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.08}):Play()
+	TweenService:Create(item.Stroke, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.2}):Play()
+	TweenService:Create(item.Label, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {TextTransparency = 0, TextStrokeTransparency = 0.55}):Play()
+	task.delay(2.1, function()
+		ThemeObjects.RemoveNotification(item)
+	end)
+end
+
+ThemeObjects.RefreshStateTexts = function(instant)
+	local tweenInfo = TweenInfo.new(instant and 0 or 0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+	for i = #ThemeObjects.StateTexts, 1, -1 do
+		local entry = ThemeObjects.StateTexts[i]
+		if entry.Object and entry.Object.Parent then
+			local success, enabled = pcall(entry.IsEnabled)
+			enabled = success and enabled == true
+			if enabled and entry.LastEnabled ~= true then
+				ThemeObjects.ShowNotification((entry.Name or entry.Object.Text or "Feature") .. " enabled")
+			end
+			entry.LastEnabled = enabled
+			local stateColor = enabled and AccentColor or InactiveTextColor()
+			TweenService:Create(entry.Object, tweenInfo, {TextColor3 = stateColor}):Play()
+		else
+			table.remove(ThemeObjects.StateTexts, i)
+		end
+	end
 end
 
 ThemeObjects.StyleTextOutline = function(obj)
@@ -352,12 +473,14 @@ local function UpdateTheme(instant)
 	for i = #ThemeObjects.Texts, 1, -1 do
 		local obj = ThemeObjects.Texts[i]
 		if obj.Parent then
-			local parentName = obj.Parent and obj.Parent.Name or ""
-			local isTileTitle = obj:IsA("TextLabel") and (parentName:find("Card", 1, true) or parentName:find("Row", 1, true))
-			local isToggleText = obj:IsA("TextButton") and (obj.Text == "On" or obj.Text == "Off")
-			local target = (obj.Name == "PageHeader" or obj.Name == "NavTabButton" or isTileTitle or isToggleText) and Color3.fromRGB(255, 255, 255)
-				or (obj.Parent and (obj.Parent:IsA("TextButton") or obj:IsA("TextBox")) and textColor or subTextColor)
-			TweenService:Create(obj, tweenInfo, {TextColor3 = target}):Play()
+			if not ThemeObjects.IsStateTextObject(obj) then
+				local parentName = obj.Parent and obj.Parent.Name or ""
+				local isTileTitle = obj:IsA("TextLabel") and (parentName:find("Card", 1, true) or parentName:find("Row", 1, true))
+				local isToggleText = obj:IsA("TextButton") and (obj.Text == "On" or obj.Text == "Off")
+				local target = (obj.Name == "PageHeader" or obj.Name == "NavTabButton" or isTileTitle or isToggleText) and Color3.fromRGB(255, 255, 255)
+					or (obj.Parent and (obj.Parent:IsA("TextButton") or obj:IsA("TextBox")) and textColor or subTextColor)
+				TweenService:Create(obj, tweenInfo, {TextColor3 = target}):Play()
+			end
 		else
 			table.remove(ThemeObjects.Texts, i)
 		end
@@ -382,15 +505,7 @@ local function UpdateTheme(instant)
 			table.remove(ThemeObjects.AccentBackgrounds, i)
 		end
 	end
-	for i = #ThemeObjects.StateTexts, 1, -1 do
-		local entry = ThemeObjects.StateTexts[i]
-		if entry.Object and entry.Object.Parent then
-			local stateColor = Color3.fromRGB(255, 255, 255)
-			TweenService:Create(entry.Object, tweenInfo, {TextColor3 = stateColor}):Play()
-		else
-			table.remove(ThemeObjects.StateTexts, i)
-		end
-	end
+	ThemeObjects.RefreshStateTexts(instant)
 end
 
 -- Variables
@@ -451,12 +566,14 @@ HubState.Connections.GradientPulse = RunService.Heartbeat:Connect(function(delta
 					ThemeObjects.RefreshToggleButton(object)
 				elseif object:IsA("TextLabel") and object.Parent then
 					local parentName = object.Parent.Name
-					if parentName:find("Card", 1, true) or parentName:find("Row", 1, true) then
+					if (parentName:find("Card", 1, true) or parentName:find("Row", 1, true))
+						and not ThemeObjects.IsStateTextObject(object) then
 						object.TextColor3 = Color3.fromRGB(255, 255, 255)
 					end
 				end
 			end
 		end)
+		ThemeObjects.RefreshStateTexts(true)
 	end
 	if ThemeObjects.GradientPulseAccumulator < 0.05 then return end
 	ThemeObjects.GradientPulseAccumulator = 0
