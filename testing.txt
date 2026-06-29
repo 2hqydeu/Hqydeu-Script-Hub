@@ -120,7 +120,7 @@ SplashText.BorderSizePixel = 0
 SplashText.Text = "hqydeu scripts"
 SplashText.Font = Enum.Font.GothamBold
 SplashText.TextSize = 20
-SplashText.TextColor3 = Color3.fromRGB(240, 240, 240)
+SplashText.TextColor3 = Color3.fromRGB(255, 255, 255)
 SplashText.TextTransparency = 1
 SplashText.Parent = SplashFrame
 
@@ -276,7 +276,7 @@ local function IsFrameLight()
 end
 
 local function InactiveTextColor()
-	return IsFrameLight() and Color3.fromRGB(90, 90, 90) or Color3.fromRGB(180, 180, 180)
+	return Color3.fromRGB(255, 255, 255)
 end
 
 ThemeObjects.IsStateTextObject = function(target)
@@ -407,6 +407,7 @@ end
 ThemeObjects.RefreshToggleButton = function(obj)
 	if not obj:IsA("TextButton") or (obj.Text ~= "On" and obj.Text ~= "Off") then return end
 	obj.BackgroundColor3 = obj.Text == "On" and AccentColor or FrameThemeColor:Lerp(Color3.new(0, 0, 0), 0.22)
+	obj.BackgroundTransparency = obj.Text == "On" and 0 or 0.8
 	obj.TextColor3 = Color3.fromRGB(255, 255, 255)
 end
 
@@ -449,7 +450,7 @@ local function UpdateTheme(instant)
 	local bgColor = FrameThemeColor
 	local lightTheme = IsFrameLight()
 	local secBgColor = bgColor:Lerp(Color3.new(0, 0, 0), 0.22)
-	local textColor = lightTheme and Color3.fromRGB(45, 45, 45) or Color3.fromRGB(240, 240, 240)
+	local textColor = Color3.fromRGB(255, 255, 255)
 	local subTextColor = InactiveTextColor()
 	local tweenInfo = TweenInfo.new(instant and 0 or 0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 	
@@ -467,18 +468,18 @@ local function UpdateTheme(instant)
 			if (obj:IsA("TextButton") or obj:IsA("TextBox")) then
 				local keepSolid = obj.Name == "DestroyBtn" or obj.Name == "ResetCharacterBtn" or obj.Name == "RejoinBtn"
 					or obj.Name == "ServerHopBtn" or obj.Name == "GuiSizeBtn" or obj.Name == "ClearKeybindsBtn"
-				obj.BackgroundTransparency = keepSolid and 0 or 0.8
+				obj.BackgroundTransparency = (keepSolid or obj.Text == "On") and 0 or 0.8
 			end
 		local target = (obj:IsA("TextButton") or obj:IsA("TextBox") or obj.Name == "TabScroll" or obj.Name == "TargetRow") and secBgColor or bgColor
 			if obj.Name == "PlayerTPFrame" then target = Color3.fromRGB(14, 18, 26)
 			end
 			if obj:IsA("TextButton") and obj.Text == "On" then target = AccentColor end
-			if obj.Name == "DestroyBtn" then target = Color3.fromRGB(125, 35, 40)
-			elseif obj.Name == "ResetCharacterBtn" then target = Color3.fromRGB(125, 88, 18)
-			elseif obj.Name == "RejoinBtn" then target = Color3.fromRGB(30, 135, 155)
-			elseif obj.Name == "ServerHopBtn" then target = Color3.fromRGB(20, 45, 150)
-			elseif obj.Name == "GuiSizeBtn" then target = Color3.fromRGB(35, 120, 35)
-			elseif obj.Name == "ClearKeybindsBtn" then target = Color3.fromRGB(100, 35, 130) end
+			if obj.Name == "DestroyBtn" then target = Color3.fromRGB(255, 35, 35)
+			elseif obj.Name == "ResetCharacterBtn" then target = Color3.fromRGB(255, 230, 0)
+			elseif obj.Name == "RejoinBtn" then target = Color3.fromRGB(0, 230, 255)
+			elseif obj.Name == "ServerHopBtn" then target = Color3.fromRGB(0, 105, 255)
+			elseif obj.Name == "GuiSizeBtn" then target = Color3.fromRGB(70, 255, 70)
+			elseif obj.Name == "ClearKeybindsBtn" then target = Color3.fromRGB(195, 35, 255) end
 			TweenService:Create(obj, tweenInfo, {BackgroundColor3 = target}):Play()
 		else
 			table.remove(ThemeObjects.Backgrounds, i)
@@ -491,8 +492,7 @@ local function UpdateTheme(instant)
 				local parentName = obj.Parent and obj.Parent.Name or ""
 				local isTileTitle = obj:IsA("TextLabel") and (parentName:find("Card", 1, true) or parentName:find("Row", 1, true))
 				local isToggleText = obj:IsA("TextButton") and (obj.Text == "On" or obj.Text == "Off")
-				local target = (ThemeObjects.IsMenuTextObject(obj) or obj.Name == "PageHeader" or obj.Name == "NavTabButton" or isTileTitle or isToggleText) and Color3.fromRGB(255, 255, 255)
-					or (obj.Parent and (obj.Parent:IsA("TextButton") or obj:IsA("TextBox")) and textColor or subTextColor)
+				local target = Color3.fromRGB(255, 255, 255)
 				TweenService:Create(obj, tweenInfo, {TextColor3 = target}):Play()
 			end
 		else
@@ -678,7 +678,7 @@ HubState.PageHeader.BackgroundTransparency = 1
 HubState.PageHeader.BorderSizePixel = 0
 HubState.PageHeader.Text = "Movement"
 HubState.PageHeader.Font = Enum.Font.GothamBold
-HubState.PageHeader.TextColor3 = Color3.fromRGB(60, 60, 60)
+HubState.PageHeader.TextColor3 = Color3.fromRGB(255, 255, 255)
 HubState.PageHeader.TextXAlignment = Enum.TextXAlignment.Left
 HubState.PageHeader.Parent = MainFrame
 table.insert(ThemeObjects.Texts, HubState.PageHeader)
@@ -1368,7 +1368,7 @@ do
 	winsDisplay.Font = Enum.Font.GothamBold
 	winsDisplay.TextSize = 8
 	winsDisplay.TextXAlignment = Enum.TextXAlignment.Center
-	winsDisplay.TextColor3 = Color3.fromRGB(60, 60, 60)
+	winsDisplay.TextColor3 = Color3.fromRGB(255, 255, 255)
 	winsDisplay.TextTruncate = Enum.TextTruncate.AtEnd
 	winsDisplay.Visible = false
 	winsDisplay.Parent = HubState.PageHeader
@@ -1481,7 +1481,7 @@ do
 	historyPanel.TotalLabel.Text = "Total  0 Coins  •  0 Wins"
 	historyPanel.TotalLabel.Font = Enum.Font.GothamMedium
 	historyPanel.TotalLabel.TextSize = 7
-	historyPanel.TotalLabel.TextColor3 = Color3.fromRGB(165, 165, 170)
+	historyPanel.TotalLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 	historyPanel.TotalLabel.TextXAlignment = Enum.TextXAlignment.Center
 	historyPanel.TotalLabel.RichText = true
 	historyPanel.TotalLabel.ZIndex = 21
@@ -2140,7 +2140,7 @@ HubState.AutoLockTitle.BorderSizePixel = 0
 HubState.AutoLockTitle.Text = "Auto Lock:"
 HubState.AutoLockTitle.Font = Enum.Font.GothamBold
 HubState.AutoLockTitle.TextSize = 13
-HubState.AutoLockTitle.TextColor3 = Color3.fromRGB(100, 100, 100)
+HubState.AutoLockTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 HubState.AutoLockTitle.TextXAlignment = Enum.TextXAlignment.Left
 HubState.AutoLockTitle.Parent = HubState.CombatPage
 table.insert(ThemeObjects.Texts, HubState.AutoLockTitle)
@@ -2180,7 +2180,7 @@ HubState.ESPTitle.BorderSizePixel = 0
 HubState.ESPTitle.Text = "Player ESP:"
 HubState.ESPTitle.Font = Enum.Font.GothamBold
 HubState.ESPTitle.TextSize = 13
-HubState.ESPTitle.TextColor3 = Color3.fromRGB(100, 100, 100)
+HubState.ESPTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 HubState.ESPTitle.TextXAlignment = Enum.TextXAlignment.Left
 HubState.ESPTitle.Parent = HubState.CombatPage
 table.insert(ThemeObjects.Texts, HubState.ESPTitle)
@@ -3190,10 +3190,10 @@ ThemeObjects.WaypointUI.Title.BackgroundTransparency = 1
 ThemeObjects.WaypointUI.Title.Text = "Waypoints"
 ThemeObjects.WaypointUI.Title.Font = Enum.Font.GothamBold
 ThemeObjects.WaypointUI.Title.TextSize = 11
-ThemeObjects.WaypointUI.Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+ThemeObjects.WaypointUI.Title.TextColor3 = AccentColor
 ThemeObjects.WaypointUI.Title.TextXAlignment = Enum.TextXAlignment.Left
 ThemeObjects.WaypointUI.Title.Parent = ThemeObjects.WaypointUI.Frame
-table.insert(ThemeObjects.Texts, ThemeObjects.WaypointUI.Title)
+table.insert(ThemeObjects.Accents, ThemeObjects.WaypointUI.Title)
 
 ThemeObjects.WaypointUI.AddButton = Instance.new("TextButton")
 ThemeObjects.WaypointUI.AddButton.Size = UDim2.new(0.5, -5, 0, 22)
@@ -3334,13 +3334,13 @@ function ThemeObjects.WaypointUI.Refresh()
 		local deleteButton = Instance.new("TextButton")
 		deleteButton.Size = UDim2.new(0, 22, 1, -8)
 		deleteButton.Position = UDim2.new(1, -24, 0, 4)
-		deleteButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
-		deleteButton.BackgroundTransparency = 0.8
+		deleteButton.BackgroundColor3 = Color3.fromRGB(255, 35, 35)
+		deleteButton.BackgroundTransparency = 0
 		deleteButton.BorderSizePixel = 0
 		deleteButton.Text = "×"
 		deleteButton.Font = Enum.Font.GothamBold
 		deleteButton.TextSize = 11
-		deleteButton.TextColor3 = Color3.fromRGB(255, 190, 190)
+		deleteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 		deleteButton.Parent = waypointRow
 		Instance.new("UICorner", deleteButton).CornerRadius = UDim.new(0, 4)
 
@@ -3437,13 +3437,13 @@ ThemeObjects.PlayerTP.RefreshWaypoints = function()
 			local deleteButton = Instance.new("TextButton")
 			deleteButton.Size = UDim2.new(0, 22, 0, 22)
 			deleteButton.Position = UDim2.new(1, -26, 0.5, -11)
-			deleteButton.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
-			deleteButton.BackgroundTransparency = 0.25
+			deleteButton.BackgroundColor3 = Color3.fromRGB(255, 35, 35)
+			deleteButton.BackgroundTransparency = 0
 			deleteButton.BorderSizePixel = 0
 			deleteButton.Text = "×"
 			deleteButton.Font = Enum.Font.GothamBold
 			deleteButton.TextSize = 11
-			deleteButton.TextColor3 = Color3.fromRGB(255, 190, 190)
+			deleteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 			deleteButton.Parent = waypointRow
 			Instance.new("UICorner", deleteButton).CornerRadius = UDim.new(0, 4)
 
@@ -3655,7 +3655,7 @@ HubState.CoinFarmTitle.BackgroundTransparency = 1
 HubState.CoinFarmTitle.Text = "Coin Farm:"
 HubState.CoinFarmTitle.Font = Enum.Font.GothamBold
 HubState.CoinFarmTitle.TextSize = 10
-HubState.CoinFarmTitle.TextColor3 = Color3.fromRGB(180, 180, 195)
+HubState.CoinFarmTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 HubState.CoinFarmTitle.TextXAlignment = Enum.TextXAlignment.Left
 HubState.CoinFarmTitle.Parent = HubState.MM2Page
 table.insert(ThemeObjects.Texts, HubState.CoinFarmTitle)
@@ -3680,7 +3680,7 @@ HubState.CoinFarmStatus.BackgroundTransparency = 1
 HubState.CoinFarmStatus.Text = "0"
 HubState.CoinFarmStatus.Font = Enum.Font.GothamMedium
 HubState.CoinFarmStatus.TextSize = 8
-HubState.CoinFarmStatus.TextColor3 = Color3.fromRGB(100, 100, 100)
+HubState.CoinFarmStatus.TextColor3 = Color3.fromRGB(255, 255, 255)
 HubState.CoinFarmStatus.TextXAlignment = Enum.TextXAlignment.Left
 HubState.CoinFarmStatus.Parent = HubState.MM2Page
 table.insert(ThemeObjects.Texts, HubState.CoinFarmStatus)
@@ -3815,7 +3815,7 @@ HubState.AutoGunTitle.BackgroundTransparency = 1
 HubState.AutoGunTitle.Text = "Auto Gun:"
 HubState.AutoGunTitle.Font = Enum.Font.GothamBold
 HubState.AutoGunTitle.TextSize = 10
-HubState.AutoGunTitle.TextColor3 = Color3.fromRGB(180, 180, 195)
+HubState.AutoGunTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 HubState.AutoGunTitle.TextXAlignment = Enum.TextXAlignment.Left
 HubState.AutoGunTitle.Parent = HubState.MM2Page
 table.insert(ThemeObjects.Texts, HubState.AutoGunTitle)
@@ -3994,7 +3994,7 @@ HubState.KillTitle.BackgroundTransparency = 1
 HubState.KillTitle.Text = "Auto Stab:"
 HubState.KillTitle.Font = Enum.Font.GothamBold
 HubState.KillTitle.TextSize = 10
-HubState.KillTitle.TextColor3 = Color3.fromRGB(180, 180, 195)
+HubState.KillTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 HubState.KillTitle.TextXAlignment = Enum.TextXAlignment.Left
 HubState.KillTitle.Parent = HubState.MM2Page
 table.insert(ThemeObjects.Texts, HubState.KillTitle)
@@ -4589,7 +4589,7 @@ HubState.SpeedTitle.BorderSizePixel = 0
 HubState.SpeedTitle.Text = "Speed:"
 HubState.SpeedTitle.Font = Enum.Font.GothamBold
 HubState.SpeedTitle.TextSize = 11
-HubState.SpeedTitle.TextColor3 = Color3.fromRGB(100, 100, 100)
+HubState.SpeedTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 HubState.SpeedTitle.TextXAlignment = Enum.TextXAlignment.Left
 HubState.SpeedTitle.Parent = HubState.MovementPage
 table.insert(ThemeObjects.Texts, HubState.SpeedTitle)
@@ -4649,7 +4649,7 @@ HubState.NoclipTitle.BorderSizePixel = 0
 HubState.NoclipTitle.Text = "No Clip:"
 HubState.NoclipTitle.Font = Enum.Font.GothamBold
 HubState.NoclipTitle.TextSize = 11
-HubState.NoclipTitle.TextColor3 = Color3.fromRGB(100, 100, 100)
+HubState.NoclipTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 HubState.NoclipTitle.TextXAlignment = Enum.TextXAlignment.Left
 HubState.NoclipTitle.Parent = HubState.MovementPage
 table.insert(ThemeObjects.Texts, HubState.NoclipTitle)
@@ -4662,7 +4662,7 @@ HubState.NoclipToggleBtn.BackgroundTransparency = 0.8
 HubState.NoclipToggleBtn.BorderSizePixel = 0
 HubState.NoclipToggleBtn.Text = "Off"
 HubState.NoclipToggleBtn.Font = Enum.Font.GothamBold
-HubState.NoclipToggleBtn.TextColor3 = Color3.fromRGB(60, 60, 60)
+HubState.NoclipToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 HubState.NoclipToggleBtn.Parent = HubState.MovementPage
 table.insert(ThemeObjects.Backgrounds, HubState.NoclipToggleBtn)
 table.insert(ThemeObjects.Texts, HubState.NoclipToggleBtn)
@@ -4727,7 +4727,7 @@ HubState.FlyTitle.BorderSizePixel = 0
 HubState.FlyTitle.Text = "Fly:"
 HubState.FlyTitle.Font = Enum.Font.GothamBold
 HubState.FlyTitle.TextSize = 11
-HubState.FlyTitle.TextColor3 = Color3.fromRGB(100, 100, 100)
+HubState.FlyTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 HubState.FlyTitle.TextXAlignment = Enum.TextXAlignment.Left
 HubState.FlyTitle.Parent = HubState.MovementPage
 table.insert(ThemeObjects.Texts, HubState.FlyTitle)
@@ -5339,7 +5339,7 @@ for i, name in ipairs(HubState.TabNames) do
 	TabBtn.Text = name
 	TabBtn.Font = Enum.Font.GothamMedium
 	TabBtn.TextSize = 11
-	TabBtn.TextColor3 = Color3.fromRGB(175, 175, 190)
+	TabBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	TabBtn.Parent = HubState.TabScroll
 	if name == "Games" then HubState.GamesTabButton = TabBtn end
 	table.insert(ThemeObjects.Backgrounds, TabBtn)
@@ -5412,7 +5412,7 @@ HubState.DestroyBtn = Instance.new("TextButton")
 HubState.DestroyBtn.Name = "DestroyBtn"
 HubState.DestroyBtn.Size = UDim2.new(0, 310, 0, 24)
 HubState.DestroyBtn.Position = UDim2.new(0, 10, 0, 116)
-HubState.DestroyBtn.BackgroundColor3 = Color3.fromRGB(125, 35, 40)
+HubState.DestroyBtn.BackgroundColor3 = Color3.fromRGB(255, 35, 35)
 HubState.DestroyBtn.BackgroundTransparency = 0
 HubState.DestroyBtn.BorderSizePixel = 0
 HubState.DestroyBtn.Text = "Destroy GUI"
@@ -5423,7 +5423,7 @@ table.insert(ThemeObjects.Backgrounds, HubState.DestroyBtn)
 Instance.new("UICorner", HubState.DestroyBtn).CornerRadius = UDim.new(0, 6)
 
 local AccentColorBtn = Instance.new("TextButton")
-AccentColorBtn.Size = UDim2.new(0, 150, 0, 20)
+AccentColorBtn.Size = UDim2.new(0, 150, 0, 24)
 AccentColorBtn.Position = UDim2.new(0, 10, 0, 8)
 AccentColorBtn.BackgroundColor3 = Color3.fromRGB(210, 18, 18)
 AccentColorBtn.BackgroundTransparency = 0
@@ -5452,7 +5452,7 @@ local ClearKeybindsBtn = Instance.new("TextButton")
 ClearKeybindsBtn.Name = "ClearKeybindsBtn"
 ClearKeybindsBtn.Size = UDim2.new(0, 150, 0, 24)
 ClearKeybindsBtn.Position = UDim2.new(0, 170, 0, 76)
-ClearKeybindsBtn.BackgroundColor3 = Color3.fromRGB(100, 35, 130)
+ClearKeybindsBtn.BackgroundColor3 = Color3.fromRGB(195, 35, 255)
 ClearKeybindsBtn.BackgroundTransparency = 0
 ClearKeybindsBtn.BorderSizePixel = 0
 ClearKeybindsBtn.Text = "Remove All Keybinds"
@@ -5467,7 +5467,7 @@ local ResetCharacterBtn = Instance.new("TextButton")
 ResetCharacterBtn.Name = "ResetCharacterBtn"
 ResetCharacterBtn.Size = UDim2.new(0, 150, 0, 24)
 ResetCharacterBtn.Position = UDim2.new(0, 10, 0, 76)
-ResetCharacterBtn.BackgroundColor3 = Color3.fromRGB(125, 88, 18)
+ResetCharacterBtn.BackgroundColor3 = Color3.fromRGB(255, 230, 0)
 ResetCharacterBtn.BackgroundTransparency = 0
 ResetCharacterBtn.BorderSizePixel = 0
 ResetCharacterBtn.Text = "Reset Character"
@@ -5481,7 +5481,7 @@ local RejoinBtn = Instance.new("TextButton")
 RejoinBtn.Name = "RejoinBtn"
 RejoinBtn.Size = UDim2.new(0, 150, 0, 24)
 RejoinBtn.Position = UDim2.new(0, 170, 0, 40)
-RejoinBtn.BackgroundColor3 = Color3.fromRGB(30, 135, 155)
+RejoinBtn.BackgroundColor3 = Color3.fromRGB(0, 230, 255)
 RejoinBtn.BackgroundTransparency = 0
 RejoinBtn.BorderSizePixel = 0
 RejoinBtn.Text = "Rejoin"
@@ -5495,7 +5495,7 @@ local ServerHopBtn = Instance.new("TextButton")
 ServerHopBtn.Name = "ServerHopBtn"
 ServerHopBtn.Size = UDim2.new(0, 150, 0, 24)
 ServerHopBtn.Position = UDim2.new(0, 10, 0, 40)
-ServerHopBtn.BackgroundColor3 = Color3.fromRGB(20, 45, 150)
+ServerHopBtn.BackgroundColor3 = Color3.fromRGB(0, 105, 255)
 ServerHopBtn.BackgroundTransparency = 0
 ServerHopBtn.BorderSizePixel = 0
 ServerHopBtn.Text = "Server Hop"
@@ -5507,9 +5507,9 @@ Instance.new("UICorner", ServerHopBtn).CornerRadius = UDim.new(0, 6)
 
 local GuiSizeBtn = Instance.new("TextButton")
 GuiSizeBtn.Name = "GuiSizeBtn"
-GuiSizeBtn.Size = UDim2.new(0, 150, 0, 20)
+GuiSizeBtn.Size = UDim2.new(0, 150, 0, 24)
 GuiSizeBtn.Position = UDim2.new(0, 170, 0, 8)
-GuiSizeBtn.BackgroundColor3 = Color3.fromRGB(35, 120, 35)
+GuiSizeBtn.BackgroundColor3 = Color3.fromRGB(70, 255, 70)
 GuiSizeBtn.BackgroundTransparency = 0
 GuiSizeBtn.BorderSizePixel = 0
 GuiSizeBtn.Text = "GUI Size"
