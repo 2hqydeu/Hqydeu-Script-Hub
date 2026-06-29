@@ -398,10 +398,15 @@ ThemeObjects.RefreshStateTexts = function(instant)
 		if entry.Object and entry.Object.Parent then
 			local success, enabled = pcall(entry.IsEnabled)
 			enabled = success and enabled == true
+			local featureName = tostring(entry.Name or entry.Object.Text or "Feature")
+			featureName = featureName:gsub("<[^>]->", "")
+			featureName = featureName:gsub("%s*:%s*[Oo]n%s*$", "")
+			featureName = featureName:gsub("%s*:%s*[Oo]ff%s*$", "")
+			featureName = featureName:gsub("%s*:%s*$", "")
 			if entry.LastEnabled ~= nil and enabled ~= entry.LastEnabled then
-				ThemeObjects.ShowNotification((entry.Name or entry.Object.Text or "Feature") .. (enabled and " enabled" or " disabled"))
+				ThemeObjects.ShowNotification(featureName .. (enabled and " enabled" or " disabled"))
 			elseif enabled and entry.LastEnabled == nil then
-				ThemeObjects.ShowNotification((entry.Name or entry.Object.Text or "Feature") .. " enabled")
+				ThemeObjects.ShowNotification(featureName .. " enabled")
 			end
 			entry.LastEnabled = enabled
 			local stateColor = enabled and AccentColor or InactiveTextColor()
@@ -1845,7 +1850,7 @@ do
 	unclutterToggle.MouseButton1Click:Connect(function()
 		PlayClick()
 		farmState.MuteAudio = not farmState.MuteAudio
-		unclutterToggle.Text = "Mute"
+		unclutterToggle.Text = farmState.MuteAudio and "Unmute" or "Mute"
 		unclutterToggle.TextColor3 = farmState.MuteAudio and AccentColor or InactiveTextColor()
 		if farmState.SetUnclutter then farmState.SetUnclutter(farmState.MuteAudio) end
 	end)
@@ -3461,7 +3466,6 @@ function ThemeObjects.WaypointUI.Refresh()
 		waypointButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 		waypointButton.TextXAlignment = Enum.TextXAlignment.Left
 		waypointButton.Parent = waypointRow
-		table.insert(ThemeObjects.Backgrounds, waypointButton)
 		table.insert(ThemeObjects.Texts, waypointButton)
 		Instance.new("UICorner", waypointButton).CornerRadius = UDim.new(0, 4)
 
@@ -5562,15 +5566,9 @@ ThemeObjects.SwitchTab = function(name)
 	incomingPage.Visible = true
 	if outgoingPage and outgoingPage ~= incomingPage and outgoingPage.Parent then
 		incomingPage.Position = UDim2.new(0, activeX, 0, activeY + (slideDistance * direction))
-		outgoingPage.Visible = true
-		outgoingPage:TweenPosition(UDim2.new(0, activeX, 0, activeY - (slideDistance * direction)), "Out", "Quart", 0.24, true)
+		outgoingPage.Visible = false
+		outgoingPage.Position = UDim2.new(1.1, 0, 0, activeY)
 		incomingPage:TweenPosition(UDim2.new(0, activeX, 0, activeY), "Out", "Quart", 0.24, true)
-		task.delay(0.26, function()
-			if HubState.ActiveContentPage ~= outgoingPage then
-				outgoingPage.Visible = false
-				outgoingPage.Position = UDim2.new(1.1, 0, 0, activeY)
-			end
-		end)
 	else
 		incomingPage.Position = UDim2.new(0, activeX, 0, activeY)
 	end
