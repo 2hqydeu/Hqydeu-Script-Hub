@@ -255,7 +255,7 @@ local HubState = {}
 HubState.Notifications = {}
 HubState.NotificationHolder = Instance.new("Frame")
 HubState.NotificationHolder.Name = "NotificationHolder"
-HubState.NotificationHolder.Size = UDim2.new(0, 280, 0, 60)
+HubState.NotificationHolder.Size = UDim2.new(0, 230, 0, 60)
 HubState.NotificationHolder.Position = UDim2.new(0, 24, 0.75, 0)
 HubState.NotificationHolder.AnchorPoint = Vector2.new(0, 0)
 HubState.NotificationHolder.BackgroundTransparency = 1
@@ -429,8 +429,13 @@ ThemeObjects.StyleControlOutline = function(obj)
 	if not obj:IsA("GuiObject") then return end
 	if obj:FindFirstChild("ControlOutline") then return end
 	local isVisibleButton = obj:IsA("TextButton") and obj.BackgroundTransparency < 0.9
+	local isVisibleInput = obj:IsA("TextBox") and obj.BackgroundTransparency < 0.9
 	local isTile = obj:IsA("Frame") and (obj.Name:find("Card", 1, true) or obj.Name:find("Row", 1, true))
-	if not isVisibleButton and not isTile then return end
+	local isScrollBackdrop = obj:IsA("ScrollingFrame") and obj.BackgroundTransparency < 1
+	local parentName = obj.Parent and obj.Parent.Name or ""
+	local isListItem = obj:IsA("Frame") and (parentName == "PlayerScroll" or parentName == "TargetScroll"
+		or parentName == "WaypointScroll" or parentName == "WaypointList" or parentName == "WaypointsList")
+	if not isVisibleButton and not isVisibleInput and not isTile and not isScrollBackdrop and not isListItem then return end
 	local outline = Instance.new("UIStroke")
 	outline.Name = "ControlOutline"
 	outline.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -613,7 +618,8 @@ HubState.Connections.GradientPulse = RunService.Heartbeat:Connect(function(delta
 	if ThemeObjects.GradientPulseAccumulator < 0.05 then return end
 	ThemeObjects.GradientPulseAccumulator = 0
 	if type(ThemeObjects.ApplyMainGradient) == "function" then
-		pcall(ThemeObjects.ApplyMainGradient, 0.5)
+		local pulse = 0.22 + ((math.sin(ThemeObjects.GradientPulseTime * 1.35) + 1) * 0.14)
+		pcall(ThemeObjects.ApplyMainGradient, pulse)
 	end
 end)
 ThemeObjects.FreeCam = {Enabled = false, Keybind = LoadKeybind("FreeCam"), Binding = false}
@@ -1356,7 +1362,7 @@ do
 	local coinsDisplay = Instance.new("TextLabel")
 	coinsDisplay.Name = "QuietOrDieCoinsDisplay"
 	coinsDisplay.Size = UDim2.new(0, 120, 0, 9)
-	coinsDisplay.Position = UDim2.new(0.5, -70, 0, 0)
+	coinsDisplay.Position = UDim2.new(0.5, -58, 0, 0)
 	coinsDisplay.BackgroundTransparency = 1
 	coinsDisplay.Text = "Coins: 0"
 	coinsDisplay.Font = Enum.Font.GothamBold
@@ -1383,7 +1389,7 @@ do
 	local winsDisplay = Instance.new("TextLabel")
 	winsDisplay.Name = "QuietOrDieWinsDisplay"
 	winsDisplay.Size = UDim2.new(0, 120, 0, 9)
-	winsDisplay.Position = UDim2.new(0.5, -70, 0, 10)
+	winsDisplay.Position = UDim2.new(0.5, -58, 0, 10)
 	winsDisplay.BackgroundTransparency = 1
 	winsDisplay.Text = "Wins: 0"
 	winsDisplay.Font = Enum.Font.GothamBold
@@ -2702,6 +2708,7 @@ local function RefreshFlingTargets()
 				targetRow.BorderSizePixel = 0
 				targetRow.Parent = HubState.TargetScroll
 				Instance.new("UICorner", targetRow).CornerRadius = UDim.new(0, 4)
+				ThemeObjects.StyleControlOutline(targetRow)
 
 				local displayLabel = Instance.new("TextLabel")
 				displayLabel.Size = UDim2.new(1, -12, 0, 16)
@@ -2893,6 +2900,7 @@ table.insert(ThemeObjects.Texts, ThemeObjects.PlayerTP.WaypointSearch)
 Instance.new("UICorner", ThemeObjects.PlayerTP.WaypointSearch).CornerRadius = UDim.new(0, 4)
 
 ThemeObjects.PlayerTP.WaypointScroll = Instance.new("ScrollingFrame")
+ThemeObjects.PlayerTP.WaypointScroll.Name = "WaypointScroll"
 ThemeObjects.PlayerTP.WaypointScroll.Size = ThemeObjects.PlayerTP.Scroll.Size
 ThemeObjects.PlayerTP.WaypointScroll.Position = ThemeObjects.PlayerTP.Scroll.Position
 ThemeObjects.PlayerTP.WaypointScroll.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
@@ -2936,6 +2944,7 @@ ThemeObjects.PlayerTP.Refresh = function()
 				targetRow.BorderSizePixel = 0
 				targetRow.Parent = ThemeObjects.PlayerTP.Scroll
 				Instance.new("UICorner", targetRow).CornerRadius = UDim.new(0, 4)
+				ThemeObjects.StyleControlOutline(targetRow)
 
 				local displayLabel = Instance.new("TextLabel")
 				displayLabel.Size = UDim2.new(1, -12, 0, 16)
@@ -3081,8 +3090,8 @@ end))
 -- Teleport Page
 HubState.PlayerSearch = Instance.new("TextBox")
 HubState.PlayerSearch.Name = "PlayerSearch"
-HubState.PlayerSearch.Size = UDim2.new(0, 158, 0, 24)
-HubState.PlayerSearch.Position = UDim2.new(0, 124, 0, 36)
+HubState.PlayerSearch.Size = UDim2.new(0, 164, 0, 24)
+HubState.PlayerSearch.Position = UDim2.new(1, -176, 0, 36)
 HubState.PlayerSearch.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
 HubState.PlayerSearch.BackgroundTransparency = 0.8
 HubState.PlayerSearch.BorderSizePixel = 0
@@ -3104,14 +3113,14 @@ HubState.SearchCorner.Parent = HubState.PlayerSearch
 
 ThemeObjects.WaypointToggleButton = Instance.new("TextButton")
 ThemeObjects.WaypointToggleButton.Name = "WaypointsToggleButton"
-ThemeObjects.WaypointToggleButton.Size = UDim2.new(0, 92, 0, 28)
-ThemeObjects.WaypointToggleButton.Position = UDim2.new(1, -96, 0, 4)
+ThemeObjects.WaypointToggleButton.Size = UDim2.new(0, 68, 0, 28)
+ThemeObjects.WaypointToggleButton.Position = UDim2.new(1, -72, 0, 4)
 ThemeObjects.WaypointToggleButton.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
 ThemeObjects.WaypointToggleButton.BackgroundTransparency = 0.8
 ThemeObjects.WaypointToggleButton.BorderSizePixel = 0
 ThemeObjects.WaypointToggleButton.Text = "Waypoints"
 ThemeObjects.WaypointToggleButton.Font = Enum.Font.GothamBold
-ThemeObjects.WaypointToggleButton.TextSize = 10
+ThemeObjects.WaypointToggleButton.TextSize = 9
 ThemeObjects.WaypointToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 ThemeObjects.WaypointToggleButton.Parent = HubState.TeleportPage
 table.insert(ThemeObjects.Backgrounds, ThemeObjects.WaypointToggleButton)
@@ -3152,14 +3161,14 @@ Instance.new("UICorner", ThemeObjects.PlayerTP.BindButton).CornerRadius = UDim.n
 
 ThemeObjects.TeleportSearchButton = Instance.new("TextButton")
 ThemeObjects.TeleportSearchButton.Name = "TeleportSearchButton"
-ThemeObjects.TeleportSearchButton.Size = UDim2.new(0, 56, 0, 28)
-ThemeObjects.TeleportSearchButton.Position = UDim2.new(0, 124, 0, 4)
+ThemeObjects.TeleportSearchButton.Size = UDim2.new(0, 44, 0, 28)
+ThemeObjects.TeleportSearchButton.Position = UDim2.new(1, -120, 0, 4)
 ThemeObjects.TeleportSearchButton.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
 ThemeObjects.TeleportSearchButton.BackgroundTransparency = 0.8
 ThemeObjects.TeleportSearchButton.BorderSizePixel = 0
 ThemeObjects.TeleportSearchButton.Text = "Search"
 ThemeObjects.TeleportSearchButton.Font = Enum.Font.GothamBold
-ThemeObjects.TeleportSearchButton.TextSize = 10
+ThemeObjects.TeleportSearchButton.TextSize = 8
 ThemeObjects.TeleportSearchButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 ThemeObjects.TeleportSearchButton.Parent = HubState.TeleportPage
 table.insert(ThemeObjects.Backgrounds, ThemeObjects.TeleportSearchButton)
@@ -3290,6 +3299,7 @@ table.insert(ThemeObjects.Texts, ThemeObjects.WaypointUI.CurrentButton)
 Instance.new("UICorner", ThemeObjects.WaypointUI.CurrentButton).CornerRadius = UDim.new(0, 5)
 
 ThemeObjects.WaypointUI.List = Instance.new("ScrollingFrame")
+ThemeObjects.WaypointUI.List.Name = "WaypointList"
 ThemeObjects.WaypointUI.List.Size = UDim2.new(1, -8, 1, -58)
 ThemeObjects.WaypointUI.List.Position = UDim2.new(0, 4, 0, 54)
 ThemeObjects.WaypointUI.List.BackgroundTransparency = 1
@@ -3367,6 +3377,7 @@ function ThemeObjects.WaypointUI.Refresh()
 		waypointRow.BackgroundTransparency = 0.92
 		waypointRow.Parent = ThemeObjects.WaypointUI.List
 		Instance.new("UICorner", waypointRow).CornerRadius = UDim.new(0, 4)
+		ThemeObjects.StyleControlOutline(waypointRow)
 
 		local waypointButton = Instance.new("TextButton")
 		waypointButton.Size = UDim2.new(1, -72, 1, -8)
@@ -3476,6 +3487,7 @@ ThemeObjects.PlayerTP.RefreshWaypoints = function()
 			waypointRow.BorderSizePixel = 0
 			waypointRow.Parent = ThemeObjects.PlayerTP.WaypointScroll
 			Instance.new("UICorner", waypointRow).CornerRadius = UDim.new(0, 4)
+			ThemeObjects.StyleControlOutline(waypointRow)
 
 			local nameLabel = Instance.new("TextLabel")
 			nameLabel.Size = UDim2.new(1, -58, 0, 16)
@@ -3648,6 +3660,8 @@ local function UpdatePlayerList()
 		pFrame.BackgroundTransparency = 0.92
 		pFrame.BorderSizePixel = 0
 		pFrame.Parent = HubState.PlayerScroll
+		Instance.new("UICorner", pFrame).CornerRadius = UDim.new(0, 4)
+		ThemeObjects.StyleControlOutline(pFrame)
 
 		local pName = Instance.new("TextLabel")
 		pName.Size = UDim2.new(1, -46, 1, 0)
@@ -4664,7 +4678,7 @@ table.insert(ThemeObjects.Texts, HubState.SpeedTitle)
 HubState.SpeedInput = Instance.new("TextBox")
 HubState.SpeedInput.Size = UDim2.new(0, 46, 0, 22)
 HubState.SpeedInput.Position = UDim2.new(0, 82, 0, 16)
-HubState.SpeedInput.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+HubState.SpeedInput.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 HubState.SpeedInput.BackgroundTransparency = 0.8
 HubState.SpeedInput.BorderSizePixel = 0
 HubState.SpeedInput.Text = tostring(HubState.CurrentCFrameSpeed)
@@ -4676,6 +4690,7 @@ HubState.SpeedInput.Parent = HubState.MovementPage
 table.insert(ThemeObjects.Backgrounds, HubState.SpeedInput)
 table.insert(ThemeObjects.Texts, HubState.SpeedInput)
 Instance.new("UICorner", HubState.SpeedInput).CornerRadius = UDim.new(0, 4)
+ThemeObjects.StyleControlOutline(HubState.SpeedInput)
 
 HubState.SpeedInput.FocusLost:Connect(function()
     local val = tonumber(HubState.SpeedInput.Text)
@@ -4805,7 +4820,7 @@ table.insert(ThemeObjects.Texts, HubState.FlyTitle)
 HubState.FlyInput = Instance.new("TextBox")
 HubState.FlyInput.Size = UDim2.new(0, 46, 0, 22)
 HubState.FlyInput.Position = UDim2.new(0, 82, 0, 60) 
-HubState.FlyInput.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+HubState.FlyInput.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 HubState.FlyInput.BackgroundTransparency = 0.8
 HubState.FlyInput.BorderSizePixel = 0
 HubState.FlyInput.Text = tostring(HubState.FlySpeed)
@@ -4817,6 +4832,7 @@ HubState.FlyInput.Parent = HubState.MovementPage
 table.insert(ThemeObjects.Backgrounds, HubState.FlyInput)
 table.insert(ThemeObjects.Texts, HubState.FlyInput)
 Instance.new("UICorner", HubState.FlyInput).CornerRadius = UDim.new(0, 4)
+ThemeObjects.StyleControlOutline(HubState.FlyInput)
 
 HubState.FlyInput.FocusLost:Connect(function()
     local val = tonumber(HubState.FlyInput.Text)
@@ -4932,7 +4948,7 @@ do
 	ThemeObjects.CameraFOV.Input.BorderSizePixel = 0
 	ThemeObjects.CameraFOV.Input.Text = tostring(math.floor(ThemeObjects.CameraFOV.Value + 0.5))
 	ThemeObjects.CameraFOV.Input.Font = Enum.Font.GothamBold
-	ThemeObjects.CameraFOV.Input.TextSize = 10
+	ThemeObjects.CameraFOV.Input.TextSize = 9
 	ThemeObjects.CameraFOV.Input.ClearTextOnFocus = false
 	ThemeObjects.CameraFOV.Input.TextColor3 = Color3.fromRGB(255, 255, 255)
 	ThemeObjects.CameraFOV.Input.PlaceholderColor3 = Color3.fromRGB(255, 255, 255)
@@ -4941,6 +4957,7 @@ do
 	table.insert(ThemeObjects.Backgrounds, ThemeObjects.CameraFOV.Input)
 	table.insert(ThemeObjects.Texts, ThemeObjects.CameraFOV.Input)
 	Instance.new("UICorner", ThemeObjects.CameraFOV.Input).CornerRadius = UDim.new(0, 4)
+	ThemeObjects.StyleControlOutline(ThemeObjects.CameraFOV.Input)
 
 	ThemeObjects.CameraFOV.Reset = Instance.new("TextButton")
 	ThemeObjects.CameraFOV.Reset.Size = UDim2.new(0, 54, 0, 20)
