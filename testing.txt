@@ -285,6 +285,19 @@ ThemeObjects.IsStateTextObject = function(target)
 	return false
 end
 
+ThemeObjects.IsMenuTextObject = function(target)
+	return (ThemeObjects.PlayerTP and ThemeObjects.PlayerTP.Frame and target:IsDescendantOf(ThemeObjects.PlayerTP.Frame))
+		or (ThemeObjects.WaypointUI and ThemeObjects.WaypointUI.Frame and target:IsDescendantOf(ThemeObjects.WaypointUI.Frame))
+end
+
+ThemeObjects.RefreshScrollBars = function(root)
+	for _, object in ipairs((root or ScreenGui):GetDescendants()) do
+		if object:IsA("ScrollingFrame") then
+			object.ScrollBarImageColor3 = AccentColor
+		end
+	end
+end
+
 ThemeObjects.LayoutNotifications = function()
 	for index, item in ipairs(HubState.Notifications) do
 		if item.Frame and item.Frame.Parent then
@@ -443,7 +456,7 @@ local function UpdateTheme(instant)
 	if SplashFrame and SplashFrame.Parent then SplashFrame.BackgroundColor3 = bgColor end
 	ThemeObjects.ApplyMainGradient(0.5)
 	MainTextureStroke.Color = AccentColor
-	if ThemeObjects.TabScroll and ThemeObjects.TabScroll.Parent then ThemeObjects.TabScroll.ScrollBarImageColor3 = AccentColor end
+	ThemeObjects.RefreshScrollBars(ScreenGui)
 	for _, line in ipairs(MainPatternLines) do
 		if line.Parent then line.BackgroundColor3 = AccentColor end
 	end
@@ -477,7 +490,7 @@ local function UpdateTheme(instant)
 				local parentName = obj.Parent and obj.Parent.Name or ""
 				local isTileTitle = obj:IsA("TextLabel") and (parentName:find("Card", 1, true) or parentName:find("Row", 1, true))
 				local isToggleText = obj:IsA("TextButton") and (obj.Text == "On" or obj.Text == "Off")
-				local target = (obj.Name == "PageHeader" or obj.Name == "NavTabButton" or isTileTitle or isToggleText) and Color3.fromRGB(255, 255, 255)
+				local target = (ThemeObjects.IsMenuTextObject(obj) or obj.Name == "PageHeader" or obj.Name == "NavTabButton" or isTileTitle or isToggleText) and Color3.fromRGB(255, 255, 255)
 					or (obj.Parent and (obj.Parent:IsA("TextButton") or obj:IsA("TextBox")) and textColor or subTextColor)
 				TweenService:Create(obj, tweenInfo, {TextColor3 = target}):Play()
 			end
@@ -1220,7 +1233,7 @@ do
 
 	local killRow = Instance.new("Frame")
 	killRow.Name = "QuietOrDieKillRow"
-	killRow.Size = UDim2.new(1, -8, 0, 38)
+	killRow.Size = UDim2.new(1, -18, 0, 38)
 	killRow.Position = UDim2.new(0, 4, 0, 74)
 	killRow.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 	killRow.BackgroundTransparency = 0.92
@@ -1256,7 +1269,7 @@ do
 
 	local farmRow = Instance.new("Frame")
 	farmRow.Name = "QuietOrDieFarmRow"
-	farmRow.Size = UDim2.new(1, -8, 0, 62)
+	farmRow.Size = UDim2.new(1, -18, 0, 62)
 	farmRow.Position = UDim2.new(0, 4, 0, 4)
 	farmRow.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 	farmRow.BackgroundTransparency = 0.92
@@ -1475,7 +1488,7 @@ do
 
 	local eventRow = Instance.new("Frame")
 	eventRow.Name = "QuietOrDieEventRow"
-	eventRow.Size = UDim2.new(1, -8, 0, 38)
+	eventRow.Size = UDim2.new(1, -18, 0, 38)
 	eventRow.Position = UDim2.new(0, 4, 0, 206)
 	eventRow.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 	eventRow.BackgroundTransparency = 0.92
@@ -1511,7 +1524,7 @@ do
 
 	local reviveRow = Instance.new("Frame")
 	reviveRow.Name = "QuietOrDieReviveRow"
-	reviveRow.Size = UDim2.new(1, -8, 0, 38)
+	reviveRow.Size = UDim2.new(1, -18, 0, 38)
 	reviveRow.Position = UDim2.new(0, 4, 0, 162)
 	reviveRow.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 	reviveRow.BackgroundTransparency = 0.92
@@ -1548,7 +1561,7 @@ do
 	ThemeObjects.QODReveal = {Enabled = false, LastFire = 0}
 	ThemeObjects.QODReveal.Row = Instance.new("Frame")
 	ThemeObjects.QODReveal.Row.Name = "QuietOrDieRevealRow"
-	ThemeObjects.QODReveal.Row.Size = UDim2.new(1, -8, 0, 38)
+	ThemeObjects.QODReveal.Row.Size = UDim2.new(1, -18, 0, 38)
 	ThemeObjects.QODReveal.Row.Position = UDim2.new(0, 4, 0, 250)
 	ThemeObjects.QODReveal.Row.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 	ThemeObjects.QODReveal.Row.BackgroundTransparency = 0.92
@@ -2571,7 +2584,7 @@ HubState.TargetListLayout.Parent = HubState.TargetScroll
 do
 	local padding = Instance.new("UIPadding")
 	padding.PaddingLeft = UDim.new(0, 2)
-	padding.PaddingRight = UDim.new(0, 2)
+	padding.PaddingRight = UDim.new(0, 8)
 	padding.PaddingTop = UDim.new(0, 1)
 	padding.PaddingBottom = UDim.new(0, 1)
 	padding.Parent = HubState.TargetScroll
@@ -2824,7 +2837,7 @@ ThemeObjects.PlayerTP.Layout.Parent = ThemeObjects.PlayerTP.Scroll
 do
 	local padding = Instance.new("UIPadding")
 	padding.PaddingLeft = UDim.new(0, 2)
-	padding.PaddingRight = UDim.new(0, 2)
+	padding.PaddingRight = UDim.new(0, 8)
 	padding.PaddingTop = UDim.new(0, 1)
 	padding.PaddingBottom = UDim.new(0, 1)
 	padding.Parent = ThemeObjects.PlayerTP.Scroll
@@ -2867,7 +2880,7 @@ ThemeObjects.PlayerTP.WaypointLayout.Parent = ThemeObjects.PlayerTP.WaypointScro
 do
 	local padding = Instance.new("UIPadding")
 	padding.PaddingLeft = UDim.new(0, 2)
-	padding.PaddingRight = UDim.new(0, 2)
+	padding.PaddingRight = UDim.new(0, 8)
 	padding.PaddingTop = UDim.new(0, 1)
 	padding.PaddingBottom = UDim.new(0, 1)
 	padding.Parent = ThemeObjects.PlayerTP.WaypointScroll
@@ -2884,7 +2897,7 @@ ThemeObjects.PlayerTP.Refresh = function()
 			if filter == "" or displayText:lower():find(filter, 1, true) or targetPlayer.Name:lower():find(filter, 1, true) then
 				local targetRow = Instance.new("Frame")
 				targetRow.Name = "PlayerTPRow"
-				targetRow.Size = UDim2.new(1, 0, 0, 30)
+				targetRow.Size = UDim2.new(1, -8, 0, 30)
 				targetRow.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
 				targetRow.BackgroundTransparency = 0.8
 				targetRow.BorderSizePixel = 0
@@ -2902,14 +2915,14 @@ ThemeObjects.PlayerTP.Refresh = function()
 				displayLabel.TextXAlignment = Enum.TextXAlignment.Left
 				displayLabel.Parent = targetRow
 
-				local usernameLabel = Instance.new("TextLabel")
+			local usernameLabel = Instance.new("TextLabel")
 				usernameLabel.Size = UDim2.new(1, -12, 0, 11)
 				usernameLabel.Position = UDim2.new(0, 7, 0, 16)
 				usernameLabel.BackgroundTransparency = 1
 				usernameLabel.Text = "@" .. targetPlayer.Name
 				usernameLabel.Font = Enum.Font.GothamMedium
 				usernameLabel.TextSize = 8
-				usernameLabel.TextColor3 = InactiveTextColor()
+				usernameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 				usernameLabel.TextXAlignment = Enum.TextXAlignment.Left
 				usernameLabel.Parent = targetRow
 
@@ -2941,8 +2954,8 @@ ThemeObjects.PlayerTP.ShowTab = function(tabName)
 	ThemeObjects.PlayerTP.WaypointScroll.Visible = showingWaypoints
 	ThemeObjects.PlayerTP.PlayersTab.BackgroundTransparency = showingWaypoints and 0.55 or 0.18
 	ThemeObjects.PlayerTP.WaypointsTab.BackgroundTransparency = showingWaypoints and 0.18 or 0.55
-	ThemeObjects.PlayerTP.PlayersTab.TextColor3 = showingWaypoints and InactiveTextColor() or Color3.fromRGB(255, 255, 255)
-	ThemeObjects.PlayerTP.WaypointsTab.TextColor3 = showingWaypoints and Color3.fromRGB(255, 255, 255) or InactiveTextColor()
+	ThemeObjects.PlayerTP.PlayersTab.TextColor3 = Color3.fromRGB(255, 255, 255)
+	ThemeObjects.PlayerTP.WaypointsTab.TextColor3 = Color3.fromRGB(255, 255, 255)
 	if showingWaypoints and ThemeObjects.PlayerTP.RefreshWaypoints then ThemeObjects.PlayerTP.RefreshWaypoints()
 	else ThemeObjects.PlayerTP.Refresh() end
 end
@@ -3147,7 +3160,7 @@ HubState.PlayerListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 do
 	local padding = Instance.new("UIPadding")
 	padding.PaddingLeft = UDim.new(0, 2)
-	padding.PaddingRight = UDim.new(0, 2)
+	padding.PaddingRight = UDim.new(0, 8)
 	padding.PaddingTop = UDim.new(0, 2)
 	padding.PaddingBottom = UDim.new(0, 2)
 	padding.Parent = HubState.PlayerScroll
@@ -3176,10 +3189,10 @@ ThemeObjects.WaypointUI.Title.BackgroundTransparency = 1
 ThemeObjects.WaypointUI.Title.Text = "Waypoints"
 ThemeObjects.WaypointUI.Title.Font = Enum.Font.GothamBold
 ThemeObjects.WaypointUI.Title.TextSize = 11
-ThemeObjects.WaypointUI.Title.TextColor3 = AccentColor
+ThemeObjects.WaypointUI.Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 ThemeObjects.WaypointUI.Title.TextXAlignment = Enum.TextXAlignment.Left
 ThemeObjects.WaypointUI.Title.Parent = ThemeObjects.WaypointUI.Frame
-table.insert(ThemeObjects.Accents, ThemeObjects.WaypointUI.Title)
+table.insert(ThemeObjects.Texts, ThemeObjects.WaypointUI.Title)
 
 ThemeObjects.WaypointUI.AddButton = Instance.new("TextButton")
 ThemeObjects.WaypointUI.AddButton.Size = UDim2.new(0.5, -5, 0, 22)
@@ -3282,7 +3295,7 @@ function ThemeObjects.WaypointUI.Refresh()
 	for index, waypoint in ipairs(ThemeObjects.WaypointUI.Waypoints) do
 		local waypointRow = Instance.new("Frame")
 		waypointRow.Name = "Waypoint" .. index
-		waypointRow.Size = UDim2.new(1, -4, 0, 34)
+		waypointRow.Size = UDim2.new(1, -10, 0, 34)
 		waypointRow.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
 		waypointRow.BackgroundTransparency = 0.92
 		waypointRow.Parent = ThemeObjects.WaypointUI.List
@@ -3297,11 +3310,11 @@ function ThemeObjects.WaypointUI.Refresh()
 		waypointButton.Font = Enum.Font.GothamBold
 		waypointButton.TextSize = 10
 		waypointButton.TextTruncate = Enum.TextTruncate.AtEnd
-		waypointButton.TextColor3 = AccentColor
+		waypointButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 		waypointButton.TextXAlignment = Enum.TextXAlignment.Left
 		waypointButton.Parent = waypointRow
 		table.insert(ThemeObjects.Backgrounds, waypointButton)
-		table.insert(ThemeObjects.Accents, waypointButton)
+		table.insert(ThemeObjects.Texts, waypointButton)
 		Instance.new("UICorner", waypointButton).CornerRadius = UDim.new(0, 4)
 
 		local editButton = Instance.new("TextButton")
@@ -3356,9 +3369,9 @@ function ThemeObjects.WaypointUI.Refresh()
 			editBox.TextSize = waypointButton.TextSize
 			editBox.TextXAlignment = Enum.TextXAlignment.Center
 			editBox.TextWrapped = false
-			editBox.TextColor3 = AccentColor
+			editBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 			editBox.Parent = waypointRow
-			table.insert(ThemeObjects.Accents, editBox)
+			table.insert(ThemeObjects.Texts, editBox)
 			Instance.new("UICorner", editBox).CornerRadius = UDim.new(0, 4)
 			editBox.FocusLost:Connect(function()
 				local newName = editBox.Text:match("^%s*(.-)%s*$")
@@ -3390,7 +3403,7 @@ ThemeObjects.PlayerTP.RefreshWaypoints = function()
 		if filter == "" or waypointName:lower():find(filter, 1, true) then
 			local waypointRow = Instance.new("Frame")
 			waypointRow.Name = "PlayerTPWaypointRow"
-			waypointRow.Size = UDim2.new(1, 0, 0, 30)
+			waypointRow.Size = UDim2.new(1, -8, 0, 30)
 			waypointRow.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
 			waypointRow.BackgroundTransparency = 0.8
 			waypointRow.BorderSizePixel = 0
@@ -3416,7 +3429,7 @@ ThemeObjects.PlayerTP.RefreshWaypoints = function()
 			typeLabel.Text = waypoint.Kind == "Position" and "Saved position" or "Saved part"
 			typeLabel.Font = Enum.Font.GothamMedium
 			typeLabel.TextSize = 8
-			typeLabel.TextColor3 = InactiveTextColor()
+			typeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 			typeLabel.TextXAlignment = Enum.TextXAlignment.Left
 			typeLabel.Parent = waypointRow
 
@@ -3471,14 +3484,15 @@ ThemeObjects.PlayerTP.RefreshWaypoints = function()
 				editBox.Size = UDim2.new(1, -64, 1, -6)
 				editBox.Position = UDim2.new(0, 6, 0, 3)
 				editBox.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-				editBox.BackgroundTransparency = 0.25
+				editBox.BackgroundTransparency = 0.8
 				editBox.BorderSizePixel = 0
 				editBox.Text = waypointName
 				editBox.ClearTextOnFocus = false
 				editBox.Font = Enum.Font.GothamBold
 				editBox.TextSize = 10
-				editBox.TextColor3 = AccentColor
+				editBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 				editBox.Parent = waypointRow
+				table.insert(ThemeObjects.Texts, editBox)
 				Instance.new("UICorner", editBox).CornerRadius = UDim.new(0, 4)
 				editBox.FocusLost:Connect(function()
 					local newName = editBox.Text:match("^%s*(.-)%s*$")
@@ -4771,7 +4785,7 @@ do
 	HubState.SpeedTitle.Position = UDim2.new(0, 8, 0.5, -10)
 	HubState.SpeedTitle.Parent = speedCard
 	HubState.SpeedInput.Size = UDim2.new(0, 44, 0, 20)
-	HubState.SpeedInput.Position = UDim2.new(0, 74, 0.5, -10)
+	HubState.SpeedInput.Position = UDim2.new(1, -144, 0.5, -10)
 	HubState.SpeedInput.TextSize = 9
 	HubState.SpeedInput.Parent = speedCard
 	HubState.SpeedToggleBtn.Size = UDim2.new(0, 44, 0, 20)
@@ -4787,7 +4801,7 @@ do
 	HubState.FlyTitle.Position = UDim2.new(0, 8, 0.5, -10)
 	HubState.FlyTitle.Parent = flyCard
 	HubState.FlyInput.Size = UDim2.new(0, 44, 0, 20)
-	HubState.FlyInput.Position = UDim2.new(0, 74, 0.5, -10)
+	HubState.FlyInput.Position = UDim2.new(1, -144, 0.5, -10)
 	HubState.FlyInput.TextSize = 9
 	HubState.FlyInput.Parent = flyCard
 	HubState.FlyToggleBtn.Size = UDim2.new(0, 44, 0, 20)
@@ -4837,8 +4851,8 @@ do
 	table.insert(ThemeObjects.Texts, ThemeObjects.CameraFOV.Title)
 
 	ThemeObjects.CameraFOV.Input = Instance.new("TextBox")
-	ThemeObjects.CameraFOV.Input.Size = UDim2.new(0, 60, 0, 20)
-	ThemeObjects.CameraFOV.Input.Position = UDim2.new(0, 62, 0.5, -10)
+	ThemeObjects.CameraFOV.Input.Size = UDim2.new(0, 44, 0, 20)
+	ThemeObjects.CameraFOV.Input.Position = UDim2.new(1, -106, 0.5, -10)
 	ThemeObjects.CameraFOV.Input.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	ThemeObjects.CameraFOV.Input.BackgroundTransparency = 0.8
 	ThemeObjects.CameraFOV.Input.BorderSizePixel = 0
