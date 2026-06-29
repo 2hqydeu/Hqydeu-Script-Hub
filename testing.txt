@@ -244,7 +244,7 @@ local HubState = {}
 HubState.Notifications = {}
 HubState.NotificationHolder = Instance.new("Frame")
 HubState.NotificationHolder.Name = "NotificationHolder"
-HubState.NotificationHolder.Size = UDim2.new(0, 280, 0, 88)
+HubState.NotificationHolder.Size = UDim2.new(0, 280, 0, 60)
 HubState.NotificationHolder.Position = UDim2.new(0, 24, 0.75, 0)
 HubState.NotificationHolder.AnchorPoint = Vector2.new(0, 0)
 HubState.NotificationHolder.BackgroundTransparency = 1
@@ -303,7 +303,7 @@ ThemeObjects.LayoutNotifications = function()
 	for index, item in ipairs(HubState.Notifications) do
 		if item.Frame and item.Frame.Parent then
 			TweenService:Create(item.Frame, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-				Position = UDim2.new(0, 0, 0, (index - 1) * 40),
+				Position = UDim2.new(0, 0, 0, (index - 1) * 28),
 			}):Play()
 		end
 	end
@@ -338,14 +338,14 @@ ThemeObjects.ShowNotification = function(message)
 	HubState.NotificationSound:Play()
 	local item = {}
 	item.Frame = Instance.new("Frame")
-	item.Frame.Size = UDim2.new(1, 0, 0, 34)
-	item.Frame.Position = UDim2.new(0, 0, 0, 44)
+	item.Frame.Size = UDim2.new(1, 0, 0, 24)
+	item.Frame.Position = UDim2.new(0, 0, 0, 28)
 	item.Frame.BackgroundColor3 = FrameThemeColor
 	item.Frame.BackgroundTransparency = 1
 	item.Frame.BorderSizePixel = 0
 	item.Frame.ZIndex = 201
 	item.Frame.Parent = HubState.NotificationHolder
-	Instance.new("UICorner", item.Frame).CornerRadius = UDim.new(0, 7)
+	Instance.new("UICorner", item.Frame).CornerRadius = UDim.new(0, 5)
 	item.Stroke = Instance.new("UIStroke")
 	item.Stroke.Color = AccentColor
 	item.Stroke.Thickness = 1.4
@@ -357,7 +357,7 @@ ThemeObjects.ShowNotification = function(message)
 	item.Label.BackgroundTransparency = 1
 	item.Label.Text = tostring(message)
 	item.Label.Font = Enum.Font.GothamBold
-	item.Label.TextSize = 12
+	item.Label.TextSize = 11
 	item.Label.TextColor3 = Color3.fromRGB(255, 255, 255)
 	item.Label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 	item.Label.TextStrokeTransparency = 1
@@ -385,7 +385,9 @@ ThemeObjects.RefreshStateTexts = function(instant)
 		if entry.Object and entry.Object.Parent then
 			local success, enabled = pcall(entry.IsEnabled)
 			enabled = success and enabled == true
-			if enabled and entry.LastEnabled ~= true then
+			if entry.LastEnabled ~= nil and enabled ~= entry.LastEnabled then
+				ThemeObjects.ShowNotification((entry.Name or entry.Object.Text or "Feature") .. (enabled and " enabled" or " disabled"))
+			elseif enabled and entry.LastEnabled == nil then
 				ThemeObjects.ShowNotification((entry.Name or entry.Object.Text or "Feature") .. " enabled")
 			end
 			entry.LastEnabled = enabled
@@ -400,7 +402,8 @@ end
 ThemeObjects.StyleTextOutline = function(obj)
 	if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
 		obj.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-		obj.TextStrokeTransparency = obj == SplashText and 1 or 0.5
+		obj.TextTransparency = 0
+		obj.TextStrokeTransparency = (obj == SplashText or obj:IsA("TextBox")) and 1 or 0.62
 	end
 end
 
@@ -440,6 +443,12 @@ local function CompactGuiText(root)
 		elseif isMainContent and (obj:IsA("TextButton") or obj:IsA("TextBox")) then
 			obj.TextSize = math.min(obj.TextSize, 12)
 			obj.TextWrapped = true
+			obj.TextColor3 = Color3.fromRGB(255, 255, 255)
+			obj.TextTransparency = 0
+			if obj:IsA("TextBox") then
+				obj.PlaceholderColor3 = Color3.fromRGB(255, 255, 255)
+				obj.TextStrokeTransparency = 1
+			end
 		elseif isMainContent and obj:IsA("TextLabel") and obj.TextSize > 13 then
 			obj.TextSize = 13
 		end
@@ -2559,6 +2568,9 @@ HubState.TargetSearch.PlaceholderText = "Search Player Name..."
 HubState.TargetSearch.Text = ""
 HubState.TargetSearch.Font = Enum.Font.GothamMedium
 HubState.TargetSearch.TextSize = 11
+HubState.TargetSearch.TextColor3 = Color3.fromRGB(255, 255, 255)
+HubState.TargetSearch.PlaceholderColor3 = Color3.fromRGB(255, 255, 255)
+HubState.TargetSearch.TextTransparency = 0
 HubState.TargetSearch.Parent = HubState.TargetFrame
 table.insert(ThemeObjects.Backgrounds, HubState.TargetSearch)
 table.insert(ThemeObjects.Texts, HubState.TargetSearch)
@@ -2695,8 +2707,10 @@ local function RefreshFlingTargets()
 				usernameLabel.Position = UDim2.new(0, 7, 0, 16)
 				usernameLabel.BackgroundTransparency = 1
 				usernameLabel.Text = "@" .. targetPlayer.Name
-				usernameLabel.Font = Enum.Font.GothamMedium
+				usernameLabel.Font = Enum.Font.GothamBold
 				usernameLabel.TextSize = 8
+				usernameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+				usernameLabel.TextTransparency = 0
 				usernameLabel.TextXAlignment = Enum.TextXAlignment.Left
 				usernameLabel.Parent = targetRow
 				table.insert(ThemeObjects.Texts, usernameLabel)
@@ -2813,6 +2827,9 @@ ThemeObjects.PlayerTP.Search.PlaceholderText = "Search Player Name..."
 ThemeObjects.PlayerTP.Search.Text = ""
 ThemeObjects.PlayerTP.Search.Font = Enum.Font.GothamMedium
 ThemeObjects.PlayerTP.Search.TextSize = 11
+ThemeObjects.PlayerTP.Search.TextColor3 = Color3.fromRGB(255, 255, 255)
+ThemeObjects.PlayerTP.Search.PlaceholderColor3 = Color3.fromRGB(255, 255, 255)
+ThemeObjects.PlayerTP.Search.TextTransparency = 0
 ThemeObjects.PlayerTP.Search.Parent = ThemeObjects.PlayerTP.Frame
 table.insert(ThemeObjects.Backgrounds, ThemeObjects.PlayerTP.Search)
 table.insert(ThemeObjects.Texts, ThemeObjects.PlayerTP.Search)
@@ -2854,6 +2871,9 @@ ThemeObjects.PlayerTP.WaypointSearch.PlaceholderText = "Search Waypoints..."
 ThemeObjects.PlayerTP.WaypointSearch.Text = ""
 ThemeObjects.PlayerTP.WaypointSearch.Font = Enum.Font.GothamMedium
 ThemeObjects.PlayerTP.WaypointSearch.TextSize = 11
+ThemeObjects.PlayerTP.WaypointSearch.TextColor3 = Color3.fromRGB(255, 255, 255)
+ThemeObjects.PlayerTP.WaypointSearch.PlaceholderColor3 = Color3.fromRGB(255, 255, 255)
+ThemeObjects.PlayerTP.WaypointSearch.TextTransparency = 0
 ThemeObjects.PlayerTP.WaypointSearch.Visible = false
 ThemeObjects.PlayerTP.WaypointSearch.Parent = ThemeObjects.PlayerTP.Frame
 table.insert(ThemeObjects.Backgrounds, ThemeObjects.PlayerTP.WaypointSearch)
@@ -2913,6 +2933,7 @@ ThemeObjects.PlayerTP.Refresh = function()
 				displayLabel.Font = Enum.Font.GothamBold
 				displayLabel.TextSize = 10
 				displayLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+				displayLabel.TextTransparency = 0
 				displayLabel.TextXAlignment = Enum.TextXAlignment.Left
 				displayLabel.Parent = targetRow
 
@@ -2921,9 +2942,10 @@ ThemeObjects.PlayerTP.Refresh = function()
 				usernameLabel.Position = UDim2.new(0, 7, 0, 16)
 				usernameLabel.BackgroundTransparency = 1
 				usernameLabel.Text = "@" .. targetPlayer.Name
-				usernameLabel.Font = Enum.Font.GothamMedium
+				usernameLabel.Font = Enum.Font.GothamBold
 				usernameLabel.TextSize = 8
 				usernameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+				usernameLabel.TextTransparency = 0
 				usernameLabel.TextXAlignment = Enum.TextXAlignment.Left
 				usernameLabel.Parent = targetRow
 
@@ -3616,9 +3638,10 @@ local function UpdatePlayerList()
 		pName.BackgroundTransparency = 1
 		pName.BorderSizePixel = 0
 		pName.Text = p.DisplayName or p.Name
-		pName.Font = Enum.Font.GothamMedium
+		pName.Font = Enum.Font.GothamBold
 		pName.TextSize = 11
 		pName.TextColor3 = Color3.fromRGB(255, 255, 255)
+		pName.TextTransparency = 0
 		pName.TextXAlignment = Enum.TextXAlignment.Left
 		pName.Parent = pFrame
 		table.insert(ThemeObjects.Texts, pName)
@@ -4424,8 +4447,8 @@ do
 
 	local stabRow = CreateMM2ControlRow("AutoStabRow", 1, -8, 0, 4, 4, 38)
 	local shootRow = CreateMM2ControlRow("AutoShootRow", 1, -8, 0, 4, 48, 38)
-	local gunRow = CreateMM2ControlRow("AutoGunRow", 1, -8, 0, 4, 92, 48)
-	local coinRow = CreateMM2ControlRow("CoinFarmRow", 1, -8, 0, 4, 146, 48)
+	local gunRow = CreateMM2ControlRow("AutoGunRow", 1, -8, 0, 4, 92, 38)
+	local coinRow = CreateMM2ControlRow("CoinFarmRow", 1, -8, 0, 4, 136, 48)
 
 	local function PlaceMM2Control(title, toggle, row, fullWidth)
 		title.Size = fullWidth and UDim2.new(0, 130, 0, 24) or UDim2.new(0, 82, 0, 22)
@@ -4629,6 +4652,9 @@ HubState.SpeedInput.BackgroundTransparency = 0.8
 HubState.SpeedInput.BorderSizePixel = 0
 HubState.SpeedInput.Text = tostring(HubState.CurrentCFrameSpeed)
 HubState.SpeedInput.Font = Enum.Font.GothamMedium
+HubState.SpeedInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+HubState.SpeedInput.PlaceholderColor3 = Color3.fromRGB(255, 255, 255)
+HubState.SpeedInput.TextTransparency = 0
 HubState.SpeedInput.Parent = HubState.MovementPage
 table.insert(ThemeObjects.Backgrounds, HubState.SpeedInput)
 table.insert(ThemeObjects.Texts, HubState.SpeedInput)
@@ -4767,6 +4793,9 @@ HubState.FlyInput.BackgroundTransparency = 0.8
 HubState.FlyInput.BorderSizePixel = 0
 HubState.FlyInput.Text = tostring(HubState.FlySpeed)
 HubState.FlyInput.Font = Enum.Font.GothamMedium
+HubState.FlyInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+HubState.FlyInput.PlaceholderColor3 = Color3.fromRGB(255, 255, 255)
+HubState.FlyInput.TextTransparency = 0
 HubState.FlyInput.Parent = HubState.MovementPage
 table.insert(ThemeObjects.Backgrounds, HubState.FlyInput)
 table.insert(ThemeObjects.Texts, HubState.FlyInput)
@@ -4888,6 +4917,9 @@ do
 	ThemeObjects.CameraFOV.Input.Font = Enum.Font.GothamMedium
 	ThemeObjects.CameraFOV.Input.TextSize = 10
 	ThemeObjects.CameraFOV.Input.ClearTextOnFocus = false
+	ThemeObjects.CameraFOV.Input.TextColor3 = Color3.fromRGB(255, 255, 255)
+	ThemeObjects.CameraFOV.Input.PlaceholderColor3 = Color3.fromRGB(255, 255, 255)
+	ThemeObjects.CameraFOV.Input.TextTransparency = 0
 	ThemeObjects.CameraFOV.Input.Parent = ThemeObjects.CameraFOV.Card
 	table.insert(ThemeObjects.Backgrounds, ThemeObjects.CameraFOV.Input)
 	table.insert(ThemeObjects.Texts, ThemeObjects.CameraFOV.Input)
@@ -5364,9 +5396,10 @@ for i, name in ipairs(HubState.TabNames) do
 	TabBtn.BackgroundTransparency = 0.8
 	TabBtn.BorderSizePixel = 0
 	TabBtn.Text = name
-	TabBtn.Font = Enum.Font.GothamMedium
+	TabBtn.Font = Enum.Font.GothamBold
 	TabBtn.TextSize = 11
 	TabBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	TabBtn.TextTransparency = 0
 	TabBtn.Parent = HubState.TabScroll
 	if name == "Games" then HubState.GamesTabButton = TabBtn end
 	table.insert(ThemeObjects.Backgrounds, TabBtn)
