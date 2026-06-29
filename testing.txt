@@ -269,14 +269,14 @@ HubState.NotificationSound.Volume = 0.55
 HubState.NotificationSound.Parent = HubState.NotificationHolder
 
 ThemeObjects.ApplyMainGradient = function(intensity)
-	intensity = math.clamp(intensity or 0.5, 0, 0.5)
+	intensity = math.clamp(intensity or 0.5, 0, 0.75)
 	local bgColor = FrameThemeColor
 	MainTextureGradient.Color = ColorSequence.new({
 		ColorSequenceKeypoint.new(0, bgColor:Lerp(Color3.new(0, 0, 0), 0.08)),
-		ColorSequenceKeypoint.new(0.18, bgColor:Lerp(AccentColor, intensity * 0.38)),
+		ColorSequenceKeypoint.new(0.18, bgColor:Lerp(AccentColor, intensity * 0.48)),
 		ColorSequenceKeypoint.new(0.48, bgColor:Lerp(AccentColor, intensity)),
-		ColorSequenceKeypoint.new(0.73, bgColor:Lerp(AccentColor, intensity * 0.72)),
-		ColorSequenceKeypoint.new(1, bgColor:Lerp(AccentColor, intensity * 0.22)),
+		ColorSequenceKeypoint.new(0.73, bgColor:Lerp(AccentColor, intensity * 0.84)),
+		ColorSequenceKeypoint.new(1, bgColor:Lerp(AccentColor, intensity * 0.36)),
 	})
 	if TargetTextureGradient then TargetTextureGradient.Color = MainTextureGradient.Color end
 	if ThemeObjects.PlayerTP and ThemeObjects.PlayerTP.Gradient then ThemeObjects.PlayerTP.Gradient.Color = MainTextureGradient.Color end
@@ -618,11 +618,24 @@ HubState.Connections.GradientPulse = RunService.Heartbeat:Connect(function(delta
 	if ThemeObjects.GradientPulseAccumulator < 0.05 then return end
 	ThemeObjects.GradientPulseAccumulator = 0
 	if type(ThemeObjects.ApplyMainGradient) == "function" then
-		local pulse = 0.22 + ((math.sin(ThemeObjects.GradientPulseTime * 1.35) + 1) * 0.14)
+		local pulse = 0.3 + ((math.sin(ThemeObjects.GradientPulseTime * 1.75) + 1) * 0.225)
 		pcall(ThemeObjects.ApplyMainGradient, pulse)
 	end
 end)
 ThemeObjects.FreeCam = {Enabled = false, Keybind = LoadKeybind("FreeCam"), Binding = false}
+
+ThemeObjects.UpdateEmblemPosition = function()
+	if not MainPatternLines.Container then return end
+	MainPatternLines.Container.Visible = true
+	MainPatternLines.Container.Size = UDim2.new(0, 66, 0, 22)
+	if HubState.minimized then
+		MainPatternLines.Container.Position = UDim2.new(0, 8, 0, 6)
+	elseif HubState.settingsOpen then
+		MainPatternLines.Container.Position = UDim2.new(0, 246, 0, 5)
+	else
+		MainPatternLines.Container.Position = UDim2.new(0, 254, 0, 5)
+	end
+end
 
 -- Top Bar
 HubState.MiniButton = Instance.new("TextButton")
@@ -2641,53 +2654,81 @@ local function FlingPlayer(targetPlayer)
 	HubState.Flinging = true
 	local originalCFrame = root.CFrame
 	local originalAutoRotate = humanoid.AutoRotate
+	local originalPlatformStand = humanoid.PlatformStand
 	local originalRootCollision = root.CanCollide
+	local originalAngularVelocity = root.AssemblyAngularVelocity
+	local originalLinearVelocity = root.AssemblyLinearVelocity
+	local movers = {}
 	humanoid.AutoRotate = false
+	humanoid.PlatformStand = true
 	root.CanCollide = true
 
 	local angularVelocity = Instance.new("BodyAngularVelocity")
 	angularVelocity.Name = "R15FlingVelocity"
-	angularVelocity.AngularVelocity = Vector3.new(0, 850000, 0)
+	angularVelocity.AngularVelocity = Vector3.new(0, 1200000, 0)
 	angularVelocity.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
 	angularVelocity.P = math.huge
 	angularVelocity.Parent = root
+	table.insert(movers, angularVelocity)
+
+	local bodyVelocity = Instance.new("BodyVelocity")
+	bodyVelocity.Name = "R15FlingPush"
+	bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+	bodyVelocity.P = 125000
+	bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+	bodyVelocity.Parent = root
+	table.insert(movers, bodyVelocity)
+
+	local function cleanup()
+		for _, mover in ipairs(movers) do
+			if mover and mover.Parent then mover:Destroy() end
+		end
+		if root and root.Parent then
+			root.CanCollide = originalRootCollision
+			root.AssemblyAngularVelocity = originalAngularVelocity
+			root.AssemblyLinearVelocity = originalLinearVelocity
+			root.CFrame = originalCFrame
+		end
+		if humanoid and humanoid.Parent then
+			humanoid.AutoRotate = originalAutoRotate
+			humanoid.PlatformStand = originalPlatformStand
+		end
+		HubState.Flinging = false
+	end
 
 	pcall(function()
-		local targetContactPart = targetCharacter:FindFirstChild("UpperTorso") or targetRoot
+		local targetContactPart = targetCharacter:FindFirstChild("UpperTorso")
+			or targetCharacter:FindFirstChild("Torso")
+			or targetCharacter:FindFirstChild("LowerTorso")
+			or targetRoot
 		local offsets = {
 			CFrame.new(0, 0, 0),
-			CFrame.new(0.7, 0, 0),
-			CFrame.new(-0.7, 0, 0),
-			CFrame.new(0, 0, 0.7),
-			CFrame.new(0, 0, -0.7),
-			CFrame.new(0, 1.1, 0),
-			CFrame.new(0, -0.8, 0),
+			CFrame.new(0.85, 0, 0),
+			CFrame.new(-0.85, 0, 0),
+			CFrame.new(0, 0, 0.85),
+			CFrame.new(0, 0, -0.85),
+			CFrame.new(0, 1.15, 0),
+			CFrame.new(0, -0.95, 0),
+			CFrame.new(0.55, 0.55, 0.55),
+			CFrame.new(-0.55, 0.55, -0.55),
 		}
 		local startedAt = os.clock()
 		local step = 0
-		while os.clock() - startedAt < 1.8 and targetRoot.Parent and targetHumanoid.Health > 0 and root.Parent do
+		while os.clock() - startedAt < 2.35 and targetRoot.Parent and targetHumanoid.Health > 0 and root.Parent and humanoid.Health > 0 do
 			step += 1
-			local prediction = targetRoot.AssemblyLinearVelocity * 0.035
+			local prediction = targetRoot.AssemblyLinearVelocity * 0.045
+			local spinAngle = step * 0.72
 			local targetCFrame = targetContactPart.CFrame + prediction
-			root.CFrame = targetCFrame * offsets[((step - 1) % #offsets) + 1]
-			root.AssemblyAngularVelocity = Vector3.new(0, 850000, 0)
-			root.AssemblyLinearVelocity = targetRoot.AssemblyLinearVelocity
-			if os.clock() - startedAt > 0.45 and targetRoot.AssemblyLinearVelocity.Magnitude > 95 then break end
+			local offset = offsets[((step - 1) % #offsets) + 1]
+			root.CFrame = targetCFrame * CFrame.Angles(0, spinAngle, 0) * offset
+			root.AssemblyAngularVelocity = Vector3.new(0, 1200000, 0)
+			root.AssemblyLinearVelocity = targetRoot.AssemblyLinearVelocity + Vector3.new(0, 35, 0)
+			bodyVelocity.Velocity = targetRoot.AssemblyLinearVelocity + Vector3.new(0, 65, 0)
+			if os.clock() - startedAt > 0.55 and targetRoot.AssemblyLinearVelocity.Magnitude > 115 then break end
 			RunService.Heartbeat:Wait()
 		end
 	end)
-
-	if angularVelocity.Parent then angularVelocity:Destroy() end
-	if root and root.Parent then
-		root.CanCollide = originalRootCollision
-		root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-		root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-		root.CFrame = originalCFrame
-	end
-	if humanoid and humanoid.Parent then
-		humanoid.AutoRotate = originalAutoRotate
-	end
-	HubState.Flinging = false
+	cleanup()
 end
 
 local function RefreshFlingTargets()
@@ -3040,10 +3081,14 @@ end))
 
 HubState.FlingBindBtn.MouseButton1Click:Connect(function()
 	PlayClick()
+	if HubState.FlingBindConnection then
+		HubState.FlingBindConnection:Disconnect()
+		HubState.FlingBindConnection = nil
+	end
 	HubState.IsBindingFlingMenu = true
 	HubState.FlingBindBtn.Text = "..."
-	local bindConnection
-	bindConnection = UserInputService.InputBegan:Connect(function(input)
+	HubState.FlingBindConnection = UserInputService.InputBegan:Connect(function(input, processed)
+		if processed then return end
 		if input.UserInputType == Enum.UserInputType.Keyboard then
 			local selectedKey = input.KeyCode
 			if selectedKey == Enum.KeyCode.Backspace or selectedKey == Enum.KeyCode.Delete then
@@ -3053,7 +3098,10 @@ HubState.FlingBindBtn.MouseButton1Click:Connect(function()
 			SaveKeybind("FlingMenu", selectedKey)
 			HubState.FlingBindBtn.Text = KeybindText(selectedKey)
 			HubState.IsBindingFlingMenu = false
-			bindConnection:Disconnect()
+			if HubState.FlingBindConnection then
+				HubState.FlingBindConnection:Disconnect()
+				HubState.FlingBindConnection = nil
+			end
 		end
 	end)
 end)
@@ -5357,6 +5405,7 @@ HubState.minimized = false
 
 local function ToggleSettings(forceClose)
 	HubState.settingsOpen = forceClose and false or not HubState.settingsOpen
+	ThemeObjects.UpdateEmblemPosition()
 	if not forceClose then PlayClick() end
 	local posMove = HubState.settingsOpen and 1.1 or 0 
     local posSet = HubState.settingsOpen and 0 or 1.1
@@ -5388,11 +5437,7 @@ local function ToggleGUI()
 	HubState.minimized = not HubState.minimized PlaySwoosh()
 	if HubState.minimized and HubState.settingsOpen then ToggleSettings(true) end
 	HubState.TabScroll.Visible = not HubState.minimized
-	if MainPatternLines.Container then
-		MainPatternLines.Container.Visible = true
-		MainPatternLines.Container.Size = UDim2.new(0, 66, 0, 22)
-		MainPatternLines.Container.Position = HubState.minimized and UDim2.new(0, 8, 0, 6) or UDim2.new(0, 254, 0, 5)
-	end
+	ThemeObjects.UpdateEmblemPosition()
 	if not HubState.minimized then HubState.SettingsBtn.Visible = true end
 	HubState.SettingsBtn.Active = not HubState.minimized
 	TweenService:Create(HubState.SettingsBtn, TweenInfo.new(0.2), {
