@@ -244,15 +244,15 @@ HubState.Notifications = {}
 HubState.NotificationHolder = Instance.new("Frame")
 HubState.NotificationHolder.Name = "NotificationHolder"
 HubState.NotificationHolder.Size = UDim2.new(0, 280, 0, 88)
-HubState.NotificationHolder.Position = UDim2.new(0.5, 0, 0, 14)
-HubState.NotificationHolder.AnchorPoint = Vector2.new(0.5, 0)
+HubState.NotificationHolder.Position = UDim2.new(0, 24, 0.75, 0)
+HubState.NotificationHolder.AnchorPoint = Vector2.new(0, 0)
 HubState.NotificationHolder.BackgroundTransparency = 1
 HubState.NotificationHolder.BorderSizePixel = 0
 HubState.NotificationHolder.ZIndex = 200
 HubState.NotificationHolder.Parent = ScreenGui
 
 HubState.NotificationSound = Instance.new("Sound")
-HubState.NotificationSound.SoundId = SwooshSound.SoundId
+HubState.NotificationSound.SoundId = "rbxassetid://131390520971848"
 HubState.NotificationSound.Volume = 0.55
 HubState.NotificationSound.Parent = HubState.NotificationHolder
 
