@@ -13,6 +13,10 @@ local InterfaceScale = 1.18
 local KeybindStorageFile = "HqydeuLoader_Keybinds.json"
 local SavedKeybinds = {}
 local CanPersistKeybinds = type(isfile) == "function" and type(readfile) == "function" and type(writefile) == "function"
+if type(getgenv) == "function" then
+	local globalSettings = getgenv().HqydeuLoader_Settings
+	if type(globalSettings) == "table" then SavedKeybinds = globalSettings end
+end
 
 if CanPersistKeybinds then
 	pcall(function()
@@ -21,6 +25,10 @@ if CanPersistKeybinds then
 			if type(decoded) == "table" then SavedKeybinds = decoded end
 		end
 	end)
+end
+if type(getgenv) == "function" then
+	local globalSettings = getgenv().HqydeuLoader_Settings
+	if type(globalSettings) == "table" then SavedKeybinds = globalSettings end
 end
 
 local GuiSizeValue = math.clamp(tonumber(SavedKeybinds.GuiSize) or 50, 20, 100)
@@ -38,6 +46,9 @@ local function LoadKeybind(featureName)
 end
 
 local function SavePersistentSettings()
+	if type(getgenv) == "function" then
+		getgenv().HqydeuLoader_Settings = SavedKeybinds
+	end
 	if CanPersistKeybinds then
 		pcall(function() writefile(KeybindStorageFile, HttpService:JSONEncode(SavedKeybinds)) end)
 	end
@@ -164,7 +175,7 @@ do
 	local pattern = Instance.new("Frame")
 	pattern.Name = "MinimalPattern"
 	pattern.Size = UDim2.new(0, 66, 0, 22)
-	pattern.Position = UDim2.new(0, 212, 0, 5)
+	pattern.Position = UDim2.new(0, 254, 0, 5)
 	pattern.BackgroundTransparency = 1
 	pattern.ClipsDescendants = true
 	pattern.ZIndex = 2
@@ -403,7 +414,7 @@ ThemeObjects.StyleTextOutline = function(obj)
 	if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
 		obj.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 		obj.TextTransparency = 0
-		obj.TextStrokeTransparency = (obj == SplashText or obj:IsA("TextBox")) and 1 or 0.62
+		obj.TextStrokeTransparency = obj == SplashText and 1 or 0.5
 	end
 end
 
@@ -447,7 +458,8 @@ local function CompactGuiText(root)
 			obj.TextTransparency = 0
 			if obj:IsA("TextBox") then
 				obj.PlaceholderColor3 = Color3.fromRGB(255, 255, 255)
-				obj.TextStrokeTransparency = 1
+				obj.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+				obj.TextStrokeTransparency = 0.5
 			end
 		elseif isMainContent and obj:IsA("TextLabel") and obj.TextSize > 13 then
 			obj.TextSize = 13
@@ -501,7 +513,7 @@ local function UpdateTheme(instant)
 				local parentName = obj.Parent and obj.Parent.Name or ""
 				local isTileTitle = obj:IsA("TextLabel") and (parentName:find("Card", 1, true) or parentName:find("Row", 1, true))
 				local isToggleText = obj:IsA("TextButton") and (obj.Text == "On" or obj.Text == "Off")
-				local target = Color3.fromRGB(255, 255, 255)
+				local target = (obj.Name == "NavTabButton" and obj.Text == ThemeObjects.ActiveTabName) and AccentColor or Color3.fromRGB(255, 255, 255)
 				TweenService:Create(obj, tweenInfo, {TextColor3 = target}):Play()
 			end
 		else
@@ -3167,9 +3179,14 @@ ThemeObjects.TeleportSearchButton.MouseButton1Click:Connect(function()
 end)
 ThemeObjects.PlayerTP.BindButton.MouseButton1Click:Connect(function()
 	PlayClick()
+	if ThemeObjects.PlayerTP.BindConnection then
+		ThemeObjects.PlayerTP.BindConnection:Disconnect()
+		ThemeObjects.PlayerTP.BindConnection = nil
+	end
 	ThemeObjects.PlayerTP.Binding = true
 	ThemeObjects.PlayerTP.BindButton.Text = "..."
-	ThemeObjects.PlayerTP.BindConnection = UserInputService.InputBegan:Connect(function(input)
+	ThemeObjects.PlayerTP.BindConnection = UserInputService.InputBegan:Connect(function(input, processed)
+		if processed then return end
 		if input.UserInputType == Enum.UserInputType.Keyboard then
 			local selectedKey = input.KeyCode
 			if selectedKey == Enum.KeyCode.Backspace or selectedKey == Enum.KeyCode.Delete then
@@ -4651,7 +4668,7 @@ HubState.SpeedInput.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
 HubState.SpeedInput.BackgroundTransparency = 0.8
 HubState.SpeedInput.BorderSizePixel = 0
 HubState.SpeedInput.Text = tostring(HubState.CurrentCFrameSpeed)
-HubState.SpeedInput.Font = Enum.Font.GothamMedium
+HubState.SpeedInput.Font = Enum.Font.GothamBold
 HubState.SpeedInput.TextColor3 = Color3.fromRGB(255, 255, 255)
 HubState.SpeedInput.PlaceholderColor3 = Color3.fromRGB(255, 255, 255)
 HubState.SpeedInput.TextTransparency = 0
@@ -4792,7 +4809,7 @@ HubState.FlyInput.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
 HubState.FlyInput.BackgroundTransparency = 0.8
 HubState.FlyInput.BorderSizePixel = 0
 HubState.FlyInput.Text = tostring(HubState.FlySpeed)
-HubState.FlyInput.Font = Enum.Font.GothamMedium
+HubState.FlyInput.Font = Enum.Font.GothamBold
 HubState.FlyInput.TextColor3 = Color3.fromRGB(255, 255, 255)
 HubState.FlyInput.PlaceholderColor3 = Color3.fromRGB(255, 255, 255)
 HubState.FlyInput.TextTransparency = 0
@@ -4914,7 +4931,7 @@ do
 	ThemeObjects.CameraFOV.Input.BackgroundTransparency = 0.8
 	ThemeObjects.CameraFOV.Input.BorderSizePixel = 0
 	ThemeObjects.CameraFOV.Input.Text = tostring(math.floor(ThemeObjects.CameraFOV.Value + 0.5))
-	ThemeObjects.CameraFOV.Input.Font = Enum.Font.GothamMedium
+	ThemeObjects.CameraFOV.Input.Font = Enum.Font.GothamBold
 	ThemeObjects.CameraFOV.Input.TextSize = 10
 	ThemeObjects.CameraFOV.Input.ClearTextOnFocus = false
 	ThemeObjects.CameraFOV.Input.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -4957,9 +4974,14 @@ do
 end
 
 -- Movement Logic
+ThemeObjects.BindingConnections = {}
 local function SetupBinding(button, type)
 	button.MouseButton1Click:Connect(function()
 		PlayClick()
+		if ThemeObjects.BindingConnections[type] then
+			ThemeObjects.BindingConnections[type]:Disconnect()
+			ThemeObjects.BindingConnections[type] = nil
+		end
 		button.Text = "..."
 		if type == "Speed" then HubState.IsBindingSpeed = true
 		elseif type == "Noclip" then HubState.IsBindingNoclip = true
@@ -4969,7 +4991,8 @@ local function SetupBinding(button, type)
 		elseif type == "ESP" then HubState.IsBindingESP = true end
 		
 		local conn
-		conn = UserInputService.InputBegan:Connect(function(input)
+		conn = UserInputService.InputBegan:Connect(function(input, processed)
+			if processed then return end
 			if input.UserInputType == Enum.UserInputType.Keyboard then
 				local selectedKey = input.KeyCode
 				if selectedKey == Enum.KeyCode.Backspace or selectedKey == Enum.KeyCode.Delete then
@@ -4984,9 +5007,11 @@ local function SetupBinding(button, type)
 				
 				SaveKeybind(type, selectedKey)
 				button.Text = KeybindText(selectedKey)
+				ThemeObjects.BindingConnections[type] = nil
 				conn:Disconnect()
 			end
 		end)
+		ThemeObjects.BindingConnections[type] = conn
 	end)
 end
 
@@ -5349,7 +5374,7 @@ local function ToggleGUI()
 	if MainPatternLines.Container then
 		MainPatternLines.Container.Visible = true
 		MainPatternLines.Container.Size = UDim2.new(0, 66, 0, 22)
-		MainPatternLines.Container.Position = HubState.minimized and UDim2.new(0, 8, 0, 6) or UDim2.new(0, 200, 0, 5)
+		MainPatternLines.Container.Position = HubState.minimized and UDim2.new(0, 8, 0, 6) or UDim2.new(0, 254, 0, 5)
 	end
 	if not HubState.minimized then HubState.SettingsBtn.Visible = true end
 	HubState.SettingsBtn.Active = not HubState.minimized
@@ -5387,6 +5412,7 @@ end)
 
 -- Tab Setup
 HubState.TabNames = {"Movement", "Combat", "Camera", "Teleport", "Games", "Extras"}
+ThemeObjects.ActiveTabName = "Movement"
 for i, name in ipairs(HubState.TabNames) do
 	local TabBtn = Instance.new("TextButton")
 	TabBtn.Name = "NavTabButton"
@@ -5408,6 +5434,7 @@ for i, name in ipairs(HubState.TabNames) do
 	
 	TabBtn.MouseButton1Click:Connect(function() 
 		PlayClick() 
+		ThemeObjects.ActiveTabName = name
 		if HubState.settingsOpen then ToggleSettings(true) end
 		local openingSelectedGame = name == "Games" and HubState.SelectedGame ~= nil
 		HubState.PageHeader.Text = openingSelectedGame and HubState.SelectedGame or name
@@ -5462,6 +5489,7 @@ for i, name in ipairs(HubState.TabNames) do
 			if openingSelectedGame and HubState.SelectedGame == "Quiet Or Die" then quietPage.Position = UDim2.new(0, 114, 0, 54)
 			else quietPage.Position = UDim2.new(1.1, 0, 0, 54) end
 		end
+		UpdateTheme(true)
 	end)
 end
 
@@ -5999,6 +6027,10 @@ local function ApplyPickerColor()
 	RefreshThemePreviews()
 	RefreshPickerMarkers()
 	UpdateTheme(true)
+	if not ThemeObjects.LastPickerSave or os.clock() - ThemeObjects.LastPickerSave > 0.15 then
+		ThemeObjects.LastPickerSave = os.clock()
+		SaveThemeColors()
+	end
 end
 
 local function OpenColorPicker(target)
