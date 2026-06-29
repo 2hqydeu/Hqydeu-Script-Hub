@@ -1,3 +1,4 @@
+-- LATEST_FIXED_2026_06_29: notification, scrollbar, waypoint text, and input layout fixes applied.
 -- Services
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
