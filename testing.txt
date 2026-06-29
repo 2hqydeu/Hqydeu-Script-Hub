@@ -238,6 +238,7 @@ local function PlaySwoosh() SwooshSound:Play() end
 
 -- Theme Management
 local ThemeObjects = { Backgrounds = {}, Texts = {}, Accents = {}, AccentBackgrounds = {}, StateTexts = {} }
+local HubState = {}
 
 ThemeObjects.ApplyMainGradient = function(intensity)
 	intensity = math.clamp(intensity or 0.5, 0, 0.5)
@@ -393,43 +394,50 @@ local function UpdateTheme(instant)
 end
 
 -- Variables
-local CurrentCFrameSpeed = 1
-local SpeedEnabled = false
-local SpeedKeybind = LoadKeybind("Speed")
-local IsBindingSpeed = false
-local NoclipEnabled = false
-local NoclipKeybind = LoadKeybind("Noclip")
-local IsBindingNoclip = false
-local FlyEnabled = false
-local FlySpeed = 10
-local FlyKeybind = LoadKeybind("Fly")
-local IsBindingFly = false
+HubState.CurrentCFrameSpeed = 1
+HubState.SpeedEnabled = false
+HubState.SpeedKeybind = LoadKeybind("Speed")
+HubState.IsBindingSpeed = false
+HubState.NoclipEnabled = false
+HubState.NoclipKeybind = LoadKeybind("Noclip")
+HubState.IsBindingNoclip = false
+HubState.FlyEnabled = false
+HubState.FlySpeed = 10
+HubState.FlyKeybind = LoadKeybind("Fly")
+HubState.IsBindingFly = false
 
-local AutoLockEnabled = false
-local AutoLockKeybind = LoadKeybind("AutoLock")
-local IsBindingAutoLock = false
+HubState.AutoLockEnabled = false
+HubState.AutoLockKeybind = LoadKeybind("AutoLock")
+HubState.IsBindingAutoLock = false
 
-local ESPEnabled = false
-local ESPKeybind = LoadKeybind("ESP")
-local IsBindingESP = false
-local ESPColor = Color3.fromRGB(100, 255, 100)
-local AntiFlingEnabled = false
-local Flinging = false
-local AntiFlingOriginalCollision = {}
-local FlingMenuKeybind = LoadKeybind("FlingMenu")
-local IsBindingFlingMenu = false
+HubState.ESPEnabled = false
+HubState.ESPKeybind = LoadKeybind("ESP")
+HubState.IsBindingESP = false
+HubState.ESPColor = Color3.fromRGB(100, 255, 100)
+HubState.AntiFlingEnabled = false
+HubState.Flinging = false
+HubState.AntiFlingOriginalCollision = {}
+HubState.FlingMenuKeybind = LoadKeybind("FlingMenu")
+HubState.IsBindingFlingMenu = false
 ThemeObjects.PlayerTP = {Keybind = LoadKeybind("PlayerTPMenu"), Binding = false, Dragging = false}
-local BodyVelocity = nil
-local BodyGyro = nil
-local Connections = {}
-Connections.TextOutline = ScreenGui.DescendantAdded:Connect(function(object)
+HubState.BodyVelocity = nil
+HubState.BodyGyro = nil
+HubState.Connections = {}
+local function TrackConnection(name, connection)
+	if HubState.Connections[name] then
+		HubState.Connections[name]:Disconnect()
+	end
+	HubState.Connections[name] = connection
+	return connection
+end
+HubState.Connections.TextOutline = ScreenGui.DescendantAdded:Connect(function(object)
 	ThemeObjects.StyleTextOutline(object)
 	ThemeObjects.StyleControlOutline(object)
 end)
 ThemeObjects.GradientPulseTime = 0
 ThemeObjects.GradientPulseAccumulator = 0
 ThemeObjects.ToggleColorAccumulator = 0
-Connections.GradientPulse = RunService.Heartbeat:Connect(function(deltaTime)
+HubState.Connections.GradientPulse = RunService.Heartbeat:Connect(function(deltaTime)
 	if not MainFrame.Visible then return end
 	ThemeObjects.GradientPulseTime = ThemeObjects.GradientPulseTime + deltaTime
 	ThemeObjects.GradientPulseAccumulator = ThemeObjects.GradientPulseAccumulator + deltaTime
@@ -459,60 +467,60 @@ end)
 ThemeObjects.FreeCam = {Enabled = false, Keybind = LoadKeybind("FreeCam"), Binding = false}
 
 -- Top Bar
-local MiniButton = Instance.new("TextButton")
-MiniButton.Size = UDim2.new(0, 18, 0, 18)
-MiniButton.Position = UDim2.new(1, -26, 0, 8)
-MiniButton.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
-MiniButton.BackgroundTransparency = 0.8
-MiniButton.BorderSizePixel = 0
-MiniButton.Text = "-"
-MiniButton.Font = Enum.Font.GothamBold
-MiniButton.Parent = MainFrame
-table.insert(ThemeObjects.Backgrounds, MiniButton)
-table.insert(ThemeObjects.Texts, MiniButton)
-Instance.new("UICorner", MiniButton).CornerRadius = UDim.new(0, 5)
+HubState.MiniButton = Instance.new("TextButton")
+HubState.MiniButton.Size = UDim2.new(0, 18, 0, 18)
+HubState.MiniButton.Position = UDim2.new(1, -26, 0, 8)
+HubState.MiniButton.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+HubState.MiniButton.BackgroundTransparency = 0.8
+HubState.MiniButton.BorderSizePixel = 0
+HubState.MiniButton.Text = "-"
+HubState.MiniButton.Font = Enum.Font.GothamBold
+HubState.MiniButton.Parent = MainFrame
+table.insert(ThemeObjects.Backgrounds, HubState.MiniButton)
+table.insert(ThemeObjects.Texts, HubState.MiniButton)
+Instance.new("UICorner", HubState.MiniButton).CornerRadius = UDim.new(0, 5)
 
-local ToggleHint = Instance.new("TextLabel")
-ToggleHint.Name = "ToggleHint"
-ToggleHint.Size = UDim2.new(0, 50, 0, 18)
-ToggleHint.Position = UDim2.new(1, -82, 0, 8)
-ToggleHint.BackgroundTransparency = 1
-ToggleHint.BorderSizePixel = 0
-ToggleHint.Text = "[L Ctrl]"
-ToggleHint.Font = Enum.Font.GothamMedium
-ToggleHint.TextSize = 11
-ToggleHint.TextXAlignment = Enum.TextXAlignment.Right
-ToggleHint.Parent = MainFrame
-table.insert(ThemeObjects.Texts, ToggleHint)
+HubState.ToggleHint = Instance.new("TextLabel")
+HubState.ToggleHint.Name = "ToggleHint"
+HubState.ToggleHint.Size = UDim2.new(0, 50, 0, 18)
+HubState.ToggleHint.Position = UDim2.new(1, -82, 0, 8)
+HubState.ToggleHint.BackgroundTransparency = 1
+HubState.ToggleHint.BorderSizePixel = 0
+HubState.ToggleHint.Text = "[L Ctrl]"
+HubState.ToggleHint.Font = Enum.Font.GothamMedium
+HubState.ToggleHint.TextSize = 11
+HubState.ToggleHint.TextXAlignment = Enum.TextXAlignment.Right
+HubState.ToggleHint.Parent = MainFrame
+table.insert(ThemeObjects.Texts, HubState.ToggleHint)
 
-local SettingsBtn = Instance.new("TextButton")
-SettingsBtn.Size = UDim2.new(0, 18, 0, 18)
-SettingsBtn.Position = UDim2.new(0, 8, 0, 8)
-SettingsBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
-SettingsBtn.BackgroundTransparency = 0.8
-SettingsBtn.BorderSizePixel = 0
-SettingsBtn.Text = "⚙"
-SettingsBtn.Font = Enum.Font.GothamBold
-SettingsBtn.Parent = MainFrame
-table.insert(ThemeObjects.Backgrounds, SettingsBtn)
-table.insert(ThemeObjects.Texts, SettingsBtn)
-Instance.new("UICorner", SettingsBtn).CornerRadius = UDim.new(0, 5)
+HubState.SettingsBtn = Instance.new("TextButton")
+HubState.SettingsBtn.Size = UDim2.new(0, 18, 0, 18)
+HubState.SettingsBtn.Position = UDim2.new(0, 8, 0, 8)
+HubState.SettingsBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+HubState.SettingsBtn.BackgroundTransparency = 0.8
+HubState.SettingsBtn.BorderSizePixel = 0
+HubState.SettingsBtn.Text = "⚙"
+HubState.SettingsBtn.Font = Enum.Font.GothamBold
+HubState.SettingsBtn.Parent = MainFrame
+table.insert(ThemeObjects.Backgrounds, HubState.SettingsBtn)
+table.insert(ThemeObjects.Texts, HubState.SettingsBtn)
+Instance.new("UICorner", HubState.SettingsBtn).CornerRadius = UDim.new(0, 5)
 
-local TabScroll = Instance.new("ScrollingFrame")
-TabScroll.Name = "TabScroll"
-TabScroll.Size = UDim2.new(0, 112, 0, 252)
-TabScroll.Position = UDim2.new(0, 2, 0, 32)
-TabScroll.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
-TabScroll.BackgroundTransparency = 1
-TabScroll.BorderSizePixel = 0
-TabScroll.ScrollingDirection = Enum.ScrollingDirection.Y
-TabScroll.ElasticBehavior = Enum.ElasticBehavior.Never
-TabScroll.ScrollBarThickness = 2
-TabScroll.ScrollBarImageColor3 = AccentColor
-TabScroll.CanvasSize = UDim2.new(0, 0, 0, 252)
-TabScroll.Parent = MainFrame
-ThemeObjects.TabScroll = TabScroll
-SettingsBtn.Parent = MainFrame
+HubState.TabScroll = Instance.new("ScrollingFrame")
+HubState.TabScroll.Name = "TabScroll"
+HubState.TabScroll.Size = UDim2.new(0, 112, 0, 252)
+HubState.TabScroll.Position = UDim2.new(0, 2, 0, 32)
+HubState.TabScroll.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+HubState.TabScroll.BackgroundTransparency = 1
+HubState.TabScroll.BorderSizePixel = 0
+HubState.TabScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+HubState.TabScroll.ElasticBehavior = Enum.ElasticBehavior.Never
+HubState.TabScroll.ScrollBarThickness = 2
+HubState.TabScroll.ScrollBarImageColor3 = AccentColor
+HubState.TabScroll.CanvasSize = UDim2.new(0, 0, 0, 252)
+HubState.TabScroll.Parent = MainFrame
+ThemeObjects.TabScroll = HubState.TabScroll
+HubState.SettingsBtn.Parent = MainFrame
 
 do
 	local padding = Instance.new("UIPadding")
@@ -520,50 +528,50 @@ do
 	padding.PaddingRight = UDim.new(0, 6)
 	padding.PaddingTop = UDim.new(0, 2)
 	padding.PaddingBottom = UDim.new(0, 2)
-	padding.Parent = TabScroll
+	padding.Parent = HubState.TabScroll
 end
 
-local TabListLayout = Instance.new("UIListLayout")
-TabListLayout.Parent = TabScroll
-TabListLayout.FillDirection = Enum.FillDirection.Vertical
-TabListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-TabListLayout.Padding = UDim.new(0, 6)
-TabListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-TabListLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+HubState.TabListLayout = Instance.new("UIListLayout")
+HubState.TabListLayout.Parent = HubState.TabScroll
+HubState.TabListLayout.FillDirection = Enum.FillDirection.Vertical
+HubState.TabListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+HubState.TabListLayout.Padding = UDim.new(0, 6)
+HubState.TabListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+HubState.TabListLayout.VerticalAlignment = Enum.VerticalAlignment.Top
 
-local PageHeader = Instance.new("TextLabel")
-PageHeader.Name = "PageHeader"
-PageHeader.Size = UDim2.new(0, 330, 0, 18)
-PageHeader.Position = UDim2.new(0, 120, 0, 32)
-PageHeader.BackgroundTransparency = 1
-PageHeader.BorderSizePixel = 0
-PageHeader.Text = "Movement"
-PageHeader.Font = Enum.Font.GothamBold
-PageHeader.TextColor3 = Color3.fromRGB(60, 60, 60)
-PageHeader.TextXAlignment = Enum.TextXAlignment.Left
-PageHeader.Parent = MainFrame
-table.insert(ThemeObjects.Texts, PageHeader)
+HubState.PageHeader = Instance.new("TextLabel")
+HubState.PageHeader.Name = "PageHeader"
+HubState.PageHeader.Size = UDim2.new(0, 330, 0, 18)
+HubState.PageHeader.Position = UDim2.new(0, 120, 0, 32)
+HubState.PageHeader.BackgroundTransparency = 1
+HubState.PageHeader.BorderSizePixel = 0
+HubState.PageHeader.Text = "Movement"
+HubState.PageHeader.Font = Enum.Font.GothamBold
+HubState.PageHeader.TextColor3 = Color3.fromRGB(60, 60, 60)
+HubState.PageHeader.TextXAlignment = Enum.TextXAlignment.Left
+HubState.PageHeader.Parent = MainFrame
+table.insert(ThemeObjects.Texts, HubState.PageHeader)
 
 -- Pages
-local MovementPage = Instance.new("Frame")
-MovementPage.Name = "MovementPage"
-MovementPage.Size = UDim2.new(0, 346, 1, -54)
-MovementPage.Position = UDim2.new(0, 114, 0, 54)
-MovementPage.BackgroundTransparency = 1
-MovementPage.BorderSizePixel = 0
-MovementPage.ClipsDescendants = true
-MovementPage.Visible = true
-MovementPage.Parent = MainFrame
+HubState.MovementPage = Instance.new("Frame")
+HubState.MovementPage.Name = "MovementPage"
+HubState.MovementPage.Size = UDim2.new(0, 346, 1, -54)
+HubState.MovementPage.Position = UDim2.new(0, 114, 0, 54)
+HubState.MovementPage.BackgroundTransparency = 1
+HubState.MovementPage.BorderSizePixel = 0
+HubState.MovementPage.ClipsDescendants = true
+HubState.MovementPage.Visible = true
+HubState.MovementPage.Parent = MainFrame
 
-local CombatPage = Instance.new("Frame")
-CombatPage.Name = "CombatPage"
-CombatPage.Size = UDim2.new(0, 346, 1, -54)
-CombatPage.Position = UDim2.new(1.1, 0, 0, 54)
-CombatPage.BackgroundTransparency = 1
-CombatPage.Visible = false
-CombatPage.BorderSizePixel = 0
-CombatPage.ClipsDescendants = true
-CombatPage.Parent = MainFrame
+HubState.CombatPage = Instance.new("Frame")
+HubState.CombatPage.Name = "CombatPage"
+HubState.CombatPage.Size = UDim2.new(0, 346, 1, -54)
+HubState.CombatPage.Position = UDim2.new(1.1, 0, 0, 54)
+HubState.CombatPage.BackgroundTransparency = 1
+HubState.CombatPage.Visible = false
+HubState.CombatPage.BorderSizePixel = 0
+HubState.CombatPage.ClipsDescendants = true
+HubState.CombatPage.Parent = MainFrame
 
 ThemeObjects.CameraPage = Instance.new("Frame")
 ThemeObjects.CameraPage.Name = "CameraPage"
@@ -575,35 +583,35 @@ ThemeObjects.CameraPage.BorderSizePixel = 0
 ThemeObjects.CameraPage.ClipsDescendants = true
 ThemeObjects.CameraPage.Parent = MainFrame
 
-local TeleportPage = Instance.new("Frame")
-TeleportPage.Name = "TeleportPage"
-TeleportPage.Size = UDim2.new(0, 346, 1, -54)
-TeleportPage.Position = UDim2.new(1.1, 0, 0, 54)
-TeleportPage.BackgroundTransparency = 1
-TeleportPage.Visible = false
-TeleportPage.BorderSizePixel = 0
-TeleportPage.ClipsDescendants = true
-TeleportPage.Parent = MainFrame
+HubState.TeleportPage = Instance.new("Frame")
+HubState.TeleportPage.Name = "TeleportPage"
+HubState.TeleportPage.Size = UDim2.new(0, 346, 1, -54)
+HubState.TeleportPage.Position = UDim2.new(1.1, 0, 0, 54)
+HubState.TeleportPage.BackgroundTransparency = 1
+HubState.TeleportPage.Visible = false
+HubState.TeleportPage.BorderSizePixel = 0
+HubState.TeleportPage.ClipsDescendants = true
+HubState.TeleportPage.Parent = MainFrame
 
-local GamesPage = Instance.new("Frame")
-GamesPage.Name = "GamesPage"
-GamesPage.Size = UDim2.new(0, 346, 1, -54)
-GamesPage.Position = UDim2.new(1.1, 0, 0, 54)
-GamesPage.BackgroundTransparency = 1
-GamesPage.BorderSizePixel = 0
-GamesPage.ClipsDescendants = true
-GamesPage.Visible = false
-GamesPage.Parent = MainFrame
+HubState.GamesPage = Instance.new("Frame")
+HubState.GamesPage.Name = "GamesPage"
+HubState.GamesPage.Size = UDim2.new(0, 346, 1, -54)
+HubState.GamesPage.Position = UDim2.new(1.1, 0, 0, 54)
+HubState.GamesPage.BackgroundTransparency = 1
+HubState.GamesPage.BorderSizePixel = 0
+HubState.GamesPage.ClipsDescendants = true
+HubState.GamesPage.Visible = false
+HubState.GamesPage.Parent = MainFrame
 
-local MM2Page = Instance.new("Frame")
-MM2Page.Name = "MM2Page"
-MM2Page.Size = UDim2.new(0, 346, 1, -54)
-MM2Page.Position = UDim2.new(1.1, 0, 0, 54)
-MM2Page.BackgroundTransparency = 1
-MM2Page.BorderSizePixel = 0
-MM2Page.ClipsDescendants = true
-MM2Page.Visible = false
-MM2Page.Parent = MainFrame
+HubState.MM2Page = Instance.new("Frame")
+HubState.MM2Page.Name = "MM2Page"
+HubState.MM2Page.Size = UDim2.new(0, 346, 1, -54)
+HubState.MM2Page.Position = UDim2.new(1.1, 0, 0, 54)
+HubState.MM2Page.BackgroundTransparency = 1
+HubState.MM2Page.BorderSizePixel = 0
+HubState.MM2Page.ClipsDescendants = true
+HubState.MM2Page.Visible = false
+HubState.MM2Page.Parent = MainFrame
 
 ThemeObjects.ExtrasFeature = {Enabled = false, Applying = false, Lighting = game:GetService("Lighting")}
 ThemeObjects.ExtrasFeature.Page = Instance.new("Frame")
@@ -746,8 +754,8 @@ ThemeObjects.ExtrasFeature.UpdateDockPosition = function()
 		MainFrame.AbsolutePosition.Y + (62 * scale)
 	)
 end
-MainFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(ThemeObjects.ExtrasFeature.UpdateDockPosition)
-MainFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(ThemeObjects.ExtrasFeature.UpdateDockPosition)
+TrackConnection("ExtrasDockPosition", MainFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(ThemeObjects.ExtrasFeature.UpdateDockPosition))
+TrackConnection("ExtrasDockSize", MainFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(ThemeObjects.ExtrasFeature.UpdateDockPosition))
 ThemeObjects.ExtrasFeature.UpdateDockPosition()
 table.insert(ThemeObjects.Backgrounds, ThemeObjects.ExtrasFeature.CopyFrame)
 Instance.new("UICorner", ThemeObjects.ExtrasFeature.CopyFrame).CornerRadius = UDim.new(0, 6)
@@ -907,7 +915,7 @@ ThemeObjects.ExtrasFeature.PartToggle.MouseButton1Click:Connect(function()
 	else ThemeObjects.ExtrasFeature.BeginSelection("Copy") end
 end)
 
-Connections.ExtrasPartHover = RunService.RenderStepped:Connect(function()
+HubState.Connections.ExtrasPartHover = RunService.RenderStepped:Connect(function()
 	if not ThemeObjects.ExtrasFeature.Selecting then return end
 	local target = ThemeObjects.ExtrasFeature.Mouse.Target
 	ThemeObjects.ExtrasFeature.HoverHighlight.OutlineColor = AccentColor
@@ -918,7 +926,7 @@ Connections.ExtrasPartHover = RunService.RenderStepped:Connect(function()
 	ThemeObjects.ExtrasFeature.SelectionBox.Visible = target ~= nil and target:IsA("BasePart")
 end)
 
-Connections.ExtrasPartClick = UserInputService.InputBegan:Connect(function(input, processed)
+HubState.Connections.ExtrasPartClick = UserInputService.InputBegan:Connect(function(input, processed)
 	if processed or input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
 	if not ThemeObjects.ExtrasFeature.Selecting or os.clock() - (ThemeObjects.ExtrasFeature.SelectStarted or 0) < 0.2 then return end
 	local target = ThemeObjects.ExtrasFeature.Mouse.Target
@@ -984,7 +992,7 @@ ThemeObjects.CleanupPartSelector = function()
 	if ThemeObjects.ExtrasFeature.HoverHighlight then ThemeObjects.ExtrasFeature.HoverHighlight:Destroy() end
 	if ThemeObjects.ExtrasFeature.SelectionBox then ThemeObjects.ExtrasFeature.SelectionBox:Destroy() end
 end
-Connections.FullBright = RunService.Heartbeat:Connect(function()
+HubState.Connections.FullBright = RunService.Heartbeat:Connect(function()
 	if not ThemeObjects.ExtrasFeature.Enabled then return end
 	if os.clock() - (ThemeObjects.ExtrasFeature.LastApply or 0) < 0.5 then return end
 	ThemeObjects.ExtrasFeature.LastApply = os.clock()
@@ -993,67 +1001,67 @@ end)
 ThemeObjects.RestoreFullBright = ThemeObjects.ExtrasFeature.Restore
 
 -- Games hub
-local GamesTabButton
-local SelectedGame
+HubState.GamesTabButton = nil
+HubState.SelectedGame = nil
 
-local MM2GameButton = Instance.new("TextButton")
-MM2GameButton.Name = "MM2GameButton"
-MM2GameButton.Size = UDim2.new(1, -8, 0, 38)
-MM2GameButton.Position = UDim2.new(0, 4, 0, 4)
-MM2GameButton.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
-MM2GameButton.BackgroundTransparency = 0.8
-MM2GameButton.BorderSizePixel = 0
-MM2GameButton.Text = "MM2"
-MM2GameButton.Font = Enum.Font.GothamBold
-MM2GameButton.TextSize = 11
-MM2GameButton.TextColor3 = AccentColor
-MM2GameButton.Parent = GamesPage
-table.insert(ThemeObjects.Backgrounds, MM2GameButton)
-table.insert(ThemeObjects.Accents, MM2GameButton)
-Instance.new("UICorner", MM2GameButton).CornerRadius = UDim.new(0, 7)
+HubState.MM2GameButton = Instance.new("TextButton")
+HubState.MM2GameButton.Name = "MM2GameButton"
+HubState.MM2GameButton.Size = UDim2.new(1, -8, 0, 38)
+HubState.MM2GameButton.Position = UDim2.new(0, 4, 0, 4)
+HubState.MM2GameButton.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
+HubState.MM2GameButton.BackgroundTransparency = 0.8
+HubState.MM2GameButton.BorderSizePixel = 0
+HubState.MM2GameButton.Text = "MM2"
+HubState.MM2GameButton.Font = Enum.Font.GothamBold
+HubState.MM2GameButton.TextSize = 11
+HubState.MM2GameButton.TextColor3 = AccentColor
+HubState.MM2GameButton.Parent = HubState.GamesPage
+table.insert(ThemeObjects.Backgrounds, HubState.MM2GameButton)
+table.insert(ThemeObjects.Accents, HubState.MM2GameButton)
+Instance.new("UICorner", HubState.MM2GameButton).CornerRadius = UDim.new(0, 7)
 
-local MM2GameStroke = Instance.new("UIStroke")
-MM2GameStroke.Name = "ControlOutline"
-MM2GameStroke.Color = Color3.fromRGB(0, 0, 0)
-MM2GameStroke.Thickness = 1.25
-MM2GameStroke.Transparency = 0.12
-MM2GameStroke.Parent = MM2GameButton
+HubState.MM2GameStroke = Instance.new("UIStroke")
+HubState.MM2GameStroke.Name = "ControlOutline"
+HubState.MM2GameStroke.Color = Color3.fromRGB(0, 0, 0)
+HubState.MM2GameStroke.Thickness = 1.25
+HubState.MM2GameStroke.Transparency = 0.12
+HubState.MM2GameStroke.Parent = HubState.MM2GameButton
 
-local MM2BackButton = Instance.new("TextButton")
-MM2BackButton.Name = "MM2BackButton"
-MM2BackButton.Size = UDim2.new(0, 22, 0, 18)
-MM2BackButton.Position = UDim2.new(1, -22, 0, 0)
-MM2BackButton.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
-MM2BackButton.BackgroundTransparency = 0.8
-MM2BackButton.BorderSizePixel = 0
-MM2BackButton.Text = "←"
-MM2BackButton.Font = Enum.Font.GothamBold
-MM2BackButton.TextSize = 13
-MM2BackButton.TextColor3 = AccentColor
-MM2BackButton.Visible = false
-MM2BackButton.Parent = PageHeader
-table.insert(ThemeObjects.Backgrounds, MM2BackButton)
-table.insert(ThemeObjects.Accents, MM2BackButton)
-Instance.new("UICorner", MM2BackButton).CornerRadius = UDim.new(0, 5)
+HubState.MM2BackButton = Instance.new("TextButton")
+HubState.MM2BackButton.Name = "MM2BackButton"
+HubState.MM2BackButton.Size = UDim2.new(0, 22, 0, 18)
+HubState.MM2BackButton.Position = UDim2.new(1, -22, 0, 0)
+HubState.MM2BackButton.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
+HubState.MM2BackButton.BackgroundTransparency = 0.8
+HubState.MM2BackButton.BorderSizePixel = 0
+HubState.MM2BackButton.Text = "←"
+HubState.MM2BackButton.Font = Enum.Font.GothamBold
+HubState.MM2BackButton.TextSize = 13
+HubState.MM2BackButton.TextColor3 = AccentColor
+HubState.MM2BackButton.Visible = false
+HubState.MM2BackButton.Parent = HubState.PageHeader
+table.insert(ThemeObjects.Backgrounds, HubState.MM2BackButton)
+table.insert(ThemeObjects.Accents, HubState.MM2BackButton)
+Instance.new("UICorner", HubState.MM2BackButton).CornerRadius = UDim.new(0, 5)
 
-MM2GameButton.MouseButton1Click:Connect(function()
+HubState.MM2GameButton.MouseButton1Click:Connect(function()
 	PlayClick()
-	SelectedGame = "MM2"
-	PageHeader.Text = "MM2"
-	if GamesTabButton then GamesTabButton.Text = "MM2" end
-	MM2BackButton.Visible = true
-	GamesPage.Visible = false
-	GamesPage.Position = UDim2.new(1.1, 0, 0, 54)
+	HubState.SelectedGame = "MM2"
+	HubState.PageHeader.Text = "MM2"
+	if HubState.GamesTabButton then HubState.GamesTabButton.Text = "MM2" end
+	HubState.MM2BackButton.Visible = true
+	HubState.GamesPage.Visible = false
+	HubState.GamesPage.Position = UDim2.new(1.1, 0, 0, 54)
 	local quietPage = MainFrame:FindFirstChild("QuietOrDiePage")
 	if quietPage then quietPage.Visible = false quietPage.Position = UDim2.new(1.1, 0, 0, 54) end
-	local quietCoins = PageHeader:FindFirstChild("QuietOrDieCoinsDisplay")
+	local quietCoins = HubState.PageHeader:FindFirstChild("QuietOrDieCoinsDisplay")
 	if quietCoins then quietCoins.Visible = false end
-	local quietWins = PageHeader:FindFirstChild("QuietOrDieWinsDisplay")
+	local quietWins = HubState.PageHeader:FindFirstChild("QuietOrDieWinsDisplay")
 	if quietWins then quietWins.Visible = false end
-	local quietHistory = PageHeader:FindFirstChild("QuietOrDieHistoryButton")
+	local quietHistory = HubState.PageHeader:FindFirstChild("QuietOrDieHistoryButton")
 	if quietHistory then quietHistory.Visible = false end
-	MM2Page.Visible = true
-	MM2Page.Position = UDim2.new(0, 114, 0, 54)
+	HubState.MM2Page.Visible = true
+	HubState.MM2Page.Position = UDim2.new(0, 114, 0, 54)
 end)
 
 do
@@ -1081,7 +1089,7 @@ do
 	gameButton.Font = Enum.Font.GothamBold
 	gameButton.TextSize = 11
 	gameButton.TextColor3 = AccentColor
-	gameButton.Parent = GamesPage
+	gameButton.Parent = HubState.GamesPage
 	table.insert(ThemeObjects.Backgrounds, gameButton)
 	table.insert(ThemeObjects.Accents, gameButton)
 	Instance.new("UICorner", gameButton).CornerRadius = UDim.new(0, 7)
@@ -1204,7 +1212,7 @@ do
 	coinsDisplay.TextXAlignment = Enum.TextXAlignment.Center
 	coinsDisplay.TextTruncate = Enum.TextTruncate.AtEnd
 	coinsDisplay.Visible = false
-	coinsDisplay.Parent = PageHeader
+	coinsDisplay.Parent = HubState.PageHeader
 	table.insert(ThemeObjects.Texts, coinsDisplay)
 
 	local sessionProfitDisplay = Instance.new("TextLabel")
@@ -1232,7 +1240,7 @@ do
 	winsDisplay.TextColor3 = Color3.fromRGB(60, 60, 60)
 	winsDisplay.TextTruncate = Enum.TextTruncate.AtEnd
 	winsDisplay.Visible = false
-	winsDisplay.Parent = PageHeader
+	winsDisplay.Parent = HubState.PageHeader
 	table.insert(ThemeObjects.Texts, winsDisplay)
 
 	local winsGainDisplay = Instance.new("TextLabel")
@@ -1257,7 +1265,7 @@ do
 	historyButton.Font = Enum.Font.GothamBold
 	historyButton.TextSize = 7
 	historyButton.Visible = false
-	historyButton.Parent = PageHeader
+	historyButton.Parent = HubState.PageHeader
 	table.insert(ThemeObjects.Backgrounds, historyButton)
 	table.insert(ThemeObjects.Texts, historyButton)
 	Instance.new("UICorner", historyButton).CornerRadius = UDim.new(1, 0)
@@ -1467,7 +1475,7 @@ do
 		ThemeObjects.QODReveal.Title.TextColor3 = ThemeObjects.QODReveal.Enabled and AccentColor or InactiveTextColor()
 		if ThemeObjects.QODReveal.Enabled then
 			if ThemeObjects.DisableRegularESP then ThemeObjects.DisableRegularESP()
-			else ESPEnabled = false end
+			else HubState.ESPEnabled = false end
 		end
 	end)
 
@@ -1556,7 +1564,7 @@ do
 		if historyPanel.Visible then RefreshExecutionHistory() end
 	end)
 
-	Connections.QuietOrDieCoinsDisplay = RunService.Heartbeat:Connect(function()
+	HubState.Connections.QuietOrDieCoinsDisplay = RunService.Heartbeat:Connect(function()
 		if os.clock() - coinsDisplayState.LastUpdate < 0.2 then return end
 		coinsDisplayState.LastUpdate = os.clock()
 		local replicatedStorage = game:GetService("ReplicatedStorage")
@@ -1741,7 +1749,7 @@ do
 		return false
 	end
 
-	Connections.QuietOrDieAutoReveal = RunService.Heartbeat:Connect(function()
+	HubState.Connections.QuietOrDieAutoReveal = RunService.Heartbeat:Connect(function()
 		if not ThemeObjects.QODReveal.Enabled then return end
 		if ThemeObjects.QODReveal.LastFire ~= 0 and os.clock() - ThemeObjects.QODReveal.LastFire < 0.5 then return end
 		local playerGui = Player:FindFirstChildOfClass("PlayerGui")
@@ -1763,7 +1771,7 @@ do
 		end
 	end)
 
-	Connections.QuietOrDieAutoRevive = RunService.Heartbeat:Connect(function()
+	HubState.Connections.QuietOrDieAutoRevive = RunService.Heartbeat:Connect(function()
 		if not reviveState.Enabled or os.clock() - reviveState.LastCheck < 0.03 then return end
 		reviveState.LastCheck = os.clock()
 		local playersFolder = workspace:FindFirstChild("PlayersFolder")
@@ -1799,7 +1807,7 @@ do
 		end
 	end)
 
-	Connections.QuietOrDieAutoKill = RunService.Heartbeat:Connect(function()
+	HubState.Connections.QuietOrDieAutoKill = RunService.Heartbeat:Connect(function()
 		if not killState.Enabled or not IsQuietOrDieKiller() or os.clock() - killState.LastAttack < 0.1 then return end
 		local character = Player.Character
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -1875,12 +1883,12 @@ do
 
 	local resetCooldownEvent = game:GetService("ReplicatedStorage"):FindFirstChild("ResetCooldownEvent")
 	if resetCooldownEvent and resetCooldownEvent:IsA("RemoteEvent") then
-		Connections.QuietOrDieResetCooldown = resetCooldownEvent.OnClientEvent:Connect(function()
+		HubState.Connections.QuietOrDieResetCooldown = resetCooldownEvent.OnClientEvent:Connect(function()
 			farmState.LastEmote = 0
 		end)
 	end
 
-	Connections.QuietOrDieAutoFarm = RunService.RenderStepped:Connect(function()
+	HubState.Connections.QuietOrDieAutoFarm = RunService.RenderStepped:Connect(function()
 		if not farmState.Enabled then return end
 		if not IsQuietOrDieSurvivor() then return end
 		local character = Player.Character
@@ -1895,7 +1903,7 @@ do
 		if TriggerQuietOrDieTaunt() then farmState.LastEmote = os.clock() end
 	end)
 
-	Connections.QuietOrDieAutoEvent = RunService.Heartbeat:Connect(function()
+	HubState.Connections.QuietOrDieAutoEvent = RunService.Heartbeat:Connect(function()
 		if not eventState.Enabled then return end
 		if IsQuietOrDieKiller() then eventState.Current = nil return end
 		if os.clock() - eventState.LastMove < 0.06 then return end
@@ -1945,14 +1953,14 @@ do
 
 	gameButton.MouseButton1Click:Connect(function()
 		PlayClick()
-		SelectedGame = "Quiet Or Die"
-		PageHeader.Text = SelectedGame
-		if GamesTabButton then GamesTabButton.Text = SelectedGame end
-		MM2BackButton.Visible = true
-		GamesPage.Visible = false
-		GamesPage.Position = UDim2.new(1.1, 0, 0, 54)
-		MM2Page.Visible = false
-		MM2Page.Position = UDim2.new(1.1, 0, 0, 54)
+		HubState.SelectedGame = "Quiet Or Die"
+		HubState.PageHeader.Text = HubState.SelectedGame
+		if HubState.GamesTabButton then HubState.GamesTabButton.Text = HubState.SelectedGame end
+		HubState.MM2BackButton.Visible = true
+		HubState.GamesPage.Visible = false
+		HubState.GamesPage.Position = UDim2.new(1.1, 0, 0, 54)
+		HubState.MM2Page.Visible = false
+		HubState.MM2Page.Position = UDim2.new(1.1, 0, 0, 54)
 		quietPage.Visible = true
 		quietPage.Position = UDim2.new(0, 114, 0, 54)
 		coinsDisplay.Visible = true
@@ -1961,150 +1969,150 @@ do
 	end)
 end
 
-MM2BackButton.MouseButton1Click:Connect(function()
+HubState.MM2BackButton.MouseButton1Click:Connect(function()
 	PlayClick()
-	SelectedGame = nil
-	PageHeader.Text = "Games"
-	if GamesTabButton then GamesTabButton.Text = "Games" end
-	MM2BackButton.Visible = false
-	MM2Page.Visible = false
-	MM2Page.Position = UDim2.new(1.1, 0, 0, 54)
+	HubState.SelectedGame = nil
+	HubState.PageHeader.Text = "Games"
+	if HubState.GamesTabButton then HubState.GamesTabButton.Text = "Games" end
+	HubState.MM2BackButton.Visible = false
+	HubState.MM2Page.Visible = false
+	HubState.MM2Page.Position = UDim2.new(1.1, 0, 0, 54)
 	local quietPage = MainFrame:FindFirstChild("QuietOrDiePage")
 	if quietPage then quietPage.Visible = false quietPage.Position = UDim2.new(1.1, 0, 0, 54) end
-	local quietCoins = PageHeader:FindFirstChild("QuietOrDieCoinsDisplay")
+	local quietCoins = HubState.PageHeader:FindFirstChild("QuietOrDieCoinsDisplay")
 	if quietCoins then quietCoins.Visible = false end
-	local quietWins = PageHeader:FindFirstChild("QuietOrDieWinsDisplay")
+	local quietWins = HubState.PageHeader:FindFirstChild("QuietOrDieWinsDisplay")
 	if quietWins then quietWins.Visible = false end
-	local quietHistory = PageHeader:FindFirstChild("QuietOrDieHistoryButton")
+	local quietHistory = HubState.PageHeader:FindFirstChild("QuietOrDieHistoryButton")
 	if quietHistory then quietHistory.Visible = false end
 	if quietPage then
 		local historyPanel = quietPage:FindFirstChild("QuietOrDieHistoryPanel")
 		if historyPanel then historyPanel.Visible = false end
 	end
-	GamesPage.Visible = true
-	GamesPage.Position = UDim2.new(0, 114, 0, 54)
+	HubState.GamesPage.Visible = true
+	HubState.GamesPage.Position = UDim2.new(0, 114, 0, 54)
 end)
 
-local SettingsPage = Instance.new("Frame")
-SettingsPage.Size = UDim2.new(0, 330, 1, -32)
-SettingsPage.Position = UDim2.new(1.1, 80, 0, 32)
-SettingsPage.BackgroundTransparency = 1
-SettingsPage.BorderSizePixel = 0
-SettingsPage.Parent = MainFrame
+HubState.SettingsPage = Instance.new("Frame")
+HubState.SettingsPage.Size = UDim2.new(0, 330, 1, -32)
+HubState.SettingsPage.Position = UDim2.new(1.1, 80, 0, 32)
+HubState.SettingsPage.BackgroundTransparency = 1
+HubState.SettingsPage.BorderSizePixel = 0
+HubState.SettingsPage.Parent = MainFrame
 
 -- Combat Page Content
-local AutoLockTitle = Instance.new("TextLabel")
-AutoLockTitle.Size = UDim2.new(0, 84, 0, 23)
-AutoLockTitle.Position = UDim2.new(0, 12, 0, 8)
-AutoLockTitle.BackgroundTransparency = 1
-AutoLockTitle.BorderSizePixel = 0
-AutoLockTitle.Text = "Auto Lock:"
-AutoLockTitle.Font = Enum.Font.GothamBold
-AutoLockTitle.TextSize = 13
-AutoLockTitle.TextColor3 = Color3.fromRGB(100, 100, 100)
-AutoLockTitle.TextXAlignment = Enum.TextXAlignment.Left
-AutoLockTitle.Parent = CombatPage
-table.insert(ThemeObjects.Texts, AutoLockTitle)
+HubState.AutoLockTitle = Instance.new("TextLabel")
+HubState.AutoLockTitle.Size = UDim2.new(0, 84, 0, 23)
+HubState.AutoLockTitle.Position = UDim2.new(0, 12, 0, 8)
+HubState.AutoLockTitle.BackgroundTransparency = 1
+HubState.AutoLockTitle.BorderSizePixel = 0
+HubState.AutoLockTitle.Text = "Auto Lock:"
+HubState.AutoLockTitle.Font = Enum.Font.GothamBold
+HubState.AutoLockTitle.TextSize = 13
+HubState.AutoLockTitle.TextColor3 = Color3.fromRGB(100, 100, 100)
+HubState.AutoLockTitle.TextXAlignment = Enum.TextXAlignment.Left
+HubState.AutoLockTitle.Parent = HubState.CombatPage
+table.insert(ThemeObjects.Texts, HubState.AutoLockTitle)
 
-local AutoLockToggleBtn = Instance.new("TextButton")
-AutoLockToggleBtn.Size = UDim2.new(0, 48, 0, 23)
-AutoLockToggleBtn.Position = UDim2.new(0, 104, 0, 8)
-AutoLockToggleBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
-AutoLockToggleBtn.BackgroundTransparency = 0.8
-AutoLockToggleBtn.BorderSizePixel = 0
-AutoLockToggleBtn.Text = "Off"
-AutoLockToggleBtn.Font = Enum.Font.GothamBold
-AutoLockToggleBtn.Parent = CombatPage
-table.insert(ThemeObjects.Backgrounds, AutoLockToggleBtn)
-table.insert(ThemeObjects.Texts, AutoLockToggleBtn)
-Instance.new("UICorner", AutoLockToggleBtn).CornerRadius = UDim.new(0, 4)
+HubState.AutoLockToggleBtn = Instance.new("TextButton")
+HubState.AutoLockToggleBtn.Size = UDim2.new(0, 48, 0, 23)
+HubState.AutoLockToggleBtn.Position = UDim2.new(0, 104, 0, 8)
+HubState.AutoLockToggleBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+HubState.AutoLockToggleBtn.BackgroundTransparency = 0.8
+HubState.AutoLockToggleBtn.BorderSizePixel = 0
+HubState.AutoLockToggleBtn.Text = "Off"
+HubState.AutoLockToggleBtn.Font = Enum.Font.GothamBold
+HubState.AutoLockToggleBtn.Parent = HubState.CombatPage
+table.insert(ThemeObjects.Backgrounds, HubState.AutoLockToggleBtn)
+table.insert(ThemeObjects.Texts, HubState.AutoLockToggleBtn)
+Instance.new("UICorner", HubState.AutoLockToggleBtn).CornerRadius = UDim.new(0, 4)
 
-local AutoLockBindBtn = Instance.new("TextButton")
-AutoLockBindBtn.Size = UDim2.new(0, 40, 0, 23)
-AutoLockBindBtn.Position = UDim2.new(0, 160, 0, 8)
-AutoLockBindBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
-AutoLockBindBtn.BackgroundTransparency = 0.8
-AutoLockBindBtn.BorderSizePixel = 0
-AutoLockBindBtn.Text = KeybindText(AutoLockKeybind)
-AutoLockBindBtn.Font = Enum.Font.GothamBold
-AutoLockBindBtn.TextColor3 = AccentColor
-AutoLockBindBtn.Parent = CombatPage
-table.insert(ThemeObjects.Backgrounds, AutoLockBindBtn)
-table.insert(ThemeObjects.Accents, AutoLockBindBtn)
-Instance.new("UICorner", AutoLockBindBtn).CornerRadius = UDim.new(0, 4)
+HubState.AutoLockBindBtn = Instance.new("TextButton")
+HubState.AutoLockBindBtn.Size = UDim2.new(0, 40, 0, 23)
+HubState.AutoLockBindBtn.Position = UDim2.new(0, 160, 0, 8)
+HubState.AutoLockBindBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+HubState.AutoLockBindBtn.BackgroundTransparency = 0.8
+HubState.AutoLockBindBtn.BorderSizePixel = 0
+HubState.AutoLockBindBtn.Text = KeybindText(HubState.AutoLockKeybind)
+HubState.AutoLockBindBtn.Font = Enum.Font.GothamBold
+HubState.AutoLockBindBtn.TextColor3 = AccentColor
+HubState.AutoLockBindBtn.Parent = HubState.CombatPage
+table.insert(ThemeObjects.Backgrounds, HubState.AutoLockBindBtn)
+table.insert(ThemeObjects.Accents, HubState.AutoLockBindBtn)
+Instance.new("UICorner", HubState.AutoLockBindBtn).CornerRadius = UDim.new(0, 4)
 
-local ESPTitle = Instance.new("TextLabel")
-ESPTitle.Size = UDim2.new(0, 84, 0, 23)
-ESPTitle.Position = UDim2.new(0, 12, 0, 38)
-ESPTitle.BackgroundTransparency = 1
-ESPTitle.BorderSizePixel = 0
-ESPTitle.Text = "Player ESP:"
-ESPTitle.Font = Enum.Font.GothamBold
-ESPTitle.TextSize = 13
-ESPTitle.TextColor3 = Color3.fromRGB(100, 100, 100)
-ESPTitle.TextXAlignment = Enum.TextXAlignment.Left
-ESPTitle.Parent = CombatPage
-table.insert(ThemeObjects.Texts, ESPTitle)
+HubState.ESPTitle = Instance.new("TextLabel")
+HubState.ESPTitle.Size = UDim2.new(0, 84, 0, 23)
+HubState.ESPTitle.Position = UDim2.new(0, 12, 0, 38)
+HubState.ESPTitle.BackgroundTransparency = 1
+HubState.ESPTitle.BorderSizePixel = 0
+HubState.ESPTitle.Text = "Player ESP:"
+HubState.ESPTitle.Font = Enum.Font.GothamBold
+HubState.ESPTitle.TextSize = 13
+HubState.ESPTitle.TextColor3 = Color3.fromRGB(100, 100, 100)
+HubState.ESPTitle.TextXAlignment = Enum.TextXAlignment.Left
+HubState.ESPTitle.Parent = HubState.CombatPage
+table.insert(ThemeObjects.Texts, HubState.ESPTitle)
 
-local ESPToggleBtn = Instance.new("TextButton")
-ESPToggleBtn.Size = UDim2.new(0, 48, 0, 23)
-ESPToggleBtn.Position = UDim2.new(0, 104, 0, 38)
-ESPToggleBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
-ESPToggleBtn.BackgroundTransparency = 0.8
-ESPToggleBtn.BorderSizePixel = 0
-ESPToggleBtn.Text = "Off"
-ESPToggleBtn.Font = Enum.Font.GothamBold
-ESPToggleBtn.Parent = CombatPage
-table.insert(ThemeObjects.Backgrounds, ESPToggleBtn)
-table.insert(ThemeObjects.Texts, ESPToggleBtn)
-Instance.new("UICorner", ESPToggleBtn).CornerRadius = UDim.new(0, 4)
+HubState.ESPToggleBtn = Instance.new("TextButton")
+HubState.ESPToggleBtn.Size = UDim2.new(0, 48, 0, 23)
+HubState.ESPToggleBtn.Position = UDim2.new(0, 104, 0, 38)
+HubState.ESPToggleBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+HubState.ESPToggleBtn.BackgroundTransparency = 0.8
+HubState.ESPToggleBtn.BorderSizePixel = 0
+HubState.ESPToggleBtn.Text = "Off"
+HubState.ESPToggleBtn.Font = Enum.Font.GothamBold
+HubState.ESPToggleBtn.Parent = HubState.CombatPage
+table.insert(ThemeObjects.Backgrounds, HubState.ESPToggleBtn)
+table.insert(ThemeObjects.Texts, HubState.ESPToggleBtn)
+Instance.new("UICorner", HubState.ESPToggleBtn).CornerRadius = UDim.new(0, 4)
 
-local ESPBindBtn = Instance.new("TextButton")
-ESPBindBtn.Size = UDim2.new(0, 40, 0, 23)
-ESPBindBtn.Position = UDim2.new(0, 160, 0, 38)
-ESPBindBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
-ESPBindBtn.BackgroundTransparency = 0.8
-ESPBindBtn.BorderSizePixel = 0
-ESPBindBtn.Text = KeybindText(ESPKeybind)
-ESPBindBtn.Font = Enum.Font.GothamBold
-ESPBindBtn.TextColor3 = AccentColor
-ESPBindBtn.Parent = CombatPage
-table.insert(ThemeObjects.Backgrounds, ESPBindBtn)
-table.insert(ThemeObjects.Accents, ESPBindBtn)
-Instance.new("UICorner", ESPBindBtn).CornerRadius = UDim.new(0, 4)
+HubState.ESPBindBtn = Instance.new("TextButton")
+HubState.ESPBindBtn.Size = UDim2.new(0, 40, 0, 23)
+HubState.ESPBindBtn.Position = UDim2.new(0, 160, 0, 38)
+HubState.ESPBindBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+HubState.ESPBindBtn.BackgroundTransparency = 0.8
+HubState.ESPBindBtn.BorderSizePixel = 0
+HubState.ESPBindBtn.Text = KeybindText(HubState.ESPKeybind)
+HubState.ESPBindBtn.Font = Enum.Font.GothamBold
+HubState.ESPBindBtn.TextColor3 = AccentColor
+HubState.ESPBindBtn.Parent = HubState.CombatPage
+table.insert(ThemeObjects.Backgrounds, HubState.ESPBindBtn)
+table.insert(ThemeObjects.Accents, HubState.ESPBindBtn)
+Instance.new("UICorner", HubState.ESPBindBtn).CornerRadius = UDim.new(0, 4)
 
-local ColorContainer = Instance.new("Frame")
-ColorContainer.Size = UDim2.new(0, 88, 0, 14)
-ColorContainer.Position = UDim2.new(0, 12, 0, 66)
-ColorContainer.BackgroundTransparency = 1
-ColorContainer.Parent = CombatPage
+HubState.ColorContainer = Instance.new("Frame")
+HubState.ColorContainer.Size = UDim2.new(0, 88, 0, 14)
+HubState.ColorContainer.Position = UDim2.new(0, 12, 0, 66)
+HubState.ColorContainer.BackgroundTransparency = 1
+HubState.ColorContainer.Parent = HubState.CombatPage
 
-local RedBtn = Instance.new("TextButton")
-RedBtn.Size = UDim2.new(0, 24, 0, 14)
-RedBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
-RedBtn.Text = ""
-RedBtn.Parent = ColorContainer
-Instance.new("UICorner", RedBtn).CornerRadius = UDim.new(0, 3)
+HubState.RedBtn = Instance.new("TextButton")
+HubState.RedBtn.Size = UDim2.new(0, 24, 0, 14)
+HubState.RedBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+HubState.RedBtn.Text = ""
+HubState.RedBtn.Parent = HubState.ColorContainer
+Instance.new("UICorner", HubState.RedBtn).CornerRadius = UDim.new(0, 3)
 
-local WhiteBtn = Instance.new("TextButton")
-WhiteBtn.Size = UDim2.new(0, 24, 0, 14)
-WhiteBtn.Position = UDim2.new(0, 32, 0, 0)
-WhiteBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-WhiteBtn.Text = ""
-WhiteBtn.Parent = ColorContainer
-Instance.new("UICorner", WhiteBtn).CornerRadius = UDim.new(0, 3)
+HubState.WhiteBtn = Instance.new("TextButton")
+HubState.WhiteBtn.Size = UDim2.new(0, 24, 0, 14)
+HubState.WhiteBtn.Position = UDim2.new(0, 32, 0, 0)
+HubState.WhiteBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+HubState.WhiteBtn.Text = ""
+HubState.WhiteBtn.Parent = HubState.ColorContainer
+Instance.new("UICorner", HubState.WhiteBtn).CornerRadius = UDim.new(0, 3)
 
-local GreenBtn = Instance.new("TextButton")
-GreenBtn.Size = UDim2.new(0, 24, 0, 14)
-GreenBtn.Position = UDim2.new(0, 64, 0, 0)
-GreenBtn.BackgroundColor3 = Color3.fromRGB(100, 255, 100)
-GreenBtn.Text = ""
-GreenBtn.Parent = ColorContainer
-Instance.new("UICorner", GreenBtn).CornerRadius = UDim.new(0, 3)
+HubState.GreenBtn = Instance.new("TextButton")
+HubState.GreenBtn.Size = UDim2.new(0, 24, 0, 14)
+HubState.GreenBtn.Position = UDim2.new(0, 64, 0, 0)
+HubState.GreenBtn.BackgroundColor3 = Color3.fromRGB(100, 255, 100)
+HubState.GreenBtn.Text = ""
+HubState.GreenBtn.Parent = HubState.ColorContainer
+Instance.new("UICorner", HubState.GreenBtn).CornerRadius = UDim.new(0, 3)
 
-RedBtn.MouseButton1Click:Connect(function() PlayClick() ESPColor = Color3.fromRGB(255, 100, 100) end)
-WhiteBtn.MouseButton1Click:Connect(function() PlayClick() ESPColor = Color3.fromRGB(255, 255, 255) end)
-GreenBtn.MouseButton1Click:Connect(function() PlayClick() ESPColor = Color3.fromRGB(100, 255, 100) end)
+HubState.RedBtn.MouseButton1Click:Connect(function() PlayClick() HubState.ESPColor = Color3.fromRGB(255, 100, 100) end)
+HubState.WhiteBtn.MouseButton1Click:Connect(function() PlayClick() HubState.ESPColor = Color3.fromRGB(255, 255, 255) end)
+HubState.GreenBtn.MouseButton1Click:Connect(function() PlayClick() HubState.ESPColor = Color3.fromRGB(100, 255, 100) end)
 
 ThemeObjects.DeepESP = {Enabled = false}
 ThemeObjects.DeepESP.Row = Instance.new("Frame")
@@ -2152,11 +2160,11 @@ ThemeObjects.DeepESP.Toggle.MouseButton1Click:Connect(function()
 end)
 
 local function ToggleAutoLock()
-	AutoLockEnabled = not AutoLockEnabled
-	AutoLockToggleBtn.Text = AutoLockEnabled and "On" or "Off"
-	AutoLockTitle.TextColor3 = AutoLockEnabled and AccentColor or InactiveTextColor()
+	HubState.AutoLockEnabled = not HubState.AutoLockEnabled
+	HubState.AutoLockToggleBtn.Text = HubState.AutoLockEnabled and "On" or "Off"
+	HubState.AutoLockTitle.TextColor3 = HubState.AutoLockEnabled and AccentColor or InactiveTextColor()
 end
-AutoLockToggleBtn.MouseButton1Click:Connect(function() PlayClick() ToggleAutoLock() end)
+HubState.AutoLockToggleBtn.MouseButton1Click:Connect(function() PlayClick() ToggleAutoLock() end)
 
 ThemeObjects.ResolveESPCharacter = function(targetPlayer)
 	if not targetPlayer then return nil end
@@ -2203,10 +2211,10 @@ ThemeObjects.ClearESPAdornments = function(targetPlayer)
 end
 
 local function ToggleESP()
-	ESPEnabled = not ESPEnabled
-	ESPToggleBtn.Text = ESPEnabled and "On" or "Off"
-	ESPTitle.TextColor3 = ESPEnabled and AccentColor or InactiveTextColor()
-	if not ESPEnabled then
+	HubState.ESPEnabled = not HubState.ESPEnabled
+	HubState.ESPToggleBtn.Text = HubState.ESPEnabled and "On" or "Off"
+	HubState.ESPTitle.TextColor3 = HubState.ESPEnabled and AccentColor or InactiveTextColor()
+	if not HubState.ESPEnabled then
 		ThemeObjects.ClearESPAdornments()
 		for _, p in pairs(Players:GetPlayers()) do
 			local character = ThemeObjects.ResolveESPCharacter(p)
@@ -2219,52 +2227,52 @@ local function ToggleESP()
 	end
 end
 ThemeObjects.DisableRegularESP = function()
-	if ESPEnabled then ToggleESP() end
+	if HubState.ESPEnabled then ToggleESP() end
 end
-ESPToggleBtn.MouseButton1Click:Connect(function() PlayClick() ToggleESP() end)
-Connections.ESPPlayerRemoving = Players.PlayerRemoving:Connect(function(leavingPlayer)
+HubState.ESPToggleBtn.MouseButton1Click:Connect(function() PlayClick() ToggleESP() end)
+HubState.Connections.ESPPlayerRemoving = Players.PlayerRemoving:Connect(function(leavingPlayer)
 	ThemeObjects.ClearESPAdornments(leavingPlayer)
 end)
 
-local FlingTargetBtn = Instance.new("TextButton")
-FlingTargetBtn.Size = UDim2.new(0, 70, 0, 23)
-FlingTargetBtn.Position = UDim2.new(0, 212, 0, 8)
-FlingTargetBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
-FlingTargetBtn.BackgroundTransparency = 0.8
-FlingTargetBtn.BorderSizePixel = 0
-FlingTargetBtn.Text = "Fling Target"
-FlingTargetBtn.Font = Enum.Font.GothamBold
-FlingTargetBtn.Parent = CombatPage
-table.insert(ThemeObjects.Backgrounds, FlingTargetBtn)
-table.insert(ThemeObjects.Texts, FlingTargetBtn)
-Instance.new("UICorner", FlingTargetBtn).CornerRadius = UDim.new(0, 4)
+HubState.FlingTargetBtn = Instance.new("TextButton")
+HubState.FlingTargetBtn.Size = UDim2.new(0, 70, 0, 23)
+HubState.FlingTargetBtn.Position = UDim2.new(0, 212, 0, 8)
+HubState.FlingTargetBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+HubState.FlingTargetBtn.BackgroundTransparency = 0.8
+HubState.FlingTargetBtn.BorderSizePixel = 0
+HubState.FlingTargetBtn.Text = "Fling Target"
+HubState.FlingTargetBtn.Font = Enum.Font.GothamBold
+HubState.FlingTargetBtn.Parent = HubState.CombatPage
+table.insert(ThemeObjects.Backgrounds, HubState.FlingTargetBtn)
+table.insert(ThemeObjects.Texts, HubState.FlingTargetBtn)
+Instance.new("UICorner", HubState.FlingTargetBtn).CornerRadius = UDim.new(0, 4)
 
-local FlingBindBtn = Instance.new("TextButton")
-FlingBindBtn.Size = UDim2.new(0, 30, 0, 23)
-FlingBindBtn.Position = UDim2.new(0, 290, 0, 8)
-FlingBindBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
-FlingBindBtn.BackgroundTransparency = 0.8
-FlingBindBtn.BorderSizePixel = 0
-FlingBindBtn.Text = KeybindText(FlingMenuKeybind)
-FlingBindBtn.Font = Enum.Font.GothamBold
-FlingBindBtn.TextColor3 = AccentColor
-FlingBindBtn.Parent = CombatPage
-table.insert(ThemeObjects.Backgrounds, FlingBindBtn)
-table.insert(ThemeObjects.Accents, FlingBindBtn)
-Instance.new("UICorner", FlingBindBtn).CornerRadius = UDim.new(0, 4)
+HubState.FlingBindBtn = Instance.new("TextButton")
+HubState.FlingBindBtn.Size = UDim2.new(0, 30, 0, 23)
+HubState.FlingBindBtn.Position = UDim2.new(0, 290, 0, 8)
+HubState.FlingBindBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+HubState.FlingBindBtn.BackgroundTransparency = 0.8
+HubState.FlingBindBtn.BorderSizePixel = 0
+HubState.FlingBindBtn.Text = KeybindText(HubState.FlingMenuKeybind)
+HubState.FlingBindBtn.Font = Enum.Font.GothamBold
+HubState.FlingBindBtn.TextColor3 = AccentColor
+HubState.FlingBindBtn.Parent = HubState.CombatPage
+table.insert(ThemeObjects.Backgrounds, HubState.FlingBindBtn)
+table.insert(ThemeObjects.Accents, HubState.FlingBindBtn)
+Instance.new("UICorner", HubState.FlingBindBtn).CornerRadius = UDim.new(0, 4)
 
-local AntiFlingBtn = Instance.new("TextButton")
-AntiFlingBtn.Size = UDim2.new(0, 108, 0, 23)
-AntiFlingBtn.Position = UDim2.new(0, 212, 0, 38)
-AntiFlingBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
-AntiFlingBtn.BackgroundTransparency = 0.8
-AntiFlingBtn.BorderSizePixel = 0
-AntiFlingBtn.Text = "Anti Fling: Off"
-AntiFlingBtn.Font = Enum.Font.GothamBold
-AntiFlingBtn.Parent = CombatPage
-table.insert(ThemeObjects.Backgrounds, AntiFlingBtn)
-table.insert(ThemeObjects.Texts, AntiFlingBtn)
-Instance.new("UICorner", AntiFlingBtn).CornerRadius = UDim.new(0, 4)
+HubState.AntiFlingBtn = Instance.new("TextButton")
+HubState.AntiFlingBtn.Size = UDim2.new(0, 108, 0, 23)
+HubState.AntiFlingBtn.Position = UDim2.new(0, 212, 0, 38)
+HubState.AntiFlingBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+HubState.AntiFlingBtn.BackgroundTransparency = 0.8
+HubState.AntiFlingBtn.BorderSizePixel = 0
+HubState.AntiFlingBtn.Text = "Anti Fling: Off"
+HubState.AntiFlingBtn.Font = Enum.Font.GothamBold
+HubState.AntiFlingBtn.Parent = HubState.CombatPage
+table.insert(ThemeObjects.Backgrounds, HubState.AntiFlingBtn)
+table.insert(ThemeObjects.Texts, HubState.AntiFlingBtn)
+Instance.new("UICorner", HubState.AntiFlingBtn).CornerRadius = UDim.new(0, 4)
 
 -- Full-width vertical combat rows
 do
@@ -2276,7 +2284,7 @@ do
 		row.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
 		row.BackgroundTransparency = 0.92
 		row.BorderSizePixel = 0
-		row.Parent = CombatPage
+		row.Parent = HubState.CombatPage
 		table.insert(ThemeObjects.Backgrounds, row)
 		Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
 		return row
@@ -2287,40 +2295,40 @@ do
 	local flingRow = CreateCombatRow("FlingTargetCard", 88)
 	local antiFlingRow = CreateCombatRow("AntiFlingCard", 130)
 
-	AutoLockTitle.Size = UDim2.new(0, 90, 0, 20)
-	AutoLockTitle.Position = UDim2.new(0, 8, 0.5, -10)
-	AutoLockTitle.TextSize = 11
-	AutoLockTitle.TextXAlignment = Enum.TextXAlignment.Left
-	AutoLockTitle.Parent = lockRow
-	AutoLockToggleBtn.Size = UDim2.new(0, 44, 0, 20)
-	AutoLockToggleBtn.Position = UDim2.new(1, -96, 0.5, -10)
-	AutoLockToggleBtn.TextSize = 9
-	AutoLockToggleBtn.Parent = lockRow
-	AutoLockBindBtn.Size = UDim2.new(0, 44, 0, 20)
-	AutoLockBindBtn.Position = UDim2.new(1, -48, 0.5, -10)
-	AutoLockBindBtn.TextSize = 8
-	AutoLockBindBtn.Parent = lockRow
+	HubState.AutoLockTitle.Size = UDim2.new(0, 90, 0, 20)
+	HubState.AutoLockTitle.Position = UDim2.new(0, 8, 0.5, -10)
+	HubState.AutoLockTitle.TextSize = 11
+	HubState.AutoLockTitle.TextXAlignment = Enum.TextXAlignment.Left
+	HubState.AutoLockTitle.Parent = lockRow
+	HubState.AutoLockToggleBtn.Size = UDim2.new(0, 44, 0, 20)
+	HubState.AutoLockToggleBtn.Position = UDim2.new(1, -96, 0.5, -10)
+	HubState.AutoLockToggleBtn.TextSize = 9
+	HubState.AutoLockToggleBtn.Parent = lockRow
+	HubState.AutoLockBindBtn.Size = UDim2.new(0, 44, 0, 20)
+	HubState.AutoLockBindBtn.Position = UDim2.new(1, -48, 0.5, -10)
+	HubState.AutoLockBindBtn.TextSize = 8
+	HubState.AutoLockBindBtn.Parent = lockRow
 
-	ESPTitle.Size = UDim2.new(0, 90, 0, 20)
-	ESPTitle.Position = UDim2.new(0, 8, 0.5, -10)
-	ESPTitle.TextSize = 11
-	ESPTitle.Parent = espRow
-	ESPToggleBtn.Size = UDim2.new(0, 44, 0, 20)
-	ESPToggleBtn.Position = UDim2.new(1, -96, 0.5, -10)
-	ESPToggleBtn.TextSize = 9
-	ESPToggleBtn.Parent = espRow
-	ESPBindBtn.Size = UDim2.new(0, 44, 0, 20)
-	ESPBindBtn.Position = UDim2.new(1, -48, 0.5, -10)
-	ESPBindBtn.TextSize = 8
-	ESPBindBtn.Parent = espRow
-	ColorContainer.Size = UDim2.new(0, 80, 0, 14)
-	ColorContainer.Position = UDim2.new(0, 106, 0.5, -7)
-	ColorContainer.Parent = espRow
-	RedBtn.Size = UDim2.new(0, 22, 0, 14)
-	WhiteBtn.Size = UDim2.new(0, 22, 0, 14)
-	WhiteBtn.Position = UDim2.new(0, 29, 0, 0)
-	GreenBtn.Size = UDim2.new(0, 22, 0, 14)
-	GreenBtn.Position = UDim2.new(0, 58, 0, 0)
+	HubState.ESPTitle.Size = UDim2.new(0, 90, 0, 20)
+	HubState.ESPTitle.Position = UDim2.new(0, 8, 0.5, -10)
+	HubState.ESPTitle.TextSize = 11
+	HubState.ESPTitle.Parent = espRow
+	HubState.ESPToggleBtn.Size = UDim2.new(0, 44, 0, 20)
+	HubState.ESPToggleBtn.Position = UDim2.new(1, -96, 0.5, -10)
+	HubState.ESPToggleBtn.TextSize = 9
+	HubState.ESPToggleBtn.Parent = espRow
+	HubState.ESPBindBtn.Size = UDim2.new(0, 44, 0, 20)
+	HubState.ESPBindBtn.Position = UDim2.new(1, -48, 0.5, -10)
+	HubState.ESPBindBtn.TextSize = 8
+	HubState.ESPBindBtn.Parent = espRow
+	HubState.ColorContainer.Size = UDim2.new(0, 80, 0, 14)
+	HubState.ColorContainer.Position = UDim2.new(0, 106, 0.5, -7)
+	HubState.ColorContainer.Parent = espRow
+	HubState.RedBtn.Size = UDim2.new(0, 22, 0, 14)
+	HubState.WhiteBtn.Size = UDim2.new(0, 22, 0, 14)
+	HubState.WhiteBtn.Position = UDim2.new(0, 29, 0, 0)
+	HubState.GreenBtn.Size = UDim2.new(0, 22, 0, 14)
+	HubState.GreenBtn.Position = UDim2.new(0, 58, 0, 0)
 
 	ThemeObjects.FlingTargetTitle = Instance.new("TextLabel")
 	ThemeObjects.FlingTargetTitle.Size = UDim2.new(0, 120, 0, 20)
@@ -2333,16 +2341,16 @@ do
 	ThemeObjects.FlingTargetTitle.TextXAlignment = Enum.TextXAlignment.Left
 	ThemeObjects.FlingTargetTitle.Parent = flingRow
 	table.insert(ThemeObjects.Texts, ThemeObjects.FlingTargetTitle)
-	FlingTargetBtn.Size = UDim2.new(0, 44, 0, 20)
-	FlingTargetBtn.Position = UDim2.new(1, -96, 0.5, -10)
-	FlingTargetBtn.Text = "Open"
-	FlingTargetBtn.TextSize = 9
-	FlingTargetBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-	FlingTargetBtn.Parent = flingRow
-	FlingBindBtn.Size = UDim2.new(0, 44, 0, 20)
-	FlingBindBtn.Position = UDim2.new(1, -48, 0.5, -10)
-	FlingBindBtn.TextSize = 8
-	FlingBindBtn.Parent = flingRow
+	HubState.FlingTargetBtn.Size = UDim2.new(0, 44, 0, 20)
+	HubState.FlingTargetBtn.Position = UDim2.new(1, -96, 0.5, -10)
+	HubState.FlingTargetBtn.Text = "Open"
+	HubState.FlingTargetBtn.TextSize = 9
+	HubState.FlingTargetBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	HubState.FlingTargetBtn.Parent = flingRow
+	HubState.FlingBindBtn.Size = UDim2.new(0, 44, 0, 20)
+	HubState.FlingBindBtn.Position = UDim2.new(1, -48, 0.5, -10)
+	HubState.FlingBindBtn.TextSize = 8
+	HubState.FlingBindBtn.Parent = flingRow
 
 	ThemeObjects.AntiFlingTitle = Instance.new("TextLabel")
 	ThemeObjects.AntiFlingTitle.Size = UDim2.new(0, 120, 0, 20)
@@ -2355,93 +2363,93 @@ do
 	ThemeObjects.AntiFlingTitle.TextXAlignment = Enum.TextXAlignment.Left
 	ThemeObjects.AntiFlingTitle.Parent = antiFlingRow
 	table.insert(ThemeObjects.Texts, ThemeObjects.AntiFlingTitle)
-	AntiFlingBtn.Size = UDim2.new(0, 44, 0, 20)
-	AntiFlingBtn.Position = UDim2.new(1, -48, 0.5, -10)
-	AntiFlingBtn.Text = "Off"
-	AntiFlingBtn.TextSize = 9
-	AntiFlingBtn.Parent = antiFlingRow
+	HubState.AntiFlingBtn.Size = UDim2.new(0, 44, 0, 20)
+	HubState.AntiFlingBtn.Position = UDim2.new(1, -48, 0.5, -10)
+	HubState.AntiFlingBtn.Text = "Off"
+	HubState.AntiFlingBtn.TextSize = 9
+	HubState.AntiFlingBtn.Parent = antiFlingRow
 end
 
-local TargetFrame = Instance.new("Frame")
-TargetFrame.Name = "FlingTargetFrame"
-TargetFrame.Size = UDim2.new(0, 210, 0, 175)
-TargetFrame.Position = UDim2.new(0.5, -105, 0.5, -88)
-TargetFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-TargetFrame.BackgroundTransparency = 0.8
-TargetFrame.BorderSizePixel = 0
-TargetFrame.Visible = false
-TargetFrame.Parent = ScreenGui
-local TargetScaleObject = Instance.new("UIScale", TargetFrame)
-TargetScaleObject.Scale = GuiScaleFromValue(GuiSizeValue)
-table.insert(ThemeObjects.Backgrounds, TargetFrame)
-Instance.new("UICorner", TargetFrame).CornerRadius = UDim.new(0, 10)
+HubState.TargetFrame = Instance.new("Frame")
+HubState.TargetFrame.Name = "FlingTargetFrame"
+HubState.TargetFrame.Size = UDim2.new(0, 210, 0, 175)
+HubState.TargetFrame.Position = UDim2.new(0.5, -105, 0.5, -88)
+HubState.TargetFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+HubState.TargetFrame.BackgroundTransparency = 0.8
+HubState.TargetFrame.BorderSizePixel = 0
+HubState.TargetFrame.Visible = false
+HubState.TargetFrame.Parent = ScreenGui
+HubState.TargetScaleObject = Instance.new("UIScale", HubState.TargetFrame)
+HubState.TargetScaleObject.Scale = GuiScaleFromValue(GuiSizeValue)
+table.insert(ThemeObjects.Backgrounds, HubState.TargetFrame)
+Instance.new("UICorner", HubState.TargetFrame).CornerRadius = UDim.new(0, 10)
 
 TargetTextureGradient = Instance.new("UIGradient")
 TargetTextureGradient.Rotation = 135
-TargetTextureGradient.Parent = TargetFrame
-local TargetTextureStroke = Instance.new("UIStroke")
-TargetTextureStroke.Thickness = 1
-TargetTextureStroke.Transparency = 0.72
-TargetTextureStroke.Color = AccentColor
-TargetTextureStroke.Parent = TargetFrame
-table.insert(ThemeObjects.Accents, TargetTextureStroke)
+TargetTextureGradient.Parent = HubState.TargetFrame
+HubState.TargetTextureStroke = Instance.new("UIStroke")
+HubState.TargetTextureStroke.Thickness = 1
+HubState.TargetTextureStroke.Transparency = 0.72
+HubState.TargetTextureStroke.Color = AccentColor
+HubState.TargetTextureStroke.Parent = HubState.TargetFrame
+table.insert(ThemeObjects.Accents, HubState.TargetTextureStroke)
 
-local TargetHeader = Instance.new("TextLabel")
-TargetHeader.Size = UDim2.new(1, -34, 0, 28)
-TargetHeader.Position = UDim2.new(0, 10, 0, 0)
-TargetHeader.BackgroundTransparency = 1
-TargetHeader.Text = "Fling Target"
-TargetHeader.Font = Enum.Font.GothamBold
-TargetHeader.TextSize = 13
-TargetHeader.TextXAlignment = Enum.TextXAlignment.Left
-TargetHeader.Parent = TargetFrame
-table.insert(ThemeObjects.Texts, TargetHeader)
+HubState.TargetHeader = Instance.new("TextLabel")
+HubState.TargetHeader.Size = UDim2.new(1, -34, 0, 28)
+HubState.TargetHeader.Position = UDim2.new(0, 10, 0, 0)
+HubState.TargetHeader.BackgroundTransparency = 1
+HubState.TargetHeader.Text = "Fling Target"
+HubState.TargetHeader.Font = Enum.Font.GothamBold
+HubState.TargetHeader.TextSize = 13
+HubState.TargetHeader.TextXAlignment = Enum.TextXAlignment.Left
+HubState.TargetHeader.Parent = HubState.TargetFrame
+table.insert(ThemeObjects.Texts, HubState.TargetHeader)
 
-local TargetCloseBtn = Instance.new("TextButton")
-TargetCloseBtn.Size = UDim2.new(0, 20, 0, 20)
-TargetCloseBtn.Position = UDim2.new(1, -26, 0, 4)
-TargetCloseBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-TargetCloseBtn.BackgroundTransparency = 0.8
-TargetCloseBtn.BorderSizePixel = 0
-TargetCloseBtn.Text = "×"
-TargetCloseBtn.Font = Enum.Font.GothamBold
-TargetCloseBtn.Parent = TargetFrame
-table.insert(ThemeObjects.Backgrounds, TargetCloseBtn)
-table.insert(ThemeObjects.Texts, TargetCloseBtn)
-Instance.new("UICorner", TargetCloseBtn).CornerRadius = UDim.new(0, 4)
+HubState.TargetCloseBtn = Instance.new("TextButton")
+HubState.TargetCloseBtn.Size = UDim2.new(0, 20, 0, 20)
+HubState.TargetCloseBtn.Position = UDim2.new(1, -26, 0, 4)
+HubState.TargetCloseBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+HubState.TargetCloseBtn.BackgroundTransparency = 0.8
+HubState.TargetCloseBtn.BorderSizePixel = 0
+HubState.TargetCloseBtn.Text = "×"
+HubState.TargetCloseBtn.Font = Enum.Font.GothamBold
+HubState.TargetCloseBtn.Parent = HubState.TargetFrame
+table.insert(ThemeObjects.Backgrounds, HubState.TargetCloseBtn)
+table.insert(ThemeObjects.Texts, HubState.TargetCloseBtn)
+Instance.new("UICorner", HubState.TargetCloseBtn).CornerRadius = UDim.new(0, 4)
 
-local TargetSearch = Instance.new("TextBox")
-TargetSearch.Size = UDim2.new(1, -16, 0, 20)
-TargetSearch.Position = UDim2.new(0, 8, 0, 30)
-TargetSearch.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-TargetSearch.BackgroundTransparency = 0.8
-TargetSearch.BorderSizePixel = 0
-TargetSearch.PlaceholderText = "Search Player Name..."
-TargetSearch.Text = ""
-TargetSearch.Font = Enum.Font.GothamMedium
-TargetSearch.TextSize = 11
-TargetSearch.Parent = TargetFrame
-table.insert(ThemeObjects.Backgrounds, TargetSearch)
-table.insert(ThemeObjects.Texts, TargetSearch)
-Instance.new("UICorner", TargetSearch).CornerRadius = UDim.new(0, 4)
+HubState.TargetSearch = Instance.new("TextBox")
+HubState.TargetSearch.Size = UDim2.new(1, -16, 0, 20)
+HubState.TargetSearch.Position = UDim2.new(0, 8, 0, 30)
+HubState.TargetSearch.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+HubState.TargetSearch.BackgroundTransparency = 0.8
+HubState.TargetSearch.BorderSizePixel = 0
+HubState.TargetSearch.PlaceholderText = "Search Player Name..."
+HubState.TargetSearch.Text = ""
+HubState.TargetSearch.Font = Enum.Font.GothamMedium
+HubState.TargetSearch.TextSize = 11
+HubState.TargetSearch.Parent = HubState.TargetFrame
+table.insert(ThemeObjects.Backgrounds, HubState.TargetSearch)
+table.insert(ThemeObjects.Texts, HubState.TargetSearch)
+Instance.new("UICorner", HubState.TargetSearch).CornerRadius = UDim.new(0, 4)
 
-local TargetScroll = Instance.new("ScrollingFrame")
-TargetScroll.Size = UDim2.new(1, -16, 1, -58)
-TargetScroll.Position = UDim2.new(0, 8, 0, 54)
-TargetScroll.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-TargetScroll.BackgroundTransparency = 0.8
-TargetScroll.BorderSizePixel = 0
-TargetScroll.ScrollBarThickness = 2
-TargetScroll.ElasticBehavior = Enum.ElasticBehavior.Never
-TargetScroll.Parent = TargetFrame
-table.insert(ThemeObjects.Backgrounds, TargetScroll)
-Instance.new("UICorner", TargetScroll).CornerRadius = UDim.new(0, 6)
+HubState.TargetScroll = Instance.new("ScrollingFrame")
+HubState.TargetScroll.Size = UDim2.new(1, -16, 1, -58)
+HubState.TargetScroll.Position = UDim2.new(0, 8, 0, 54)
+HubState.TargetScroll.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+HubState.TargetScroll.BackgroundTransparency = 0.8
+HubState.TargetScroll.BorderSizePixel = 0
+HubState.TargetScroll.ScrollBarThickness = 2
+HubState.TargetScroll.ElasticBehavior = Enum.ElasticBehavior.Never
+HubState.TargetScroll.Parent = HubState.TargetFrame
+table.insert(ThemeObjects.Backgrounds, HubState.TargetScroll)
+Instance.new("UICorner", HubState.TargetScroll).CornerRadius = UDim.new(0, 6)
 
-local TargetListLayout = Instance.new("UIListLayout")
-TargetListLayout.Padding = UDim.new(0, 2)
-TargetListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-TargetListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-TargetListLayout.Parent = TargetScroll
+HubState.TargetListLayout = Instance.new("UIListLayout")
+HubState.TargetListLayout.Padding = UDim.new(0, 2)
+HubState.TargetListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+HubState.TargetListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+HubState.TargetListLayout.Parent = HubState.TargetScroll
 
 do
 	local padding = Instance.new("UIPadding")
@@ -2449,18 +2457,18 @@ do
 	padding.PaddingRight = UDim.new(0, 2)
 	padding.PaddingTop = UDim.new(0, 1)
 	padding.PaddingBottom = UDim.new(0, 1)
-	padding.Parent = TargetScroll
+	padding.Parent = HubState.TargetScroll
 end
 
 local function RestoreAntiFlingCollisions()
-	for part, originalCanCollide in pairs(AntiFlingOriginalCollision) do
+	for part, originalCanCollide in pairs(HubState.AntiFlingOriginalCollision) do
 		if part and part.Parent then part.CanCollide = originalCanCollide end
 	end
-	AntiFlingOriginalCollision = {}
+	HubState.AntiFlingOriginalCollision = {}
 end
 
 local function FlingPlayer(targetPlayer)
-	if Flinging or not targetPlayer or targetPlayer == Player then return end
+	if HubState.Flinging or not targetPlayer or targetPlayer == Player then return end
 	local character = Player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	local root = character and character:FindFirstChild("HumanoidRootPart")
@@ -2469,7 +2477,7 @@ local function FlingPlayer(targetPlayer)
 	local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
 	if not humanoid or humanoid.Health <= 0 or not root or not targetHumanoid or targetHumanoid.Health <= 0 or not targetRoot then return end
 
-	Flinging = true
+	HubState.Flinging = true
 	local originalCFrame = root.CFrame
 	local originalAutoRotate = humanoid.AutoRotate
 	local originalRootCollision = root.CanCollide
@@ -2518,15 +2526,15 @@ local function FlingPlayer(targetPlayer)
 	if humanoid and humanoid.Parent then
 		humanoid.AutoRotate = originalAutoRotate
 	end
-	Flinging = false
+	HubState.Flinging = false
 end
 
 local function RefreshFlingTargets()
-	for _, child in ipairs(TargetScroll:GetChildren()) do
+	for _, child in ipairs(HubState.TargetScroll:GetChildren()) do
 		if child:IsA("Frame") then child:Destroy() end
 	end
 
-	local filter = TargetSearch.Text:lower()
+	local filter = HubState.TargetSearch.Text:lower()
 	for _, targetPlayer in ipairs(Players:GetPlayers()) do
 		if targetPlayer ~= Player then
 			local displayText = targetPlayer.DisplayName or targetPlayer.Name
@@ -2537,7 +2545,7 @@ local function RefreshFlingTargets()
 				targetRow.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
 				targetRow.BackgroundTransparency = 0.8
 				targetRow.BorderSizePixel = 0
-				targetRow.Parent = TargetScroll
+				targetRow.Parent = HubState.TargetScroll
 				Instance.new("UICorner", targetRow).CornerRadius = UDim.new(0, 4)
 
 				local displayLabel = Instance.new("TextLabel")
@@ -2574,21 +2582,21 @@ local function RefreshFlingTargets()
 			end
 		end
 	end
-	TargetScroll.CanvasSize = UDim2.new(0, 0, 0, TargetListLayout.AbsoluteContentSize.Y + 2)
+	HubState.TargetScroll.CanvasSize = UDim2.new(0, 0, 0, HubState.TargetListLayout.AbsoluteContentSize.Y + 2)
 	UpdateTheme()
 end
 
-TargetSearch:GetPropertyChangedSignal("Text"):Connect(RefreshFlingTargets)
-Players.PlayerAdded:Connect(RefreshFlingTargets)
-Players.PlayerRemoving:Connect(RefreshFlingTargets)
+HubState.TargetSearch:GetPropertyChangedSignal("Text"):Connect(RefreshFlingTargets)
+TrackConnection("FlingTargetsPlayerAdded", Players.PlayerAdded:Connect(RefreshFlingTargets))
+TrackConnection("FlingTargetsPlayerRemoving", Players.PlayerRemoving:Connect(RefreshFlingTargets))
 
 local function ToggleFlingMenu()
 	PlaySwoosh()
-	if not TargetFrame.Visible then RefreshFlingTargets() end
-	TargetFrame.Visible = not TargetFrame.Visible
+	if not HubState.TargetFrame.Visible then RefreshFlingTargets() end
+	HubState.TargetFrame.Visible = not HubState.TargetFrame.Visible
 end
 
-FlingTargetBtn.MouseButton1Click:Connect(function() PlayClick() ToggleFlingMenu() end)
+HubState.FlingTargetBtn.MouseButton1Click:Connect(function() PlayClick() ToggleFlingMenu() end)
 
 ThemeObjects.PlayerTP.Frame = Instance.new("Frame")
 ThemeObjects.PlayerTP.Frame.Name = "PlayerTPFrame"
@@ -2834,8 +2842,8 @@ ThemeObjects.PlayerTP.WaypointSearch:GetPropertyChangedSignal("Text"):Connect(fu
 end)
 ThemeObjects.PlayerTP.PlayersTab.MouseButton1Click:Connect(function() PlayClick() ThemeObjects.PlayerTP.ShowTab("Players") end)
 ThemeObjects.PlayerTP.WaypointsTab.MouseButton1Click:Connect(function() PlayClick() ThemeObjects.PlayerTP.ShowTab("Waypoints") end)
-Players.PlayerAdded:Connect(ThemeObjects.PlayerTP.Refresh)
-Players.PlayerRemoving:Connect(ThemeObjects.PlayerTP.Refresh)
+TrackConnection("PlayerTPPlayerAdded", Players.PlayerAdded:Connect(ThemeObjects.PlayerTP.Refresh))
+TrackConnection("PlayerTPPlayerRemoving", Players.PlayerRemoving:Connect(ThemeObjects.PlayerTP.Refresh))
 ThemeObjects.PlayerTP.Close.MouseButton1Click:Connect(function() PlaySwoosh() ThemeObjects.PlayerTP.Frame.Visible = false end)
 
 ThemeObjects.PlayerTP.Header.InputBegan:Connect(function(input)
@@ -2848,18 +2856,18 @@ ThemeObjects.PlayerTP.Header.InputBegan:Connect(function(input)
 		end)
 	end
 end)
-UserInputService.InputChanged:Connect(function(input)
+TrackConnection("PlayerTPDragMove", UserInputService.InputChanged:Connect(function(input)
 	if ThemeObjects.PlayerTP.Dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 		local delta = input.Position - ThemeObjects.PlayerTP.DragStart
 		ThemeObjects.PlayerTP.Frame.Position = UDim2.new(ThemeObjects.PlayerTP.StartPosition.X.Scale, ThemeObjects.PlayerTP.StartPosition.X.Offset + delta.X, ThemeObjects.PlayerTP.StartPosition.Y.Scale, ThemeObjects.PlayerTP.StartPosition.Y.Offset + delta.Y)
 	end
-end)
+end))
 
 
-FlingBindBtn.MouseButton1Click:Connect(function()
+HubState.FlingBindBtn.MouseButton1Click:Connect(function()
 	PlayClick()
-	IsBindingFlingMenu = true
-	FlingBindBtn.Text = "..."
+	HubState.IsBindingFlingMenu = true
+	HubState.FlingBindBtn.Text = "..."
 	local bindConnection
 	bindConnection = UserInputService.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.Keyboard then
@@ -2867,63 +2875,63 @@ FlingBindBtn.MouseButton1Click:Connect(function()
 			if selectedKey == Enum.KeyCode.Backspace or selectedKey == Enum.KeyCode.Delete then
 				selectedKey = Enum.KeyCode.Unknown
 			end
-			FlingMenuKeybind = selectedKey
+			HubState.FlingMenuKeybind = selectedKey
 			SaveKeybind("FlingMenu", selectedKey)
-			FlingBindBtn.Text = KeybindText(selectedKey)
-			IsBindingFlingMenu = false
+			HubState.FlingBindBtn.Text = KeybindText(selectedKey)
+			HubState.IsBindingFlingMenu = false
 			bindConnection:Disconnect()
 		end
 	end)
 end)
-TargetCloseBtn.MouseButton1Click:Connect(function() PlaySwoosh() TargetFrame.Visible = false end)
+HubState.TargetCloseBtn.MouseButton1Click:Connect(function() PlaySwoosh() HubState.TargetFrame.Visible = false end)
 
-AntiFlingBtn.MouseButton1Click:Connect(function()
+HubState.AntiFlingBtn.MouseButton1Click:Connect(function()
 	PlayClick()
-	AntiFlingEnabled = not AntiFlingEnabled
-	AntiFlingBtn.Text = AntiFlingEnabled and "On" or "Off"
-	if ThemeObjects.AntiFlingTitle then ThemeObjects.AntiFlingTitle.TextColor3 = AntiFlingEnabled and AccentColor or Color3.fromRGB(255, 255, 255) end
-	if not AntiFlingEnabled then RestoreAntiFlingCollisions() end
+	HubState.AntiFlingEnabled = not HubState.AntiFlingEnabled
+	HubState.AntiFlingBtn.Text = HubState.AntiFlingEnabled and "On" or "Off"
+	if ThemeObjects.AntiFlingTitle then ThemeObjects.AntiFlingTitle.TextColor3 = HubState.AntiFlingEnabled and AccentColor or Color3.fromRGB(255, 255, 255) end
+	if not HubState.AntiFlingEnabled then RestoreAntiFlingCollisions() end
 end)
 
-local targetDragging = false
-local targetDragStart
-local targetStartPosition
-TargetHeader.InputBegan:Connect(function(input)
+HubState.targetDragging = false
+HubState.targetDragStart = nil
+HubState.targetStartPosition = nil
+HubState.TargetHeader.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		targetDragging = true
-		targetDragStart = input.Position
-		targetStartPosition = TargetFrame.Position
+		HubState.targetDragging = true
+		HubState.targetDragStart = input.Position
+		HubState.targetStartPosition = HubState.TargetFrame.Position
 		input.Changed:Connect(function()
-			if input.UserInputState == Enum.UserInputState.End then targetDragging = false end
+			if input.UserInputState == Enum.UserInputState.End then HubState.targetDragging = false end
 		end)
 	end
 end)
-UserInputService.InputChanged:Connect(function(input)
-	if targetDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-		local delta = input.Position - targetDragStart
-		TargetFrame.Position = UDim2.new(targetStartPosition.X.Scale, targetStartPosition.X.Offset + delta.X, targetStartPosition.Y.Scale, targetStartPosition.Y.Offset + delta.Y)
+TrackConnection("FlingMenuDragMove", UserInputService.InputChanged:Connect(function(input)
+	if HubState.targetDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+		local delta = input.Position - HubState.targetDragStart
+		HubState.TargetFrame.Position = UDim2.new(HubState.targetStartPosition.X.Scale, HubState.targetStartPosition.X.Offset + delta.X, HubState.targetStartPosition.Y.Scale, HubState.targetStartPosition.Y.Offset + delta.Y)
 	end
-end)
+end))
 
 -- Teleport Page
-local PlayerSearch = Instance.new("TextBox")
-PlayerSearch.Name = "PlayerSearch"
-PlayerSearch.Size = UDim2.new(1, -248, 0, 28)
-PlayerSearch.Position = UDim2.new(0, 4, 0, 4)
-PlayerSearch.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
-PlayerSearch.BackgroundTransparency = 0.8
-PlayerSearch.BorderSizePixel = 0
-PlayerSearch.PlaceholderText = "Search players..."
-PlayerSearch.Text = ""
-PlayerSearch.Font = Enum.Font.GothamMedium
-PlayerSearch.TextSize = 11
-PlayerSearch.Parent = TeleportPage
-table.insert(ThemeObjects.Backgrounds, PlayerSearch)
-table.insert(ThemeObjects.Texts, PlayerSearch)
+HubState.PlayerSearch = Instance.new("TextBox")
+HubState.PlayerSearch.Name = "PlayerSearch"
+HubState.PlayerSearch.Size = UDim2.new(1, -248, 0, 28)
+HubState.PlayerSearch.Position = UDim2.new(0, 4, 0, 4)
+HubState.PlayerSearch.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
+HubState.PlayerSearch.BackgroundTransparency = 0.8
+HubState.PlayerSearch.BorderSizePixel = 0
+HubState.PlayerSearch.PlaceholderText = "Search players..."
+HubState.PlayerSearch.Text = ""
+HubState.PlayerSearch.Font = Enum.Font.GothamMedium
+HubState.PlayerSearch.TextSize = 11
+HubState.PlayerSearch.Parent = HubState.TeleportPage
+table.insert(ThemeObjects.Backgrounds, HubState.PlayerSearch)
+table.insert(ThemeObjects.Texts, HubState.PlayerSearch)
 
-local SearchCorner = Instance.new("UICorner")
-SearchCorner.CornerRadius = UDim.new(0, 4)
-SearchCorner.Parent = PlayerSearch
+HubState.SearchCorner = Instance.new("UICorner")
+HubState.SearchCorner.CornerRadius = UDim.new(0, 4)
+HubState.SearchCorner.Parent = HubState.PlayerSearch
 
 ThemeObjects.WaypointToggleButton = Instance.new("TextButton")
 ThemeObjects.WaypointToggleButton.Name = "WaypointsToggleButton"
@@ -2936,7 +2944,7 @@ ThemeObjects.WaypointToggleButton.Text = "Waypoints"
 ThemeObjects.WaypointToggleButton.Font = Enum.Font.GothamBold
 ThemeObjects.WaypointToggleButton.TextSize = 10
 ThemeObjects.WaypointToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-ThemeObjects.WaypointToggleButton.Parent = TeleportPage
+ThemeObjects.WaypointToggleButton.Parent = HubState.TeleportPage
 table.insert(ThemeObjects.Backgrounds, ThemeObjects.WaypointToggleButton)
 table.insert(ThemeObjects.Texts, ThemeObjects.WaypointToggleButton)
 Instance.new("UICorner", ThemeObjects.WaypointToggleButton).CornerRadius = UDim.new(0, 5)
@@ -2952,7 +2960,7 @@ ThemeObjects.PlayerTP.OpenButton.Text = "TP Menu"
 ThemeObjects.PlayerTP.OpenButton.Font = Enum.Font.GothamBold
 ThemeObjects.PlayerTP.OpenButton.TextSize = 10
 ThemeObjects.PlayerTP.OpenButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-ThemeObjects.PlayerTP.OpenButton.Parent = TeleportPage
+ThemeObjects.PlayerTP.OpenButton.Parent = HubState.TeleportPage
 table.insert(ThemeObjects.Backgrounds, ThemeObjects.PlayerTP.OpenButton)
 table.insert(ThemeObjects.Texts, ThemeObjects.PlayerTP.OpenButton)
 Instance.new("UICorner", ThemeObjects.PlayerTP.OpenButton).CornerRadius = UDim.new(0, 5)
@@ -2968,7 +2976,7 @@ ThemeObjects.PlayerTP.BindButton.Text = KeybindText(ThemeObjects.PlayerTP.Keybin
 ThemeObjects.PlayerTP.BindButton.Font = Enum.Font.GothamBold
 ThemeObjects.PlayerTP.BindButton.TextSize = 9
 ThemeObjects.PlayerTP.BindButton.TextColor3 = AccentColor
-ThemeObjects.PlayerTP.BindButton.Parent = TeleportPage
+ThemeObjects.PlayerTP.BindButton.Parent = HubState.TeleportPage
 table.insert(ThemeObjects.Backgrounds, ThemeObjects.PlayerTP.BindButton)
 table.insert(ThemeObjects.Accents, ThemeObjects.PlayerTP.BindButton)
 Instance.new("UICorner", ThemeObjects.PlayerTP.BindButton).CornerRadius = UDim.new(0, 5)
@@ -2998,34 +3006,34 @@ ThemeObjects.PlayerTP.BindButton.MouseButton1Click:Connect(function()
 end)
 
 
-local PlayerScroll = Instance.new("ScrollingFrame")
-PlayerScroll.Name = "PlayerScroll"
-PlayerScroll.Size = UDim2.new(1, -8, 1, -40)
-PlayerScroll.Position = UDim2.new(0, 4, 0, 36)
-PlayerScroll.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
-PlayerScroll.BackgroundTransparency = 0.7
-PlayerScroll.ScrollBarImageColor3 = AccentColor
-PlayerScroll.BorderSizePixel = 0
-PlayerScroll.ScrollBarThickness = 2
-PlayerScroll.Parent = TeleportPage
-table.insert(ThemeObjects.Backgrounds, PlayerScroll)
+HubState.PlayerScroll = Instance.new("ScrollingFrame")
+HubState.PlayerScroll.Name = "PlayerScroll"
+HubState.PlayerScroll.Size = UDim2.new(1, -8, 1, -40)
+HubState.PlayerScroll.Position = UDim2.new(0, 4, 0, 36)
+HubState.PlayerScroll.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
+HubState.PlayerScroll.BackgroundTransparency = 0.7
+HubState.PlayerScroll.ScrollBarImageColor3 = AccentColor
+HubState.PlayerScroll.BorderSizePixel = 0
+HubState.PlayerScroll.ScrollBarThickness = 2
+HubState.PlayerScroll.Parent = HubState.TeleportPage
+table.insert(ThemeObjects.Backgrounds, HubState.PlayerScroll)
 
-local PlayerScrollCorner = Instance.new("UICorner")
-PlayerScrollCorner.CornerRadius = UDim.new(0, 6)
-PlayerScrollCorner.Parent = PlayerScroll
+HubState.PlayerScrollCorner = Instance.new("UICorner")
+HubState.PlayerScrollCorner.CornerRadius = UDim.new(0, 6)
+HubState.PlayerScrollCorner.Parent = HubState.PlayerScroll
 
-local PlayerListLayout = Instance.new("UIListLayout")
-PlayerListLayout.Parent = PlayerScroll
-PlayerListLayout.Padding = UDim.new(0, 6)
-PlayerListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-PlayerListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+HubState.PlayerListLayout = Instance.new("UIListLayout")
+HubState.PlayerListLayout.Parent = HubState.PlayerScroll
+HubState.PlayerListLayout.Padding = UDim.new(0, 6)
+HubState.PlayerListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+HubState.PlayerListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 do
 	local padding = Instance.new("UIPadding")
 	padding.PaddingLeft = UDim.new(0, 2)
 	padding.PaddingRight = UDim.new(0, 2)
 	padding.PaddingTop = UDim.new(0, 2)
 	padding.PaddingBottom = UDim.new(0, 2)
-	padding.Parent = PlayerScroll
+	padding.Parent = HubState.PlayerScroll
 end
 
 SavedKeybinds.WaypointsByPlace = type(SavedKeybinds.WaypointsByPlace) == "table" and SavedKeybinds.WaypointsByPlace or {}
@@ -3040,7 +3048,7 @@ ThemeObjects.WaypointUI.Frame.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
 ThemeObjects.WaypointUI.Frame.BackgroundTransparency = 0.8
 ThemeObjects.WaypointUI.Frame.BorderSizePixel = 0
 ThemeObjects.WaypointUI.Frame.Visible = false
-ThemeObjects.WaypointUI.Frame.Parent = TeleportPage
+ThemeObjects.WaypointUI.Frame.Parent = HubState.TeleportPage
 table.insert(ThemeObjects.Backgrounds, ThemeObjects.WaypointUI.Frame)
 Instance.new("UICorner", ThemeObjects.WaypointUI.Frame).CornerRadius = UDim.new(0, 6)
 
@@ -3417,8 +3425,8 @@ ThemeObjects.WaypointUI.Refresh()
 
 ThemeObjects.ShowWaypointsPage = function(showWaypoints)
 	ThemeObjects.WaypointsOpen = showWaypoints == true
-	PlayerSearch.Visible = not ThemeObjects.WaypointsOpen
-	PlayerScroll.Visible = not ThemeObjects.WaypointsOpen
+	HubState.PlayerSearch.Visible = not ThemeObjects.WaypointsOpen
+	HubState.PlayerScroll.Visible = not ThemeObjects.WaypointsOpen
 	ThemeObjects.WaypointUI.Frame.Visible = ThemeObjects.WaypointsOpen
 	ThemeObjects.WaypointToggleButton.Text = ThemeObjects.WaypointsOpen and "Players" or "Waypoints"
 end
@@ -3430,7 +3438,7 @@ ThemeObjects.ShowWaypointsPage(false)
 
 local function UpdatePlayerList()
 	ThemeObjects.PlayerListReady = true
-	for _, item in pairs(PlayerScroll:GetChildren()) do
+	for _, item in pairs(HubState.PlayerScroll:GetChildren()) do
 		if item:IsA("Frame") then item:Destroy() end
 	end
 	for _, p in pairs(Players:GetPlayers()) do
@@ -3441,7 +3449,7 @@ local function UpdatePlayerList()
 		pFrame.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
 		pFrame.BackgroundTransparency = 0.92
 		pFrame.BorderSizePixel = 0
-		pFrame.Parent = PlayerScroll
+		pFrame.Parent = HubState.PlayerScroll
 
 		local pName = Instance.new("TextLabel")
 		pName.Size = UDim2.new(1, -46, 1, 0)
@@ -3491,83 +3499,83 @@ local function UpdatePlayerList()
 			end
 		end)
 	end
-	PlayerScroll.CanvasSize = UDim2.new(0, 0, 0, PlayerListLayout.AbsoluteContentSize.Y)
+	HubState.PlayerScroll.CanvasSize = UDim2.new(0, 0, 0, HubState.PlayerListLayout.AbsoluteContentSize.Y)
 end
 
-PlayerSearch:GetPropertyChangedSignal("Text"):Connect(function()
-	local filter = PlayerSearch.Text:lower()
-	for _, frame in pairs(PlayerScroll:GetChildren()) do
+HubState.PlayerSearch:GetPropertyChangedSignal("Text"):Connect(function()
+	local filter = HubState.PlayerSearch.Text:lower()
+	for _, frame in pairs(HubState.PlayerScroll:GetChildren()) do
 		if frame:IsA("Frame") then
 			frame.Visible = (frame.Name:lower():find(filter) or (frame:FindFirstChildOfClass("TextLabel") and frame:FindFirstChildOfClass("TextLabel").Text:lower():find(filter))) and true or false
 		end
 	end
-	PlayerScroll.CanvasSize = UDim2.new(0, 0, 0, PlayerListLayout.AbsoluteContentSize.Y)
+	HubState.PlayerScroll.CanvasSize = UDim2.new(0, 0, 0, HubState.PlayerListLayout.AbsoluteContentSize.Y)
 end)
 
-Players.PlayerAdded:Connect(UpdatePlayerList)
-Players.PlayerRemoving:Connect(UpdatePlayerList)
+TrackConnection("TeleportPlayerAdded", Players.PlayerAdded:Connect(UpdatePlayerList))
+TrackConnection("TeleportPlayerRemoving", Players.PlayerRemoving:Connect(UpdatePlayerList))
 
 -- ==================== COIN FARM ====================
-local CoinFarmTitle = Instance.new("TextLabel")
-CoinFarmTitle.Size = UDim2.new(0, 80, 0, 17)
-CoinFarmTitle.Position = UDim2.new(0, 12, 0, 94)
-CoinFarmTitle.BackgroundTransparency = 1
-CoinFarmTitle.Text = "Coin Farm:"
-CoinFarmTitle.Font = Enum.Font.GothamBold
-CoinFarmTitle.TextSize = 10
-CoinFarmTitle.TextColor3 = Color3.fromRGB(180, 180, 195)
-CoinFarmTitle.TextXAlignment = Enum.TextXAlignment.Left
-CoinFarmTitle.Parent = MM2Page
-table.insert(ThemeObjects.Texts, CoinFarmTitle)
+HubState.CoinFarmTitle = Instance.new("TextLabel")
+HubState.CoinFarmTitle.Size = UDim2.new(0, 80, 0, 17)
+HubState.CoinFarmTitle.Position = UDim2.new(0, 12, 0, 94)
+HubState.CoinFarmTitle.BackgroundTransparency = 1
+HubState.CoinFarmTitle.Text = "Coin Farm:"
+HubState.CoinFarmTitle.Font = Enum.Font.GothamBold
+HubState.CoinFarmTitle.TextSize = 10
+HubState.CoinFarmTitle.TextColor3 = Color3.fromRGB(180, 180, 195)
+HubState.CoinFarmTitle.TextXAlignment = Enum.TextXAlignment.Left
+HubState.CoinFarmTitle.Parent = HubState.MM2Page
+table.insert(ThemeObjects.Texts, HubState.CoinFarmTitle)
 
-local CoinFarmToggle = Instance.new("TextButton")
-CoinFarmToggle.Size = UDim2.new(0, 32, 0, 17)
-CoinFarmToggle.Position = UDim2.new(0, 80, 0, 94)
-CoinFarmToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 68)
-CoinFarmToggle.BackgroundTransparency = 0.8
-CoinFarmToggle.BorderSizePixel = 0
-CoinFarmToggle.Text = "Off"
-CoinFarmToggle.Font = Enum.Font.GothamBold
-CoinFarmToggle.Parent = MM2Page
-table.insert(ThemeObjects.Backgrounds, CoinFarmToggle)
-table.insert(ThemeObjects.Texts, CoinFarmToggle)
-Instance.new("UICorner", CoinFarmToggle).CornerRadius = UDim.new(0, 4)
+HubState.CoinFarmToggle = Instance.new("TextButton")
+HubState.CoinFarmToggle.Size = UDim2.new(0, 32, 0, 17)
+HubState.CoinFarmToggle.Position = UDim2.new(0, 80, 0, 94)
+HubState.CoinFarmToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 68)
+HubState.CoinFarmToggle.BackgroundTransparency = 0.8
+HubState.CoinFarmToggle.BorderSizePixel = 0
+HubState.CoinFarmToggle.Text = "Off"
+HubState.CoinFarmToggle.Font = Enum.Font.GothamBold
+HubState.CoinFarmToggle.Parent = HubState.MM2Page
+table.insert(ThemeObjects.Backgrounds, HubState.CoinFarmToggle)
+table.insert(ThemeObjects.Texts, HubState.CoinFarmToggle)
+Instance.new("UICorner", HubState.CoinFarmToggle).CornerRadius = UDim.new(0, 4)
 
-local CoinFarmStatus = Instance.new("TextLabel")
-CoinFarmStatus.Size = UDim2.new(0, 140, 0, 11)
-CoinFarmStatus.Position = UDim2.new(0, 12, 0, 116)
-CoinFarmStatus.BackgroundTransparency = 1
-CoinFarmStatus.Text = "0"
-CoinFarmStatus.Font = Enum.Font.GothamMedium
-CoinFarmStatus.TextSize = 8
-CoinFarmStatus.TextColor3 = Color3.fromRGB(100, 100, 100)
-CoinFarmStatus.TextXAlignment = Enum.TextXAlignment.Left
-CoinFarmStatus.Parent = MM2Page
-table.insert(ThemeObjects.Texts, CoinFarmStatus)
+HubState.CoinFarmStatus = Instance.new("TextLabel")
+HubState.CoinFarmStatus.Size = UDim2.new(0, 140, 0, 11)
+HubState.CoinFarmStatus.Position = UDim2.new(0, 12, 0, 116)
+HubState.CoinFarmStatus.BackgroundTransparency = 1
+HubState.CoinFarmStatus.Text = "0"
+HubState.CoinFarmStatus.Font = Enum.Font.GothamMedium
+HubState.CoinFarmStatus.TextSize = 8
+HubState.CoinFarmStatus.TextColor3 = Color3.fromRGB(100, 100, 100)
+HubState.CoinFarmStatus.TextXAlignment = Enum.TextXAlignment.Left
+HubState.CoinFarmStatus.Parent = HubState.MM2Page
+table.insert(ThemeObjects.Texts, HubState.CoinFarmStatus)
 
-local CoinFarmEnabled = false
-local CoinFarmConnection = nil
-local LastCoinRefresh = 0
-local CachedCoins = {}
-local CurrentCoin = nil
-local CurrentCoinStartedAt = 0
-local CoinCollectionTimeout = 1.25
-local SkippedCoins = {}
-local AutoGunPickupBusy = false
+HubState.CoinFarmEnabled = false
+HubState.CoinFarmConnection = nil
+HubState.LastCoinRefresh = 0
+HubState.CachedCoins = {}
+HubState.CurrentCoin = nil
+HubState.CurrentCoinStartedAt = 0
+HubState.CoinCollectionTimeout = 1.25
+HubState.SkippedCoins = {}
+HubState.AutoGunPickupBusy = false
 
 local function GetAllCoins()
 	local now = os.clock()
-	if now - LastCoinRefresh < 0.5 then
-		return CachedCoins
+	if now - HubState.LastCoinRefresh < 0.5 then
+		return HubState.CachedCoins
 	end
-	LastCoinRefresh = now
-	CachedCoins = {}
+	HubState.LastCoinRefresh = now
+	HubState.CachedCoins = {}
 	for _, obj in ipairs(workspace:GetDescendants()) do
 		if obj:IsA("BasePart") and obj.Name == "Coin_Server" and obj.Parent and obj.Parent.Name == "CoinContainer" then
-			table.insert(CachedCoins, obj)
+			table.insert(HubState.CachedCoins, obj)
 		end
 	end
-	return CachedCoins
+	return HubState.CachedCoins
 end
 
 local function EnableUndergroundMode(root)
@@ -3581,18 +3589,18 @@ local function EnableUndergroundMode(root)
 end
 
 local function StartCoinFarm()
-	if CoinFarmConnection then CoinFarmConnection:Disconnect() end
-	CurrentCoin = nil
-	CurrentCoinStartedAt = 0
-	SkippedCoins = {}
+	if HubState.CoinFarmConnection then HubState.CoinFarmConnection:Disconnect() end
+	HubState.CurrentCoin = nil
+	HubState.CurrentCoinStartedAt = 0
+	HubState.SkippedCoins = {}
 	
-	CoinFarmConnection = RunService.Heartbeat:Connect(function()
-		if not CoinFarmEnabled then return end
-		if AutoGunPickupBusy then return end
+	HubState.CoinFarmConnection = RunService.Heartbeat:Connect(function()
+		if not HubState.CoinFarmEnabled then return end
+		if HubState.AutoGunPickupBusy then return end
 		
 		local coins = GetAllCoins()
 		if #coins == 0 then
-			CoinFarmStatus.Text = "0"
+			HubState.CoinFarmStatus.Text = "0"
 			return
 		end
 		
@@ -3601,15 +3609,15 @@ local function StartCoinFarm()
 		local now = os.clock()
 		local availableCoins = {}
 		for _, coin in ipairs(coins) do
-			local skipUntil = SkippedCoins[coin]
+			local skipUntil = HubState.SkippedCoins[coin]
 			if not skipUntil or now >= skipUntil then
-				SkippedCoins[coin] = nil
+				HubState.SkippedCoins[coin] = nil
 				table.insert(availableCoins, coin)
 			end
 		end
 
 		if #availableCoins == 0 then
-			CoinFarmStatus.Text = tostring(#coins)
+			HubState.CoinFarmStatus.Text = tostring(#coins)
 			return
 		end
 		
@@ -3619,17 +3627,17 @@ local function StartCoinFarm()
 		
 		local target = availableCoins[1]
 		if target and target.Parent then
-			if CurrentCoin ~= target then
-				CurrentCoin = target
-				CurrentCoinStartedAt = now
-			elseif now - CurrentCoinStartedAt >= CoinCollectionTimeout then
-				SkippedCoins[target] = now + 4
-				CurrentCoin = nil
-				CoinFarmStatus.Text = tostring(#coins)
+			if HubState.CurrentCoin ~= target then
+				HubState.CurrentCoin = target
+				HubState.CurrentCoinStartedAt = now
+			elseif now - HubState.CurrentCoinStartedAt >= HubState.CoinCollectionTimeout then
+				HubState.SkippedCoins[target] = now + 4
+				HubState.CurrentCoin = nil
+				HubState.CoinFarmStatus.Text = tostring(#coins)
 				return
 			end
 
-			CoinFarmStatus.Text = tostring(#coins)
+			HubState.CoinFarmStatus.Text = tostring(#coins)
 			root.CFrame = target.CFrame * CFrame.new(0, -3.5, 0)
 			-- Extremely minimal delay for maximum speed
 			task.wait(0.001)
@@ -3638,20 +3646,20 @@ local function StartCoinFarm()
 end
 
 local function ToggleCoinFarm()
-	CoinFarmEnabled = not CoinFarmEnabled
-	CoinFarmToggle.Text = CoinFarmEnabled and "On" or "Off"
-	CoinFarmTitle.TextColor3 = CoinFarmEnabled and AccentColor or InactiveTextColor()
+	HubState.CoinFarmEnabled = not HubState.CoinFarmEnabled
+	HubState.CoinFarmToggle.Text = HubState.CoinFarmEnabled and "On" or "Off"
+	HubState.CoinFarmTitle.TextColor3 = HubState.CoinFarmEnabled and AccentColor or InactiveTextColor()
 	
-	if CoinFarmEnabled then
-		CoinFarmStatus.Text = "0"
+	if HubState.CoinFarmEnabled then
+		HubState.CoinFarmStatus.Text = "0"
 		local root = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
 		if root then EnableUndergroundMode(root) end
 		StartCoinFarm()
 	else
-		CoinFarmStatus.Text = "0"
-		if CoinFarmConnection then
-			CoinFarmConnection:Disconnect()
-			CoinFarmConnection = nil
+		HubState.CoinFarmStatus.Text = "0"
+		if HubState.CoinFarmConnection then
+			HubState.CoinFarmConnection:Disconnect()
+			HubState.CoinFarmConnection = nil
 		end
 		local root = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
 		if root and Player.Character then
@@ -3663,41 +3671,41 @@ local function ToggleCoinFarm()
 	end
 end
 
-CoinFarmToggle.MouseButton1Click:Connect(function()
+HubState.CoinFarmToggle.MouseButton1Click:Connect(function()
 	PlayClick()
 	ToggleCoinFarm()
 end)
 
-local AutoGunTitle = Instance.new("TextLabel")
-AutoGunTitle.Size = UDim2.new(0, 56, 0, 17)
-AutoGunTitle.Position = UDim2.new(0, 176, 0, 94)
-AutoGunTitle.BackgroundTransparency = 1
-AutoGunTitle.Text = "Auto Gun:"
-AutoGunTitle.Font = Enum.Font.GothamBold
-AutoGunTitle.TextSize = 10
-AutoGunTitle.TextColor3 = Color3.fromRGB(180, 180, 195)
-AutoGunTitle.TextXAlignment = Enum.TextXAlignment.Left
-AutoGunTitle.Parent = MM2Page
-table.insert(ThemeObjects.Texts, AutoGunTitle)
+HubState.AutoGunTitle = Instance.new("TextLabel")
+HubState.AutoGunTitle.Size = UDim2.new(0, 56, 0, 17)
+HubState.AutoGunTitle.Position = UDim2.new(0, 176, 0, 94)
+HubState.AutoGunTitle.BackgroundTransparency = 1
+HubState.AutoGunTitle.Text = "Auto Gun:"
+HubState.AutoGunTitle.Font = Enum.Font.GothamBold
+HubState.AutoGunTitle.TextSize = 10
+HubState.AutoGunTitle.TextColor3 = Color3.fromRGB(180, 180, 195)
+HubState.AutoGunTitle.TextXAlignment = Enum.TextXAlignment.Left
+HubState.AutoGunTitle.Parent = HubState.MM2Page
+table.insert(ThemeObjects.Texts, HubState.AutoGunTitle)
 
-local AutoGunToggle = Instance.new("TextButton")
-AutoGunToggle.Size = UDim2.new(0, 32, 0, 17)
-AutoGunToggle.Position = UDim2.new(0, 240, 0, 94)
-AutoGunToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 68)
-AutoGunToggle.BackgroundTransparency = 0.8
-AutoGunToggle.BorderSizePixel = 0
-AutoGunToggle.Text = "Off"
-AutoGunToggle.Font = Enum.Font.GothamBold
-AutoGunToggle.Parent = MM2Page
-table.insert(ThemeObjects.Backgrounds, AutoGunToggle)
-table.insert(ThemeObjects.Texts, AutoGunToggle)
-Instance.new("UICorner", AutoGunToggle).CornerRadius = UDim.new(0, 4)
+HubState.AutoGunToggle = Instance.new("TextButton")
+HubState.AutoGunToggle.Size = UDim2.new(0, 32, 0, 17)
+HubState.AutoGunToggle.Position = UDim2.new(0, 240, 0, 94)
+HubState.AutoGunToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 68)
+HubState.AutoGunToggle.BackgroundTransparency = 0.8
+HubState.AutoGunToggle.BorderSizePixel = 0
+HubState.AutoGunToggle.Text = "Off"
+HubState.AutoGunToggle.Font = Enum.Font.GothamBold
+HubState.AutoGunToggle.Parent = HubState.MM2Page
+table.insert(ThemeObjects.Backgrounds, HubState.AutoGunToggle)
+table.insert(ThemeObjects.Texts, HubState.AutoGunToggle)
+Instance.new("UICorner", HubState.AutoGunToggle).CornerRadius = UDim.new(0, 4)
 
-local GunDropESP = {Enabled = false, Highlight = nil, Adornee = nil, LastCheck = 0}
+HubState.GunDropESP = {Enabled = false, Highlight = nil, Adornee = nil, LastCheck = 0}
 
-local AutoGunPickupEnabled = false
-local LastGunDrop = nil
-local GunPickupDelay = 0.5
+HubState.AutoGunPickupEnabled = false
+HubState.LastGunDrop = nil
+HubState.GunPickupDelay = 0.5
 
 local function FindGunDrop()
 	for _, map in ipairs(workspace:GetChildren()) do
@@ -3707,48 +3715,48 @@ local function FindGunDrop()
 	return nil
 end
 
-function GunDropESP.Clear()
-	if GunDropESP.Highlight then GunDropESP.Highlight:Destroy() end
-	if GunDropESP.Label then GunDropESP.Label:Destroy() end
-	GunDropESP.Highlight = nil
-	GunDropESP.Label = nil
-	GunDropESP.Adornee = nil
+function HubState.GunDropESP.Clear()
+	if HubState.GunDropESP.Highlight then HubState.GunDropESP.Highlight:Destroy() end
+	if HubState.GunDropESP.Label then HubState.GunDropESP.Label:Destroy() end
+	HubState.GunDropESP.Highlight = nil
+	HubState.GunDropESP.Label = nil
+	HubState.GunDropESP.Adornee = nil
 end
 
-function GunDropESP.Refresh()
-	if not GunDropESP.Enabled then
-		GunDropESP.Clear()
+function HubState.GunDropESP.Refresh()
+	if not HubState.GunDropESP.Enabled then
+		HubState.GunDropESP.Clear()
 		return
 	end
 
 	local gunDrop = FindGunDrop()
 	if not gunDrop or not gunDrop.Parent then
-		GunDropESP.Clear()
+		HubState.GunDropESP.Clear()
 		return
 	end
-	if gunDrop == GunDropESP.Adornee and GunDropESP.Highlight and GunDropESP.Highlight.Parent then return end
+	if gunDrop == HubState.GunDropESP.Adornee and HubState.GunDropESP.Highlight and HubState.GunDropESP.Highlight.Parent then return end
 
-	GunDropESP.Clear()
-	GunDropESP.Adornee = gunDrop
-	GunDropESP.Highlight = Instance.new("Highlight")
-	GunDropESP.Highlight.Name = "HqydeuGunDropESP"
-	GunDropESP.Highlight.Adornee = gunDrop
-	GunDropESP.Highlight.FillColor = Color3.fromRGB(255, 205, 65)
-	GunDropESP.Highlight.FillTransparency = 0.18
-	GunDropESP.Highlight.OutlineColor = Color3.fromRGB(255, 245, 190)
-	GunDropESP.Highlight.OutlineTransparency = 0
-	GunDropESP.Highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-	GunDropESP.Highlight.Parent = gunDrop
+	HubState.GunDropESP.Clear()
+	HubState.GunDropESP.Adornee = gunDrop
+	HubState.GunDropESP.Highlight = Instance.new("Highlight")
+	HubState.GunDropESP.Highlight.Name = "HqydeuGunDropESP"
+	HubState.GunDropESP.Highlight.Adornee = gunDrop
+	HubState.GunDropESP.Highlight.FillColor = Color3.fromRGB(255, 205, 65)
+	HubState.GunDropESP.Highlight.FillTransparency = 0.18
+	HubState.GunDropESP.Highlight.OutlineColor = Color3.fromRGB(255, 245, 190)
+	HubState.GunDropESP.Highlight.OutlineTransparency = 0
+	HubState.GunDropESP.Highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	HubState.GunDropESP.Highlight.Parent = gunDrop
 
 	local labelPart = gunDrop:IsA("BasePart") and gunDrop or gunDrop:FindFirstChildWhichIsA("BasePart", true)
 	if labelPart then
-		GunDropESP.Label = Instance.new("BillboardGui")
-		GunDropESP.Label.Name = "HqydeuGunDropLabel"
-		GunDropESP.Label.Adornee = labelPart
-		GunDropESP.Label.Size = UDim2.new(0, 64, 0, 20)
-		GunDropESP.Label.StudsOffsetWorldSpace = Vector3.new(0, 2.2, 0)
-		GunDropESP.Label.AlwaysOnTop = true
-		GunDropESP.Label.Parent = gunDrop
+		HubState.GunDropESP.Label = Instance.new("BillboardGui")
+		HubState.GunDropESP.Label.Name = "HqydeuGunDropLabel"
+		HubState.GunDropESP.Label.Adornee = labelPart
+		HubState.GunDropESP.Label.Size = UDim2.new(0, 64, 0, 20)
+		HubState.GunDropESP.Label.StudsOffsetWorldSpace = Vector3.new(0, 2.2, 0)
+		HubState.GunDropESP.Label.AlwaysOnTop = true
+		HubState.GunDropESP.Label.Parent = gunDrop
 		local labelText = Instance.new("TextLabel")
 		labelText.Size = UDim2.new(1, 0, 1, 0)
 		labelText.BackgroundTransparency = 1
@@ -3758,14 +3766,14 @@ function GunDropESP.Refresh()
 		labelText.TextColor3 = Color3.fromRGB(255, 225, 80)
 		labelText.TextStrokeColor3 = Color3.fromRGB(25, 25, 25)
 		labelText.TextStrokeTransparency = 0.2
-		labelText.Parent = GunDropESP.Label
+		labelText.Parent = HubState.GunDropESP.Label
 	end
 end
 
-Connections.GunDropESP = RunService.Heartbeat:Connect(function()
-	if os.clock() - GunDropESP.LastCheck < 0.2 then return end
-	GunDropESP.LastCheck = os.clock()
-	GunDropESP.Refresh()
+HubState.Connections.GunDropESP = RunService.Heartbeat:Connect(function()
+	if os.clock() - HubState.GunDropESP.LastCheck < 0.2 then return end
+	HubState.GunDropESP.LastCheck = os.clock()
+	HubState.GunDropESP.Refresh()
 end)
 
 local function GetGunDropCFrame(gunDrop)
@@ -3801,165 +3809,165 @@ local function IsAliveAndInsideActiveMap(gunDrop)
 end
 
 local function TryPickUpGun(gunDrop)
-	if AutoGunPickupBusy or not AutoGunPickupEnabled or not gunDrop or not gunDrop.Parent then return end
+	if HubState.AutoGunPickupBusy or not HubState.AutoGunPickupEnabled or not gunDrop or not gunDrop.Parent then return end
 	if not IsAliveAndInsideActiveMap(gunDrop) then return end
 	local root = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
 	local gunCFrame = GetGunDropCFrame(gunDrop)
 	if not root or not gunCFrame then return end
 
-	AutoGunPickupBusy = true
+	HubState.AutoGunPickupBusy = true
 	local originalCFrame = root.CFrame
 	root.CFrame = gunCFrame
 	task.wait(0.15)
 	if root and root.Parent then
 		root.CFrame = originalCFrame
 	end
-	AutoGunPickupBusy = false
+	HubState.AutoGunPickupBusy = false
 end
 
-Connections.AutoGunPickup = RunService.Heartbeat:Connect(function()
-	if not AutoGunPickupEnabled or AutoGunPickupBusy then return end
+HubState.Connections.AutoGunPickup = RunService.Heartbeat:Connect(function()
+	if not HubState.AutoGunPickupEnabled or HubState.AutoGunPickupBusy then return end
 	local gunDrop = FindGunDrop()
 	if not gunDrop then
-		LastGunDrop = nil
+		HubState.LastGunDrop = nil
 		return
 	end
 
-	if gunDrop ~= LastGunDrop then
-		LastGunDrop = gunDrop
-		task.delay(GunPickupDelay, function()
-			if LastGunDrop == gunDrop then
+	if gunDrop ~= HubState.LastGunDrop then
+		HubState.LastGunDrop = gunDrop
+		task.delay(HubState.GunPickupDelay, function()
+			if HubState.LastGunDrop == gunDrop then
 				TryPickUpGun(gunDrop)
 			end
 		end)
 	end
 end)
 
-AutoGunToggle.MouseButton1Click:Connect(function()
+HubState.AutoGunToggle.MouseButton1Click:Connect(function()
 	PlayClick()
-	AutoGunPickupEnabled = not AutoGunPickupEnabled
-	AutoGunToggle.Text = AutoGunPickupEnabled and "On" or "Off"
-	AutoGunTitle.TextColor3 = AutoGunPickupEnabled and AccentColor or InactiveTextColor()
-	if AutoGunPickupEnabled then
-		LastGunDrop = nil
+	HubState.AutoGunPickupEnabled = not HubState.AutoGunPickupEnabled
+	HubState.AutoGunToggle.Text = HubState.AutoGunPickupEnabled and "On" or "Off"
+	HubState.AutoGunTitle.TextColor3 = HubState.AutoGunPickupEnabled and AccentColor or InactiveTextColor()
+	if HubState.AutoGunPickupEnabled then
+		HubState.LastGunDrop = nil
 	else
-		LastGunDrop = nil
+		HubState.LastGunDrop = nil
 	end
 end)
 
-local KillTitle = Instance.new("TextLabel")
-KillTitle.Size = UDim2.new(0, 60, 0, 17)
-KillTitle.Position = UDim2.new(0, 12, 0, 70)
-KillTitle.BackgroundTransparency = 1
-KillTitle.Text = "Auto Stab:"
-KillTitle.Font = Enum.Font.GothamBold
-KillTitle.TextSize = 10
-KillTitle.TextColor3 = Color3.fromRGB(180, 180, 195)
-KillTitle.TextXAlignment = Enum.TextXAlignment.Left
-KillTitle.Parent = MM2Page
-table.insert(ThemeObjects.Texts, KillTitle)
+HubState.KillTitle = Instance.new("TextLabel")
+HubState.KillTitle.Size = UDim2.new(0, 60, 0, 17)
+HubState.KillTitle.Position = UDim2.new(0, 12, 0, 70)
+HubState.KillTitle.BackgroundTransparency = 1
+HubState.KillTitle.Text = "Auto Stab:"
+HubState.KillTitle.Font = Enum.Font.GothamBold
+HubState.KillTitle.TextSize = 10
+HubState.KillTitle.TextColor3 = Color3.fromRGB(180, 180, 195)
+HubState.KillTitle.TextXAlignment = Enum.TextXAlignment.Left
+HubState.KillTitle.Parent = HubState.MM2Page
+table.insert(ThemeObjects.Texts, HubState.KillTitle)
 
-local KillToggle = Instance.new("TextButton")
-KillToggle.Size = UDim2.new(0, 32, 0, 17)
-KillToggle.Position = UDim2.new(0, 80, 0, 70)
-KillToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 68)
-KillToggle.BackgroundTransparency = 0.8
-KillToggle.BorderSizePixel = 0
-KillToggle.Text = "Off"
-KillToggle.Font = Enum.Font.GothamBold
-KillToggle.Parent = MM2Page
-table.insert(ThemeObjects.Backgrounds, KillToggle)
-table.insert(ThemeObjects.Texts, KillToggle)
-Instance.new("UICorner", KillToggle).CornerRadius = UDim.new(0, 4)
+HubState.KillToggle = Instance.new("TextButton")
+HubState.KillToggle.Size = UDim2.new(0, 32, 0, 17)
+HubState.KillToggle.Position = UDim2.new(0, 80, 0, 70)
+HubState.KillToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 68)
+HubState.KillToggle.BackgroundTransparency = 0.8
+HubState.KillToggle.BorderSizePixel = 0
+HubState.KillToggle.Text = "Off"
+HubState.KillToggle.Font = Enum.Font.GothamBold
+HubState.KillToggle.Parent = HubState.MM2Page
+table.insert(ThemeObjects.Backgrounds, HubState.KillToggle)
+table.insert(ThemeObjects.Texts, HubState.KillToggle)
+Instance.new("UICorner", HubState.KillToggle).CornerRadius = UDim.new(0, 4)
 
-local KillEnabled = false
-local KillHitboxOriginals = {}
-local LastKnifeSwing = 0
-local StabTargetIndex = 0
+HubState.KillEnabled = false
+HubState.KillHitboxOriginals = {}
+HubState.LastKnifeSwing = 0
+HubState.StabTargetIndex = 0
 
-local MurdererAvatar = Instance.new("ImageLabel")
-MurdererAvatar.Size = UDim2.new(0, 58, 0, 58)
-MurdererAvatar.Position = UDim2.new(0, 8, 0, 5)
-MurdererAvatar.BackgroundColor3 = Color3.fromRGB(50, 50, 68)
-MurdererAvatar.BackgroundTransparency = 0.8
-MurdererAvatar.BorderSizePixel = 0
-MurdererAvatar.Image = ""
-MurdererAvatar.Parent = MM2Page
-Instance.new("UICorner", MurdererAvatar).CornerRadius = UDim.new(0, 7)
+HubState.MurdererAvatar = Instance.new("ImageLabel")
+HubState.MurdererAvatar.Size = UDim2.new(0, 58, 0, 58)
+HubState.MurdererAvatar.Position = UDim2.new(0, 8, 0, 5)
+HubState.MurdererAvatar.BackgroundColor3 = Color3.fromRGB(50, 50, 68)
+HubState.MurdererAvatar.BackgroundTransparency = 0.8
+HubState.MurdererAvatar.BorderSizePixel = 0
+HubState.MurdererAvatar.Image = ""
+HubState.MurdererAvatar.Parent = HubState.MM2Page
+Instance.new("UICorner", HubState.MurdererAvatar).CornerRadius = UDim.new(0, 7)
 
-local SheriffAvatar = Instance.new("ImageLabel")
-SheriffAvatar.Size = UDim2.new(0, 58, 0, 58)
-SheriffAvatar.Position = UDim2.new(0, 168, 0, 5)
-SheriffAvatar.BackgroundColor3 = Color3.fromRGB(50, 50, 68)
-SheriffAvatar.BackgroundTransparency = 0.8
-SheriffAvatar.BorderSizePixel = 0
-SheriffAvatar.Image = ""
-SheriffAvatar.Parent = MM2Page
-Instance.new("UICorner", SheriffAvatar).CornerRadius = UDim.new(0, 7)
+HubState.SheriffAvatar = Instance.new("ImageLabel")
+HubState.SheriffAvatar.Size = UDim2.new(0, 58, 0, 58)
+HubState.SheriffAvatar.Position = UDim2.new(0, 168, 0, 5)
+HubState.SheriffAvatar.BackgroundColor3 = Color3.fromRGB(50, 50, 68)
+HubState.SheriffAvatar.BackgroundTransparency = 0.8
+HubState.SheriffAvatar.BorderSizePixel = 0
+HubState.SheriffAvatar.Image = ""
+HubState.SheriffAvatar.Parent = HubState.MM2Page
+Instance.new("UICorner", HubState.SheriffAvatar).CornerRadius = UDim.new(0, 7)
 
-local MurdererRoleLabel = Instance.new("TextLabel")
-MurdererRoleLabel.Size = UDim2.new(0, 90, 0, 36)
-MurdererRoleLabel.Position = UDim2.new(0, 72, 0, 4)
-MurdererRoleLabel.BackgroundTransparency = 1
-MurdererRoleLabel.Text = "Murderer: Unknown"
-MurdererRoleLabel.Font = Enum.Font.GothamBold
-MurdererRoleLabel.TextSize = 11
-MurdererRoleLabel.TextColor3 = Color3.fromRGB(255, 90, 90)
-MurdererRoleLabel.TextWrapped = true
-MurdererRoleLabel.TextXAlignment = Enum.TextXAlignment.Left
-MurdererRoleLabel.Parent = MM2Page
+HubState.MurdererRoleLabel = Instance.new("TextLabel")
+HubState.MurdererRoleLabel.Size = UDim2.new(0, 90, 0, 36)
+HubState.MurdererRoleLabel.Position = UDim2.new(0, 72, 0, 4)
+HubState.MurdererRoleLabel.BackgroundTransparency = 1
+HubState.MurdererRoleLabel.Text = "Murderer: Unknown"
+HubState.MurdererRoleLabel.Font = Enum.Font.GothamBold
+HubState.MurdererRoleLabel.TextSize = 11
+HubState.MurdererRoleLabel.TextColor3 = Color3.fromRGB(255, 90, 90)
+HubState.MurdererRoleLabel.TextWrapped = true
+HubState.MurdererRoleLabel.TextXAlignment = Enum.TextXAlignment.Left
+HubState.MurdererRoleLabel.Parent = HubState.MM2Page
 
-local SheriffRoleLabel = Instance.new("TextLabel")
-SheriffRoleLabel.Size = UDim2.new(0, 90, 0, 36)
-SheriffRoleLabel.Position = UDim2.new(0, 232, 0, 4)
-SheriffRoleLabel.BackgroundTransparency = 1
-SheriffRoleLabel.Text = "Sheriff: Unknown"
-SheriffRoleLabel.Font = Enum.Font.GothamBold
-SheriffRoleLabel.TextSize = 11
-SheriffRoleLabel.TextColor3 = Color3.fromRGB(90, 150, 255)
-SheriffRoleLabel.TextWrapped = true
-SheriffRoleLabel.TextXAlignment = Enum.TextXAlignment.Left
-SheriffRoleLabel.Parent = MM2Page
+HubState.SheriffRoleLabel = Instance.new("TextLabel")
+HubState.SheriffRoleLabel.Size = UDim2.new(0, 90, 0, 36)
+HubState.SheriffRoleLabel.Position = UDim2.new(0, 232, 0, 4)
+HubState.SheriffRoleLabel.BackgroundTransparency = 1
+HubState.SheriffRoleLabel.Text = "Sheriff: Unknown"
+HubState.SheriffRoleLabel.Font = Enum.Font.GothamBold
+HubState.SheriffRoleLabel.TextSize = 11
+HubState.SheriffRoleLabel.TextColor3 = Color3.fromRGB(90, 150, 255)
+HubState.SheriffRoleLabel.TextWrapped = true
+HubState.SheriffRoleLabel.TextXAlignment = Enum.TextXAlignment.Left
+HubState.SheriffRoleLabel.Parent = HubState.MM2Page
 
-local MurdererESPBtn = Instance.new("TextButton")
-MurdererESPBtn.Size = UDim2.new(0, 50, 0, 19)
-MurdererESPBtn.Position = UDim2.new(0, 72, 0, 43)
-MurdererESPBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 68)
-MurdererESPBtn.BackgroundTransparency = 0.8
-MurdererESPBtn.BorderSizePixel = 0
-MurdererESPBtn.Text = "ESP"
-MurdererESPBtn.Font = Enum.Font.GothamBold
-MurdererESPBtn.TextSize = 9
-MurdererESPBtn.TextColor3 = Color3.fromRGB(255, 90, 90)
-MurdererESPBtn.Parent = MM2Page
-table.insert(ThemeObjects.Backgrounds, MurdererESPBtn)
-Instance.new("UICorner", MurdererESPBtn).CornerRadius = UDim.new(0, 3)
+HubState.MurdererESPBtn = Instance.new("TextButton")
+HubState.MurdererESPBtn.Size = UDim2.new(0, 50, 0, 19)
+HubState.MurdererESPBtn.Position = UDim2.new(0, 72, 0, 43)
+HubState.MurdererESPBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 68)
+HubState.MurdererESPBtn.BackgroundTransparency = 0.8
+HubState.MurdererESPBtn.BorderSizePixel = 0
+HubState.MurdererESPBtn.Text = "ESP"
+HubState.MurdererESPBtn.Font = Enum.Font.GothamBold
+HubState.MurdererESPBtn.TextSize = 9
+HubState.MurdererESPBtn.TextColor3 = Color3.fromRGB(255, 90, 90)
+HubState.MurdererESPBtn.Parent = HubState.MM2Page
+table.insert(ThemeObjects.Backgrounds, HubState.MurdererESPBtn)
+Instance.new("UICorner", HubState.MurdererESPBtn).CornerRadius = UDim.new(0, 3)
 
-local SheriffESPBtn = Instance.new("TextButton")
-SheriffESPBtn.Size = UDim2.new(0, 50, 0, 19)
-SheriffESPBtn.Position = UDim2.new(0, 232, 0, 43)
-SheriffESPBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 68)
-SheriffESPBtn.BackgroundTransparency = 0.8
-SheriffESPBtn.BorderSizePixel = 0
-SheriffESPBtn.Text = "ESP"
-SheriffESPBtn.Font = Enum.Font.GothamBold
-SheriffESPBtn.TextSize = 9
-SheriffESPBtn.TextColor3 = Color3.fromRGB(90, 150, 255)
-SheriffESPBtn.Parent = MM2Page
-table.insert(ThemeObjects.Backgrounds, SheriffESPBtn)
-Instance.new("UICorner", SheriffESPBtn).CornerRadius = UDim.new(0, 3)
+HubState.SheriffESPBtn = Instance.new("TextButton")
+HubState.SheriffESPBtn.Size = UDim2.new(0, 50, 0, 19)
+HubState.SheriffESPBtn.Position = UDim2.new(0, 232, 0, 43)
+HubState.SheriffESPBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 68)
+HubState.SheriffESPBtn.BackgroundTransparency = 0.8
+HubState.SheriffESPBtn.BorderSizePixel = 0
+HubState.SheriffESPBtn.Text = "ESP"
+HubState.SheriffESPBtn.Font = Enum.Font.GothamBold
+HubState.SheriffESPBtn.TextSize = 9
+HubState.SheriffESPBtn.TextColor3 = Color3.fromRGB(90, 150, 255)
+HubState.SheriffESPBtn.Parent = HubState.MM2Page
+table.insert(ThemeObjects.Backgrounds, HubState.SheriffESPBtn)
+Instance.new("UICorner", HubState.SheriffESPBtn).CornerRadius = UDim.new(0, 3)
 
-local MurdererRoleESPEnabled = false
-local SheriffRoleESPEnabled = false
-local CurrentMurderer = nil
-local CurrentSheriff = nil
+HubState.MurdererRoleESPEnabled = false
+HubState.SheriffRoleESPEnabled = false
+HubState.CurrentMurderer = nil
+HubState.CurrentSheriff = nil
 
 local function UpdateRoleHighlights()
 	for _, targetPlayer in ipairs(Players:GetPlayers()) do
 		local character = targetPlayer.Character
 		if character then
-			local isMurdererOverride = targetPlayer ~= Player and MurdererRoleESPEnabled and targetPlayer == CurrentMurderer
-			local isSheriffOverride = targetPlayer ~= Player and SheriffRoleESPEnabled and targetPlayer == CurrentSheriff
+			local isMurdererOverride = targetPlayer ~= Player and HubState.MurdererRoleESPEnabled and targetPlayer == HubState.CurrentMurderer
+			local isSheriffOverride = targetPlayer ~= Player and HubState.SheriffRoleESPEnabled and targetPlayer == HubState.CurrentSheriff
 			local roleOverride = isMurdererOverride or isSheriffOverride
 
 			local murdererHighlight = character:FindFirstChild("MurdererRoleHighlight")
@@ -3996,25 +4004,25 @@ local function UpdateRoleHighlights()
 			local regularHighlight = character:FindFirstChild("ESPHighlight")
 			if regularHighlight then
 				if roleOverride then regularHighlight:Destroy()
-				else regularHighlight.Enabled = ESPEnabled end
+				else regularHighlight.Enabled = HubState.ESPEnabled end
 			end
 		end
 	end
 end
 
-MurdererESPBtn.MouseButton1Click:Connect(function()
+HubState.MurdererESPBtn.MouseButton1Click:Connect(function()
 	PlayClick()
-	MurdererRoleESPEnabled = not MurdererRoleESPEnabled
-	MurdererESPBtn.Text = MurdererRoleESPEnabled and "ON" or "ESP"
+	HubState.MurdererRoleESPEnabled = not HubState.MurdererRoleESPEnabled
+	HubState.MurdererESPBtn.Text = HubState.MurdererRoleESPEnabled and "ON" or "ESP"
 	UpdateRoleHighlights()
 end)
 
-SheriffESPBtn.MouseButton1Click:Connect(function()
+HubState.SheriffESPBtn.MouseButton1Click:Connect(function()
 	PlayClick()
-	SheriffRoleESPEnabled = not SheriffRoleESPEnabled
-	SheriffESPBtn.Text = SheriffRoleESPEnabled and "ON" or "ESP"
-	GunDropESP.Enabled = SheriffRoleESPEnabled
-	GunDropESP.Refresh()
+	HubState.SheriffRoleESPEnabled = not HubState.SheriffRoleESPEnabled
+	HubState.SheriffESPBtn.Text = HubState.SheriffRoleESPEnabled and "ON" or "ESP"
+	HubState.GunDropESP.Enabled = HubState.SheriffRoleESPEnabled
+	HubState.GunDropESP.Refresh()
 	UpdateRoleHighlights()
 end)
 
@@ -4043,8 +4051,8 @@ local function FormatRolePlayer(targetPlayer)
 	return string.format("%s (@%s)", targetPlayer.DisplayName or targetPlayer.Name, targetPlayer.Name)
 end
 
-local LastMurdererAvatarId = 0
-local LastSheriffAvatarId = 0
+HubState.LastMurdererAvatarId = 0
+HubState.LastSheriffAvatarId = 0
 
 local function UpdateRoleAvatar(imageLabel, targetPlayer, roleName)
 	imageLabel.Image = ""
@@ -4054,36 +4062,36 @@ local function UpdateRoleAvatar(imageLabel, targetPlayer, roleName)
 		local success, image = pcall(function()
 			return Players:GetUserThumbnailAsync(expectedUserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
 		end)
-		local stillCurrent = (roleName == "Murderer" and CurrentMurderer == targetPlayer)
-			or (roleName == "Sheriff" and CurrentSheriff == targetPlayer)
+		local stillCurrent = (roleName == "Murderer" and HubState.CurrentMurderer == targetPlayer)
+			or (roleName == "Sheriff" and HubState.CurrentSheriff == targetPlayer)
 		if success and stillCurrent then imageLabel.Image = image end
 	end)
 end
 
-local LastRoleCheck = 0
-Connections.MM2RoleDetector = RunService.Heartbeat:Connect(function()
+HubState.LastRoleCheck = 0
+HubState.Connections.MM2RoleDetector = RunService.Heartbeat:Connect(function()
 	local now = os.clock()
-	if now - LastRoleCheck < 0.5 then return end
-	LastRoleCheck = now
-	CurrentMurderer = FindRoleHolder("Knife")
-	CurrentSheriff = FindRoleHolder("Gun")
-	local murdererAvatarId = CurrentMurderer and CurrentMurderer.UserId or 0
-	local sheriffAvatarId = CurrentSheriff and CurrentSheriff.UserId or 0
-	if murdererAvatarId ~= LastMurdererAvatarId then
-		LastMurdererAvatarId = murdererAvatarId
-		UpdateRoleAvatar(MurdererAvatar, CurrentMurderer, "Murderer")
+	if now - HubState.LastRoleCheck < 0.5 then return end
+	HubState.LastRoleCheck = now
+	HubState.CurrentMurderer = FindRoleHolder("Knife")
+	HubState.CurrentSheriff = FindRoleHolder("Gun")
+	local murdererAvatarId = HubState.CurrentMurderer and HubState.CurrentMurderer.UserId or 0
+	local sheriffAvatarId = HubState.CurrentSheriff and HubState.CurrentSheriff.UserId or 0
+	if murdererAvatarId ~= HubState.LastMurdererAvatarId then
+		HubState.LastMurdererAvatarId = murdererAvatarId
+		UpdateRoleAvatar(HubState.MurdererAvatar, HubState.CurrentMurderer, "Murderer")
 	end
-	if sheriffAvatarId ~= LastSheriffAvatarId then
-		LastSheriffAvatarId = sheriffAvatarId
-		UpdateRoleAvatar(SheriffAvatar, CurrentSheriff, "Sheriff")
+	if sheriffAvatarId ~= HubState.LastSheriffAvatarId then
+		HubState.LastSheriffAvatarId = sheriffAvatarId
+		UpdateRoleAvatar(HubState.SheriffAvatar, HubState.CurrentSheriff, "Sheriff")
 	end
-	MurdererRoleLabel.Text = "Murderer: " .. FormatRolePlayer(CurrentMurderer)
-	SheriffRoleLabel.Text = "Sheriff: " .. FormatRolePlayer(CurrentSheriff)
+	HubState.MurdererRoleLabel.Text = "Murderer: " .. FormatRolePlayer(HubState.CurrentMurderer)
+	HubState.SheriffRoleLabel.Text = "Sheriff: " .. FormatRolePlayer(HubState.CurrentSheriff)
 	UpdateRoleHighlights()
 end)
 
 local function RestoreKillHitboxes()
-	for part, original in pairs(KillHitboxOriginals) do
+	for part, original in pairs(HubState.KillHitboxOriginals) do
 		if part and part.Parent then
 			part.Size = original.Size
 			part.Transparency = original.Transparency
@@ -4092,7 +4100,7 @@ local function RestoreKillHitboxes()
 			part.Massless = original.Massless
 		end
 	end
-	KillHitboxOriginals = {}
+	HubState.KillHitboxOriginals = {}
 end
 
 local function GetLocalKnife()
@@ -4104,23 +4112,23 @@ local function GetLocalKnife()
 end
 
 local function SetKillEnabled(enabled)
-	KillEnabled = enabled
-	KillToggle.Text = enabled and "On" or "Off"
-	KillTitle.TextColor3 = enabled and Color3.fromRGB(255, 80, 80) or InactiveTextColor()
+	HubState.KillEnabled = enabled
+	HubState.KillToggle.Text = enabled and "On" or "Off"
+	HubState.KillTitle.TextColor3 = enabled and Color3.fromRGB(255, 80, 80) or InactiveTextColor()
 	if not enabled then RestoreKillHitboxes() end
 end
 
-KillToggle.MouseButton1Click:Connect(function()
+HubState.KillToggle.MouseButton1Click:Connect(function()
 	PlayClick()
-	SetKillEnabled(not KillEnabled)
+	SetKillEnabled(not HubState.KillEnabled)
 end)
 
-Connections.KillAll = RunService.Heartbeat:Connect(function()
-	if not KillEnabled then return end
+HubState.Connections.KillAll = RunService.Heartbeat:Connect(function()
+	if not HubState.KillEnabled then return end
 	local knife = GetLocalKnife()
 	local character = Player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if CurrentMurderer ~= Player or not knife or not humanoid or humanoid.Health <= 0 then
+	if HubState.CurrentMurderer ~= Player or not knife or not humanoid or humanoid.Health <= 0 then
 		RestoreKillHitboxes()
 		return
 	end
@@ -4131,15 +4139,15 @@ Connections.KillAll = RunService.Heartbeat:Connect(function()
 
 	local aliveTargets = {}
 	local priorityRoot = nil
-	if CurrentSheriff and CurrentSheriff ~= Player then
-		local sheriffCharacter = CurrentSheriff.Character
+	if HubState.CurrentSheriff and HubState.CurrentSheriff ~= Player then
+		local sheriffCharacter = HubState.CurrentSheriff.Character
 		local sheriffHumanoid = sheriffCharacter and sheriffCharacter:FindFirstChildOfClass("Humanoid")
 		local sheriffRoot = sheriffCharacter and sheriffCharacter:FindFirstChild("HumanoidRootPart")
 		if sheriffHumanoid and sheriffHumanoid.Health > 0 and sheriffRoot then priorityRoot = sheriffRoot end
 	end
 
 	if priorityRoot then
-		for part, original in pairs(KillHitboxOriginals) do
+		for part, original in pairs(HubState.KillHitboxOriginals) do
 			if part ~= priorityRoot then
 				if part and part.Parent then
 					part.Size = original.Size
@@ -4148,7 +4156,7 @@ Connections.KillAll = RunService.Heartbeat:Connect(function()
 					part.CanTouch = original.CanTouch
 					part.Massless = original.Massless
 				end
-				KillHitboxOriginals[part] = nil
+				HubState.KillHitboxOriginals[part] = nil
 			end
 		end
 	end
@@ -4160,8 +4168,8 @@ Connections.KillAll = RunService.Heartbeat:Connect(function()
 			local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
 			if targetHumanoid and targetHumanoid.Health > 0 and targetRoot and (not priorityRoot or targetRoot == priorityRoot) then
 				table.insert(aliveTargets, targetRoot)
-				if not KillHitboxOriginals[targetRoot] then
-					KillHitboxOriginals[targetRoot] = {
+				if not HubState.KillHitboxOriginals[targetRoot] then
+					HubState.KillHitboxOriginals[targetRoot] = {
 						Size = targetRoot.Size,
 						Transparency = targetRoot.Transparency,
 						CanCollide = targetRoot.CanCollide,
@@ -4179,12 +4187,12 @@ Connections.KillAll = RunService.Heartbeat:Connect(function()
 	end
 
 	local now = os.clock()
-	if now - LastKnifeSwing >= 0.1 then
-		LastKnifeSwing = now
+	if now - HubState.LastKnifeSwing >= 0.1 then
+		HubState.LastKnifeSwing = now
 		pcall(function() knife:Activate() end)
 		if #aliveTargets > 0 then
-			StabTargetIndex = (StabTargetIndex % #aliveTargets) + 1
-			local targetRoot = aliveTargets[StabTargetIndex]
+			HubState.StabTargetIndex = (HubState.StabTargetIndex % #aliveTargets) + 1
+			local targetRoot = aliveTargets[HubState.StabTargetIndex]
 			local knifeHandle = knife:FindFirstChild("Handle") or knife:FindFirstChildWhichIsA("BasePart")
 			if knifeHandle and type(firetouchinterest) == "function" then
 				task.spawn(function()
@@ -4209,7 +4217,7 @@ do
 	autoShootTitle.TextSize = 9
 	autoShootTitle.TextColor3 = InactiveTextColor()
 	autoShootTitle.TextXAlignment = Enum.TextXAlignment.Left
-	autoShootTitle.Parent = MM2Page
+	autoShootTitle.Parent = HubState.MM2Page
 	table.insert(ThemeObjects.Texts, autoShootTitle)
 
 	local autoShootToggle = Instance.new("TextButton")
@@ -4220,7 +4228,7 @@ do
 	autoShootToggle.BorderSizePixel = 0
 	autoShootToggle.Text = "Off"
 	autoShootToggle.Font = Enum.Font.GothamBold
-	autoShootToggle.Parent = MM2Page
+	autoShootToggle.Parent = HubState.MM2Page
 	table.insert(ThemeObjects.Backgrounds, autoShootToggle)
 	table.insert(ThemeObjects.Texts, autoShootToggle)
 	Instance.new("UICorner", autoShootToggle).CornerRadius = UDim.new(0, 4)
@@ -4239,7 +4247,7 @@ do
 	MM2ControlsScroll.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
 	MM2ControlsScroll.CanvasSize = UDim2.new(0, 0, 0, 206)
 	MM2ControlsScroll.ClipsDescendants = true
-	MM2ControlsScroll.Parent = MM2Page
+	MM2ControlsScroll.Parent = HubState.MM2Page
 
 	local function CreateMM2ControlRow(name, widthScale, widthOffset, xScale, xOffset, y, height)
 		local row = Instance.new("Frame")
@@ -4271,14 +4279,14 @@ do
 		toggle.Parent = row
 	end
 
-	PlaceMM2Control(KillTitle, KillToggle, stabRow)
+	PlaceMM2Control(HubState.KillTitle, HubState.KillToggle, stabRow)
 	PlaceMM2Control(autoShootTitle, autoShootToggle, shootRow)
-	PlaceMM2Control(AutoGunTitle, AutoGunToggle, gunRow)
-	PlaceMM2Control(CoinFarmTitle, CoinFarmToggle, coinRow)
-	CoinFarmStatus.Size = UDim2.new(1, -16, 0, 11)
-	CoinFarmStatus.Position = UDim2.new(0, 8, 0, 32)
-	CoinFarmStatus.TextSize = 7
-	CoinFarmStatus.Parent = coinRow
+	PlaceMM2Control(HubState.AutoGunTitle, HubState.AutoGunToggle, gunRow)
+	PlaceMM2Control(HubState.CoinFarmTitle, HubState.CoinFarmToggle, coinRow)
+	HubState.CoinFarmStatus.Size = UDim2.new(1, -16, 0, 11)
+	HubState.CoinFarmStatus.Position = UDim2.new(0, 8, 0, 32)
+	HubState.CoinFarmStatus.TextSize = 7
+	HubState.CoinFarmStatus.Parent = coinRow
 
 	local autoShootEnabled = false
 	local lastGunFired = 0
@@ -4322,7 +4330,7 @@ do
 		autoShootEnabled = enabled
 		autoShootToggle.Text = enabled and "On" or "Off"
 		autoShootTitle.TextColor3 = enabled and Color3.fromRGB(90, 150, 255) or InactiveTextColor()
-		if enabled and AutoLockEnabled then ToggleAutoLock() end
+		if enabled and HubState.AutoLockEnabled then ToggleAutoLock() end
 	end
 
 	autoShootToggle.MouseButton1Click:Connect(function()
@@ -4332,15 +4340,15 @@ do
 
 	table.insert(ThemeObjects.StateTexts, {Object = autoShootTitle, IsEnabled = function() return autoShootEnabled end})
 
-	Connections.AutoShoot = RunService.Heartbeat:Connect(function()
+	HubState.Connections.AutoShoot = RunService.Heartbeat:Connect(function()
 		if not autoShootEnabled then return end
-		if AutoLockEnabled then ToggleAutoLock() end
-		if CurrentSheriff ~= Player or not CurrentMurderer or CurrentMurderer == Player then return end
+		if HubState.AutoLockEnabled then ToggleAutoLock() end
+		if HubState.CurrentSheriff ~= Player or not HubState.CurrentMurderer or HubState.CurrentMurderer == Player then return end
 
 		local gun = GetLocalGun()
 		local character = Player.Character
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		local targetCharacter = CurrentMurderer.Character
+		local targetCharacter = HubState.CurrentMurderer.Character
 		local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
 		local targetPart = targetCharacter and (targetCharacter:FindFirstChild("UpperTorso") or targetCharacter:FindFirstChild("HumanoidRootPart") or targetCharacter:FindFirstChild("Head"))
 		if not gun or not humanoid or humanoid.Health <= 0 or not targetHumanoid or targetHumanoid.Health <= 0 or not targetPart then return end
@@ -4359,13 +4367,13 @@ do
 
 		-- Take a second movement sample before firing. Sharp reversals cancel this
 		-- attempt, preventing a quick juke from baiting a stale shot.
-		local confirmedMurderer = CurrentMurderer
+		local confirmedMurderer = HubState.CurrentMurderer
 		local firstPosition = targetPart.Position
 		local firstVelocity = targetPart.AssemblyLinearVelocity
 		shotPending = true
 		task.delay(AutoShootConfirmWindow, function()
 			shotPending = false
-			if not autoShootEnabled or CurrentSheriff ~= Player or CurrentMurderer ~= confirmedMurderer then return end
+			if not autoShootEnabled or HubState.CurrentSheriff ~= Player or HubState.CurrentMurderer ~= confirmedMurderer then return end
 
 			local freshCharacter = Player.Character
 			local freshHumanoid = freshCharacter and freshCharacter:FindFirstChildOfClass("Humanoid")
@@ -4413,7 +4421,7 @@ do
 		card.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
 		card.BackgroundTransparency = 0.92
 		card.BorderSizePixel = 0
-		card.Parent = MovementPage
+		card.Parent = HubState.MovementPage
 		table.insert(ThemeObjects.Backgrounds, card)
 		Instance.new("UICorner", card).CornerRadius = UDim.new(0, 6)
 	end
@@ -4441,106 +4449,106 @@ ThemeObjects.CameraFOV.Card.Parent = ThemeObjects.CameraPage
 table.insert(ThemeObjects.Backgrounds, ThemeObjects.CameraFOV.Card)
 Instance.new("UICorner", ThemeObjects.CameraFOV.Card).CornerRadius = UDim.new(0, 6)
 
-local SpeedTitle = Instance.new("TextLabel")
-SpeedTitle.Size = UDim2.new(0, 48, 0, 22)
-SpeedTitle.Position = UDim2.new(0, 24, 0, 15)
-SpeedTitle.BackgroundTransparency = 1
-SpeedTitle.BorderSizePixel = 0
-SpeedTitle.Text = "Speed:"
-SpeedTitle.Font = Enum.Font.GothamBold
-SpeedTitle.TextSize = 11
-SpeedTitle.TextColor3 = Color3.fromRGB(100, 100, 100)
-SpeedTitle.TextXAlignment = Enum.TextXAlignment.Left
-SpeedTitle.Parent = MovementPage
-table.insert(ThemeObjects.Texts, SpeedTitle)
+HubState.SpeedTitle = Instance.new("TextLabel")
+HubState.SpeedTitle.Size = UDim2.new(0, 48, 0, 22)
+HubState.SpeedTitle.Position = UDim2.new(0, 24, 0, 15)
+HubState.SpeedTitle.BackgroundTransparency = 1
+HubState.SpeedTitle.BorderSizePixel = 0
+HubState.SpeedTitle.Text = "Speed:"
+HubState.SpeedTitle.Font = Enum.Font.GothamBold
+HubState.SpeedTitle.TextSize = 11
+HubState.SpeedTitle.TextColor3 = Color3.fromRGB(100, 100, 100)
+HubState.SpeedTitle.TextXAlignment = Enum.TextXAlignment.Left
+HubState.SpeedTitle.Parent = HubState.MovementPage
+table.insert(ThemeObjects.Texts, HubState.SpeedTitle)
 
-local SpeedInput = Instance.new("TextBox")
-SpeedInput.Size = UDim2.new(0, 46, 0, 22)
-SpeedInput.Position = UDim2.new(0, 82, 0, 16)
-SpeedInput.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
-SpeedInput.BackgroundTransparency = 0.8
-SpeedInput.BorderSizePixel = 0
-SpeedInput.Text = tostring(CurrentCFrameSpeed)
-SpeedInput.Font = Enum.Font.GothamMedium
-SpeedInput.Parent = MovementPage
-table.insert(ThemeObjects.Backgrounds, SpeedInput)
-table.insert(ThemeObjects.Texts, SpeedInput)
-Instance.new("UICorner", SpeedInput).CornerRadius = UDim.new(0, 4)
+HubState.SpeedInput = Instance.new("TextBox")
+HubState.SpeedInput.Size = UDim2.new(0, 46, 0, 22)
+HubState.SpeedInput.Position = UDim2.new(0, 82, 0, 16)
+HubState.SpeedInput.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+HubState.SpeedInput.BackgroundTransparency = 0.8
+HubState.SpeedInput.BorderSizePixel = 0
+HubState.SpeedInput.Text = tostring(HubState.CurrentCFrameSpeed)
+HubState.SpeedInput.Font = Enum.Font.GothamMedium
+HubState.SpeedInput.Parent = HubState.MovementPage
+table.insert(ThemeObjects.Backgrounds, HubState.SpeedInput)
+table.insert(ThemeObjects.Texts, HubState.SpeedInput)
+Instance.new("UICorner", HubState.SpeedInput).CornerRadius = UDim.new(0, 4)
 
-SpeedInput.FocusLost:Connect(function()
-    local val = tonumber(SpeedInput.Text)
+HubState.SpeedInput.FocusLost:Connect(function()
+    local val = tonumber(HubState.SpeedInput.Text)
     if val then
-		CurrentCFrameSpeed = val
+		HubState.CurrentCFrameSpeed = val
     end
 end)
 
-local SpeedBindBtn = Instance.new("TextButton")
-SpeedBindBtn.Size = UDim2.new(0, 56, 0, 22)
-SpeedBindBtn.Position = UDim2.new(0, 254, 0, 16)
-SpeedBindBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
-SpeedBindBtn.BackgroundTransparency = 0.8
-SpeedBindBtn.BorderSizePixel = 0
-SpeedBindBtn.Text = KeybindText(SpeedKeybind)
-SpeedBindBtn.Font = Enum.Font.GothamBold
-SpeedBindBtn.TextColor3 = AccentColor
-SpeedBindBtn.Parent = MovementPage
-table.insert(ThemeObjects.Backgrounds, SpeedBindBtn)
-table.insert(ThemeObjects.Accents, SpeedBindBtn)
-Instance.new("UICorner", SpeedBindBtn).CornerRadius = UDim.new(0, 4)
+HubState.SpeedBindBtn = Instance.new("TextButton")
+HubState.SpeedBindBtn.Size = UDim2.new(0, 56, 0, 22)
+HubState.SpeedBindBtn.Position = UDim2.new(0, 254, 0, 16)
+HubState.SpeedBindBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+HubState.SpeedBindBtn.BackgroundTransparency = 0.8
+HubState.SpeedBindBtn.BorderSizePixel = 0
+HubState.SpeedBindBtn.Text = KeybindText(HubState.SpeedKeybind)
+HubState.SpeedBindBtn.Font = Enum.Font.GothamBold
+HubState.SpeedBindBtn.TextColor3 = AccentColor
+HubState.SpeedBindBtn.Parent = HubState.MovementPage
+table.insert(ThemeObjects.Backgrounds, HubState.SpeedBindBtn)
+table.insert(ThemeObjects.Accents, HubState.SpeedBindBtn)
+Instance.new("UICorner", HubState.SpeedBindBtn).CornerRadius = UDim.new(0, 4)
 
-local SpeedToggleBtn = Instance.new("TextButton")
-SpeedToggleBtn.Size = UDim2.new(0, 44, 0, 22)
-SpeedToggleBtn.Position = UDim2.new(0, 204, 0, 16)
-SpeedToggleBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
-SpeedToggleBtn.BackgroundTransparency = 0.8
-SpeedToggleBtn.BorderSizePixel = 0
-SpeedToggleBtn.Text = "Off"
-SpeedToggleBtn.Font = Enum.Font.GothamBold
-SpeedToggleBtn.Parent = MovementPage
-table.insert(ThemeObjects.Backgrounds, SpeedToggleBtn)
-table.insert(ThemeObjects.Texts, SpeedToggleBtn)
-Instance.new("UICorner", SpeedToggleBtn).CornerRadius = UDim.new(0, 4)
+HubState.SpeedToggleBtn = Instance.new("TextButton")
+HubState.SpeedToggleBtn.Size = UDim2.new(0, 44, 0, 22)
+HubState.SpeedToggleBtn.Position = UDim2.new(0, 204, 0, 16)
+HubState.SpeedToggleBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+HubState.SpeedToggleBtn.BackgroundTransparency = 0.8
+HubState.SpeedToggleBtn.BorderSizePixel = 0
+HubState.SpeedToggleBtn.Text = "Off"
+HubState.SpeedToggleBtn.Font = Enum.Font.GothamBold
+HubState.SpeedToggleBtn.Parent = HubState.MovementPage
+table.insert(ThemeObjects.Backgrounds, HubState.SpeedToggleBtn)
+table.insert(ThemeObjects.Texts, HubState.SpeedToggleBtn)
+Instance.new("UICorner", HubState.SpeedToggleBtn).CornerRadius = UDim.new(0, 4)
 
-local NoclipTitle = Instance.new("TextLabel")
-NoclipTitle.Size = UDim2.new(0, 70, 0, 22)
-NoclipTitle.Position = UDim2.new(0, 24, 0, 103)
-NoclipTitle.BackgroundTransparency = 1
-NoclipTitle.BorderSizePixel = 0
-NoclipTitle.Text = "No Clip:"
-NoclipTitle.Font = Enum.Font.GothamBold
-NoclipTitle.TextSize = 11
-NoclipTitle.TextColor3 = Color3.fromRGB(100, 100, 100)
-NoclipTitle.TextXAlignment = Enum.TextXAlignment.Left
-NoclipTitle.Parent = MovementPage
-table.insert(ThemeObjects.Texts, NoclipTitle)
+HubState.NoclipTitle = Instance.new("TextLabel")
+HubState.NoclipTitle.Size = UDim2.new(0, 70, 0, 22)
+HubState.NoclipTitle.Position = UDim2.new(0, 24, 0, 103)
+HubState.NoclipTitle.BackgroundTransparency = 1
+HubState.NoclipTitle.BorderSizePixel = 0
+HubState.NoclipTitle.Text = "No Clip:"
+HubState.NoclipTitle.Font = Enum.Font.GothamBold
+HubState.NoclipTitle.TextSize = 11
+HubState.NoclipTitle.TextColor3 = Color3.fromRGB(100, 100, 100)
+HubState.NoclipTitle.TextXAlignment = Enum.TextXAlignment.Left
+HubState.NoclipTitle.Parent = HubState.MovementPage
+table.insert(ThemeObjects.Texts, HubState.NoclipTitle)
 
-local NoclipToggleBtn = Instance.new("TextButton")
-NoclipToggleBtn.Size = UDim2.new(0, 44, 0, 22)
-NoclipToggleBtn.Position = UDim2.new(0, 204, 0, 104)
-NoclipToggleBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
-NoclipToggleBtn.BackgroundTransparency = 0.8
-NoclipToggleBtn.BorderSizePixel = 0
-NoclipToggleBtn.Text = "Off"
-NoclipToggleBtn.Font = Enum.Font.GothamBold
-NoclipToggleBtn.TextColor3 = Color3.fromRGB(60, 60, 60)
-NoclipToggleBtn.Parent = MovementPage
-table.insert(ThemeObjects.Backgrounds, NoclipToggleBtn)
-table.insert(ThemeObjects.Texts, NoclipToggleBtn)
-Instance.new("UICorner", NoclipToggleBtn).CornerRadius = UDim.new(0, 4)
+HubState.NoclipToggleBtn = Instance.new("TextButton")
+HubState.NoclipToggleBtn.Size = UDim2.new(0, 44, 0, 22)
+HubState.NoclipToggleBtn.Position = UDim2.new(0, 204, 0, 104)
+HubState.NoclipToggleBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+HubState.NoclipToggleBtn.BackgroundTransparency = 0.8
+HubState.NoclipToggleBtn.BorderSizePixel = 0
+HubState.NoclipToggleBtn.Text = "Off"
+HubState.NoclipToggleBtn.Font = Enum.Font.GothamBold
+HubState.NoclipToggleBtn.TextColor3 = Color3.fromRGB(60, 60, 60)
+HubState.NoclipToggleBtn.Parent = HubState.MovementPage
+table.insert(ThemeObjects.Backgrounds, HubState.NoclipToggleBtn)
+table.insert(ThemeObjects.Texts, HubState.NoclipToggleBtn)
+Instance.new("UICorner", HubState.NoclipToggleBtn).CornerRadius = UDim.new(0, 4)
 
-local NoclipBindBtn = Instance.new("TextButton")
-NoclipBindBtn.Size = UDim2.new(0, 56, 0, 22)
-NoclipBindBtn.Position = UDim2.new(0, 254, 0, 104)
-NoclipBindBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
-NoclipBindBtn.BackgroundTransparency = 0.8
-NoclipBindBtn.BorderSizePixel = 0
-NoclipBindBtn.Text = KeybindText(NoclipKeybind)
-NoclipBindBtn.Font = Enum.Font.GothamBold
-NoclipBindBtn.TextColor3 = AccentColor
-NoclipBindBtn.Parent = MovementPage
-table.insert(ThemeObjects.Backgrounds, NoclipBindBtn)
-table.insert(ThemeObjects.Accents, NoclipBindBtn)
-Instance.new("UICorner", NoclipBindBtn).CornerRadius = UDim.new(0, 4)
+HubState.NoclipBindBtn = Instance.new("TextButton")
+HubState.NoclipBindBtn.Size = UDim2.new(0, 56, 0, 22)
+HubState.NoclipBindBtn.Position = UDim2.new(0, 254, 0, 104)
+HubState.NoclipBindBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+HubState.NoclipBindBtn.BackgroundTransparency = 0.8
+HubState.NoclipBindBtn.BorderSizePixel = 0
+HubState.NoclipBindBtn.Text = KeybindText(HubState.NoclipKeybind)
+HubState.NoclipBindBtn.Font = Enum.Font.GothamBold
+HubState.NoclipBindBtn.TextColor3 = AccentColor
+HubState.NoclipBindBtn.Parent = HubState.MovementPage
+table.insert(ThemeObjects.Backgrounds, HubState.NoclipBindBtn)
+table.insert(ThemeObjects.Accents, HubState.NoclipBindBtn)
+Instance.new("UICorner", HubState.NoclipBindBtn).CornerRadius = UDim.new(0, 4)
 
 ThemeObjects.FreeCam.Title = Instance.new("TextLabel")
 ThemeObjects.FreeCam.Title.Size = UDim2.new(0, 70, 0, 20)
@@ -4549,7 +4557,7 @@ ThemeObjects.FreeCam.Title.Text = "Free Cam:"
 ThemeObjects.FreeCam.Title.Font = Enum.Font.GothamBold
 ThemeObjects.FreeCam.Title.TextSize = 11
 ThemeObjects.FreeCam.Title.TextXAlignment = Enum.TextXAlignment.Left
-ThemeObjects.FreeCam.Title.Parent = MovementPage
+ThemeObjects.FreeCam.Title.Parent = HubState.MovementPage
 table.insert(ThemeObjects.Texts, ThemeObjects.FreeCam.Title)
 
 ThemeObjects.FreeCam.Toggle = Instance.new("TextButton")
@@ -4560,7 +4568,7 @@ ThemeObjects.FreeCam.Toggle.BorderSizePixel = 0
 ThemeObjects.FreeCam.Toggle.Text = "Off"
 ThemeObjects.FreeCam.Toggle.Font = Enum.Font.GothamBold
 ThemeObjects.FreeCam.Toggle.TextSize = 9
-ThemeObjects.FreeCam.Toggle.Parent = MovementPage
+ThemeObjects.FreeCam.Toggle.Parent = HubState.MovementPage
 table.insert(ThemeObjects.Backgrounds, ThemeObjects.FreeCam.Toggle)
 table.insert(ThemeObjects.Texts, ThemeObjects.FreeCam.Toggle)
 Instance.new("UICorner", ThemeObjects.FreeCam.Toggle).CornerRadius = UDim.new(0, 4)
@@ -4574,118 +4582,118 @@ ThemeObjects.FreeCam.Bind.Text = KeybindText(ThemeObjects.FreeCam.Keybind)
 ThemeObjects.FreeCam.Bind.Font = Enum.Font.GothamBold
 ThemeObjects.FreeCam.Bind.TextSize = 8
 ThemeObjects.FreeCam.Bind.TextColor3 = AccentColor
-ThemeObjects.FreeCam.Bind.Parent = MovementPage
+ThemeObjects.FreeCam.Bind.Parent = HubState.MovementPage
 table.insert(ThemeObjects.Backgrounds, ThemeObjects.FreeCam.Bind)
 table.insert(ThemeObjects.Accents, ThemeObjects.FreeCam.Bind)
 Instance.new("UICorner", ThemeObjects.FreeCam.Bind).CornerRadius = UDim.new(0, 4)
 
-local FlyTitle = Instance.new("TextLabel")
-FlyTitle.Size = UDim2.new(0, 48, 0, 22) 
-FlyTitle.Position = UDim2.new(0, 24, 0, 59) 
-FlyTitle.BackgroundTransparency = 1
-FlyTitle.BorderSizePixel = 0
-FlyTitle.Text = "Fly:"
-FlyTitle.Font = Enum.Font.GothamBold
-FlyTitle.TextSize = 11
-FlyTitle.TextColor3 = Color3.fromRGB(100, 100, 100)
-FlyTitle.TextXAlignment = Enum.TextXAlignment.Left
-FlyTitle.Parent = MovementPage
-table.insert(ThemeObjects.Texts, FlyTitle)
+HubState.FlyTitle = Instance.new("TextLabel")
+HubState.FlyTitle.Size = UDim2.new(0, 48, 0, 22) 
+HubState.FlyTitle.Position = UDim2.new(0, 24, 0, 59) 
+HubState.FlyTitle.BackgroundTransparency = 1
+HubState.FlyTitle.BorderSizePixel = 0
+HubState.FlyTitle.Text = "Fly:"
+HubState.FlyTitle.Font = Enum.Font.GothamBold
+HubState.FlyTitle.TextSize = 11
+HubState.FlyTitle.TextColor3 = Color3.fromRGB(100, 100, 100)
+HubState.FlyTitle.TextXAlignment = Enum.TextXAlignment.Left
+HubState.FlyTitle.Parent = HubState.MovementPage
+table.insert(ThemeObjects.Texts, HubState.FlyTitle)
 
-local FlyInput = Instance.new("TextBox")
-FlyInput.Size = UDim2.new(0, 46, 0, 22)
-FlyInput.Position = UDim2.new(0, 82, 0, 60) 
-FlyInput.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
-FlyInput.BackgroundTransparency = 0.8
-FlyInput.BorderSizePixel = 0
-FlyInput.Text = tostring(FlySpeed)
-FlyInput.Font = Enum.Font.GothamMedium
-FlyInput.Parent = MovementPage
-table.insert(ThemeObjects.Backgrounds, FlyInput)
-table.insert(ThemeObjects.Texts, FlyInput)
-Instance.new("UICorner", FlyInput).CornerRadius = UDim.new(0, 4)
+HubState.FlyInput = Instance.new("TextBox")
+HubState.FlyInput.Size = UDim2.new(0, 46, 0, 22)
+HubState.FlyInput.Position = UDim2.new(0, 82, 0, 60) 
+HubState.FlyInput.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+HubState.FlyInput.BackgroundTransparency = 0.8
+HubState.FlyInput.BorderSizePixel = 0
+HubState.FlyInput.Text = tostring(HubState.FlySpeed)
+HubState.FlyInput.Font = Enum.Font.GothamMedium
+HubState.FlyInput.Parent = HubState.MovementPage
+table.insert(ThemeObjects.Backgrounds, HubState.FlyInput)
+table.insert(ThemeObjects.Texts, HubState.FlyInput)
+Instance.new("UICorner", HubState.FlyInput).CornerRadius = UDim.new(0, 4)
 
-FlyInput.FocusLost:Connect(function()
-    local val = tonumber(FlyInput.Text)
-    if val then FlySpeed = val end
+HubState.FlyInput.FocusLost:Connect(function()
+    local val = tonumber(HubState.FlyInput.Text)
+    if val then HubState.FlySpeed = val end
 end)
 
-local FlyBindBtn = Instance.new("TextButton")
-FlyBindBtn.Size = UDim2.new(0, 56, 0, 22)
-FlyBindBtn.Position = UDim2.new(0, 254, 0, 60)
-FlyBindBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
-FlyBindBtn.BackgroundTransparency = 0.8
-FlyBindBtn.BorderSizePixel = 0
-FlyBindBtn.Text = KeybindText(FlyKeybind)
-FlyBindBtn.Font = Enum.Font.GothamBold
-FlyBindBtn.TextColor3 = AccentColor
-FlyBindBtn.Parent = MovementPage
-table.insert(ThemeObjects.Backgrounds, FlyBindBtn)
-table.insert(ThemeObjects.Accents, FlyBindBtn)
-Instance.new("UICorner", FlyBindBtn).CornerRadius = UDim.new(0, 4)
+HubState.FlyBindBtn = Instance.new("TextButton")
+HubState.FlyBindBtn.Size = UDim2.new(0, 56, 0, 22)
+HubState.FlyBindBtn.Position = UDim2.new(0, 254, 0, 60)
+HubState.FlyBindBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+HubState.FlyBindBtn.BackgroundTransparency = 0.8
+HubState.FlyBindBtn.BorderSizePixel = 0
+HubState.FlyBindBtn.Text = KeybindText(HubState.FlyKeybind)
+HubState.FlyBindBtn.Font = Enum.Font.GothamBold
+HubState.FlyBindBtn.TextColor3 = AccentColor
+HubState.FlyBindBtn.Parent = HubState.MovementPage
+table.insert(ThemeObjects.Backgrounds, HubState.FlyBindBtn)
+table.insert(ThemeObjects.Accents, HubState.FlyBindBtn)
+Instance.new("UICorner", HubState.FlyBindBtn).CornerRadius = UDim.new(0, 4)
 
-local FlyToggleBtn = Instance.new("TextButton")
-FlyToggleBtn.Size = UDim2.new(0, 44, 0, 22)
-FlyToggleBtn.Position = UDim2.new(0, 204, 0, 60)
-FlyToggleBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
-FlyToggleBtn.BackgroundTransparency = 0.8
-FlyToggleBtn.BorderSizePixel = 0
-FlyToggleBtn.Text = "Off"
-FlyToggleBtn.Font = Enum.Font.GothamBold
-FlyToggleBtn.Parent = MovementPage
-table.insert(ThemeObjects.Backgrounds, FlyToggleBtn)
-table.insert(ThemeObjects.Texts, FlyToggleBtn)
-Instance.new("UICorner", FlyToggleBtn).CornerRadius = UDim.new(0, 4)
+HubState.FlyToggleBtn = Instance.new("TextButton")
+HubState.FlyToggleBtn.Size = UDim2.new(0, 44, 0, 22)
+HubState.FlyToggleBtn.Position = UDim2.new(0, 204, 0, 60)
+HubState.FlyToggleBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+HubState.FlyToggleBtn.BackgroundTransparency = 0.8
+HubState.FlyToggleBtn.BorderSizePixel = 0
+HubState.FlyToggleBtn.Text = "Off"
+HubState.FlyToggleBtn.Font = Enum.Font.GothamBold
+HubState.FlyToggleBtn.Parent = HubState.MovementPage
+table.insert(ThemeObjects.Backgrounds, HubState.FlyToggleBtn)
+table.insert(ThemeObjects.Texts, HubState.FlyToggleBtn)
+Instance.new("UICorner", HubState.FlyToggleBtn).CornerRadius = UDim.new(0, 4)
 
 do
-	local speedCard = MovementPage:FindFirstChild("SpeedMovementCard")
-	local flyCard = MovementPage:FindFirstChild("FlyMovementCard")
-	local noclipCard = MovementPage:FindFirstChild("NoclipMovementCard")
+	local speedCard = HubState.MovementPage:FindFirstChild("SpeedMovementCard")
+	local flyCard = HubState.MovementPage:FindFirstChild("FlyMovementCard")
+	local noclipCard = HubState.MovementPage:FindFirstChild("NoclipMovementCard")
 
-	SpeedTitle.Size = UDim2.new(0, 60, 0, 20)
-	SpeedTitle.Position = UDim2.new(0, 8, 0.5, -10)
-	SpeedTitle.Parent = speedCard
-	SpeedInput.Size = UDim2.new(0, 44, 0, 20)
-	SpeedInput.Position = UDim2.new(0, 74, 0.5, -10)
-	SpeedInput.TextSize = 9
-	SpeedInput.Parent = speedCard
-	SpeedToggleBtn.Size = UDim2.new(0, 44, 0, 20)
-	SpeedToggleBtn.Position = UDim2.new(1, -96, 0.5, -10)
-	SpeedToggleBtn.TextSize = 9
-	SpeedToggleBtn.Parent = speedCard
-	SpeedBindBtn.Size = UDim2.new(0, 44, 0, 20)
-	SpeedBindBtn.Position = UDim2.new(1, -48, 0.5, -10)
-	SpeedBindBtn.TextSize = 8
-	SpeedBindBtn.Parent = speedCard
+	HubState.SpeedTitle.Size = UDim2.new(0, 60, 0, 20)
+	HubState.SpeedTitle.Position = UDim2.new(0, 8, 0.5, -10)
+	HubState.SpeedTitle.Parent = speedCard
+	HubState.SpeedInput.Size = UDim2.new(0, 44, 0, 20)
+	HubState.SpeedInput.Position = UDim2.new(0, 74, 0.5, -10)
+	HubState.SpeedInput.TextSize = 9
+	HubState.SpeedInput.Parent = speedCard
+	HubState.SpeedToggleBtn.Size = UDim2.new(0, 44, 0, 20)
+	HubState.SpeedToggleBtn.Position = UDim2.new(1, -96, 0.5, -10)
+	HubState.SpeedToggleBtn.TextSize = 9
+	HubState.SpeedToggleBtn.Parent = speedCard
+	HubState.SpeedBindBtn.Size = UDim2.new(0, 44, 0, 20)
+	HubState.SpeedBindBtn.Position = UDim2.new(1, -48, 0.5, -10)
+	HubState.SpeedBindBtn.TextSize = 8
+	HubState.SpeedBindBtn.Parent = speedCard
 
-	FlyTitle.Size = UDim2.new(0, 60, 0, 20)
-	FlyTitle.Position = UDim2.new(0, 8, 0.5, -10)
-	FlyTitle.Parent = flyCard
-	FlyInput.Size = UDim2.new(0, 44, 0, 20)
-	FlyInput.Position = UDim2.new(0, 74, 0.5, -10)
-	FlyInput.TextSize = 9
-	FlyInput.Parent = flyCard
-	FlyToggleBtn.Size = UDim2.new(0, 44, 0, 20)
-	FlyToggleBtn.Position = UDim2.new(1, -96, 0.5, -10)
-	FlyToggleBtn.TextSize = 9
-	FlyToggleBtn.Parent = flyCard
-	FlyBindBtn.Size = UDim2.new(0, 44, 0, 20)
-	FlyBindBtn.Position = UDim2.new(1, -48, 0.5, -10)
-	FlyBindBtn.TextSize = 8
-	FlyBindBtn.Parent = flyCard
+	HubState.FlyTitle.Size = UDim2.new(0, 60, 0, 20)
+	HubState.FlyTitle.Position = UDim2.new(0, 8, 0.5, -10)
+	HubState.FlyTitle.Parent = flyCard
+	HubState.FlyInput.Size = UDim2.new(0, 44, 0, 20)
+	HubState.FlyInput.Position = UDim2.new(0, 74, 0.5, -10)
+	HubState.FlyInput.TextSize = 9
+	HubState.FlyInput.Parent = flyCard
+	HubState.FlyToggleBtn.Size = UDim2.new(0, 44, 0, 20)
+	HubState.FlyToggleBtn.Position = UDim2.new(1, -96, 0.5, -10)
+	HubState.FlyToggleBtn.TextSize = 9
+	HubState.FlyToggleBtn.Parent = flyCard
+	HubState.FlyBindBtn.Size = UDim2.new(0, 44, 0, 20)
+	HubState.FlyBindBtn.Position = UDim2.new(1, -48, 0.5, -10)
+	HubState.FlyBindBtn.TextSize = 8
+	HubState.FlyBindBtn.Parent = flyCard
 
-	NoclipTitle.Size = UDim2.new(0, 80, 0, 20)
-	NoclipTitle.Position = UDim2.new(0, 8, 0.5, -10)
-	NoclipTitle.TextXAlignment = Enum.TextXAlignment.Left
-	NoclipTitle.Parent = noclipCard
-	NoclipToggleBtn.Size = UDim2.new(0, 44, 0, 20)
-	NoclipToggleBtn.Position = UDim2.new(1, -96, 0.5, -10)
-	NoclipToggleBtn.TextSize = 9
-	NoclipToggleBtn.Parent = noclipCard
-	NoclipBindBtn.Size = UDim2.new(0, 44, 0, 20)
-	NoclipBindBtn.Position = UDim2.new(1, -48, 0.5, -10)
-	NoclipBindBtn.TextSize = 8
-	NoclipBindBtn.Parent = noclipCard
+	HubState.NoclipTitle.Size = UDim2.new(0, 80, 0, 20)
+	HubState.NoclipTitle.Position = UDim2.new(0, 8, 0.5, -10)
+	HubState.NoclipTitle.TextXAlignment = Enum.TextXAlignment.Left
+	HubState.NoclipTitle.Parent = noclipCard
+	HubState.NoclipToggleBtn.Size = UDim2.new(0, 44, 0, 20)
+	HubState.NoclipToggleBtn.Position = UDim2.new(1, -96, 0.5, -10)
+	HubState.NoclipToggleBtn.TextSize = 9
+	HubState.NoclipToggleBtn.Parent = noclipCard
+	HubState.NoclipBindBtn.Size = UDim2.new(0, 44, 0, 20)
+	HubState.NoclipBindBtn.Position = UDim2.new(1, -48, 0.5, -10)
+	HubState.NoclipBindBtn.TextSize = 8
+	HubState.NoclipBindBtn.Parent = noclipCard
 
 	ThemeObjects.FreeCam.Title.Size = UDim2.new(0, 80, 0, 20)
 	ThemeObjects.FreeCam.Title.Position = UDim2.new(0, 8, 0.5, -10)
@@ -4762,12 +4770,12 @@ local function SetupBinding(button, type)
 	button.MouseButton1Click:Connect(function()
 		PlayClick()
 		button.Text = "..."
-		if type == "Speed" then IsBindingSpeed = true
-		elseif type == "Noclip" then IsBindingNoclip = true
-		elseif type == "Fly" then IsBindingFly = true
+		if type == "Speed" then HubState.IsBindingSpeed = true
+		elseif type == "Noclip" then HubState.IsBindingNoclip = true
+		elseif type == "Fly" then HubState.IsBindingFly = true
 		elseif type == "FreeCam" then ThemeObjects.FreeCam.Binding = true
-		elseif type == "AutoLock" then IsBindingAutoLock = true
-		elseif type == "ESP" then IsBindingESP = true end
+		elseif type == "AutoLock" then HubState.IsBindingAutoLock = true
+		elseif type == "ESP" then HubState.IsBindingESP = true end
 		
 		local conn
 		conn = UserInputService.InputBegan:Connect(function(input)
@@ -4776,12 +4784,12 @@ local function SetupBinding(button, type)
 				if selectedKey == Enum.KeyCode.Backspace or selectedKey == Enum.KeyCode.Delete then
 					selectedKey = Enum.KeyCode.Unknown
 				end
-				if type == "Speed" then SpeedKeybind = selectedKey; IsBindingSpeed = false
-				elseif type == "Noclip" then NoclipKeybind = selectedKey; IsBindingNoclip = false
-				elseif type == "Fly" then FlyKeybind = selectedKey; IsBindingFly = false
+				if type == "Speed" then HubState.SpeedKeybind = selectedKey; HubState.IsBindingSpeed = false
+				elseif type == "Noclip" then HubState.NoclipKeybind = selectedKey; HubState.IsBindingNoclip = false
+				elseif type == "Fly" then HubState.FlyKeybind = selectedKey; HubState.IsBindingFly = false
 				elseif type == "FreeCam" then ThemeObjects.FreeCam.Keybind = selectedKey; ThemeObjects.FreeCam.Binding = false
-				elseif type == "AutoLock" then AutoLockKeybind = selectedKey; IsBindingAutoLock = false
-				elseif type == "ESP" then ESPKeybind = selectedKey; IsBindingESP = false end
+				elseif type == "AutoLock" then HubState.AutoLockKeybind = selectedKey; HubState.IsBindingAutoLock = false
+				elseif type == "ESP" then HubState.ESPKeybind = selectedKey; HubState.IsBindingESP = false end
 				
 				SaveKeybind(type, selectedKey)
 				button.Text = KeybindText(selectedKey)
@@ -4791,29 +4799,29 @@ local function SetupBinding(button, type)
 	end)
 end
 
-SetupBinding(SpeedBindBtn, "Speed")
-SetupBinding(NoclipBindBtn, "Noclip")
-SetupBinding(FlyBindBtn, "Fly")
+SetupBinding(HubState.SpeedBindBtn, "Speed")
+SetupBinding(HubState.NoclipBindBtn, "Noclip")
+SetupBinding(HubState.FlyBindBtn, "Fly")
 SetupBinding(ThemeObjects.FreeCam.Bind, "FreeCam")
-SetupBinding(AutoLockBindBtn, "AutoLock")
-SetupBinding(ESPBindBtn, "ESP")
+SetupBinding(HubState.AutoLockBindBtn, "AutoLock")
+SetupBinding(HubState.ESPBindBtn, "ESP")
 
 local function ToggleSpeed()
-	SpeedEnabled = not SpeedEnabled
-	SpeedToggleBtn.Text = SpeedEnabled and "On" or "Off"
-	SpeedTitle.TextColor3 = SpeedEnabled and AccentColor or InactiveTextColor()
+	HubState.SpeedEnabled = not HubState.SpeedEnabled
+	HubState.SpeedToggleBtn.Text = HubState.SpeedEnabled and "On" or "Off"
+	HubState.SpeedTitle.TextColor3 = HubState.SpeedEnabled and AccentColor or InactiveTextColor()
 end
-SpeedToggleBtn.MouseButton1Click:Connect(function() PlayClick() ToggleSpeed() end)
+HubState.SpeedToggleBtn.MouseButton1Click:Connect(function() PlayClick() ToggleSpeed() end)
 
 local function ToggleNoclip()
-	NoclipEnabled = not NoclipEnabled
-	NoclipToggleBtn.Text = NoclipEnabled and "On" or "Off"
-	NoclipTitle.TextColor3 = NoclipEnabled and AccentColor or InactiveTextColor()
+	HubState.NoclipEnabled = not HubState.NoclipEnabled
+	HubState.NoclipToggleBtn.Text = HubState.NoclipEnabled and "On" or "Off"
+	HubState.NoclipTitle.TextColor3 = HubState.NoclipEnabled and AccentColor or InactiveTextColor()
 end
-NoclipToggleBtn.MouseButton1Click:Connect(function() PlayClick() ToggleNoclip() end)
+HubState.NoclipToggleBtn.MouseButton1Click:Connect(function() PlayClick() ToggleNoclip() end)
 
-Connections.NoclipLoop = RunService.Stepped:Connect(function()
-	if NoclipEnabled and Player.Character then
+HubState.Connections.NoclipLoop = RunService.Stepped:Connect(function()
+	if HubState.NoclipEnabled and Player.Character then
 		for _, part in pairs(Player.Character:GetDescendants()) do
 			if part:IsA("BasePart") and part.CanCollide then part.CanCollide = false end
 		end
@@ -4884,7 +4892,7 @@ function ThemeObjects.FreeCam.ToggleState()
 end
 
 ThemeObjects.FreeCam.Toggle.MouseButton1Click:Connect(function() PlayClick() ThemeObjects.FreeCam.ToggleState() end)
-Connections.FreeCam = RunService.RenderStepped:Connect(function(deltaTime)
+HubState.Connections.FreeCam = RunService.RenderStepped:Connect(function(deltaTime)
 	if not ThemeObjects.FreeCam.Enabled then return end
 	local camera = workspace.CurrentCamera
 	if not camera then return end
@@ -4918,23 +4926,23 @@ Connections.FreeCam = RunService.RenderStepped:Connect(function(deltaTime)
 end)
 
 local function ToggleFly()
-	FlyEnabled = not FlyEnabled
-	FlyToggleBtn.Text = FlyEnabled and "On" or "Off"
-	FlyTitle.TextColor3 = FlyEnabled and AccentColor or InactiveTextColor()
+	HubState.FlyEnabled = not HubState.FlyEnabled
+	HubState.FlyToggleBtn.Text = HubState.FlyEnabled and "On" or "Off"
+	HubState.FlyTitle.TextColor3 = HubState.FlyEnabled and AccentColor or InactiveTextColor()
 	local Character = Player.Character 
 	local RootPart = Character and Character:FindFirstChild("HumanoidRootPart")
-	if FlyEnabled then
+	if HubState.FlyEnabled then
 		if RootPart then
-			BodyVelocity = Instance.new("BodyVelocity") BodyVelocity.Velocity = Vector3.new(0, 0, 0) BodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge) BodyVelocity.Parent = RootPart
-			BodyGyro = Instance.new("BodyGyro") BodyGyro.P = 9e4 BodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9) BodyGyro.CFrame = RootPart.CFrame BodyGyro.Parent = RootPart
+			HubState.BodyVelocity = Instance.new("BodyVelocity") HubState.BodyVelocity.Velocity = Vector3.new(0, 0, 0) HubState.BodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge) HubState.BodyVelocity.Parent = RootPart
+			HubState.BodyGyro = Instance.new("BodyGyro") HubState.BodyGyro.P = 9e4 HubState.BodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9) HubState.BodyGyro.CFrame = RootPart.CFrame HubState.BodyGyro.Parent = RootPart
 		end
 	else
-		if BodyVelocity then BodyVelocity:Destroy() BodyVelocity = nil end
-		if BodyGyro then BodyGyro:Destroy() BodyGyro = nil end
+		if HubState.BodyVelocity then HubState.BodyVelocity:Destroy() HubState.BodyVelocity = nil end
+		if HubState.BodyGyro then HubState.BodyGyro:Destroy() HubState.BodyGyro = nil end
 		if RootPart then RootPart.Velocity = Vector3.new(0, 0, 0) end
 	end
 end
-FlyToggleBtn.MouseButton1Click:Connect(function() PlayClick() ToggleFly() end)
+HubState.FlyToggleBtn.MouseButton1Click:Connect(function() PlayClick() ToggleFly() end)
 
 local function GetClosestPlayerToMouse()
 	local nearest = nil
@@ -4957,20 +4965,20 @@ local function GetClosestPlayerToMouse()
 end
 
 -- Rendering Loop
-Connections.MainLoop = RunService.RenderStepped:Connect(function()
+HubState.Connections.MainLoop = RunService.RenderStepped:Connect(function()
 	local Character = Player.Character 
     local RootPart = Character and Character:FindFirstChild("HumanoidRootPart") 
     local Humanoid = Character and Character:FindFirstChild("Humanoid") 
     local Camera = workspace.CurrentCamera
 
-    if SpeedEnabled and RootPart and Humanoid then
+    if HubState.SpeedEnabled and RootPart and Humanoid then
 		local MoveDir = Humanoid.MoveDirection 
         if MoveDir.Magnitude > 0 then 
-            RootPart.CFrame = RootPart.CFrame + (MoveDir * (CurrentCFrameSpeed / 10)) 
+            RootPart.CFrame = RootPart.CFrame + (MoveDir * (HubState.CurrentCFrameSpeed / 10)) 
         end
 	end
     
-	if FlyEnabled and RootPart and BodyGyro then
+	if HubState.FlyEnabled and RootPart and HubState.BodyGyro then
 		local MoveDir = Vector3.new(0,0,0)
 		if UserInputService:IsKeyDown(Enum.KeyCode.W) then MoveDir = MoveDir + Camera.CFrame.LookVector end
 		if UserInputService:IsKeyDown(Enum.KeyCode.S) then MoveDir = MoveDir - Camera.CFrame.LookVector end
@@ -4978,11 +4986,11 @@ Connections.MainLoop = RunService.RenderStepped:Connect(function()
 		if UserInputService:IsKeyDown(Enum.KeyCode.D) then MoveDir = MoveDir + Camera.CFrame.RightVector end
 		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then MoveDir = MoveDir + Vector3.new(0,1,0) end
 		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then MoveDir = MoveDir - Vector3.new(0,1,0) end
-		if MoveDir.Magnitude > 0 then RootPart.CFrame = RootPart.CFrame + (MoveDir * (FlySpeed / 50)) end
-		BodyGyro.CFrame = Camera.CFrame RootPart.Velocity = Vector3.new(0, 0, 0)
+		if MoveDir.Magnitude > 0 then RootPart.CFrame = RootPart.CFrame + (MoveDir * (HubState.FlySpeed / 50)) end
+		HubState.BodyGyro.CFrame = Camera.CFrame RootPart.Velocity = Vector3.new(0, 0, 0)
 	end
 	
-	if AutoLockEnabled and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) and RootPart then
+	if HubState.AutoLockEnabled and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) and RootPart then
 		local target = GetClosestPlayerToMouse()
 		if target and target.Character and target.Character:FindFirstChild("Head") then
 			Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, target.Character.Head.Position)
@@ -4997,32 +5005,32 @@ Connections.MainLoop = RunService.RenderStepped:Connect(function()
 		local root = char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso") or char.PrimaryPart)
         if p ~= Player and char and root and hum then
 
-			if AntiFlingEnabled and not Flinging then
+			if HubState.AntiFlingEnabled and not HubState.Flinging then
 				local dangerous = root.AssemblyLinearVelocity.Magnitude > 90 or root.AssemblyAngularVelocity.Magnitude > 40
 				for _, part in ipairs(char:GetDescendants()) do
 					if part:IsA("BasePart") then
 						if dangerous then
-							if AntiFlingOriginalCollision[part] == nil then
-								AntiFlingOriginalCollision[part] = part.CanCollide
+							if HubState.AntiFlingOriginalCollision[part] == nil then
+								HubState.AntiFlingOriginalCollision[part] = part.CanCollide
 							end
 							part.CanCollide = false
-						elseif AntiFlingOriginalCollision[part] ~= nil then
-							part.CanCollide = AntiFlingOriginalCollision[part]
-							AntiFlingOriginalCollision[part] = nil
+						elseif HubState.AntiFlingOriginalCollision[part] ~= nil then
+							part.CanCollide = HubState.AntiFlingOriginalCollision[part]
+							HubState.AntiFlingOriginalCollision[part] = nil
 						end
 					end
 				end
 			end
             
-			local isMurdererRoleESP = MurdererRoleESPEnabled and p == CurrentMurderer
-			local isSheriffRoleESP = SheriffRoleESPEnabled and p == CurrentSheriff
+			local isMurdererRoleESP = HubState.MurdererRoleESPEnabled and p == HubState.CurrentMurderer
+			local isSheriffRoleESP = HubState.SheriffRoleESPEnabled and p == HubState.CurrentSheriff
 			local roleColor = nil
 			if isMurdererRoleESP then
 				roleColor = Color3.fromRGB(255, 70, 70)
 			elseif isSheriffRoleESP then
 				roleColor = Color3.fromRGB(70, 130, 255)
 			end
-			local showPlayerESP = ESPEnabled or roleColor ~= nil
+			local showPlayerESP = HubState.ESPEnabled or roleColor ~= nil
 
 			-- Infinite Yield-style body ESP. These adornments live under CoreGui
 			-- instead of the character, so local transparency/hide effects used by
@@ -5052,7 +5060,7 @@ Connections.MainLoop = RunService.RenderStepped:Connect(function()
 							adornments[part] = adornment
 						end
 						adornment.Size = part.Size
-						adornment.Color3 = ESPColor
+						adornment.Color3 = HubState.ESPColor
 						adornment.Transparency = 0.64
 					end
 				end
@@ -5063,7 +5071,7 @@ Connections.MainLoop = RunService.RenderStepped:Connect(function()
 			local oldCharacterHighlight = char:FindFirstChild("ESPHighlight")
 			if oldCharacterHighlight then oldCharacterHighlight:Destroy() end
 			local regularHighlight = ThemeObjects.ESPHighlights[p]
-			if ESPEnabled and roleColor == nil then
+			if HubState.ESPEnabled and roleColor == nil then
 				if not regularHighlight then
 					regularHighlight = Instance.new("Highlight")
 					regularHighlight.Name = "ESPHighlight"
@@ -5073,9 +5081,9 @@ Connections.MainLoop = RunService.RenderStepped:Connect(function()
 				regularHighlight.Enabled = true
 				regularHighlight.Adornee = char
 				regularHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-				regularHighlight.FillColor = ESPColor
+				regularHighlight.FillColor = HubState.ESPColor
 				regularHighlight.FillTransparency = 0.72
-				regularHighlight.OutlineColor = ESPColor
+				regularHighlight.OutlineColor = HubState.ESPColor
 				regularHighlight.OutlineTransparency = 0
 			elseif regularHighlight then
 				regularHighlight:Destroy()
@@ -5100,7 +5108,7 @@ Connections.MainLoop = RunService.RenderStepped:Connect(function()
 					label.TextStrokeTransparency = 0
 				end
 				local dist = (RootPart and (RootPart.Position - root.Position).Magnitude) or 0
-				espGui.ESPLabel.TextColor3 = roleColor or ESPColor
+				espGui.ESPLabel.TextColor3 = roleColor or HubState.ESPColor
 				espGui.ESPLabel.Text = string.format("%s\nHP: %d | %d Studs", p.DisplayName, math.floor(hum.Health), math.floor(dist))
 			elseif head and head:FindFirstChild("ESPGui") then
 				head.ESPGui:Destroy()
@@ -5111,84 +5119,84 @@ Connections.MainLoop = RunService.RenderStepped:Connect(function()
 end)
 
 -- Main Toggle/Minimizing logic
-local settingsOpen = false
-local minimized = false
+HubState.settingsOpen = false
+HubState.minimized = false
 
 local function ToggleSettings(forceClose)
-	settingsOpen = forceClose and false or not settingsOpen
+	HubState.settingsOpen = forceClose and false or not HubState.settingsOpen
 	if not forceClose then PlayClick() end
-	local posMove = settingsOpen and 1.1 or 0 
-    local posSet = settingsOpen and 0 or 1.1
+	local posMove = HubState.settingsOpen and 1.1 or 0 
+    local posSet = HubState.settingsOpen and 0 or 1.1
 	local activeX = 114
-	MovementPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true)
-	CombatPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true)
+	HubState.MovementPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true)
+	HubState.CombatPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true)
 	ThemeObjects.CameraPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true)
-	TeleportPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true)
-	GamesPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true)
-	MM2Page:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true)
+	HubState.TeleportPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true)
+	HubState.GamesPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true)
+	HubState.MM2Page:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true)
 	local extrasPage = MainFrame:FindFirstChild("ExtrasPage")
 	if extrasPage then extrasPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true) end
 	local quietPage = MainFrame:FindFirstChild("QuietOrDiePage")
 	if quietPage then quietPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true) end
-	TabScroll.Visible = not minimized
-	if not settingsOpen then
+	HubState.TabScroll.Visible = not HubState.minimized
+	if not HubState.settingsOpen then
 		if ThemeObjects.PickerDock then ThemeObjects.PickerDock.Visible = false end
 		if ThemeObjects.GuiSizeDock then ThemeObjects.GuiSizeDock.Visible = false end
 	end
-	PageHeader:TweenPosition(UDim2.new(posMove, activeX, 0, 32), "Out", "Quart", 0.4, true)
-	SettingsPage:TweenPosition(UDim2.new(posSet, activeX, 0, 32), "Out", "Quart", 0.4, true)
+	HubState.PageHeader:TweenPosition(UDim2.new(posMove, activeX, 0, 32), "Out", "Quart", 0.4, true)
+	HubState.SettingsPage:TweenPosition(UDim2.new(posSet, activeX, 0, 32), "Out", "Quart", 0.4, true)
 end
-SettingsBtn.MouseButton1Click:Connect(function()
-	if minimized then return end
+HubState.SettingsBtn.MouseButton1Click:Connect(function()
+	if HubState.minimized then return end
 	ToggleSettings()
 end)
 
 local function ToggleGUI()
-	minimized = not minimized PlaySwoosh()
-	if minimized and settingsOpen then ToggleSettings(true) end
-	TabScroll.Visible = not minimized
+	HubState.minimized = not HubState.minimized PlaySwoosh()
+	if HubState.minimized and HubState.settingsOpen then ToggleSettings(true) end
+	HubState.TabScroll.Visible = not HubState.minimized
 	if MainPatternLines.Container then
 		MainPatternLines.Container.Visible = true
 		MainPatternLines.Container.Size = UDim2.new(0, 66, 0, 22)
-		MainPatternLines.Container.Position = minimized and UDim2.new(0, 8, 0, 6) or UDim2.new(0, 200, 0, 5)
+		MainPatternLines.Container.Position = HubState.minimized and UDim2.new(0, 8, 0, 6) or UDim2.new(0, 200, 0, 5)
 	end
-	if not minimized then SettingsBtn.Visible = true end
-	SettingsBtn.Active = not minimized
-	TweenService:Create(SettingsBtn, TweenInfo.new(0.2), {
-		BackgroundTransparency = minimized and 1 or 0,
-		TextTransparency = minimized and 1 or 0,
-		TextStrokeTransparency = minimized and 1 or 0.5,
+	if not HubState.minimized then HubState.SettingsBtn.Visible = true end
+	HubState.SettingsBtn.Active = not HubState.minimized
+	TweenService:Create(HubState.SettingsBtn, TweenInfo.new(0.2), {
+		BackgroundTransparency = HubState.minimized and 1 or 0,
+		TextTransparency = HubState.minimized and 1 or 0,
+		TextStrokeTransparency = HubState.minimized and 1 or 0.5,
 	}):Play()
-	if minimized then
+	if HubState.minimized then
 		task.delay(0.2, function()
-			if minimized then SettingsBtn.Visible = false end
+			if HubState.minimized then HubState.SettingsBtn.Visible = false end
 		end)
 	end
-	local targetSize = minimized and UDim2.new(0, 170, 0, 34) or UDim2.new(0, 460, 0, 300)
+	local targetSize = HubState.minimized and UDim2.new(0, 170, 0, 34) or UDim2.new(0, 460, 0, 300)
 	TweenService:Create(MainFrame, TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = targetSize}):Play()
-	MiniButton.Text = minimized and "+" or "-"
+	HubState.MiniButton.Text = HubState.minimized and "+" or "-"
 end
-MiniButton.MouseButton1Click:Connect(ToggleGUI)
+HubState.MiniButton.MouseButton1Click:Connect(ToggleGUI)
 
 -- Input Listener
-Connections.InputBegan = UserInputService.InputBegan:Connect(function(input, processed)
-	if processed or IsBindingSpeed or IsBindingFly or IsBindingNoclip or ThemeObjects.FreeCam.Binding or IsBindingAutoLock or IsBindingESP or IsBindingFlingMenu or ThemeObjects.PlayerTP.Binding then return end
+HubState.Connections.InputBegan = UserInputService.InputBegan:Connect(function(input, processed)
+	if processed or HubState.IsBindingSpeed or HubState.IsBindingFly or HubState.IsBindingNoclip or ThemeObjects.FreeCam.Binding or HubState.IsBindingAutoLock or HubState.IsBindingESP or HubState.IsBindingFlingMenu or ThemeObjects.PlayerTP.Binding then return end
 	if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
-	if input.KeyCode == SpeedKeybind then ToggleSpeed()
-	elseif input.KeyCode == FlyKeybind then ToggleFly()
-	elseif input.KeyCode == NoclipKeybind then ToggleNoclip()
+	if input.KeyCode == HubState.SpeedKeybind then ToggleSpeed()
+	elseif input.KeyCode == HubState.FlyKeybind then ToggleFly()
+	elseif input.KeyCode == HubState.NoclipKeybind then ToggleNoclip()
 	elseif input.KeyCode == ThemeObjects.FreeCam.Keybind then ThemeObjects.FreeCam.ToggleState()
-	elseif input.KeyCode == AutoLockKeybind then ToggleAutoLock()
-    elseif input.KeyCode == ESPKeybind then ToggleESP()
-	elseif input.KeyCode == FlingMenuKeybind then ToggleFlingMenu()
+	elseif input.KeyCode == HubState.AutoLockKeybind then ToggleAutoLock()
+    elseif input.KeyCode == HubState.ESPKeybind then ToggleESP()
+	elseif input.KeyCode == HubState.FlingMenuKeybind then ToggleFlingMenu()
 	elseif input.KeyCode == ThemeObjects.PlayerTP.Keybind then ThemeObjects.PlayerTP.Toggle()
     elseif input.KeyCode == Enum.KeyCode.LeftControl then ToggleGUI() 
     end
 end)
 
 -- Tab Setup
-local TabNames = {"Movement", "Combat", "Camera", "Teleport", "Games", "Extras"}
-for i, name in ipairs(TabNames) do
+HubState.TabNames = {"Movement", "Combat", "Camera", "Teleport", "Games", "Extras"}
+for i, name in ipairs(HubState.TabNames) do
 	local TabBtn = Instance.new("TextButton")
 	TabBtn.Name = "NavTabButton"
 		TabBtn.Size = UDim2.new(0, 94, 0, 34)
@@ -5200,87 +5208,87 @@ for i, name in ipairs(TabNames) do
 	TabBtn.Font = Enum.Font.GothamMedium
 	TabBtn.TextSize = 11
 	TabBtn.TextColor3 = Color3.fromRGB(175, 175, 190)
-	TabBtn.Parent = TabScroll
-	if name == "Games" then GamesTabButton = TabBtn end
+	TabBtn.Parent = HubState.TabScroll
+	if name == "Games" then HubState.GamesTabButton = TabBtn end
 	table.insert(ThemeObjects.Backgrounds, TabBtn)
 	table.insert(ThemeObjects.Texts, TabBtn)
 	Instance.new("UICorner", TabBtn).CornerRadius = UDim.new(0, 6)
 	
 	TabBtn.MouseButton1Click:Connect(function() 
 		PlayClick() 
-		if settingsOpen then ToggleSettings(true) end
-		local openingSelectedGame = name == "Games" and SelectedGame ~= nil
-		PageHeader.Text = openingSelectedGame and SelectedGame or name
-		MM2BackButton.Visible = openingSelectedGame
-		MovementPage.Visible = (name == "Movement") 
-		CombatPage.Visible = (name == "Combat")
+		if HubState.settingsOpen then ToggleSettings(true) end
+		local openingSelectedGame = name == "Games" and HubState.SelectedGame ~= nil
+		HubState.PageHeader.Text = openingSelectedGame and HubState.SelectedGame or name
+		HubState.MM2BackButton.Visible = openingSelectedGame
+		HubState.MovementPage.Visible = (name == "Movement") 
+		HubState.CombatPage.Visible = (name == "Combat")
 		ThemeObjects.CameraPage.Visible = (name == "Camera")
-		TeleportPage.Visible = (name == "Teleport")
+		HubState.TeleportPage.Visible = (name == "Teleport")
 		local extrasPage = MainFrame:FindFirstChild("ExtrasPage")
 		if extrasPage then extrasPage.Visible = (name == "Extras") end
-		GamesPage.Visible = (name == "Games" and not openingSelectedGame)
-		MM2Page.Visible = openingSelectedGame and SelectedGame == "MM2"
+		HubState.GamesPage.Visible = (name == "Games" and not openingSelectedGame)
+		HubState.MM2Page.Visible = openingSelectedGame and HubState.SelectedGame == "MM2"
 		local quietPage = MainFrame:FindFirstChild("QuietOrDiePage")
-		if quietPage then quietPage.Visible = openingSelectedGame and SelectedGame == "Quiet Or Die" end
-		local quietCoins = PageHeader:FindFirstChild("QuietOrDieCoinsDisplay")
-		if quietCoins then quietCoins.Visible = openingSelectedGame and SelectedGame == "Quiet Or Die" end
-		local quietWins = PageHeader:FindFirstChild("QuietOrDieWinsDisplay")
-		if quietWins then quietWins.Visible = openingSelectedGame and SelectedGame == "Quiet Or Die" end
-		local quietHistory = PageHeader:FindFirstChild("QuietOrDieHistoryButton")
-		if quietHistory then quietHistory.Visible = openingSelectedGame and SelectedGame == "Quiet Or Die" end
-		if quietPage and not (openingSelectedGame and SelectedGame == "Quiet Or Die") then
+		if quietPage then quietPage.Visible = openingSelectedGame and HubState.SelectedGame == "Quiet Or Die" end
+		local quietCoins = HubState.PageHeader:FindFirstChild("QuietOrDieCoinsDisplay")
+		if quietCoins then quietCoins.Visible = openingSelectedGame and HubState.SelectedGame == "Quiet Or Die" end
+		local quietWins = HubState.PageHeader:FindFirstChild("QuietOrDieWinsDisplay")
+		if quietWins then quietWins.Visible = openingSelectedGame and HubState.SelectedGame == "Quiet Or Die" end
+		local quietHistory = HubState.PageHeader:FindFirstChild("QuietOrDieHistoryButton")
+		if quietHistory then quietHistory.Visible = openingSelectedGame and HubState.SelectedGame == "Quiet Or Die" end
+		if quietPage and not (openingSelectedGame and HubState.SelectedGame == "Quiet Or Die") then
 			local historyPanel = quietPage:FindFirstChild("QuietOrDieHistoryPanel")
 			if historyPanel then historyPanel.Visible = false end
 		end
 
-		if name == "Movement" then MovementPage.Position = UDim2.new(0, 114, 0, 54)
-		else MovementPage.Position = UDim2.new(1.1, 0, 0, 54) end
+		if name == "Movement" then HubState.MovementPage.Position = UDim2.new(0, 114, 0, 54)
+		else HubState.MovementPage.Position = UDim2.new(1.1, 0, 0, 54) end
 
-		if name == "Combat" then CombatPage.Position = UDim2.new(0, 114, 0, 54) 
-		else CombatPage.Position = UDim2.new(1.1, 0, 0, 54) end
+		if name == "Combat" then HubState.CombatPage.Position = UDim2.new(0, 114, 0, 54) 
+		else HubState.CombatPage.Position = UDim2.new(1.1, 0, 0, 54) end
 
 		if name == "Camera" then ThemeObjects.CameraPage.Position = UDim2.new(0, 114, 0, 54)
 		else ThemeObjects.CameraPage.Position = UDim2.new(1.1, 0, 0, 54) end
 
 		if name == "Teleport" then
 			if not ThemeObjects.PlayerListReady then UpdatePlayerList() end
-			TeleportPage.Position = UDim2.new(0, 114, 0, 54) 
-		else TeleportPage.Position = UDim2.new(1.1, 0, 0, 54) end
+			HubState.TeleportPage.Position = UDim2.new(0, 114, 0, 54) 
+		else HubState.TeleportPage.Position = UDim2.new(1.1, 0, 0, 54) end
 
 		if extrasPage then
 			if name == "Extras" then extrasPage.Position = UDim2.new(0, 114, 0, 54)
 			else extrasPage.Position = UDim2.new(1.1, 0, 0, 54) end
 		end
 
-		if name == "Games" and not openingSelectedGame then GamesPage.Position = UDim2.new(0, 114, 0, 54)
-		else GamesPage.Position = UDim2.new(1.1, 0, 0, 54) end
+		if name == "Games" and not openingSelectedGame then HubState.GamesPage.Position = UDim2.new(0, 114, 0, 54)
+		else HubState.GamesPage.Position = UDim2.new(1.1, 0, 0, 54) end
 
-		if openingSelectedGame and SelectedGame == "MM2" then MM2Page.Position = UDim2.new(0, 114, 0, 54)
-		else MM2Page.Position = UDim2.new(1.1, 0, 0, 54) end
+		if openingSelectedGame and HubState.SelectedGame == "MM2" then HubState.MM2Page.Position = UDim2.new(0, 114, 0, 54)
+		else HubState.MM2Page.Position = UDim2.new(1.1, 0, 0, 54) end
 
 		if quietPage then
-			if openingSelectedGame and SelectedGame == "Quiet Or Die" then quietPage.Position = UDim2.new(0, 114, 0, 54)
+			if openingSelectedGame and HubState.SelectedGame == "Quiet Or Die" then quietPage.Position = UDim2.new(0, 114, 0, 54)
 			else quietPage.Position = UDim2.new(1.1, 0, 0, 54) end
 		end
 	end)
 end
 
 -- Settings Page
-local DestroyBtn
+HubState.DestroyBtn = nil
 local function BuildSettingsPage()
-DestroyBtn = Instance.new("TextButton")
-DestroyBtn.Name = "DestroyBtn"
-DestroyBtn.Size = UDim2.new(0, 310, 0, 24)
-DestroyBtn.Position = UDim2.new(0, 10, 0, 116)
-DestroyBtn.BackgroundColor3 = Color3.fromRGB(125, 35, 40)
-DestroyBtn.BackgroundTransparency = 0
-DestroyBtn.BorderSizePixel = 0
-DestroyBtn.Text = "Destroy GUI"
-DestroyBtn.Font = Enum.Font.GothamBold
-DestroyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-DestroyBtn.Parent = SettingsPage
-table.insert(ThemeObjects.Backgrounds, DestroyBtn)
-Instance.new("UICorner", DestroyBtn).CornerRadius = UDim.new(0, 6)
+HubState.DestroyBtn = Instance.new("TextButton")
+HubState.DestroyBtn.Name = "DestroyBtn"
+HubState.DestroyBtn.Size = UDim2.new(0, 310, 0, 24)
+HubState.DestroyBtn.Position = UDim2.new(0, 10, 0, 116)
+HubState.DestroyBtn.BackgroundColor3 = Color3.fromRGB(125, 35, 40)
+HubState.DestroyBtn.BackgroundTransparency = 0
+HubState.DestroyBtn.BorderSizePixel = 0
+HubState.DestroyBtn.Text = "Destroy GUI"
+HubState.DestroyBtn.Font = Enum.Font.GothamBold
+HubState.DestroyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+HubState.DestroyBtn.Parent = HubState.SettingsPage
+table.insert(ThemeObjects.Backgrounds, HubState.DestroyBtn)
+Instance.new("UICorner", HubState.DestroyBtn).CornerRadius = UDim.new(0, 6)
 
 local AccentColorBtn = Instance.new("TextButton")
 AccentColorBtn.Size = UDim2.new(0, 150, 0, 20)
@@ -5291,7 +5299,7 @@ AccentColorBtn.BorderSizePixel = 0
 AccentColorBtn.Text = "Accent Color"
 AccentColorBtn.Font = Enum.Font.GothamBold
 AccentColorBtn.TextSize = 10
-AccentColorBtn.Parent = SettingsPage
+AccentColorBtn.Parent = HubState.SettingsPage
 Instance.new("UICorner", AccentColorBtn).CornerRadius = UDim.new(0, 5)
 
 local ResetThemeBtn = Instance.new("TextButton")
@@ -5303,7 +5311,7 @@ ResetThemeBtn.BorderSizePixel = 0
 ResetThemeBtn.Text = "Reset Accent"
 ResetThemeBtn.Font = Enum.Font.GothamBold
 ResetThemeBtn.Visible = false
-ResetThemeBtn.Parent = SettingsPage
+ResetThemeBtn.Parent = HubState.SettingsPage
 table.insert(ThemeObjects.Backgrounds, ResetThemeBtn)
 table.insert(ThemeObjects.Texts, ResetThemeBtn)
 Instance.new("UICorner", ResetThemeBtn).CornerRadius = UDim.new(0, 5)
@@ -5319,7 +5327,7 @@ ClearKeybindsBtn.Text = "Remove All Keybinds"
 ClearKeybindsBtn.Font = Enum.Font.GothamBold
 ClearKeybindsBtn.TextSize = 10
 ClearKeybindsBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-ClearKeybindsBtn.Parent = SettingsPage
+ClearKeybindsBtn.Parent = HubState.SettingsPage
 table.insert(ThemeObjects.Backgrounds, ClearKeybindsBtn)
 Instance.new("UICorner", ClearKeybindsBtn).CornerRadius = UDim.new(0, 5)
 
@@ -5333,7 +5341,7 @@ ResetCharacterBtn.BorderSizePixel = 0
 ResetCharacterBtn.Text = "Reset Character"
 ResetCharacterBtn.Font = Enum.Font.GothamBold
 ResetCharacterBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-ResetCharacterBtn.Parent = SettingsPage
+ResetCharacterBtn.Parent = HubState.SettingsPage
 table.insert(ThemeObjects.Backgrounds, ResetCharacterBtn)
 Instance.new("UICorner", ResetCharacterBtn).CornerRadius = UDim.new(0, 6)
 
@@ -5347,7 +5355,7 @@ RejoinBtn.BorderSizePixel = 0
 RejoinBtn.Text = "Rejoin"
 RejoinBtn.Font = Enum.Font.GothamBold
 RejoinBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-RejoinBtn.Parent = SettingsPage
+RejoinBtn.Parent = HubState.SettingsPage
 table.insert(ThemeObjects.Backgrounds, RejoinBtn)
 Instance.new("UICorner", RejoinBtn).CornerRadius = UDim.new(0, 6)
 
@@ -5361,7 +5369,7 @@ ServerHopBtn.BorderSizePixel = 0
 ServerHopBtn.Text = "Server Hop"
 ServerHopBtn.Font = Enum.Font.GothamBold
 ServerHopBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-ServerHopBtn.Parent = SettingsPage
+ServerHopBtn.Parent = HubState.SettingsPage
 table.insert(ThemeObjects.Backgrounds, ServerHopBtn)
 Instance.new("UICorner", ServerHopBtn).CornerRadius = UDim.new(0, 6)
 
@@ -5376,7 +5384,7 @@ GuiSizeBtn.Text = "GUI Size"
 GuiSizeBtn.Font = Enum.Font.GothamBold
 GuiSizeBtn.TextSize = 10
 GuiSizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-GuiSizeBtn.Parent = SettingsPage
+GuiSizeBtn.Parent = HubState.SettingsPage
 table.insert(ThemeObjects.Backgrounds, GuiSizeBtn)
 Instance.new("UICorner", GuiSizeBtn).CornerRadius = UDim.new(0, 5)
 
@@ -5510,8 +5518,8 @@ ThemeObjects.UpdateGuiSizeDockPosition = function()
 	local scale = GuiScaleFromValue(GuiSizeValue)
 	GuiSizeFrame.Position = UDim2.fromOffset(MainFrame.AbsolutePosition.X - (7 * scale), MainFrame.AbsolutePosition.Y + (184 * scale))
 end
-MainFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(ThemeObjects.UpdateGuiSizeDockPosition)
-MainFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(ThemeObjects.UpdateGuiSizeDockPosition)
+TrackConnection("GuiSizeDockPosition", MainFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(ThemeObjects.UpdateGuiSizeDockPosition))
+TrackConnection("GuiSizeDockSize", MainFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(ThemeObjects.UpdateGuiSizeDockPosition))
 ThemeObjects.UpdateGuiSizeDockPosition()
 
 local GuiSizeTitle = Instance.new("TextLabel")
@@ -5590,7 +5598,7 @@ local function ApplyGuiSize(value)
 	GuiSizeValue = math.clamp(value, 20, 100)
 	GuiSizeValueLabel.Text = tostring(GuiSizeValue)
 	local targetScale = GuiScaleFromValue(GuiSizeValue)
-	for _, scaleObject in ipairs({MainScaleObject, TargetScaleObject, ThemeObjects.PlayerTP.Scale, SplashScaleObject, ThemeObjects.PickerDockScale, ThemeObjects.GuiSizeDockScale, ThemeObjects.ExtrasFeature.CopyScale}) do
+	for _, scaleObject in ipairs({MainScaleObject, HubState.TargetScaleObject, ThemeObjects.PlayerTP.Scale, SplashScaleObject, ThemeObjects.PickerDockScale, ThemeObjects.GuiSizeDockScale, ThemeObjects.ExtrasFeature.CopyScale}) do
 		if scaleObject and scaleObject.Parent then
 			TweenService:Create(scaleObject, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Scale = targetScale}):Play()
 		end
@@ -5633,8 +5641,8 @@ ThemeObjects.UpdatePickerDockPosition = function()
 	local scale = GuiScaleFromValue(GuiSizeValue)
 	PickerFrame.Position = UDim2.fromOffset(MainFrame.AbsolutePosition.X - (7 * scale), MainFrame.AbsolutePosition.Y + (36 * scale))
 end
-MainFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(ThemeObjects.UpdatePickerDockPosition)
-MainFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(ThemeObjects.UpdatePickerDockPosition)
+TrackConnection("PickerDockPosition", MainFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(ThemeObjects.UpdatePickerDockPosition))
+TrackConnection("PickerDockSize", MainFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(ThemeObjects.UpdatePickerDockPosition))
 ThemeObjects.UpdatePickerDockPosition()
 
 ResetThemeBtn.Parent = PickerFrame
@@ -5731,7 +5739,7 @@ ConfirmClearFrame.Size = UDim2.new(0, 150, 0, 70)
 ConfirmClearFrame.Position = UDim2.new(0, 10, 0, 8)
 ConfirmClearFrame.BackgroundTransparency = 1
 ConfirmClearFrame.Visible = false
-ConfirmClearFrame.Parent = SettingsPage
+ConfirmClearFrame.Parent = HubState.SettingsPage
 
 local ConfirmClearText = Instance.new("TextLabel")
 ConfirmClearText.Size = UDim2.new(0, 150, 0, 32)
@@ -5765,17 +5773,17 @@ ConfirmNoBtn.Font = Enum.Font.GothamBold
 ConfirmNoBtn.Parent = ConfirmClearFrame
 Instance.new("UICorner", ConfirmNoBtn).CornerRadius = UDim.new(0, 4)
 
-table.insert(ThemeObjects.StateTexts, {Object = SpeedTitle, IsEnabled = function() return SpeedEnabled end})
-table.insert(ThemeObjects.StateTexts, {Object = FlyTitle, IsEnabled = function() return FlyEnabled end})
-table.insert(ThemeObjects.StateTexts, {Object = NoclipTitle, IsEnabled = function() return NoclipEnabled end})
+table.insert(ThemeObjects.StateTexts, {Object = HubState.SpeedTitle, IsEnabled = function() return HubState.SpeedEnabled end})
+table.insert(ThemeObjects.StateTexts, {Object = HubState.FlyTitle, IsEnabled = function() return HubState.FlyEnabled end})
+table.insert(ThemeObjects.StateTexts, {Object = HubState.NoclipTitle, IsEnabled = function() return HubState.NoclipEnabled end})
 table.insert(ThemeObjects.StateTexts, {Object = ThemeObjects.FreeCam.Title, IsEnabled = function() return ThemeObjects.FreeCam.Enabled end})
-table.insert(ThemeObjects.StateTexts, {Object = AutoLockTitle, IsEnabled = function() return AutoLockEnabled end})
-table.insert(ThemeObjects.StateTexts, {Object = ESPTitle, IsEnabled = function() return ESPEnabled end})
-if ThemeObjects.AntiFlingTitle then table.insert(ThemeObjects.StateTexts, {Object = ThemeObjects.AntiFlingTitle, IsEnabled = function() return AntiFlingEnabled end}) end
+table.insert(ThemeObjects.StateTexts, {Object = HubState.AutoLockTitle, IsEnabled = function() return HubState.AutoLockEnabled end})
+table.insert(ThemeObjects.StateTexts, {Object = HubState.ESPTitle, IsEnabled = function() return HubState.ESPEnabled end})
+if ThemeObjects.AntiFlingTitle then table.insert(ThemeObjects.StateTexts, {Object = ThemeObjects.AntiFlingTitle, IsEnabled = function() return HubState.AntiFlingEnabled end}) end
 table.insert(ThemeObjects.StateTexts, {Object = ThemeObjects.DeepESP.Title, IsEnabled = function() return ThemeObjects.DeepESP.Enabled end})
-table.insert(ThemeObjects.StateTexts, {Object = CoinFarmTitle, IsEnabled = function() return CoinFarmEnabled end})
-table.insert(ThemeObjects.StateTexts, {Object = AutoGunTitle, IsEnabled = function() return AutoGunPickupEnabled end})
-table.insert(ThemeObjects.StateTexts, {Object = KillTitle, IsEnabled = function() return KillEnabled end})
+table.insert(ThemeObjects.StateTexts, {Object = HubState.CoinFarmTitle, IsEnabled = function() return HubState.CoinFarmEnabled end})
+table.insert(ThemeObjects.StateTexts, {Object = HubState.AutoGunTitle, IsEnabled = function() return HubState.AutoGunPickupEnabled end})
+table.insert(ThemeObjects.StateTexts, {Object = HubState.KillTitle, IsEnabled = function() return HubState.KillEnabled end})
 
 local PickerTarget = "Accent"
 local PickerH, PickerS, PickerV = 0, 0, 1
@@ -5840,20 +5848,20 @@ HueInput.InputBegan:Connect(function(input)
 		UpdateHueFromPosition(input.Position)
 	end
 end)
-UserInputService.InputChanged:Connect(function(input)
+TrackConnection("PickerInputChanged", UserInputService.InputChanged:Connect(function(input)
 	if DraggingSV and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 		UpdateSVFromPosition(input.Position)
 	elseif DraggingHue and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 		UpdateHueFromPosition(input.Position)
 	end
-end)
-UserInputService.InputEnded:Connect(function(input)
+end))
+TrackConnection("PickerInputEnded", UserInputService.InputEnded:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 		if DraggingSV or DraggingHue then SaveThemeColors() end
 		DraggingSV = false
 		DraggingHue = false
 	end
-end)
+end))
 
 AccentColorBtn.MouseButton1Click:Connect(function()
 	PlayClick()
@@ -5896,13 +5904,13 @@ end)
 ConfirmNoBtn.MouseButton1Click:Connect(function() PlayClick() ConfirmClearFrame.Visible = false end)
 ConfirmYesBtn.MouseButton1Click:Connect(function()
 	PlayClick()
-	SpeedKeybind = Enum.KeyCode.Unknown
-	FlyKeybind = Enum.KeyCode.Unknown
-	NoclipKeybind = Enum.KeyCode.Unknown
+	HubState.SpeedKeybind = Enum.KeyCode.Unknown
+	HubState.FlyKeybind = Enum.KeyCode.Unknown
+	HubState.NoclipKeybind = Enum.KeyCode.Unknown
 	ThemeObjects.FreeCam.Keybind = Enum.KeyCode.Unknown
-	AutoLockKeybind = Enum.KeyCode.Unknown
-	ESPKeybind = Enum.KeyCode.Unknown
-	FlingMenuKeybind = Enum.KeyCode.Unknown
+	HubState.AutoLockKeybind = Enum.KeyCode.Unknown
+	HubState.ESPKeybind = Enum.KeyCode.Unknown
+	HubState.FlingMenuKeybind = Enum.KeyCode.Unknown
 	ThemeObjects.PlayerTP.Keybind = Enum.KeyCode.Unknown
 	SavedKeybinds.Speed = "Unknown"
 	SavedKeybinds.Fly = "Unknown"
@@ -5912,13 +5920,13 @@ ConfirmYesBtn.MouseButton1Click:Connect(function()
 	SavedKeybinds.ESP = "Unknown"
 	SavedKeybinds.FlingMenu = "Unknown"
 	SavedKeybinds.PlayerTPMenu = "Unknown"
-	SpeedBindBtn.Text = "..."
-	FlyBindBtn.Text = "..."
-	NoclipBindBtn.Text = "..."
+	HubState.SpeedBindBtn.Text = "..."
+	HubState.FlyBindBtn.Text = "..."
+	HubState.NoclipBindBtn.Text = "..."
 	ThemeObjects.FreeCam.Bind.Text = "..."
-	AutoLockBindBtn.Text = "..."
-	ESPBindBtn.Text = "..."
-	FlingBindBtn.Text = "..."
+	HubState.AutoLockBindBtn.Text = "..."
+	HubState.ESPBindBtn.Text = "..."
+	HubState.FlingBindBtn.Text = "..."
 	if ThemeObjects.PlayerTP.BindButton then ThemeObjects.PlayerTP.BindButton.Text = "..." end
 	SavePersistentSettings()
 	ConfirmClearFrame.Visible = false
@@ -5933,7 +5941,7 @@ local function Cleanup()
 	if ThemeObjects.ClearESPAdornments then ThemeObjects.ClearESPAdornments() end
 	RestoreAntiFlingCollisions()
 	RestoreKillHitboxes()
-	GunDropESP.Clear()
+	HubState.GunDropESP.Clear()
 	if ThemeObjects.CleanupPartSelector then ThemeObjects.CleanupPartSelector() end
 	if ThemeObjects.FlushQuietHistory then ThemeObjects.FlushQuietHistory() end
 	if ThemeObjects.RestoreFullBright then ThemeObjects.RestoreFullBright() end
@@ -5958,11 +5966,11 @@ local function Cleanup()
 			if cleanupCharacter:FindFirstChild("Head") and cleanupCharacter.Head:FindFirstChild("ESPGui") then cleanupCharacter.Head.ESPGui:Destroy() end
 		end
 	end
-	for _, connection in pairs(Connections) do if connection then connection:Disconnect() end end
-	if CoinFarmConnection then CoinFarmConnection:Disconnect() end
+	for _, connection in pairs(HubState.Connections) do if connection then connection:Disconnect() end end
+	if HubState.CoinFarmConnection then HubState.CoinFarmConnection:Disconnect() end
 	ScreenGui:Destroy()
 end
-DestroyBtn.MouseButton1Click:Connect(Cleanup)
+HubState.DestroyBtn.MouseButton1Click:Connect(Cleanup)
 
 -- Keep feature tiles in the same translucent style as the Camera page.
 for _, surface in ipairs(MainFrame:GetDescendants()) do
@@ -5978,9 +5986,11 @@ CompactGuiText(ScreenGui)
 UpdateTheme()
 
 -- Dragging
-local dragging, dragStart, startPos
-MainFrame.InputBegan:Connect(function(input) if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then dragging = true dragStart = input.Position startPos = MainFrame.Position input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false end end) end end)
-UserInputService.InputChanged:Connect(function(input) if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then local delta = input.Position - dragStart MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y) end end)
+HubState.dragging = nil
+HubState.dragStart = nil
+HubState.startPos = nil
+TrackConnection("MainFrameDragStart", MainFrame.InputBegan:Connect(function(input) if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then HubState.dragging = true HubState.dragStart = input.Position HubState.startPos = MainFrame.Position input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then HubState.dragging = false end end) end end))
+TrackConnection("MainFrameDragMove", UserInputService.InputChanged:Connect(function(input) if HubState.dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then local delta = input.Position - HubState.dragStart MainFrame.Position = UDim2.new(HubState.startPos.X.Scale, HubState.startPos.X.Offset + delta.X, HubState.startPos.Y.Scale, HubState.startPos.Y.Offset + delta.Y) end end))
 
 -- FLY-IN TITLE SEQUENCE
 task.spawn(function()
