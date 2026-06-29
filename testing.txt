@@ -247,8 +247,21 @@ SwooshSound.SoundId = "rbxassetid://107710687218353"
 SwooshSound.Volume = 0.6
 SwooshSound.Parent = MainFrame
 
+local MinimizeSound = Instance.new("Sound")
+MinimizeSound.SoundId = "rbxassetid://137957059235157"
+MinimizeSound.Volume = 0.6
+MinimizeSound.Parent = MainFrame
+
+local UnminimizeSound = Instance.new("Sound")
+UnminimizeSound.SoundId = "rbxassetid://72384898525651"
+UnminimizeSound.Volume = 0.6
+UnminimizeSound.Parent = MainFrame
+
 local function PlayClick() ClickSound:Play() end
 local function PlaySwoosh() SwooshSound:Play() end
+local function PlayMinimizeSound(isMinimizing)
+	if isMinimizing then MinimizeSound:Play() else UnminimizeSound:Play() end
+end
 
 -- Theme Management
 local ThemeObjects = { Backgrounds = {}, Texts = {}, Accents = {}, AccentBackgrounds = {}, StateTexts = {} }
@@ -266,7 +279,7 @@ HubState.NotificationHolder.ZIndex = 200
 HubState.NotificationHolder.Parent = ScreenGui
 
 HubState.NotificationSound = Instance.new("Sound")
-HubState.NotificationSound.SoundId = "rbxassetid://131390520971848"
+HubState.NotificationSound.SoundId = "rbxassetid://114029807919810"
 HubState.NotificationSound.Volume = 0.55
 HubState.NotificationSound.Parent = HubState.NotificationHolder
 
@@ -5469,7 +5482,8 @@ HubState.SettingsBtn.MouseButton1Click:Connect(function()
 end)
 
 local function ToggleGUI()
-	HubState.minimized = not HubState.minimized PlaySwoosh()
+	HubState.minimized = not HubState.minimized
+	PlayMinimizeSound(HubState.minimized)
 	if HubState.minimized and HubState.settingsOpen then ToggleSettings(true) end
 	HubState.TabScroll.Visible = not HubState.minimized
 	ThemeObjects.UpdateEmblemPosition()
@@ -5536,7 +5550,7 @@ ThemeObjects.SwitchTab = function(name)
 	HubState.PageHeader:TweenPosition(UDim2.new(0, headerX, 0, headerY), "Out", "Quart", slideTime, true)
 	HubState.MM2BackButton.Visible = openingSelectedGame
 	if HubState.GamesTabButton then
-		HubState.GamesTabButton.Text = openingSelectedGame and HubState.SelectedGame or "Games"
+		HubState.GamesTabButton.Text = HubState.SelectedGame or "Games"
 	end
 
 	if name == "Teleport" and not ThemeObjects.PlayerListReady then UpdatePlayerList() end
@@ -5612,7 +5626,7 @@ local function BuildSettingsPage()
 HubState.DestroyBtn = Instance.new("TextButton")
 HubState.DestroyBtn.Name = "DestroyBtn"
 HubState.DestroyBtn.Size = UDim2.new(0, 310, 0, 24)
-HubState.DestroyBtn.Position = UDim2.new(0, 10, 0, 104)
+HubState.DestroyBtn.Position = UDim2.new(0, 10, 0, 170)
 HubState.DestroyBtn.BackgroundColor3 = Color3.fromRGB(255, 35, 35)
 HubState.DestroyBtn.BackgroundTransparency = 0
 HubState.DestroyBtn.BorderSizePixel = 0
@@ -5629,7 +5643,7 @@ HubState.LocalCountLabel.Size = UDim2.new(0, 310, 0, 10)
 HubState.LocalCountLabel.Position = UDim2.new(0, 10, 1, -14)
 HubState.LocalCountLabel.BackgroundTransparency = 1
 HubState.LocalCountLabel.BorderSizePixel = 0
-HubState.LocalCountLabel.Text = "11"
+HubState.LocalCountLabel.Text = "11 / 200"
 HubState.LocalCountLabel.Font = Enum.Font.GothamBold
 HubState.LocalCountLabel.TextSize = 7
 HubState.LocalCountLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -5639,7 +5653,7 @@ table.insert(ThemeObjects.Texts, HubState.LocalCountLabel)
 
 local AccentColorBtn = Instance.new("TextButton")
 AccentColorBtn.Size = UDim2.new(0, 150, 0, 24)
-AccentColorBtn.Position = UDim2.new(0, 10, 0, 8)
+AccentColorBtn.Position = UDim2.new(0, 10, 0, 74)
 AccentColorBtn.BackgroundColor3 = Color3.fromRGB(210, 18, 18)
 AccentColorBtn.BackgroundTransparency = 0
 AccentColorBtn.BorderSizePixel = 0
@@ -5666,7 +5680,7 @@ Instance.new("UICorner", ResetThemeBtn).CornerRadius = UDim.new(0, 5)
 local ClearKeybindsBtn = Instance.new("TextButton")
 ClearKeybindsBtn.Name = "ClearKeybindsBtn"
 ClearKeybindsBtn.Size = UDim2.new(0, 150, 0, 24)
-ClearKeybindsBtn.Position = UDim2.new(0, 170, 0, 72)
+ClearKeybindsBtn.Position = UDim2.new(0, 170, 0, 138)
 ClearKeybindsBtn.BackgroundColor3 = Color3.fromRGB(195, 35, 255)
 ClearKeybindsBtn.BackgroundTransparency = 0
 ClearKeybindsBtn.BorderSizePixel = 0
@@ -5681,7 +5695,7 @@ Instance.new("UICorner", ClearKeybindsBtn).CornerRadius = UDim.new(0, 5)
 local ResetCharacterBtn = Instance.new("TextButton")
 ResetCharacterBtn.Name = "ResetCharacterBtn"
 ResetCharacterBtn.Size = UDim2.new(0, 150, 0, 24)
-ResetCharacterBtn.Position = UDim2.new(0, 10, 0, 72)
+ResetCharacterBtn.Position = UDim2.new(0, 10, 0, 138)
 ResetCharacterBtn.BackgroundColor3 = Color3.fromRGB(255, 230, 0)
 ResetCharacterBtn.BackgroundTransparency = 0
 ResetCharacterBtn.BorderSizePixel = 0
@@ -5695,7 +5709,7 @@ Instance.new("UICorner", ResetCharacterBtn).CornerRadius = UDim.new(0, 6)
 local RejoinBtn = Instance.new("TextButton")
 RejoinBtn.Name = "RejoinBtn"
 RejoinBtn.Size = UDim2.new(0, 150, 0, 24)
-RejoinBtn.Position = UDim2.new(0, 170, 0, 40)
+RejoinBtn.Position = UDim2.new(0, 170, 0, 106)
 RejoinBtn.BackgroundColor3 = Color3.fromRGB(0, 230, 255)
 RejoinBtn.BackgroundTransparency = 0
 RejoinBtn.BorderSizePixel = 0
@@ -5709,7 +5723,7 @@ Instance.new("UICorner", RejoinBtn).CornerRadius = UDim.new(0, 6)
 local ServerHopBtn = Instance.new("TextButton")
 ServerHopBtn.Name = "ServerHopBtn"
 ServerHopBtn.Size = UDim2.new(0, 150, 0, 24)
-ServerHopBtn.Position = UDim2.new(0, 10, 0, 40)
+ServerHopBtn.Position = UDim2.new(0, 10, 0, 106)
 ServerHopBtn.BackgroundColor3 = Color3.fromRGB(0, 105, 255)
 ServerHopBtn.BackgroundTransparency = 0
 ServerHopBtn.BorderSizePixel = 0
@@ -5723,7 +5737,7 @@ Instance.new("UICorner", ServerHopBtn).CornerRadius = UDim.new(0, 6)
 local GuiSizeBtn = Instance.new("TextButton")
 GuiSizeBtn.Name = "GuiSizeBtn"
 GuiSizeBtn.Size = UDim2.new(0, 150, 0, 24)
-GuiSizeBtn.Position = UDim2.new(0, 170, 0, 8)
+GuiSizeBtn.Position = UDim2.new(0, 170, 0, 74)
 GuiSizeBtn.BackgroundColor3 = Color3.fromRGB(70, 255, 70)
 GuiSizeBtn.BackgroundTransparency = 0
 GuiSizeBtn.BorderSizePixel = 0
@@ -6083,7 +6097,7 @@ end
 
 local ConfirmClearFrame = Instance.new("Frame")
 ConfirmClearFrame.Size = UDim2.new(0, 150, 0, 70)
-ConfirmClearFrame.Position = UDim2.new(0, 10, 0, 8)
+ConfirmClearFrame.Position = UDim2.new(0, 90, 0, 99)
 ConfirmClearFrame.BackgroundTransparency = 1
 ConfirmClearFrame.Visible = false
 ConfirmClearFrame.Parent = HubState.SettingsPage
