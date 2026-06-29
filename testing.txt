@@ -1193,8 +1193,8 @@ Instance.new("UICorner", HubState.MM2GameButton).CornerRadius = UDim.new(0, 7)
 HubState.MM2GameStroke = Instance.new("UIStroke")
 HubState.MM2GameStroke.Name = "ControlOutline"
 HubState.MM2GameStroke.Color = Color3.fromRGB(0, 0, 0)
-HubState.MM2GameStroke.Thickness = 1
-HubState.MM2GameStroke.Transparency = 0.18
+HubState.MM2GameStroke.Thickness = 1.5
+HubState.MM2GameStroke.Transparency = 0
 HubState.MM2GameStroke.Parent = HubState.MM2GameButton
 
 HubState.MM2BackButton = Instance.new("TextButton")
@@ -1271,8 +1271,8 @@ do
 	local gameStroke = Instance.new("UIStroke")
 	gameStroke.Name = "ControlOutline"
 	gameStroke.Color = Color3.fromRGB(0, 0, 0)
-	gameStroke.Thickness = 1
-	gameStroke.Transparency = 0.18
+	gameStroke.Thickness = 1.5
+	gameStroke.Transparency = 0
 	gameStroke.Parent = gameButton
 
 	local killRow = Instance.new("Frame")
@@ -5519,7 +5519,11 @@ ThemeObjects.SwitchTab = function(name)
 	local direction = nextIndex >= previousIndex and 1 or -1
 	local activeX = 114
 	local activeY = 54
-	local slideDistance = 52
+	local headerX = 120
+	local headerY = 32
+	local slideDistance = 92
+	local headerSlideDistance = 18
+	local slideTime = 0.38
 	local openingSelectedGame = name == "Games" and HubState.SelectedGame ~= nil
 	local quietPage = MainFrame:FindFirstChild("QuietOrDiePage")
 	local extrasPage = MainFrame:FindFirstChild("ExtrasPage")
@@ -5528,6 +5532,8 @@ ThemeObjects.SwitchTab = function(name)
 	ThemeObjects.ActiveTabName = name
 	HubState.ActiveTabIndex = nextIndex
 	HubState.PageHeader.Text = openingSelectedGame and HubState.SelectedGame or name
+	HubState.PageHeader.Position = UDim2.new(0, headerX, 0, headerY + (headerSlideDistance * direction))
+	HubState.PageHeader:TweenPosition(UDim2.new(0, headerX, 0, headerY), "Out", "Quart", slideTime, true)
 	HubState.MM2BackButton.Visible = openingSelectedGame
 	if HubState.GamesTabButton then
 		HubState.GamesTabButton.Text = openingSelectedGame and HubState.SelectedGame or "Games"
@@ -5568,7 +5574,7 @@ ThemeObjects.SwitchTab = function(name)
 		incomingPage.Position = UDim2.new(0, activeX, 0, activeY + (slideDistance * direction))
 		outgoingPage.Visible = false
 		outgoingPage.Position = UDim2.new(1.1, 0, 0, activeY)
-		incomingPage:TweenPosition(UDim2.new(0, activeX, 0, activeY), "Out", "Quart", 0.24, true)
+		incomingPage:TweenPosition(UDim2.new(0, activeX, 0, activeY), "Out", "Quart", slideTime, true)
 	else
 		incomingPage.Position = UDim2.new(0, activeX, 0, activeY)
 	end
@@ -5616,6 +5622,20 @@ HubState.DestroyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 HubState.DestroyBtn.Parent = HubState.SettingsPage
 table.insert(ThemeObjects.Backgrounds, HubState.DestroyBtn)
 Instance.new("UICorner", HubState.DestroyBtn).CornerRadius = UDim.new(0, 6)
+
+HubState.LocalCountLabel = Instance.new("TextLabel")
+HubState.LocalCountLabel.Name = "LocalCountLabel"
+HubState.LocalCountLabel.Size = UDim2.new(0, 310, 0, 10)
+HubState.LocalCountLabel.Position = UDim2.new(0, 10, 1, -14)
+HubState.LocalCountLabel.BackgroundTransparency = 1
+HubState.LocalCountLabel.BorderSizePixel = 0
+HubState.LocalCountLabel.Text = "11"
+HubState.LocalCountLabel.Font = Enum.Font.GothamBold
+HubState.LocalCountLabel.TextSize = 7
+HubState.LocalCountLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+HubState.LocalCountLabel.TextXAlignment = Enum.TextXAlignment.Center
+HubState.LocalCountLabel.Parent = HubState.SettingsPage
+table.insert(ThemeObjects.Texts, HubState.LocalCountLabel)
 
 local AccentColorBtn = Instance.new("TextButton")
 AccentColorBtn.Size = UDim2.new(0, 150, 0, 24)
