@@ -1145,10 +1145,10 @@ HubState.MM2GameButton.BorderSizePixel = 0
 HubState.MM2GameButton.Text = "MM2"
 HubState.MM2GameButton.Font = Enum.Font.GothamBold
 HubState.MM2GameButton.TextSize = 11
-HubState.MM2GameButton.TextColor3 = AccentColor
+HubState.MM2GameButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 HubState.MM2GameButton.Parent = HubState.GamesPage
 table.insert(ThemeObjects.Backgrounds, HubState.MM2GameButton)
-table.insert(ThemeObjects.Accents, HubState.MM2GameButton)
+table.insert(ThemeObjects.Texts, HubState.MM2GameButton)
 Instance.new("UICorner", HubState.MM2GameButton).CornerRadius = UDim.new(0, 7)
 
 HubState.MM2GameStroke = Instance.new("UIStroke")
@@ -1219,10 +1219,10 @@ do
 	gameButton.Text = "Quiet or Die"
 	gameButton.Font = Enum.Font.GothamBold
 	gameButton.TextSize = 11
-	gameButton.TextColor3 = AccentColor
+	gameButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 	gameButton.Parent = HubState.GamesPage
 	table.insert(ThemeObjects.Backgrounds, gameButton)
-	table.insert(ThemeObjects.Accents, gameButton)
+	table.insert(ThemeObjects.Texts, gameButton)
 	Instance.new("UICorner", gameButton).CornerRadius = UDim.new(0, 7)
 
 	local gameStroke = Instance.new("UIStroke")
@@ -1234,7 +1234,7 @@ do
 
 	local killRow = Instance.new("Frame")
 	killRow.Name = "QuietOrDieKillRow"
-	killRow.Size = UDim2.new(1, -18, 0, 38)
+	killRow.Size = UDim2.new(1, -28, 0, 38)
 	killRow.Position = UDim2.new(0, 4, 0, 74)
 	killRow.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 	killRow.BackgroundTransparency = 0.92
@@ -1270,7 +1270,7 @@ do
 
 	local farmRow = Instance.new("Frame")
 	farmRow.Name = "QuietOrDieFarmRow"
-	farmRow.Size = UDim2.new(1, -18, 0, 62)
+	farmRow.Size = UDim2.new(1, -28, 0, 62)
 	farmRow.Position = UDim2.new(0, 4, 0, 4)
 	farmRow.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 	farmRow.BackgroundTransparency = 0.92
@@ -1489,7 +1489,7 @@ do
 
 	local eventRow = Instance.new("Frame")
 	eventRow.Name = "QuietOrDieEventRow"
-	eventRow.Size = UDim2.new(1, -18, 0, 38)
+	eventRow.Size = UDim2.new(1, -28, 0, 38)
 	eventRow.Position = UDim2.new(0, 4, 0, 206)
 	eventRow.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 	eventRow.BackgroundTransparency = 0.92
@@ -1525,7 +1525,7 @@ do
 
 	local reviveRow = Instance.new("Frame")
 	reviveRow.Name = "QuietOrDieReviveRow"
-	reviveRow.Size = UDim2.new(1, -18, 0, 38)
+	reviveRow.Size = UDim2.new(1, -28, 0, 38)
 	reviveRow.Position = UDim2.new(0, 4, 0, 162)
 	reviveRow.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 	reviveRow.BackgroundTransparency = 0.92
@@ -1562,7 +1562,7 @@ do
 	ThemeObjects.QODReveal = {Enabled = false, LastFire = 0}
 	ThemeObjects.QODReveal.Row = Instance.new("Frame")
 	ThemeObjects.QODReveal.Row.Name = "QuietOrDieRevealRow"
-	ThemeObjects.QODReveal.Row.Size = UDim2.new(1, -18, 0, 38)
+	ThemeObjects.QODReveal.Row.Size = UDim2.new(1, -28, 0, 38)
 	ThemeObjects.QODReveal.Row.Position = UDim2.new(0, 4, 0, 250)
 	ThemeObjects.QODReveal.Row.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 	ThemeObjects.QODReveal.Row.BackgroundTransparency = 0.92
@@ -2248,7 +2248,7 @@ HubState.GreenBtn.MouseButton1Click:Connect(function() PlayClick() HubState.ESPC
 ThemeObjects.DeepESP = {Enabled = false}
 ThemeObjects.DeepESP.Row = Instance.new("Frame")
 ThemeObjects.DeepESP.Row.Name = "QuietOrDieDeepESPRow"
-ThemeObjects.DeepESP.Row.Size = UDim2.new(1, -8, 0, 38)
+ThemeObjects.DeepESP.Row.Size = UDim2.new(1, -28, 0, 38)
 ThemeObjects.DeepESP.Row.Position = UDim2.new(0, 4, 0, 118)
 ThemeObjects.DeepESP.Row.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 ThemeObjects.DeepESP.Row.BackgroundTransparency = 0.92
@@ -3047,8 +3047,8 @@ end))
 -- Teleport Page
 HubState.PlayerSearch = Instance.new("TextBox")
 HubState.PlayerSearch.Name = "PlayerSearch"
-HubState.PlayerSearch.Size = UDim2.new(1, -248, 0, 28)
-HubState.PlayerSearch.Position = UDim2.new(0, 4, 0, 4)
+HubState.PlayerSearch.Size = UDim2.new(0, 158, 0, 24)
+HubState.PlayerSearch.Position = UDim2.new(0, 124, 0, 36)
 HubState.PlayerSearch.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
 HubState.PlayerSearch.BackgroundTransparency = 0.8
 HubState.PlayerSearch.BorderSizePixel = 0
@@ -3056,6 +3056,10 @@ HubState.PlayerSearch.PlaceholderText = "Search players..."
 HubState.PlayerSearch.Text = ""
 HubState.PlayerSearch.Font = Enum.Font.GothamMedium
 HubState.PlayerSearch.TextSize = 11
+HubState.PlayerSearch.TextColor3 = Color3.fromRGB(255, 255, 255)
+HubState.PlayerSearch.PlaceholderColor3 = Color3.fromRGB(255, 255, 255)
+HubState.PlayerSearch.Visible = false
+HubState.PlayerSearch.ZIndex = 30
 HubState.PlayerSearch.Parent = HubState.TeleportPage
 table.insert(ThemeObjects.Backgrounds, HubState.PlayerSearch)
 table.insert(ThemeObjects.Texts, HubState.PlayerSearch)
@@ -3083,7 +3087,7 @@ Instance.new("UICorner", ThemeObjects.WaypointToggleButton).CornerRadius = UDim.
 ThemeObjects.PlayerTP.OpenButton = Instance.new("TextButton")
 ThemeObjects.PlayerTP.OpenButton.Name = "PlayerTPMenuButton"
 ThemeObjects.PlayerTP.OpenButton.Size = UDim2.new(0, 68, 0, 28)
-ThemeObjects.PlayerTP.OpenButton.Position = UDim2.new(1, -240, 0, 4)
+ThemeObjects.PlayerTP.OpenButton.Position = UDim2.new(0, 4, 0, 4)
 ThemeObjects.PlayerTP.OpenButton.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
 ThemeObjects.PlayerTP.OpenButton.BackgroundTransparency = 0.8
 ThemeObjects.PlayerTP.OpenButton.BorderSizePixel = 0
@@ -3098,8 +3102,8 @@ Instance.new("UICorner", ThemeObjects.PlayerTP.OpenButton).CornerRadius = UDim.n
 
 ThemeObjects.PlayerTP.BindButton = Instance.new("TextButton")
 ThemeObjects.PlayerTP.BindButton.Name = "PlayerTPBindButton"
-ThemeObjects.PlayerTP.BindButton.Size = UDim2.new(0, 68, 0, 28)
-ThemeObjects.PlayerTP.BindButton.Position = UDim2.new(1, -168, 0, 4)
+ThemeObjects.PlayerTP.BindButton.Size = UDim2.new(0, 44, 0, 28)
+ThemeObjects.PlayerTP.BindButton.Position = UDim2.new(0, 76, 0, 4)
 ThemeObjects.PlayerTP.BindButton.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
 ThemeObjects.PlayerTP.BindButton.BackgroundTransparency = 0.8
 ThemeObjects.PlayerTP.BindButton.BorderSizePixel = 0
@@ -3112,9 +3116,32 @@ table.insert(ThemeObjects.Backgrounds, ThemeObjects.PlayerTP.BindButton)
 table.insert(ThemeObjects.Accents, ThemeObjects.PlayerTP.BindButton)
 Instance.new("UICorner", ThemeObjects.PlayerTP.BindButton).CornerRadius = UDim.new(0, 5)
 
+ThemeObjects.TeleportSearchButton = Instance.new("TextButton")
+ThemeObjects.TeleportSearchButton.Name = "TeleportSearchButton"
+ThemeObjects.TeleportSearchButton.Size = UDim2.new(0, 56, 0, 28)
+ThemeObjects.TeleportSearchButton.Position = UDim2.new(0, 124, 0, 4)
+ThemeObjects.TeleportSearchButton.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
+ThemeObjects.TeleportSearchButton.BackgroundTransparency = 0.8
+ThemeObjects.TeleportSearchButton.BorderSizePixel = 0
+ThemeObjects.TeleportSearchButton.Text = "Search"
+ThemeObjects.TeleportSearchButton.Font = Enum.Font.GothamBold
+ThemeObjects.TeleportSearchButton.TextSize = 10
+ThemeObjects.TeleportSearchButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ThemeObjects.TeleportSearchButton.Parent = HubState.TeleportPage
+table.insert(ThemeObjects.Backgrounds, ThemeObjects.TeleportSearchButton)
+table.insert(ThemeObjects.Texts, ThemeObjects.TeleportSearchButton)
+Instance.new("UICorner", ThemeObjects.TeleportSearchButton).CornerRadius = UDim.new(0, 5)
+
 ThemeObjects.PlayerTP.OpenButton.MouseButton1Click:Connect(function()
 	PlayClick()
 	ThemeObjects.PlayerTP.Toggle()
+end)
+ThemeObjects.TeleportSearchButton.MouseButton1Click:Connect(function()
+	PlayClick()
+	HubState.PlayerSearch.Visible = not HubState.PlayerSearch.Visible
+	if HubState.PlayerSearch.Visible then
+		HubState.PlayerSearch:CaptureFocus()
+	end
 end)
 ThemeObjects.PlayerTP.BindButton.MouseButton1Click:Connect(function()
 	PlayClick()
@@ -3557,7 +3584,7 @@ ThemeObjects.WaypointUI.Refresh()
 
 ThemeObjects.ShowWaypointsPage = function(showWaypoints)
 	ThemeObjects.WaypointsOpen = showWaypoints == true
-	HubState.PlayerSearch.Visible = not ThemeObjects.WaypointsOpen
+	if ThemeObjects.WaypointsOpen then HubState.PlayerSearch.Visible = false end
 	HubState.PlayerScroll.Visible = not ThemeObjects.WaypointsOpen
 	ThemeObjects.WaypointUI.Frame.Visible = ThemeObjects.WaypointsOpen
 	ThemeObjects.WaypointToggleButton.Text = ThemeObjects.WaypointsOpen and "Players" or "Waypoints"
@@ -3591,7 +3618,7 @@ local function UpdatePlayerList()
 		pName.Text = p.DisplayName or p.Name
 		pName.Font = Enum.Font.GothamMedium
 		pName.TextSize = 11
-		pName.TextColor3 = Color3.fromRGB(200, 200, 215)
+		pName.TextColor3 = Color3.fromRGB(255, 255, 255)
 		pName.TextXAlignment = Enum.TextXAlignment.Left
 		pName.Parent = pFrame
 		table.insert(ThemeObjects.Texts, pName)
