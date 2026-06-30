@@ -471,14 +471,14 @@ HubState.ToggleOffSound.Volume = 0.55
 HubState.ToggleOffSound.Parent = MainFrame
 
 ThemeObjects.ApplyMainGradient = function(intensity)
-	intensity = math.clamp(intensity or 0.5, 0, 0.95)
+	intensity = math.clamp(intensity or 0.5, 0, 1)
 	local bgColor = FrameThemeColor
 	MainTextureGradient.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, bgColor:Lerp(Color3.new(0, 0, 0), 0.04)),
-		ColorSequenceKeypoint.new(0.14, bgColor:Lerp(AccentColor, intensity * 0.58)),
+		ColorSequenceKeypoint.new(0, bgColor:Lerp(AccentColor, intensity * 0.16)),
+		ColorSequenceKeypoint.new(0.14, bgColor:Lerp(AccentColor, intensity * 0.74)),
 		ColorSequenceKeypoint.new(0.46, bgColor:Lerp(AccentColor, intensity)),
-		ColorSequenceKeypoint.new(0.72, bgColor:Lerp(AccentColor, intensity * 0.92)),
-		ColorSequenceKeypoint.new(1, bgColor:Lerp(AccentColor, intensity * 0.5)),
+		ColorSequenceKeypoint.new(0.72, bgColor:Lerp(AccentColor, intensity * 0.98)),
+		ColorSequenceKeypoint.new(1, bgColor:Lerp(AccentColor, intensity * 0.62)),
 	})
 	if TargetTextureGradient then TargetTextureGradient.Color = MainTextureGradient.Color end
 	if ThemeObjects.PlayerTP and ThemeObjects.PlayerTP.Gradient then ThemeObjects.PlayerTP.Gradient.Color = MainTextureGradient.Color end
@@ -940,6 +940,15 @@ end)
 ThemeObjects.GradientPulseTime = 0
 ThemeObjects.GradientPulseAccumulator = 0
 ThemeObjects.ToggleColorAccumulator = 0
+ThemeObjects.UprightCFrame = function(sourceCFrame, position)
+	local _, yaw = sourceCFrame:ToOrientation()
+	return CFrame.new(position or sourceCFrame.Position) * CFrame.Angles(0, yaw, 0)
+end
+ThemeObjects.SetRootUpright = function(root, sourceCFrame, position)
+	if not root then return end
+	root.CFrame = ThemeObjects.UprightCFrame(sourceCFrame or root.CFrame, position or root.Position)
+	root.AssemblyAngularVelocity = Vector3.zero
+end
 HubState.Connections.GradientPulse = RunService.Heartbeat:Connect(function(deltaTime)
 	if not MainFrame.Visible then return end
 	ThemeObjects.GradientPulseTime = ThemeObjects.GradientPulseTime + deltaTime
@@ -963,10 +972,10 @@ HubState.Connections.GradientPulse = RunService.Heartbeat:Connect(function(delta
 		end)
 		ThemeObjects.RefreshStateTexts(true)
 	end
-	if ThemeObjects.GradientPulseAccumulator < 0.05 then return end
+	if ThemeObjects.GradientPulseAccumulator < 0.025 then return end
 	ThemeObjects.GradientPulseAccumulator = 0
 	if type(ThemeObjects.ApplyMainGradient) == "function" then
-		local pulse = 0.42 + ((math.sin(ThemeObjects.GradientPulseTime * 1.65) + 1) * 0.255)
+		local pulse = 0.5 + ((math.sin(ThemeObjects.GradientPulseTime * 1.35) + 1) * 0.25)
 		pcall(ThemeObjects.ApplyMainGradient, pulse)
 	end
 end)
@@ -2502,7 +2511,7 @@ do
 		if not humanoid or humanoid.Health <= 0 or not root then return end
 		if farmState.SafePlace and farmState.DroppedCharacter ~= character then
 			farmState.DroppedCharacter = character
-			root.CFrame = CFrame.new(-82, 53, -145)
+			ThemeObjects.SetRootUpright(root, root.CFrame, Vector3.new(-82, 53, -145))
 			root.AssemblyLinearVelocity = Vector3.new(0, -3, 0)
 		end
 		local now = os.clock()
@@ -2553,7 +2562,7 @@ do
 		if target and target.Parent then
 			local targetPart = target:IsA("BasePart") and target or target:FindFirstChildWhichIsA("BasePart", true)
 			if targetPart then
-				root.CFrame = targetPart.CFrame * CFrame.new(0, -3.5, 0)
+				ThemeObjects.SetRootUpright(root, root.CFrame, targetPart.Position + Vector3.new(0, -3.5, 0))
 			end
 		end
 	end)
@@ -4404,7 +4413,7 @@ local function StartCoinFarm()
 			end
 
 			HubState.CoinFarmStatus.Text = tostring(#coins)
-			root.CFrame = target.CFrame * CFrame.new(0, -3.5, 0)
+			ThemeObjects.SetRootUpright(root, root.CFrame, target.Position + Vector3.new(0, -3.5, 0))
 			-- Extremely minimal delay for maximum speed
 			task.wait(0.001)
 		end
@@ -5795,7 +5804,10 @@ local function ToggleFly()
 	else
 		if HubState.BodyVelocity then HubState.BodyVelocity:Destroy() HubState.BodyVelocity = nil end
 		if HubState.BodyGyro then HubState.BodyGyro:Destroy() HubState.BodyGyro = nil end
-		if RootPart then RootPart.Velocity = Vector3.new(0, 0, 0) end
+		if RootPart then
+			RootPart.Velocity = Vector3.new(0, 0, 0)
+			ThemeObjects.SetRootUpright(RootPart, RootPart.CFrame, RootPart.Position)
+		end
 	end
 end
 HubState.FlyToggleBtn.MouseButton1Click:Connect(function() PlayClick() ToggleFly() end)
@@ -5843,7 +5855,10 @@ HubState.Connections.MainLoop = RunService.RenderStepped:Connect(function()
 		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then MoveDir = MoveDir + Vector3.new(0,1,0) end
 		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then MoveDir = MoveDir - Vector3.new(0,1,0) end
 		if MoveDir.Magnitude > 0 then RootPart.CFrame = RootPart.CFrame + (MoveDir * (HubState.FlySpeed / 50)) end
-		HubState.BodyGyro.CFrame = Camera.CFrame RootPart.Velocity = Vector3.new(0, 0, 0)
+		local _, yaw = Camera.CFrame:ToOrientation()
+		HubState.BodyGyro.CFrame = CFrame.new(RootPart.Position) * CFrame.Angles(0, yaw, 0)
+		RootPart.Velocity = Vector3.new(0, 0, 0)
+		RootPart.AssemblyAngularVelocity = Vector3.zero
 	end
 	
 	if HubState.AutoLockEnabled and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) and RootPart then
@@ -6751,7 +6766,7 @@ Instance.new("UICorner", ConfirmNoBtn).CornerRadius = UDim.new(0, 4)
 
 local KeybindEditorFrame = Instance.new("Frame")
 KeybindEditorFrame.Name = "KeybindEditorFrame"
-KeybindEditorFrame.Size = UDim2.new(0, 210, 0, 175)
+KeybindEditorFrame.Size = UDim2.new(0, 240, 0, 190)
 KeybindEditorFrame.AnchorPoint = Vector2.new(1, 0)
 KeybindEditorFrame.BackgroundColor3 = FrameThemeColor
 KeybindEditorFrame.BackgroundTransparency = 0.04
@@ -6792,6 +6807,7 @@ KeybindEditorTitle.BackgroundTransparency = 1
 KeybindEditorTitle.Text = "Keybinds"
 KeybindEditorTitle.Font = Enum.Font.GothamBold
 KeybindEditorTitle.TextSize = 11
+KeybindEditorTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 KeybindEditorTitle.TextXAlignment = Enum.TextXAlignment.Left
 KeybindEditorTitle.ZIndex = 91
 KeybindEditorTitle.Parent = KeybindEditorFrame
@@ -6870,7 +6886,7 @@ ThemeObjects.RefreshKeybindEditor = function()
 	for index, entry in ipairs(ThemeObjects.KeybindEditorEntries) do
 		local row = Instance.new("Frame")
 		row.Name = "KeybindEditorRow"
-		row.Size = UDim2.new(1, -4, 0, 28)
+		row.Size = UDim2.new(1, -8, 0, 28)
 		row.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 		row.BackgroundTransparency = 0.92
 		row.BorderSizePixel = 0
@@ -6887,20 +6903,23 @@ ThemeObjects.RefreshKeybindEditor = function()
 		rowStroke.Parent = row
 
 		local label = Instance.new("TextLabel")
-		label.Size = UDim2.new(1, -64, 1, 0)
+		label.Size = UDim2.new(1, -62, 1, 0)
 		label.Position = UDim2.new(0, 8, 0, 0)
 		label.BackgroundTransparency = 1
 		label.Text = entry.Name
 		label.Font = Enum.Font.GothamBold
 		label.TextSize = 9
+		label.TextColor3 = Color3.fromRGB(255, 255, 255)
+		label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+		label.TextStrokeTransparency = 0.5
 		label.TextXAlignment = Enum.TextXAlignment.Left
 		label.ZIndex = 92
 		label.Parent = row
 		table.insert(ThemeObjects.Texts, label)
 
 		local button = Instance.new("TextButton")
-		button.Size = UDim2.new(0, 50, 0, 20)
-		button.Position = UDim2.new(1, -56, 0.5, -10)
+		button.Size = UDim2.new(0, 46, 0, 20)
+		button.Position = UDim2.new(1, -52, 0.5, -10)
 		button.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 		button.BackgroundTransparency = 0.8
 		button.BorderSizePixel = 0
