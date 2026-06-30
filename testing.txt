@@ -5020,32 +5020,58 @@ local function UpdateRoleAvatar(imageLabel, targetPlayer, roleName)
 	end)
 end
 
-ThemeObjects.EnforceMM2DesktopGui = function(force)
+ThemeObjects.EnforceMM2DesktopGui = function(forceRoundEnd)
 	if not UserInputService.KeyboardEnabled then return end
 	local now = os.clock()
-	if not force and HubState.LastMM2DesktopGuiEnforceAt and now - HubState.LastMM2DesktopGuiEnforceAt < 0.35 then return end
+	if not forceRoundEnd and HubState.LastMM2DesktopGuiEnforceAt and now - HubState.LastMM2DesktopGuiEnforceAt < 0.5 then return end
 	HubState.LastMM2DesktopGuiEnforceAt = now
 	local playerGui = Player:FindFirstChildOfClass("PlayerGui")
 	if not playerGui then return end
 
-	if playerGui:GetAttribute("Device") ~= "PC" then
-		pcall(function() playerGui:SetAttribute("Device", "PC") end)
-	end
-	if _G then _G.MobileDevice = nil end
-
-	local touchButtons = playerGui:FindFirstChild("TouchInteractButtons")
-	if touchButtons then
-		if touchButtons:IsA("LayerCollector") then touchButtons.Enabled = false end
-		if touchButtons:IsA("GuiObject") then touchButtons.Visible = false end
+	local function hasAncestor(object, ancestorName)
+		local current = object.Parent
+		while current and current ~= playerGui do
+			if current.Name == ancestorName then return true end
+			current = current.Parent
+		end
+		return false
 	end
 
-	local mainGui = playerGui:FindFirstChild("MainGUI")
-	local gameFrame = mainGui and mainGui:FindFirstChild("Game")
-	if gameFrame then
-		for _, controlName in ipairs({"Knife", "Gun", "Perk", "Crouch"}) do
-			local control = gameFrame:FindFirstChild(controlName)
-			if control and control:IsA("GuiObject") then
-				control.Visible = false
+	if forceRoundEnd and _G then _G.MobileDevice = nil end
+
+	local controlNames = {
+		TouchControls = true,
+		TouchInteractButtons = true,
+		EquipWeapon = true,
+		Throw = true,
+		Perk = true,
+		Knife = true,
+		Gun = true,
+		Crouch = true,
+	}
+	for _, object in ipairs(playerGui:GetDescendants()) do
+		local name = object.Name
+		if name == "TouchInteractButtons" and object:IsA("LayerCollector") then
+			object.Enabled = false
+		elseif object:IsA("GuiObject") and controlNames[name] then
+			if name == "TouchControls" or hasAncestor(object, "TouchControls") or hasAncestor(object, "Game") then
+				object.Visible = false
+			end
+		end
+	end
+
+	if forceRoundEnd then
+		local mainGui = playerGui:FindFirstChild("MainGUI")
+		local gameFrame = mainGui and mainGui:FindFirstChild("Game")
+		if gameFrame then
+			local fade = gameFrame:FindFirstChild("Fade")
+			if fade and fade:IsA("GuiObject") then
+				fade.BackgroundTransparency = 1
+			end
+			local dock = gameFrame:FindFirstChild("Dock")
+			local eventButton = dock and dock:FindFirstChild("Event")
+			if eventButton and eventButton:IsA("GuiObject") then
+				eventButton.Visible = false
 			end
 		end
 	end
@@ -5053,7 +5079,19 @@ end
 
 ThemeObjects.HideMM2TouchButtonsOnDesktop = ThemeObjects.EnforceMM2DesktopGui
 
-ThemeObjects.ClearMM2Roles = function()
+ThemeObjects.BeginMM2RoundEndCleanup = function()
+	HubState.MM2RoundCleanupUntil = os.clock() + 4.5
+	ThemeObjects.ClearMM2Roles(true)
+	for _, delayTime in ipairs({0, 0.15, 0.45, 0.9, 1.6, 2.7, 4.2}) do
+		task.delay(delayTime, function()
+			if HubState.MM2RoundCleanupUntil and os.clock() <= HubState.MM2RoundCleanupUntil + 0.5 then
+				ThemeObjects.EnforceMM2DesktopGui(true)
+			end
+		end)
+	end
+end
+
+ThemeObjects.ClearMM2Roles = function(skipGuiCleanup)
 	local now = os.clock()
 	local hadRoles = HubState.CurrentMurderer ~= nil or HubState.CurrentSheriff ~= nil
 		or HubState.LastMurdererAvatarId ~= 0 or HubState.LastSheriffAvatarId ~= 0
@@ -5068,9 +5106,9 @@ ThemeObjects.ClearMM2Roles = function()
 	if HubState.MurdererRoleLabel then HubState.MurdererRoleLabel.Text = "Murderer: Unknown" end
 	if HubState.SheriffRoleLabel then HubState.SheriffRoleLabel.Text = "Sheriff: Unknown" end
 	UpdateRoleHighlights()
-	if hadRoles or not HubState.LastMM2TouchCleanupAt or now - HubState.LastMM2TouchCleanupAt > 3 then
+	if not skipGuiCleanup and (hadRoles or not HubState.LastMM2TouchCleanupAt or now - HubState.LastMM2TouchCleanupAt > 3) then
 		HubState.LastMM2TouchCleanupAt = now
-		ThemeObjects.HideMM2TouchButtonsOnDesktop()
+		ThemeObjects.HideMM2TouchButtonsOnDesktop(true)
 	end
 end
 
@@ -5202,7 +5240,7 @@ ThemeObjects.HookMM2RoleRemotes = function()
 		if not remoteObject or HubState.Connections[connectionName] then return end
 		if remoteObject:IsA("RemoteEvent") then
 			HubState.Connections[connectionName] = remoteObject.OnClientEvent:Connect(function()
-				ThemeObjects.ClearMM2Roles()
+				ThemeObjects.BeginMM2RoundEndCleanup()
 			end)
 		end
 	end
@@ -5226,7 +5264,7 @@ HubState.Connections.MM2RoleDetector = RunService.Heartbeat:Connect(function()
 	if not mm2PageActive and not mm2FeatureActive and not HubState.ESPEnabled and not ThemeObjects.DeepESP.Enabled then return end
 	local _, hasAnyRoundRole, hasTrackedRole = ThemeObjects.GetMM2RoundRoleState()
 	if hasAnyRoundRole == true and hasTrackedRole == false then
-		ThemeObjects.ClearMM2Roles()
+		ThemeObjects.BeginMM2RoundEndCleanup()
 		return
 	end
 	local foundMurderer = FindRoleHolder("Knife")
@@ -5250,10 +5288,11 @@ end)
 
 HubState.Connections.MM2DesktopGuiGuard = RunService.Heartbeat:Connect(function()
 	local now = os.clock()
+	if not HubState.MM2RoundCleanupUntil or now > HubState.MM2RoundCleanupUntil then return end
 	if HubState.LastMM2DesktopGuiGuardAt and now - HubState.LastMM2DesktopGuiGuardAt < 0.35 then return end
 	HubState.LastMM2DesktopGuiGuardAt = now
 	if game.PlaceId == 142823291 or game.PlaceId == 335132309 or game.PlaceId == 333740520 then
-		ThemeObjects.EnforceMM2DesktopGui(false)
+		ThemeObjects.EnforceMM2DesktopGui(true)
 	end
 end)
 
