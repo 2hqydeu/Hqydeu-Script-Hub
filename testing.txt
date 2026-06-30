@@ -6115,9 +6115,9 @@ ThemeObjects.SwitchTab = function(name)
 	local activeY = 54
 	local headerX = 120
 	local headerY = 32
-	local slideDistance = 270
+	local slideDistance = 18
 	local headerSlideDistance = 18
-	local slideTime = 0.42
+	local slideTime = 0.24
 	local slideTweenInfo = TweenInfo.new(slideTime, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 	local headerTweenInfo = TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 	local openingSelectedGame = name == "Games" and HubState.SelectedGame ~= nil
@@ -6126,27 +6126,37 @@ ThemeObjects.SwitchTab = function(name)
 	local incomingPage = HubState.MovementPage
 	ThemeObjects.TabTransitionId += 1
 	local transitionId = ThemeObjects.TabTransitionId
-	local function restoreTransitionPage(page)
+	local function setPageContentTransparency(page, value)
 		if not page or not page.Parent then return end
-		local originalTransparency = page:GetAttribute("TransitionBackgroundTransparency")
-		local originalZIndex = page:GetAttribute("TransitionZIndex")
-		if originalTransparency ~= nil then
-			page.BackgroundTransparency = originalTransparency
-			page:SetAttribute("TransitionBackgroundTransparency", nil)
-		end
-		if originalZIndex ~= nil then
-			page.ZIndex = originalZIndex
-			page:SetAttribute("TransitionZIndex", nil)
+		for _, object in ipairs(page:GetDescendants()) do
+			if object:IsA("TextLabel") or object:IsA("TextButton") or object:IsA("TextBox") then
+				object.TextTransparency = value
+			elseif object:IsA("ImageLabel") or object:IsA("ImageButton") then
+				object.ImageTransparency = value
+			elseif object:IsA("GuiObject") and object.BackgroundTransparency < 1 then
+				if object:GetAttribute("TransitionBaseBackgroundTransparency") == nil then
+					object:SetAttribute("TransitionBaseBackgroundTransparency", object.BackgroundTransparency)
+				end
+				local baseTransparency = object:GetAttribute("TransitionBaseBackgroundTransparency") or 0
+				object.BackgroundTransparency = math.clamp(baseTransparency + value, 0, 1)
+			end
 		end
 	end
-	local function prepareIncomingTransitionPage(page)
+	local function restorePageContentTransparency(page)
 		if not page or not page.Parent then return end
-		restoreTransitionPage(page)
-		page:SetAttribute("TransitionBackgroundTransparency", page.BackgroundTransparency)
-		page:SetAttribute("TransitionZIndex", page.ZIndex)
-		page.BackgroundColor3 = MainFrame.BackgroundColor3
-		page.BackgroundTransparency = 0
-		page.ZIndex = 40
+		for _, object in ipairs(page:GetDescendants()) do
+			if object:IsA("TextLabel") or object:IsA("TextButton") or object:IsA("TextBox") then
+				object.TextTransparency = 0
+			elseif object:IsA("ImageLabel") or object:IsA("ImageButton") then
+				object.ImageTransparency = 0
+			elseif object:IsA("GuiObject") then
+				local baseTransparency = object:GetAttribute("TransitionBaseBackgroundTransparency")
+				if baseTransparency ~= nil then
+					object.BackgroundTransparency = baseTransparency
+					object:SetAttribute("TransitionBaseBackgroundTransparency", nil)
+				end
+			end
+		end
 	end
 
 	ThemeObjects.ActiveTabName = name
@@ -6192,7 +6202,7 @@ ThemeObjects.SwitchTab = function(name)
 	local outgoingPage = HubState.ActiveContentPage
 	for _, page in ipairs(pages) do
 		if page and page ~= incomingPage and page ~= outgoingPage then
-			restoreTransitionPage(page)
+			restorePageContentTransparency(page)
 			page.Visible = false
 			page.Position = UDim2.new(1.1, 0, 0, activeY)
 		end
@@ -6200,30 +6210,43 @@ ThemeObjects.SwitchTab = function(name)
 
 	incomingPage.Visible = true
 	if outgoingPage and outgoingPage ~= incomingPage and outgoingPage.Parent then
-		prepareIncomingTransitionPage(incomingPage)
-		restoreTransitionPage(outgoingPage)
+		restorePageContentTransparency(incomingPage)
+		restorePageContentTransparency(outgoingPage)
+		setPageContentTransparency(incomingPage, 1)
 		incomingPage.Position = UDim2.new(0, activeX, 0, activeY + (slideDistance * direction))
 		outgoingPage.Visible = true
 		outgoingPage.Position = UDim2.new(0, activeX, 0, activeY)
 		TweenService:Create(outgoingPage, slideTweenInfo, {Position = UDim2.new(0, activeX, 0, activeY - (slideDistance * direction))}):Play()
+		task.spawn(function()
+			local startedAt = os.clock()
+			while ThemeObjects.TabTransitionId == transitionId and os.clock() - startedAt < slideTime do
+				local alpha = math.clamp((os.clock() - startedAt) / slideTime, 0, 1)
+				setPageContentTransparency(outgoingPage, alpha)
+				setPageContentTransparency(incomingPage, 1 - alpha)
+				RunService.RenderStepped:Wait()
+			end
+			if ThemeObjects.TabTransitionId == transitionId then
+				setPageContentTransparency(incomingPage, 0)
+			end
+		end)
 		local incomingTween = TweenService:Create(incomingPage, slideTweenInfo, {Position = UDim2.new(0, activeX, 0, activeY)})
 		incomingTween:Play()
 		task.delay(slideTime + 0.02, function()
 			if ThemeObjects.TabTransitionId == transitionId and outgoingPage and outgoingPage.Parent and outgoingPage ~= HubState.ActiveContentPage then
 				outgoingPage.Visible = false
 				outgoingPage.Position = UDim2.new(1.1, 0, 0, activeY)
-				restoreTransitionPage(outgoingPage)
+				restorePageContentTransparency(outgoingPage)
 			end
 		end)
 	else
-		restoreTransitionPage(incomingPage)
+		restorePageContentTransparency(incomingPage)
 		incomingPage.Position = UDim2.new(0, activeX, 0, activeY)
 	end
 	HubState.ActiveContentPage = incomingPage
 	ThemeObjects.RefreshStateTexts(true)
 	task.delay(slideTime + 0.04, function()
 		if ThemeObjects.TabTransitionId == transitionId then
-			restoreTransitionPage(incomingPage)
+			restorePageContentTransparency(incomingPage)
 			UpdateTheme(true)
 		end
 	end)
