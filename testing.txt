@@ -280,7 +280,7 @@ HubState.NotificationHolder.Parent = ScreenGui
 
 HubState.NotificationSound = Instance.new("Sound")
 HubState.NotificationSound.SoundId = "rbxassetid://114029807919810"
-HubState.NotificationSound.Volume = 0.55
+HubState.NotificationSound.Volume = 0.35
 HubState.NotificationSound.Parent = HubState.NotificationHolder
 
 ThemeObjects.ApplyMainGradient = function(intensity)
@@ -361,6 +361,8 @@ end
 
 ThemeObjects.ShowNotification = function(message)
 	if not HubState.NotificationHolder or not HubState.NotificationHolder.Parent then return end
+	HubState.NotificationSound:Stop()
+	HubState.NotificationSound.TimePosition = 0
 	HubState.NotificationSound:Play()
 	local item = {}
 	item.Frame = Instance.new("Frame")
@@ -514,18 +516,25 @@ local function UpdateTheme(instant)
 			if (obj:IsA("TextButton") or obj:IsA("TextBox")) then
 				local keepSolid = obj.Name == "DestroyBtn" or obj.Name == "ResetCharacterBtn" or obj.Name == "RejoinBtn"
 					or obj.Name == "ServerHopBtn" or obj.Name == "GuiSizeBtn" or obj.Name == "ClearKeybindsBtn"
-				obj.BackgroundTransparency = (keepSolid or obj.Text == "On") and 0 or 0.8
+					or obj.Name == "EditKeybindsBtn"
+				if obj.Name == "MM2GameButton" or obj.Name == "QuietOrDieGameButton" then
+					obj.BackgroundTransparency = 0.92
+				else
+					obj.BackgroundTransparency = (keepSolid or obj.Text == "On") and 0 or 0.8
+				end
 			end
 		local target = (obj:IsA("TextButton") or obj:IsA("TextBox") or obj.Name == "TabScroll" or obj.Name == "TargetRow") and secBgColor or bgColor
 			if obj.Name == "PlayerTPFrame" then target = Color3.fromRGB(14, 18, 26)
 			end
+			if obj.Name == "MM2GameButton" or obj.Name == "QuietOrDieGameButton" then target = bgColor end
 			if obj:IsA("TextButton") and obj.Text == "On" then target = AccentColor end
 			if obj.Name == "DestroyBtn" then target = Color3.fromRGB(255, 35, 35)
 			elseif obj.Name == "ResetCharacterBtn" then target = Color3.fromRGB(255, 230, 0)
 			elseif obj.Name == "RejoinBtn" then target = Color3.fromRGB(0, 230, 255)
 			elseif obj.Name == "ServerHopBtn" then target = Color3.fromRGB(0, 105, 255)
 			elseif obj.Name == "GuiSizeBtn" then target = Color3.fromRGB(70, 255, 70)
-			elseif obj.Name == "ClearKeybindsBtn" then target = Color3.fromRGB(195, 35, 255) end
+			elseif obj.Name == "ClearKeybindsBtn" then target = Color3.fromRGB(195, 35, 255)
+			elseif obj.Name == "EditKeybindsBtn" then target = Color3.fromRGB(255, 130, 35) end
 			TweenService:Create(obj, tweenInfo, {BackgroundColor3 = target}):Play()
 		else
 			table.remove(ThemeObjects.Backgrounds, i)
@@ -1192,7 +1201,7 @@ HubState.MM2GameButton.Name = "MM2GameButton"
 HubState.MM2GameButton.Size = UDim2.new(1, -8, 0, 38)
 HubState.MM2GameButton.Position = UDim2.new(0, 4, 0, 4)
 HubState.MM2GameButton.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
-HubState.MM2GameButton.BackgroundTransparency = 0.8
+HubState.MM2GameButton.BackgroundTransparency = 0.92
 HubState.MM2GameButton.BorderSizePixel = 0
 HubState.MM2GameButton.Text = "MM2"
 HubState.MM2GameButton.Font = Enum.Font.GothamBold
@@ -1201,7 +1210,7 @@ HubState.MM2GameButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 HubState.MM2GameButton.Parent = HubState.GamesPage
 table.insert(ThemeObjects.Backgrounds, HubState.MM2GameButton)
 table.insert(ThemeObjects.Texts, HubState.MM2GameButton)
-Instance.new("UICorner", HubState.MM2GameButton).CornerRadius = UDim.new(0, 7)
+Instance.new("UICorner", HubState.MM2GameButton).CornerRadius = UDim.new(0, 6)
 
 HubState.MM2GameStroke = Instance.new("UIStroke")
 HubState.MM2GameStroke.Name = "ControlOutline"
@@ -1270,7 +1279,7 @@ do
 	gameButton.Size = UDim2.new(1, -8, 0, 38)
 	gameButton.Position = UDim2.new(0, 4, 0, 46)
 	gameButton.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
-	gameButton.BackgroundTransparency = 0.8
+	gameButton.BackgroundTransparency = 0.92
 	gameButton.BorderSizePixel = 0
 	gameButton.Text = "Quiet or Die"
 	gameButton.Font = Enum.Font.GothamBold
@@ -1279,7 +1288,7 @@ do
 	gameButton.Parent = HubState.GamesPage
 	table.insert(ThemeObjects.Backgrounds, gameButton)
 	table.insert(ThemeObjects.Texts, gameButton)
-	Instance.new("UICorner", gameButton).CornerRadius = UDim.new(0, 7)
+	Instance.new("UICorner", gameButton).CornerRadius = UDim.new(0, 6)
 
 	local gameStroke = Instance.new("UIStroke")
 	gameStroke.Name = "ControlOutline"
@@ -1290,7 +1299,7 @@ do
 
 	local killRow = Instance.new("Frame")
 	killRow.Name = "QuietOrDieKillRow"
-	killRow.Size = UDim2.new(1, -28, 0, 38)
+	killRow.Size = UDim2.new(1, -8, 0, 38)
 	killRow.Position = UDim2.new(0, 4, 0, 74)
 	killRow.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 	killRow.BackgroundTransparency = 0.92
@@ -1326,7 +1335,7 @@ do
 
 	local farmRow = Instance.new("Frame")
 	farmRow.Name = "QuietOrDieFarmRow"
-	farmRow.Size = UDim2.new(1, -28, 0, 62)
+	farmRow.Size = UDim2.new(1, -8, 0, 62)
 	farmRow.Position = UDim2.new(0, 4, 0, 4)
 	farmRow.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 	farmRow.BackgroundTransparency = 0.92
@@ -1545,7 +1554,7 @@ do
 
 	local eventRow = Instance.new("Frame")
 	eventRow.Name = "QuietOrDieEventRow"
-	eventRow.Size = UDim2.new(1, -28, 0, 38)
+	eventRow.Size = UDim2.new(1, -8, 0, 38)
 	eventRow.Position = UDim2.new(0, 4, 0, 206)
 	eventRow.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 	eventRow.BackgroundTransparency = 0.92
@@ -1581,7 +1590,7 @@ do
 
 	local reviveRow = Instance.new("Frame")
 	reviveRow.Name = "QuietOrDieReviveRow"
-	reviveRow.Size = UDim2.new(1, -28, 0, 38)
+	reviveRow.Size = UDim2.new(1, -8, 0, 38)
 	reviveRow.Position = UDim2.new(0, 4, 0, 162)
 	reviveRow.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 	reviveRow.BackgroundTransparency = 0.92
@@ -1618,7 +1627,7 @@ do
 	ThemeObjects.QODReveal = {Enabled = false, LastFire = 0}
 	ThemeObjects.QODReveal.Row = Instance.new("Frame")
 	ThemeObjects.QODReveal.Row.Name = "QuietOrDieRevealRow"
-	ThemeObjects.QODReveal.Row.Size = UDim2.new(1, -28, 0, 38)
+	ThemeObjects.QODReveal.Row.Size = UDim2.new(1, -8, 0, 38)
 	ThemeObjects.QODReveal.Row.Position = UDim2.new(0, 4, 0, 250)
 	ThemeObjects.QODReveal.Row.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 	ThemeObjects.QODReveal.Row.BackgroundTransparency = 0.92
@@ -5486,6 +5495,7 @@ local function ToggleGUI()
 	PlayMinimizeSound(HubState.minimized)
 	if HubState.minimized and HubState.settingsOpen then ToggleSettings(true) end
 	HubState.TabScroll.Visible = not HubState.minimized
+	HubState.PageHeader.Visible = not HubState.minimized
 	ThemeObjects.UpdateEmblemPosition()
 	if not HubState.minimized then HubState.SettingsBtn.Visible = true end
 	HubState.SettingsBtn.Active = not HubState.minimized
@@ -5507,7 +5517,7 @@ HubState.MiniButton.MouseButton1Click:Connect(ToggleGUI)
 
 -- Input Listener
 HubState.Connections.InputBegan = UserInputService.InputBegan:Connect(function(input, processed)
-	if processed or HubState.IsBindingSpeed or HubState.IsBindingFly or HubState.IsBindingNoclip or ThemeObjects.FreeCam.Binding or HubState.IsBindingAutoLock or HubState.IsBindingESP or HubState.IsBindingFlingMenu or ThemeObjects.PlayerTP.Binding then return end
+	if processed or HubState.IsBindingSpeed or HubState.IsBindingFly or HubState.IsBindingNoclip or ThemeObjects.FreeCam.Binding or HubState.IsBindingAutoLock or HubState.IsBindingESP or HubState.IsBindingFlingMenu or ThemeObjects.PlayerTP.Binding or HubState.IsBindingKeybindEditor then return end
 	if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
 	if input.KeyCode == HubState.SpeedKeybind then ToggleSpeed()
 	elseif input.KeyCode == HubState.FlyKeybind then ToggleFly()
@@ -5694,8 +5704,8 @@ Instance.new("UICorner", ClearKeybindsBtn).CornerRadius = UDim.new(0, 5)
 
 local ResetCharacterBtn = Instance.new("TextButton")
 ResetCharacterBtn.Name = "ResetCharacterBtn"
-ResetCharacterBtn.Size = UDim2.new(0, 150, 0, 24)
-ResetCharacterBtn.Position = UDim2.new(0, 10, 0, 138)
+ResetCharacterBtn.Size = UDim2.new(0, 310, 0, 24)
+ResetCharacterBtn.Position = UDim2.new(0, 10, 0, 42)
 ResetCharacterBtn.BackgroundColor3 = Color3.fromRGB(255, 230, 0)
 ResetCharacterBtn.BackgroundTransparency = 0
 ResetCharacterBtn.BorderSizePixel = 0
@@ -5705,6 +5715,21 @@ ResetCharacterBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 ResetCharacterBtn.Parent = HubState.SettingsPage
 table.insert(ThemeObjects.Backgrounds, ResetCharacterBtn)
 Instance.new("UICorner", ResetCharacterBtn).CornerRadius = UDim.new(0, 6)
+
+local EditKeybindsBtn = Instance.new("TextButton")
+EditKeybindsBtn.Name = "EditKeybindsBtn"
+EditKeybindsBtn.Size = UDim2.new(0, 150, 0, 24)
+EditKeybindsBtn.Position = UDim2.new(0, 10, 0, 138)
+EditKeybindsBtn.BackgroundColor3 = Color3.fromRGB(255, 130, 35)
+EditKeybindsBtn.BackgroundTransparency = 0
+EditKeybindsBtn.BorderSizePixel = 0
+EditKeybindsBtn.Text = "Edit Keybinds"
+EditKeybindsBtn.Font = Enum.Font.GothamBold
+EditKeybindsBtn.TextSize = 10
+EditKeybindsBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+EditKeybindsBtn.Parent = HubState.SettingsPage
+table.insert(ThemeObjects.Backgrounds, EditKeybindsBtn)
+Instance.new("UICorner", EditKeybindsBtn).CornerRadius = UDim.new(0, 5)
 
 local RejoinBtn = Instance.new("TextButton")
 RejoinBtn.Name = "RejoinBtn"
@@ -6134,6 +6159,171 @@ ConfirmNoBtn.Font = Enum.Font.GothamBold
 ConfirmNoBtn.Parent = ConfirmClearFrame
 Instance.new("UICorner", ConfirmNoBtn).CornerRadius = UDim.new(0, 4)
 
+local KeybindEditorFrame = Instance.new("Frame")
+KeybindEditorFrame.Name = "KeybindEditorFrame"
+KeybindEditorFrame.Size = UDim2.new(0, 310, 0, 160)
+KeybindEditorFrame.Position = UDim2.new(0, 10, 0, 42)
+KeybindEditorFrame.BackgroundColor3 = FrameThemeColor
+KeybindEditorFrame.BackgroundTransparency = 0.03
+KeybindEditorFrame.BorderSizePixel = 0
+KeybindEditorFrame.Visible = false
+KeybindEditorFrame.ZIndex = 90
+KeybindEditorFrame.Parent = HubState.SettingsPage
+table.insert(ThemeObjects.Backgrounds, KeybindEditorFrame)
+Instance.new("UICorner", KeybindEditorFrame).CornerRadius = UDim.new(0, 8)
+local KeybindEditorStroke = Instance.new("UIStroke")
+KeybindEditorStroke.Name = "ControlOutline"
+KeybindEditorStroke.Color = Color3.fromRGB(0, 0, 0)
+KeybindEditorStroke.Thickness = 1
+KeybindEditorStroke.Transparency = 0.12
+KeybindEditorStroke.Parent = KeybindEditorFrame
+
+local KeybindEditorTitle = Instance.new("TextLabel")
+KeybindEditorTitle.Size = UDim2.new(1, -42, 0, 22)
+KeybindEditorTitle.Position = UDim2.new(0, 10, 0, 4)
+KeybindEditorTitle.BackgroundTransparency = 1
+KeybindEditorTitle.Text = "Keybinds"
+KeybindEditorTitle.Font = Enum.Font.GothamBold
+KeybindEditorTitle.TextSize = 11
+KeybindEditorTitle.TextXAlignment = Enum.TextXAlignment.Left
+KeybindEditorTitle.ZIndex = 91
+KeybindEditorTitle.Parent = KeybindEditorFrame
+table.insert(ThemeObjects.Texts, KeybindEditorTitle)
+
+local KeybindEditorClose = Instance.new("TextButton")
+KeybindEditorClose.Size = UDim2.new(0, 24, 0, 20)
+KeybindEditorClose.Position = UDim2.new(1, -30, 0, 5)
+KeybindEditorClose.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+KeybindEditorClose.BackgroundTransparency = 0.8
+KeybindEditorClose.BorderSizePixel = 0
+KeybindEditorClose.Text = "x"
+KeybindEditorClose.Font = Enum.Font.GothamBold
+KeybindEditorClose.TextSize = 10
+KeybindEditorClose.ZIndex = 91
+KeybindEditorClose.Parent = KeybindEditorFrame
+table.insert(ThemeObjects.Backgrounds, KeybindEditorClose)
+table.insert(ThemeObjects.Texts, KeybindEditorClose)
+Instance.new("UICorner", KeybindEditorClose).CornerRadius = UDim.new(0, 4)
+
+local KeybindEditorScroll = Instance.new("ScrollingFrame")
+KeybindEditorScroll.Name = "KeybindEditorScroll"
+KeybindEditorScroll.Size = UDim2.new(1, -16, 1, -34)
+KeybindEditorScroll.Position = UDim2.new(0, 8, 0, 30)
+KeybindEditorScroll.BackgroundTransparency = 1
+KeybindEditorScroll.BorderSizePixel = 0
+KeybindEditorScroll.ScrollBarThickness = 2
+KeybindEditorScroll.ScrollBarImageColor3 = AccentColor
+KeybindEditorScroll.ElasticBehavior = Enum.ElasticBehavior.Never
+KeybindEditorScroll.ZIndex = 91
+KeybindEditorScroll.Parent = KeybindEditorFrame
+
+local KeybindEditorLayout = Instance.new("UIListLayout")
+KeybindEditorLayout.Padding = UDim.new(0, 4)
+KeybindEditorLayout.SortOrder = Enum.SortOrder.LayoutOrder
+KeybindEditorLayout.Parent = KeybindEditorScroll
+
+ThemeObjects.KeybindEditorRows = {}
+ThemeObjects.KeybindEditorEntries = {
+	{Name = "Speed", Key = function() return HubState.SpeedKeybind end, Set = function(key) HubState.SpeedKeybind = key; SaveKeybind("Speed", key); if HubState.SpeedBindBtn then HubState.SpeedBindBtn.Text = KeybindText(key) end end},
+	{Name = "Fly", Key = function() return HubState.FlyKeybind end, Set = function(key) HubState.FlyKeybind = key; SaveKeybind("Fly", key); if HubState.FlyBindBtn then HubState.FlyBindBtn.Text = KeybindText(key) end end},
+	{Name = "No Clip", Key = function() return HubState.NoclipKeybind end, Set = function(key) HubState.NoclipKeybind = key; SaveKeybind("Noclip", key); if HubState.NoclipBindBtn then HubState.NoclipBindBtn.Text = KeybindText(key) end end},
+	{Name = "Free Cam", Key = function() return ThemeObjects.FreeCam.Keybind end, Set = function(key) ThemeObjects.FreeCam.Keybind = key; SaveKeybind("FreeCam", key); if ThemeObjects.FreeCam.Bind then ThemeObjects.FreeCam.Bind.Text = KeybindText(key) end end},
+	{Name = "Auto Lock", Key = function() return HubState.AutoLockKeybind end, Set = function(key) HubState.AutoLockKeybind = key; SaveKeybind("AutoLock", key); if HubState.AutoLockBindBtn then HubState.AutoLockBindBtn.Text = KeybindText(key) end end},
+	{Name = "Player ESP", Key = function() return HubState.ESPKeybind end, Set = function(key) HubState.ESPKeybind = key; SaveKeybind("ESP", key); if HubState.ESPBindBtn then HubState.ESPBindBtn.Text = KeybindText(key) end end},
+	{Name = "Fling Menu", Key = function() return HubState.FlingMenuKeybind end, Set = function(key) HubState.FlingMenuKeybind = key; SaveKeybind("FlingMenu", key); if HubState.FlingBindBtn then HubState.FlingBindBtn.Text = KeybindText(key) end end},
+	{Name = "TP Menu", Key = function() return ThemeObjects.PlayerTP.Keybind end, Set = function(key) ThemeObjects.PlayerTP.Keybind = key; SaveKeybind("PlayerTPMenu", key); if ThemeObjects.PlayerTP.BindButton then ThemeObjects.PlayerTP.BindButton.Text = KeybindText(key) end end},
+}
+
+ThemeObjects.RefreshKeybindEditor = function()
+	for _, row in ipairs(ThemeObjects.KeybindEditorRows) do
+		if row.Button and row.Entry then row.Button.Text = KeybindText(row.Entry.Key()) end
+	end
+	KeybindEditorScroll.CanvasSize = UDim2.new(0, 0, 0, math.max(KeybindEditorLayout.AbsoluteContentSize.Y + 6, #ThemeObjects.KeybindEditorRows * 32))
+end
+
+for index, entry in ipairs(ThemeObjects.KeybindEditorEntries) do
+	local row = Instance.new("Frame")
+	row.Name = "KeybindEditorRow"
+	row.Size = UDim2.new(1, -4, 0, 28)
+	row.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+	row.BackgroundTransparency = 0.92
+	row.BorderSizePixel = 0
+	row.LayoutOrder = index
+	row.ZIndex = 91
+	row.Parent = KeybindEditorScroll
+	table.insert(ThemeObjects.Backgrounds, row)
+	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -74, 1, 0)
+	label.Position = UDim2.new(0, 8, 0, 0)
+	label.BackgroundTransparency = 1
+	label.Text = entry.Name
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 10
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.ZIndex = 92
+	label.Parent = row
+	table.insert(ThemeObjects.Texts, label)
+
+	local button = Instance.new("TextButton")
+	button.Size = UDim2.new(0, 58, 0, 20)
+	button.Position = UDim2.new(1, -64, 0.5, -10)
+	button.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	button.BackgroundTransparency = 0.8
+	button.BorderSizePixel = 0
+	button.Text = KeybindText(entry.Key())
+	button.Font = Enum.Font.GothamBold
+	button.TextSize = 8
+	button.TextColor3 = AccentColor
+	button.ZIndex = 92
+	button.Parent = row
+	table.insert(ThemeObjects.Backgrounds, button)
+	table.insert(ThemeObjects.Accents, button)
+	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 4)
+	table.insert(ThemeObjects.KeybindEditorRows, {Entry = entry, Button = button})
+
+	button.MouseButton1Click:Connect(function()
+		PlayClick()
+		if ThemeObjects.KeybindEditorConnection then
+			ThemeObjects.KeybindEditorConnection:Disconnect()
+			ThemeObjects.KeybindEditorConnection = nil
+		end
+		HubState.IsBindingKeybindEditor = true
+		button.Text = "..."
+		ThemeObjects.KeybindEditorConnection = UserInputService.InputBegan:Connect(function(input, processed)
+			if processed then return end
+			if input.UserInputType == Enum.UserInputType.Keyboard then
+				local selectedKey = input.KeyCode
+				if selectedKey == Enum.KeyCode.Backspace or selectedKey == Enum.KeyCode.Delete then
+					selectedKey = Enum.KeyCode.Unknown
+				end
+				entry.Set(selectedKey)
+				HubState.IsBindingKeybindEditor = false
+				if ThemeObjects.KeybindEditorConnection then
+					ThemeObjects.KeybindEditorConnection:Disconnect()
+					ThemeObjects.KeybindEditorConnection = nil
+				end
+				ThemeObjects.RefreshKeybindEditor()
+			end
+		end)
+	end)
+end
+ThemeObjects.RefreshKeybindEditor()
+
+EditKeybindsBtn.MouseButton1Click:Connect(function()
+	PlayClick()
+	if ThemeObjects.PickerDock then ThemeObjects.PickerDock.Visible = false end
+	if ThemeObjects.GuiSizeDock then ThemeObjects.GuiSizeDock.Visible = false end
+	ConfirmClearFrame.Visible = false
+	KeybindEditorFrame.Visible = not KeybindEditorFrame.Visible
+	ThemeObjects.RefreshKeybindEditor()
+end)
+KeybindEditorClose.MouseButton1Click:Connect(function()
+	PlayClick()
+	KeybindEditorFrame.Visible = false
+end)
+
 table.insert(ThemeObjects.StateTexts, {Object = HubState.SpeedTitle, IsEnabled = function() return HubState.SpeedEnabled end})
 table.insert(ThemeObjects.StateTexts, {Object = HubState.FlyTitle, IsEnabled = function() return HubState.FlyEnabled end})
 table.insert(ThemeObjects.StateTexts, {Object = HubState.NoclipTitle, IsEnabled = function() return HubState.NoclipEnabled end})
@@ -6231,6 +6421,7 @@ end))
 AccentColorBtn.MouseButton1Click:Connect(function()
 	PlayClick()
 	GuiSizeFrame.Visible = false
+	if KeybindEditorFrame then KeybindEditorFrame.Visible = false end
 	if PickerFrame.Visible then
 		PickerFrame.Visible = false
 		ResetThemeBtn.Visible = false
@@ -6245,6 +6436,7 @@ GuiSizeBtn.MouseButton1Click:Connect(function()
 	PickerFrame.Visible = false
 	ResetThemeBtn.Visible = false
 	ConfirmClearFrame.Visible = false
+	if KeybindEditorFrame then KeybindEditorFrame.Visible = false end
 	GuiSizeFrame.Visible = willOpen
 	if willOpen and ThemeObjects.UpdateGuiSizeDockPosition then
 		ThemeObjects.UpdateGuiSizeDockPosition()
@@ -6264,6 +6456,7 @@ ClearKeybindsBtn.MouseButton1Click:Connect(function()
 	PickerFrame.Visible = false
 	GuiSizeFrame.Visible = false
 	ResetThemeBtn.Visible = false
+	if KeybindEditorFrame then KeybindEditorFrame.Visible = false end
 	ConfirmClearFrame.Visible = true
 end)
 ConfirmNoBtn.MouseButton1Click:Connect(function() PlayClick() ConfirmClearFrame.Visible = false end)
@@ -6293,6 +6486,7 @@ ConfirmYesBtn.MouseButton1Click:Connect(function()
 	HubState.ESPBindBtn.Text = "..."
 	HubState.FlingBindBtn.Text = "..."
 	if ThemeObjects.PlayerTP.BindButton then ThemeObjects.PlayerTP.BindButton.Text = "..." end
+	if ThemeObjects.RefreshKeybindEditor then ThemeObjects.RefreshKeybindEditor() end
 	SavePersistentSettings()
 	ConfirmClearFrame.Visible = false
 end)
