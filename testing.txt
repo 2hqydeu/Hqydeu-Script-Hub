@@ -275,14 +275,7 @@ HoverSound.Parent = MainFrame
 
 local function PlayClick() ClickSound:Play() end
 local function PlaySwoosh() SwooshSound:Play() end
-local LastHoverSound = 0
-local function PlayHover()
-	local now = os.clock()
-	if now - LastHoverSound < 0.12 then return end
-	if HoverSound.IsPlaying and HoverSound.TimePosition < 0.06 then return end
-	LastHoverSound = now
-	HoverSound:Play()
-end
+local function PlayHover() HoverSound:Play() end
 local function PlayMinimizeSound(isMinimizing)
 	if isMinimizing then MinimizeSound:Play() else UnminimizeSound:Play() end
 end
@@ -644,9 +637,25 @@ end
 
 ThemeObjects.RefreshToggleButton = function(obj)
 	if not obj:IsA("TextButton") or (obj.Text ~= "On" and obj.Text ~= "Off") then return end
-	obj.BackgroundColor3 = obj.Text == "On" and AccentColor or FrameThemeColor:Lerp(Color3.new(0, 0, 0), 0.22)
-	obj.BackgroundTransparency = obj.Text == "On" and 0 or 0.8
+	local baseColor = obj.Text == "On" and AccentColor or FrameThemeColor:Lerp(Color3.new(0, 0, 0), 0.22)
+	local baseTransparency = obj.Text == "On" and 0 or 0.8
+	if obj:GetAttribute("ButtonHovered") then
+		baseColor = baseColor:Lerp(AccentColor, obj.Text == "On" and 0.24 or 0.42)
+		baseTransparency = math.max(0, baseTransparency - 0.32)
+	end
+	obj.BackgroundColor3 = baseColor
+	obj.BackgroundTransparency = baseTransparency
 	obj.TextColor3 = Color3.fromRGB(255, 255, 255)
+end
+
+ThemeObjects.ApplyHoveredButtonStyle = function(obj)
+	if not obj:IsA("TextButton") then return end
+	local hoverColor = obj.BackgroundColor3:Lerp(AccentColor, obj.Text == "On" and 0.24 or 0.42)
+	local hoverTransparency = math.max(0, obj.BackgroundTransparency - 0.32)
+	TweenService:Create(obj, TweenInfo.new(0.08, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+		BackgroundColor3 = hoverColor,
+		BackgroundTransparency = hoverTransparency
+	}):Play()
 end
 
 ThemeObjects.StyleControlOutline = function(obj)
@@ -674,37 +683,20 @@ ThemeObjects.AttachHoverSound = function(obj)
 	obj:SetAttribute("HoverSoundAttached", true)
 	obj.MouseEnter:Connect(function()
 		PlayHover()
-		obj:SetAttribute("HoverBaseTransparency", obj.BackgroundTransparency)
-		obj:SetAttribute("HoverBaseR", obj.BackgroundColor3.R)
-		obj:SetAttribute("HoverBaseG", obj.BackgroundColor3.G)
-		obj:SetAttribute("HoverBaseB", obj.BackgroundColor3.B)
-		local hoverColor = obj.BackgroundColor3:Lerp(AccentColor, obj.Text == "On" and 0.18 or 0.32)
-		local hoverTransparency = math.max(0, obj.BackgroundTransparency - 0.22)
-		TweenService:Create(obj, TweenInfo.new(0.1, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-			BackgroundColor3 = hoverColor,
-			BackgroundTransparency = hoverTransparency
-		}):Play()
+		obj:SetAttribute("ButtonHovered", true)
+		ThemeObjects.ApplyHoveredButtonStyle(obj)
 		local outline = obj:FindFirstChild("ControlOutline")
 		if outline and outline:IsA("UIStroke") then
 			outline:SetAttribute("HoverBaseThickness", outline.Thickness)
 			outline:SetAttribute("HoverBaseTransparency", outline.Transparency)
 			TweenService:Create(outline, TweenInfo.new(0.1, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-				Thickness = math.max(outline.Thickness, 1.6),
+				Thickness = math.max(outline.Thickness, 1.8),
 				Transparency = 0
 			}):Play()
 		end
 	end)
 	obj.MouseLeave:Connect(function()
-		local baseR = obj:GetAttribute("HoverBaseR")
-		local baseG = obj:GetAttribute("HoverBaseG")
-		local baseB = obj:GetAttribute("HoverBaseB")
-		local baseTransparency = obj:GetAttribute("HoverBaseTransparency")
-		if baseR and baseG and baseB and baseTransparency then
-			TweenService:Create(obj, TweenInfo.new(0.14, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-				BackgroundColor3 = Color3.new(baseR, baseG, baseB),
-				BackgroundTransparency = baseTransparency
-			}):Play()
-		end
+		obj:SetAttribute("ButtonHovered", false)
 		local outline = obj:FindFirstChild("ControlOutline")
 		if outline and outline:IsA("UIStroke") then
 			local baseThickness = outline:GetAttribute("HoverBaseThickness")
@@ -716,6 +708,7 @@ ThemeObjects.AttachHoverSound = function(obj)
 				}):Play()
 			end
 		end
+		if ThemeObjects.UpdateTheme then ThemeObjects.UpdateTheme(true) end
 	end)
 end
 
@@ -800,6 +793,7 @@ local function UpdateTheme(instant)
 				end
 			end
 		local target = (obj:IsA("TextButton") or obj:IsA("TextBox") or obj.Name == "TabScroll" or obj.Name == "TargetRow") and secBgColor or bgColor
+			local targetTransparency = obj.BackgroundTransparency
 			if obj.Name == "PlayerTPFrame" then target = Color3.fromRGB(14, 18, 26)
 			end
 			if obj.Name == "MM2GameButton" or obj.Name == "QuietOrDieGameButton" then target = Color3.fromRGB(65, 65, 67) end
@@ -813,6 +807,10 @@ local function UpdateTheme(instant)
 			elseif obj.Name == "GuiSizeBtn" then target = Color3.fromRGB(70, 255, 70)
 			elseif obj.Name == "ClearKeybindsBtn" then target = Color3.fromRGB(195, 35, 255)
 			elseif obj.Name == "EditKeybindsBtn" then target = Color3.fromRGB(255, 130, 35) end
+			if obj:IsA("TextButton") and obj:GetAttribute("ButtonHovered") then
+				target = target:Lerp(AccentColor, obj.Text == "On" and 0.24 or 0.42)
+				obj.BackgroundTransparency = math.max(0, targetTransparency - 0.32)
+			end
 			TweenService:Create(obj, tweenInfo, {BackgroundColor3 = target}):Play()
 		else
 			table.remove(ThemeObjects.Backgrounds, i)
@@ -854,6 +852,7 @@ local function UpdateTheme(instant)
 	end
 	ThemeObjects.RefreshStateTexts(instant)
 end
+ThemeObjects.UpdateTheme = UpdateTheme
 
 -- Variables
 HubState.CurrentCFrameSpeed = 1
@@ -2590,7 +2589,7 @@ HubState.ESPTitle.Size = UDim2.new(0, 84, 0, 23)
 HubState.ESPTitle.Position = UDim2.new(0, 12, 0, 38)
 HubState.ESPTitle.BackgroundTransparency = 1
 HubState.ESPTitle.BorderSizePixel = 0
-HubState.ESPTitle.Text = "Player ESP:"
+HubState.ESPTitle.Text = "Outline ESP:"
 HubState.ESPTitle.Font = Enum.Font.GothamBold
 HubState.ESPTitle.TextSize = 13
 HubState.ESPTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -2662,7 +2661,7 @@ ThemeObjects.DeepESP.Title = Instance.new("TextLabel")
 ThemeObjects.DeepESP.Title.Size = UDim2.new(0, 82, 0, 24)
 ThemeObjects.DeepESP.Title.Position = UDim2.new(0, 8, 0, 7)
 ThemeObjects.DeepESP.Title.BackgroundTransparency = 1
-ThemeObjects.DeepESP.Title.Text = "QOD ESP"
+ThemeObjects.DeepESP.Title.Text = "Body ESP"
 ThemeObjects.DeepESP.Title.Font = Enum.Font.GothamBold
 ThemeObjects.DeepESP.Title.TextSize = 11
 ThemeObjects.DeepESP.Title.TextXAlignment = Enum.TextXAlignment.Left
@@ -2695,7 +2694,7 @@ ThemeObjects.DeepESP.Toggle.MouseButton1Click:Connect(function()
 	PlayClick()
 	ThemeObjects.SetQODESP(not ThemeObjects.DeepESP.Enabled)
 end)
-ThemeObjects.AddFeatureKeybind({Name = "QOD ESP", Storage = "QODESP", Parent = ThemeObjects.DeepESP.Row, Toggle = ThemeObjects.DeepESP.Toggle, Get = function() return LoadKeybind("QODESP") end, Set = function(key) SaveKeybind("QODESP", key) end, Action = function()
+ThemeObjects.AddFeatureKeybind({Name = "Body ESP", Storage = "QODESP", Parent = ThemeObjects.DeepESP.Row, Toggle = ThemeObjects.DeepESP.Toggle, Get = function() return LoadKeybind("QODESP") end, Set = function(key) SaveKeybind("QODESP", key) end, Action = function()
 	ThemeObjects.SetQODESP(not ThemeObjects.DeepESP.Enabled)
 end})
 
@@ -2870,8 +2869,9 @@ do
 
 	local lockRow = CreateCombatRow("AutoLockCard", 4)
 	local espRow = CreateCombatRow("PlayerESPCard", 46)
-	local flingRow = CreateCombatRow("FlingTargetCard", 88)
-	local antiFlingRow = CreateCombatRow("AntiFlingCard", 130)
+	local bodyESPRow = ThemeObjects.DeepESP.Row
+	local flingRow = CreateCombatRow("FlingTargetCard", 130)
+	local antiFlingRow = CreateCombatRow("AntiFlingCard", 172)
 
 	HubState.AutoLockTitle.Size = UDim2.new(0, 90, 0, 20)
 	HubState.AutoLockTitle.Position = UDim2.new(0, 8, 0.5, -10)
@@ -2904,6 +2904,25 @@ do
 	HubState.ColorContainer.Parent = espRow
 	HubState.ESPColorBtn.Size = UDim2.new(0, 44, 0, 20)
 	HubState.ESPColorBtn.TextSize = 8
+
+	if bodyESPRow then
+		bodyESPRow.Name = "BodyESPCard"
+		bodyESPRow.Size = UDim2.new(1, -8, 0, 38)
+		bodyESPRow.Position = UDim2.new(0, 4, 0, 88)
+		bodyESPRow.Parent = HubState.CombatPage
+		ThemeObjects.DeepESP.Title.Size = UDim2.new(0, 90, 0, 20)
+		ThemeObjects.DeepESP.Title.Position = UDim2.new(0, 8, 0.5, -10)
+		ThemeObjects.DeepESP.Title.TextSize = 11
+		ThemeObjects.DeepESP.Toggle.Size = UDim2.new(0, 44, 0, 20)
+		ThemeObjects.DeepESP.Toggle.Position = UDim2.new(1, -96, 0.5, -10)
+		ThemeObjects.DeepESP.Toggle.TextSize = 9
+		local bodyBind = bodyESPRow:FindFirstChild("FeatureKeybindButton")
+		if bodyBind and bodyBind:IsA("TextButton") then
+			bodyBind.Size = UDim2.new(0, 44, 0, 20)
+			bodyBind.Position = UDim2.new(1, -48, 0.5, -10)
+			bodyBind.TextSize = 8
+		end
+	end
 
 	ThemeObjects.FlingTargetTitle = Instance.new("TextLabel")
 	ThemeObjects.FlingTargetTitle.Size = UDim2.new(0, 120, 0, 20)
@@ -4943,7 +4962,7 @@ do
 	MM2ControlsScroll.ScrollingDirection = Enum.ScrollingDirection.Y
 	MM2ControlsScroll.ElasticBehavior = Enum.ElasticBehavior.Never
 	MM2ControlsScroll.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-	MM2ControlsScroll.CanvasSize = UDim2.new(0, 0, 0, 250)
+	MM2ControlsScroll.CanvasSize = UDim2.new(0, 0, 0, 206)
 	MM2ControlsScroll.ClipsDescendants = true
 	MM2ControlsScroll.Parent = HubState.MM2Page
 
@@ -4961,11 +4980,12 @@ do
 		return row
 	end
 
-	local mm2ESPRow = CreateMM2ControlRow("MM2ESPRow", 1, -8, 0, 4, 4, 38)
-	local stabRow = CreateMM2ControlRow("AutoStabRow", 1, -8, 0, 4, 48, 38)
-	local shootRow = CreateMM2ControlRow("AutoShootRow", 1, -8, 0, 4, 92, 38)
-	local gunRow = CreateMM2ControlRow("AutoGunRow", 1, -8, 0, 4, 136, 38)
-	local coinRow = CreateMM2ControlRow("CoinFarmRow", 1, -8, 0, 4, 180, 38)
+	local mm2ESPRow = CreateMM2ControlRow("MM2ESPRow", 1, -8, 0, 4, -44, 38)
+	mm2ESPRow.Visible = false
+	local stabRow = CreateMM2ControlRow("AutoStabRow", 1, -8, 0, 4, 4, 38)
+	local shootRow = CreateMM2ControlRow("AutoShootRow", 1, -8, 0, 4, 48, 38)
+	local gunRow = CreateMM2ControlRow("AutoGunRow", 1, -8, 0, 4, 92, 38)
+	local coinRow = CreateMM2ControlRow("CoinFarmRow", 1, -8, 0, 4, 136, 38)
 
 	local function PlaceMM2Control(title, toggle, row, fullWidth)
 		title.Size = fullWidth and UDim2.new(0, 130, 0, 24) or UDim2.new(0, 82, 0, 22)
@@ -4980,7 +5000,7 @@ do
 
 	HubState.MM2ESPTitle = Instance.new("TextLabel")
 	HubState.MM2ESPTitle.BackgroundTransparency = 1
-	HubState.MM2ESPTitle.Text = "MM2 ESP:"
+	HubState.MM2ESPTitle.Text = "Merged ESP:"
 	HubState.MM2ESPTitle.Font = Enum.Font.GothamBold
 	HubState.MM2ESPTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 	HubState.MM2ESPTitle.TextXAlignment = Enum.TextXAlignment.Left
@@ -5000,10 +5020,6 @@ do
 		ThemeObjects.SetMM2ESP(not HubState.MM2ESPEnabled)
 	end)
 	table.insert(ThemeObjects.StateTexts, {Object = HubState.MM2ESPTitle, IsEnabled = function() return HubState.MM2ESPEnabled end})
-	ThemeObjects.AddFeatureKeybind({Name = "MM2 ESP", Storage = "MM2ESP", Parent = mm2ESPRow, Toggle = HubState.MM2ESPToggle, Get = function() return LoadKeybind("MM2ESP") end, Set = function(key) SaveKeybind("MM2ESP", key) end, Action = function()
-		ThemeObjects.SetMM2ESP(not HubState.MM2ESPEnabled)
-	end})
-
 	PlaceMM2Control(HubState.KillTitle, HubState.KillToggle, stabRow)
 	PlaceMM2Control(autoShootTitle, autoShootToggle, shootRow)
 	PlaceMM2Control(HubState.AutoGunTitle, HubState.AutoGunToggle, gunRow)
@@ -5565,7 +5581,7 @@ ThemeObjects.AddFeatureKeybind({Name = "Auto Lock", Storage = "AutoLock", Button
 ThemeObjects.AddFeatureKeybind({Name = "Fly", Storage = "Fly", Button = HubState.FlyBindBtn, Get = function() return HubState.FlyKeybind end, Set = function(key) HubState.FlyKeybind = key; SaveKeybind("Fly", key); if HubState.FlyBindBtn then HubState.FlyBindBtn.Text = KeybindText(key) end end, Action = ToggleFly})
 ThemeObjects.AddFeatureKeybind({Name = "Free Cam", Storage = "FreeCam", Button = ThemeObjects.FreeCam.Bind, Get = function() return ThemeObjects.FreeCam.Keybind end, Set = function(key) ThemeObjects.FreeCam.Keybind = key; SaveKeybind("FreeCam", key); if ThemeObjects.FreeCam.Bind then ThemeObjects.FreeCam.Bind.Text = KeybindText(key) end end, Action = function() ThemeObjects.FreeCam.ToggleState() end})
 ThemeObjects.AddFeatureKeybind({Name = "No Clip", Storage = "Noclip", Button = HubState.NoclipBindBtn, Get = function() return HubState.NoclipKeybind end, Set = function(key) HubState.NoclipKeybind = key; SaveKeybind("Noclip", key); if HubState.NoclipBindBtn then HubState.NoclipBindBtn.Text = KeybindText(key) end end, Action = ToggleNoclip})
-ThemeObjects.AddFeatureKeybind({Name = "Player ESP", Storage = "ESP", Button = HubState.ESPBindBtn, Get = function() return HubState.ESPKeybind end, Set = function(key) HubState.ESPKeybind = key; SaveKeybind("ESP", key); if HubState.ESPBindBtn then HubState.ESPBindBtn.Text = KeybindText(key) end end, Action = ToggleESP})
+ThemeObjects.AddFeatureKeybind({Name = "Outline ESP", Storage = "ESP", Button = HubState.ESPBindBtn, Get = function() return HubState.ESPKeybind end, Set = function(key) HubState.ESPKeybind = key; SaveKeybind("ESP", key); if HubState.ESPBindBtn then HubState.ESPBindBtn.Text = KeybindText(key) end end, Action = ToggleESP})
 ThemeObjects.AddFeatureKeybind({Name = "Speed", Storage = "Speed", Button = HubState.SpeedBindBtn, Get = function() return HubState.SpeedKeybind end, Set = function(key) HubState.SpeedKeybind = key; SaveKeybind("Speed", key); if HubState.SpeedBindBtn then HubState.SpeedBindBtn.Text = KeybindText(key) end end, Action = ToggleSpeed})
 
 local function ToggleSpeed()
@@ -5785,16 +5801,17 @@ HubState.Connections.MainLoop = RunService.RenderStepped:Connect(function()
 			end
             
 			local killerFolder = workspace:FindFirstChild("KillerFolder")
-			local isQODKillerESP = ThemeObjects.DeepESP.Enabled and killerFolder and killerFolder:FindFirstChild(p.Name) ~= nil
-			local isMurdererRoleESP = HubState.MurdererRoleESPEnabled and p == HubState.CurrentMurderer
-			local isSheriffRoleESP = HubState.SheriffRoleESPEnabled and p == HubState.CurrentSheriff
+			local sharedESPEnabled = HubState.ESPEnabled or ThemeObjects.DeepESP.Enabled
+			local isQODKillerESP = sharedESPEnabled and killerFolder and killerFolder:FindFirstChild(p.Name) ~= nil
+			local isMurdererRoleESP = sharedESPEnabled and p == HubState.CurrentMurderer
+			local isSheriffRoleESP = sharedESPEnabled and p == HubState.CurrentSheriff
 			local roleColor = nil
 			if isQODKillerESP or isMurdererRoleESP then
 				roleColor = Color3.fromRGB(255, 70, 70)
 			elseif isSheriffRoleESP then
 				roleColor = Color3.fromRGB(70, 130, 255)
 			end
-			local showPlayerESP = HubState.ESPEnabled or ThemeObjects.DeepESP.Enabled or roleColor ~= nil
+			local showPlayerESP = sharedESPEnabled or roleColor ~= nil
 
 			-- Infinite Yield-style body ESP. These adornments live under CoreGui
 			-- instead of the character, so local transparency/hide effects used by
@@ -5835,7 +5852,7 @@ HubState.Connections.MainLoop = RunService.RenderStepped:Connect(function()
 			local oldCharacterHighlight = char:FindFirstChild("ESPHighlight")
 			if oldCharacterHighlight then oldCharacterHighlight:Destroy() end
 			local regularHighlight = ThemeObjects.ESPHighlights[p]
-			if HubState.ESPEnabled and roleColor == nil then
+			if HubState.ESPEnabled then
 				if not regularHighlight then
 					regularHighlight = Instance.new("Highlight")
 					regularHighlight.Name = "ESPHighlight"
@@ -5845,9 +5862,9 @@ HubState.Connections.MainLoop = RunService.RenderStepped:Connect(function()
 				regularHighlight.Enabled = true
 				regularHighlight.Adornee = char
 				regularHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-				regularHighlight.FillColor = HubState.ESPColor
+				regularHighlight.FillColor = roleColor or HubState.ESPColor
 				regularHighlight.FillTransparency = 0.72
-				regularHighlight.OutlineColor = HubState.ESPColor
+				regularHighlight.OutlineColor = roleColor or HubState.ESPColor
 				regularHighlight.OutlineTransparency = 0
 			elseif regularHighlight then
 				regularHighlight:Destroy()
@@ -6084,7 +6101,7 @@ HubState.LocalCountLabel.Size = UDim2.new(0, 310, 0, 10)
 HubState.LocalCountLabel.Position = UDim2.new(0, 10, 1, -14)
 HubState.LocalCountLabel.BackgroundTransparency = 1
 HubState.LocalCountLabel.BorderSizePixel = 0
-HubState.LocalCountLabel.Text = "12 / 200"
+HubState.LocalCountLabel.Text = "11 / 200"
 HubState.LocalCountLabel.Font = Enum.Font.GothamBold
 HubState.LocalCountLabel.TextSize = 7
 HubState.LocalCountLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
