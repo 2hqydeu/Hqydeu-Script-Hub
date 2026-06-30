@@ -283,6 +283,16 @@ HubState.NotificationSound.SoundId = "rbxassetid://114029807919810"
 HubState.NotificationSound.Volume = 0.35
 HubState.NotificationSound.Parent = HubState.NotificationHolder
 
+HubState.ToggleOnSound = Instance.new("Sound")
+HubState.ToggleOnSound.SoundId = "rbxassetid://96246548494264"
+HubState.ToggleOnSound.Volume = 0.55
+HubState.ToggleOnSound.Parent = MainFrame
+
+HubState.ToggleOffSound = Instance.new("Sound")
+HubState.ToggleOffSound.SoundId = "rbxassetid://7249903719"
+HubState.ToggleOffSound.Volume = 0.55
+HubState.ToggleOffSound.Parent = MainFrame
+
 ThemeObjects.ApplyMainGradient = function(intensity)
 	intensity = math.clamp(intensity or 0.5, 0, 0.75)
 	local bgColor = FrameThemeColor
@@ -419,6 +429,12 @@ ThemeObjects.RefreshStateTexts = function(instant)
 			featureName = featureName:gsub("%s*:%s*[Oo]ff%s*$", "")
 			featureName = featureName:gsub("%s*:%s*$", "")
 			if entry.LastEnabled ~= nil and enabled ~= entry.LastEnabled then
+				local toggleSound = enabled and HubState.ToggleOnSound or HubState.ToggleOffSound
+				if toggleSound then
+					toggleSound:Stop()
+					toggleSound.TimePosition = 0
+					toggleSound:Play()
+				end
 				ThemeObjects.ShowNotification(featureName .. (enabled and " enabled" or " disabled"))
 			elseif enabled and entry.LastEnabled == nil then
 				ThemeObjects.ShowNotification(featureName .. " enabled")
@@ -2339,7 +2355,7 @@ HubState.GreenBtn.MouseButton1Click:Connect(function() PlayClick() HubState.ESPC
 ThemeObjects.DeepESP = {Enabled = false}
 ThemeObjects.DeepESP.Row = Instance.new("Frame")
 ThemeObjects.DeepESP.Row.Name = "QuietOrDieDeepESPRow"
-ThemeObjects.DeepESP.Row.Size = UDim2.new(1, -28, 0, 38)
+ThemeObjects.DeepESP.Row.Size = UDim2.new(1, -8, 0, 38)
 ThemeObjects.DeepESP.Row.Position = UDim2.new(0, 4, 0, 118)
 ThemeObjects.DeepESP.Row.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 ThemeObjects.DeepESP.Row.BackgroundTransparency = 0.92
@@ -2501,9 +2517,9 @@ do
 	local function CreateCombatRow(name, y)
 		local row = Instance.new("Frame")
 		row.Name = name
-		row.Size = UDim2.new(1, -8, 0, 34)
+		row.Size = UDim2.new(1, -8, 0, 38)
 		row.Position = UDim2.new(0, 4, 0, y)
-		row.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
+		row.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 		row.BackgroundTransparency = 0.92
 		row.BorderSizePixel = 0
 		row.Parent = HubState.CombatPage
@@ -4734,9 +4750,9 @@ do
 	}) do
 		local card = Instance.new("Frame")
 		card.Name = cardInfo.Name
-		card.Size = UDim2.new(1, -8, 0, 34)
+		card.Size = UDim2.new(1, -8, 0, 38)
 		card.Position = UDim2.new(0, cardInfo.X, 0, cardInfo.Y)
-		card.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
+		card.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 		card.BackgroundTransparency = 0.92
 		card.BorderSizePixel = 0
 		card.Parent = HubState.MovementPage
@@ -4747,9 +4763,9 @@ end
 
 ThemeObjects.FreeCam.Card = Instance.new("Frame")
 ThemeObjects.FreeCam.Card.Name = "FreeCamCameraCard"
-ThemeObjects.FreeCam.Card.Size = UDim2.new(1, -8, 0, 34)
+ThemeObjects.FreeCam.Card.Size = UDim2.new(1, -8, 0, 38)
 ThemeObjects.FreeCam.Card.Position = UDim2.new(0, 4, 0, 4)
-ThemeObjects.FreeCam.Card.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
+ThemeObjects.FreeCam.Card.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 ThemeObjects.FreeCam.Card.BackgroundTransparency = 0.92
 ThemeObjects.FreeCam.Card.BorderSizePixel = 0
 ThemeObjects.FreeCam.Card.Parent = ThemeObjects.CameraPage
@@ -4758,9 +4774,9 @@ Instance.new("UICorner", ThemeObjects.FreeCam.Card).CornerRadius = UDim.new(0, 6
 
 ThemeObjects.CameraFOV = {Card = Instance.new("Frame")}
 ThemeObjects.CameraFOV.Card.Name = "FOVCameraCard"
-ThemeObjects.CameraFOV.Card.Size = UDim2.new(1, -8, 0, 34)
+ThemeObjects.CameraFOV.Card.Size = UDim2.new(1, -8, 0, 38)
 ThemeObjects.CameraFOV.Card.Position = UDim2.new(0, 4, 0, 46)
-ThemeObjects.CameraFOV.Card.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
+ThemeObjects.CameraFOV.Card.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 ThemeObjects.CameraFOV.Card.BackgroundTransparency = 0.92
 ThemeObjects.CameraFOV.Card.BorderSizePixel = 0
 ThemeObjects.CameraFOV.Card.Parent = ThemeObjects.CameraPage
