@@ -6117,7 +6117,7 @@ ThemeObjects.SwitchTab = function(name)
 	local headerY = 32
 	local slideDistance = 18
 	local headerSlideDistance = 18
-	local slideTime = 0.24
+	local slideTime = 0.18
 	local slideTweenInfo = TweenInfo.new(slideTime, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 	local headerTweenInfo = TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 	local openingSelectedGame = name == "Games" and HubState.SelectedGame ~= nil
@@ -6216,12 +6216,18 @@ ThemeObjects.SwitchTab = function(name)
 		incomingPage.Position = UDim2.new(0, activeX, 0, activeY + (slideDistance * direction))
 		outgoingPage.Visible = true
 		outgoingPage.Position = UDim2.new(0, activeX, 0, activeY)
-		TweenService:Create(outgoingPage, slideTweenInfo, {Position = UDim2.new(0, activeX, 0, activeY - (slideDistance * direction))}):Play()
+		setPageContentTransparency(outgoingPage, 0.85)
+		task.delay(0.035, function()
+			if ThemeObjects.TabTransitionId == transitionId and outgoingPage and outgoingPage.Parent and outgoingPage ~= HubState.ActiveContentPage then
+				outgoingPage.Visible = false
+				outgoingPage.Position = UDim2.new(1.1, 0, 0, activeY)
+				restorePageContentTransparency(outgoingPage)
+			end
+		end)
 		task.spawn(function()
 			local startedAt = os.clock()
 			while ThemeObjects.TabTransitionId == transitionId and os.clock() - startedAt < slideTime do
 				local alpha = math.clamp((os.clock() - startedAt) / slideTime, 0, 1)
-				setPageContentTransparency(outgoingPage, alpha)
 				setPageContentTransparency(incomingPage, 1 - alpha)
 				RunService.RenderStepped:Wait()
 			end
@@ -6231,13 +6237,6 @@ ThemeObjects.SwitchTab = function(name)
 		end)
 		local incomingTween = TweenService:Create(incomingPage, slideTweenInfo, {Position = UDim2.new(0, activeX, 0, activeY)})
 		incomingTween:Play()
-		task.delay(slideTime + 0.02, function()
-			if ThemeObjects.TabTransitionId == transitionId and outgoingPage and outgoingPage.Parent and outgoingPage ~= HubState.ActiveContentPage then
-				outgoingPage.Visible = false
-				outgoingPage.Position = UDim2.new(1.1, 0, 0, activeY)
-				restorePageContentTransparency(outgoingPage)
-			end
-		end)
 	else
 		restorePageContentTransparency(incomingPage)
 		incomingPage.Position = UDim2.new(0, activeX, 0, activeY)
