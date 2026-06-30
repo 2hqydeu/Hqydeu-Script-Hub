@@ -249,7 +249,7 @@ local TargetTextureGradient
 
 -- Sound Effects
 local ClickSound = Instance.new("Sound")
-ClickSound.SoundId = "rbxassetid://6895079853"
+ClickSound.SoundId = "rbxassetid://88442833509532"
 ClickSound.Volume = 0.5
 ClickSound.Parent = MainFrame
 
@@ -478,14 +478,14 @@ HubState.ToggleOffSound.Volume = 0.55
 HubState.ToggleOffSound.Parent = MainFrame
 
 ThemeObjects.ApplyMainGradient = function(intensity)
-	intensity = math.clamp(intensity or 0.5, 0, 0.75)
+	intensity = math.clamp(intensity or 0.5, 0, 0.95)
 	local bgColor = FrameThemeColor
 	MainTextureGradient.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, bgColor:Lerp(Color3.new(0, 0, 0), 0.08)),
-		ColorSequenceKeypoint.new(0.18, bgColor:Lerp(AccentColor, intensity * 0.48)),
-		ColorSequenceKeypoint.new(0.48, bgColor:Lerp(AccentColor, intensity)),
-		ColorSequenceKeypoint.new(0.73, bgColor:Lerp(AccentColor, intensity * 0.84)),
-		ColorSequenceKeypoint.new(1, bgColor:Lerp(AccentColor, intensity * 0.36)),
+		ColorSequenceKeypoint.new(0, bgColor:Lerp(Color3.new(0, 0, 0), 0.04)),
+		ColorSequenceKeypoint.new(0.14, bgColor:Lerp(AccentColor, intensity * 0.58)),
+		ColorSequenceKeypoint.new(0.46, bgColor:Lerp(AccentColor, intensity)),
+		ColorSequenceKeypoint.new(0.72, bgColor:Lerp(AccentColor, intensity * 0.92)),
+		ColorSequenceKeypoint.new(1, bgColor:Lerp(AccentColor, intensity * 0.5)),
 	})
 	if TargetTextureGradient then TargetTextureGradient.Color = MainTextureGradient.Color end
 	if ThemeObjects.PlayerTP and ThemeObjects.PlayerTP.Gradient then ThemeObjects.PlayerTP.Gradient.Color = MainTextureGradient.Color end
@@ -674,6 +674,48 @@ ThemeObjects.AttachHoverSound = function(obj)
 	obj:SetAttribute("HoverSoundAttached", true)
 	obj.MouseEnter:Connect(function()
 		PlayHover()
+		obj:SetAttribute("HoverBaseTransparency", obj.BackgroundTransparency)
+		obj:SetAttribute("HoverBaseR", obj.BackgroundColor3.R)
+		obj:SetAttribute("HoverBaseG", obj.BackgroundColor3.G)
+		obj:SetAttribute("HoverBaseB", obj.BackgroundColor3.B)
+		local hoverColor = obj.BackgroundColor3:Lerp(AccentColor, obj.Text == "On" and 0.18 or 0.32)
+		local hoverTransparency = math.max(0, obj.BackgroundTransparency - 0.22)
+		TweenService:Create(obj, TweenInfo.new(0.1, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+			BackgroundColor3 = hoverColor,
+			BackgroundTransparency = hoverTransparency
+		}):Play()
+		local outline = obj:FindFirstChild("ControlOutline")
+		if outline and outline:IsA("UIStroke") then
+			outline:SetAttribute("HoverBaseThickness", outline.Thickness)
+			outline:SetAttribute("HoverBaseTransparency", outline.Transparency)
+			TweenService:Create(outline, TweenInfo.new(0.1, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+				Thickness = math.max(outline.Thickness, 1.6),
+				Transparency = 0
+			}):Play()
+		end
+	end)
+	obj.MouseLeave:Connect(function()
+		local baseR = obj:GetAttribute("HoverBaseR")
+		local baseG = obj:GetAttribute("HoverBaseG")
+		local baseB = obj:GetAttribute("HoverBaseB")
+		local baseTransparency = obj:GetAttribute("HoverBaseTransparency")
+		if baseR and baseG and baseB and baseTransparency then
+			TweenService:Create(obj, TweenInfo.new(0.14, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+				BackgroundColor3 = Color3.new(baseR, baseG, baseB),
+				BackgroundTransparency = baseTransparency
+			}):Play()
+		end
+		local outline = obj:FindFirstChild("ControlOutline")
+		if outline and outline:IsA("UIStroke") then
+			local baseThickness = outline:GetAttribute("HoverBaseThickness")
+			local baseStrokeTransparency = outline:GetAttribute("HoverBaseTransparency")
+			if baseThickness and baseStrokeTransparency then
+				TweenService:Create(outline, TweenInfo.new(0.14, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+					Thickness = baseThickness,
+					Transparency = baseStrokeTransparency
+				}):Play()
+			end
+		end
 	end)
 end
 
@@ -885,7 +927,7 @@ HubState.Connections.GradientPulse = RunService.Heartbeat:Connect(function(delta
 	if ThemeObjects.GradientPulseAccumulator < 0.05 then return end
 	ThemeObjects.GradientPulseAccumulator = 0
 	if type(ThemeObjects.ApplyMainGradient) == "function" then
-		local pulse = 0.3 + ((math.sin(ThemeObjects.GradientPulseTime * 1.75) + 1) * 0.225)
+		local pulse = 0.42 + ((math.sin(ThemeObjects.GradientPulseTime * 1.65) + 1) * 0.255)
 		pcall(ThemeObjects.ApplyMainGradient, pulse)
 	end
 end)
