@@ -2401,21 +2401,8 @@ do
 		pcall(function() attackRemote:FireServer() end)
 	end)
 
-	local function IsQuietOrDieEmoteSound(sound)
-		if not sound or not sound:IsA("Sound") then return false end
-		local emoteObject = Player:FindFirstChild("Emote")
-		if sound == emoteObject or (emoteObject and sound:IsDescendantOf(emoteObject)) then return true end
-		local current = sound
-		while current and current ~= game do
-			local lowerName = string.lower(current.Name or "")
-			if lowerName:find("emote", 1, true) or lowerName:find("taunt", 1, true) then return true end
-			current = current.Parent
-		end
-		return false
-	end
-
 	local function MuteQuietOrDieSound(sound)
-		if not farmState.MuteAudio or not IsQuietOrDieEmoteSound(sound) then return end
+		if not farmState.MuteAudio or not sound or not sound:IsA("Sound") then return end
 		if farmState.MutedSounds[sound] == nil then farmState.MutedSounds[sound] = sound.Volume end
 		sound.Volume = 0
 	end
@@ -2434,12 +2421,12 @@ do
 		local pendingSounds = {}
 		local processing = false
 		local function queueSound(sound)
-			if sound and IsQuietOrDieEmoteSound(sound) then table.insert(pendingSounds, sound) end
+			if sound and sound:IsA("Sound") then table.insert(pendingSounds, sound) end
 			if processing then return end
 			processing = true
 			task.spawn(function()
 				while #pendingSounds > 0 and farmState.MuteAudio do
-					for _ = 1, 25 do
+					for _ = 1, 8 do
 						local nextSound = table.remove(pendingSounds, 1)
 						if not nextSound then break end
 						MuteQuietOrDieSound(nextSound)
@@ -2449,37 +2436,41 @@ do
 				processing = false
 			end)
 		end
-
-		local roots = {Player:FindFirstChild("Emote"), Player.Character, Player:FindFirstChildOfClass("PlayerGui")}
-		for _, rootObject in ipairs(roots) do
-			if rootObject then
-				if rootObject:IsA("Sound") then queueSound(rootObject) end
-				for _, object in ipairs(rootObject:GetDescendants()) do
-					if object:IsA("Sound") then queueSound(object) end
-				end
-				table.insert(farmState.AudioConnections, rootObject.DescendantAdded:Connect(function(object)
-					if object:IsA("Sound") then queueSound(object) end
-				end))
+		local function watchRoot(rootObject, scanExisting)
+			if not rootObject then return end
+			if rootObject:IsA("Sound") then queueSound(rootObject) end
+			if scanExisting then
+				task.spawn(function()
+					local stack = rootObject:GetChildren()
+					local scanned = 0
+					while #stack > 0 and farmState.MuteAudio do
+						local object = table.remove(stack)
+						if not farmState.MuteAudio then break end
+						if object:IsA("Sound") then queueSound(object) end
+						for _, child in ipairs(object:GetChildren()) do
+							table.insert(stack, child)
+						end
+						scanned = scanned + 1
+						if scanned % 60 == 0 then task.wait() end
+					end
+				end)
 			end
+			table.insert(farmState.AudioConnections, rootObject.DescendantAdded:Connect(function(object)
+				if object:IsA("Sound") then queueSound(object) end
+			end))
+		end
+
+		local roots = {Player:FindFirstChild("Emote"), Player.Character, Player:FindFirstChildOfClass("PlayerGui"), workspace.CurrentCamera, game:GetService("SoundService"), workspace}
+		for _, rootObject in ipairs(roots) do
+			watchRoot(rootObject, true)
 		end
 		table.insert(farmState.AudioConnections, Player.ChildAdded:Connect(function(object)
 			if object.Name == "Emote" then
-				if object:IsA("Sound") then queueSound(object) end
-				for _, descendant in ipairs(object:GetDescendants()) do
-					if descendant:IsA("Sound") then queueSound(descendant) end
-				end
-				table.insert(farmState.AudioConnections, object.DescendantAdded:Connect(function(descendant)
-					if descendant:IsA("Sound") then queueSound(descendant) end
-				end))
+				watchRoot(object, true)
 			end
 		end))
 		table.insert(farmState.AudioConnections, Player.CharacterAdded:Connect(function(character)
-			for _, descendant in ipairs(character:GetDescendants()) do
-				if descendant:IsA("Sound") then queueSound(descendant) end
-			end
-			table.insert(farmState.AudioConnections, character.DescendantAdded:Connect(function(descendant)
-				if descendant:IsA("Sound") then queueSound(descendant) end
-			end))
+			watchRoot(character, true)
 		end))
 	end
 
@@ -3168,14 +3159,28 @@ local function FlingPlayer(targetPlayer)
 	local originalRootCollision = root.CanCollide
 	local originalAngularVelocity = root.AssemblyAngularVelocity
 	local originalLinearVelocity = root.AssemblyLinearVelocity
+	local originalPartStates = {}
 	local movers = {}
 	humanoid.AutoRotate = false
 	humanoid.PlatformStand = true
+	pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Physics) end)
 	root.CanCollide = true
+	for _, part in ipairs(character:GetDescendants()) do
+		if part:IsA("BasePart") then
+			originalPartStates[part] = {
+				CanCollide = part.CanCollide,
+				Massless = part.Massless,
+				CustomPhysicalProperties = part.CustomPhysicalProperties,
+			}
+			part.CanCollide = true
+			part.Massless = false
+			part.CustomPhysicalProperties = PhysicalProperties.new(100, 0.3, 0.5)
+		end
+	end
 
 	local angularVelocity = Instance.new("BodyAngularVelocity")
 	angularVelocity.Name = "R15FlingVelocity"
-	angularVelocity.AngularVelocity = Vector3.new(0, 1200000, 0)
+	angularVelocity.AngularVelocity = Vector3.new(0, 9000000, 0)
 	angularVelocity.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
 	angularVelocity.P = math.huge
 	angularVelocity.Parent = root
@@ -3193,6 +3198,13 @@ local function FlingPlayer(targetPlayer)
 		for _, mover in ipairs(movers) do
 			if mover and mover.Parent then mover:Destroy() end
 		end
+		for part, state in pairs(originalPartStates) do
+			if part and part.Parent then
+				part.CanCollide = state.CanCollide
+				part.Massless = state.Massless
+				part.CustomPhysicalProperties = state.CustomPhysicalProperties
+			end
+		end
 		if root and root.Parent then
 			root.CanCollide = originalRootCollision
 			root.AssemblyAngularVelocity = originalAngularVelocity
@@ -3202,6 +3214,7 @@ local function FlingPlayer(targetPlayer)
 		if humanoid and humanoid.Parent then
 			humanoid.AutoRotate = originalAutoRotate
 			humanoid.PlatformStand = originalPlatformStand
+			pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end)
 		end
 		HubState.Flinging = false
 	end
@@ -3211,30 +3224,36 @@ local function FlingPlayer(targetPlayer)
 			or targetCharacter:FindFirstChild("Torso")
 			or targetCharacter:FindFirstChild("LowerTorso")
 			or targetRoot
-		local offsets = {
-			CFrame.new(0, 0, 0),
-			CFrame.new(0.85, 0, 0),
-			CFrame.new(-0.85, 0, 0),
-			CFrame.new(0, 0, 0.85),
-			CFrame.new(0, 0, -0.85),
-			CFrame.new(0, 1.15, 0),
-			CFrame.new(0, -0.95, 0),
-			CFrame.new(0.55, 0.55, 0.55),
-			CFrame.new(-0.55, 0.55, -0.55),
-		}
+		local yOffsets = {0, 1.15, -0.85, 0.45, -0.35}
+		local radiusSteps = {0.1, 0.65, 1.25, 0.35, 0.95}
 		local startedAt = os.clock()
 		local step = 0
-		while os.clock() - startedAt < 2.35 and targetRoot.Parent and targetHumanoid.Health > 0 and root.Parent and humanoid.Health > 0 do
+		local lastHardPass = 0
+		while os.clock() - startedAt < 3.65 and targetRoot.Parent and targetHumanoid.Health > 0 and root.Parent and humanoid.Health > 0 do
 			step += 1
-			local prediction = targetRoot.AssemblyLinearVelocity * 0.045
-			local spinAngle = step * 0.72
-			local targetCFrame = targetContactPart.CFrame + prediction
-			local offset = offsets[((step - 1) % #offsets) + 1]
-			root.CFrame = targetCFrame * CFrame.Angles(0, spinAngle, 0) * offset
-			root.AssemblyAngularVelocity = Vector3.new(0, 1200000, 0)
-			root.AssemblyLinearVelocity = targetRoot.AssemblyLinearVelocity + Vector3.new(0, 35, 0)
-			bodyVelocity.Velocity = targetRoot.AssemblyLinearVelocity + Vector3.new(0, 65, 0)
-			if os.clock() - startedAt > 0.55 and targetRoot.AssemblyLinearVelocity.Magnitude > 115 then break end
+			targetContactPart = targetCharacter:FindFirstChild("UpperTorso")
+				or targetCharacter:FindFirstChild("Torso")
+				or targetCharacter:FindFirstChild("LowerTorso")
+				or targetRoot
+			local targetPosition = targetContactPart.Position + (targetRoot.AssemblyLinearVelocity * 0.13)
+			local angle = step * 1.75
+			local radius = radiusSteps[((step - 1) % #radiusSteps) + 1]
+			local yOffset = yOffsets[((step - 1) % #yOffsets) + 1]
+			local orbitOffset = Vector3.new(math.cos(angle) * radius, yOffset, math.sin(angle) * radius)
+			local passPosition = targetPosition + orbitOffset
+			root.CFrame = CFrame.lookAt(passPosition, targetPosition) * CFrame.Angles(math.rad(90), 0, 0)
+			local pushDirection = (targetPosition - root.Position)
+			if pushDirection.Magnitude < 0.05 then pushDirection = Vector3.new(0, 1, 0) end
+			local verticalBoost = Vector3.new(0, (step % 2 == 0) and 220 or -90, 0)
+			local pushVelocity = pushDirection.Unit * 620 + targetRoot.AssemblyLinearVelocity + verticalBoost
+			if os.clock() - lastHardPass >= 0.12 then
+				lastHardPass = os.clock()
+				pushVelocity = pushVelocity + Vector3.new(0, 420, 0)
+			end
+			root.AssemblyAngularVelocity = Vector3.new(0, 9000000, 0)
+			root.AssemblyLinearVelocity = pushVelocity
+			bodyVelocity.Velocity = pushVelocity
+			if os.clock() - startedAt > 0.85 and targetRoot.AssemblyLinearVelocity.Magnitude > 180 then break end
 			RunService.Heartbeat:Wait()
 		end
 	end)
@@ -6078,15 +6097,15 @@ HubState.MiniButton.MouseButton1Click:Connect(ToggleGUI)
 HubState.Connections.InputBegan = UserInputService.InputBegan:Connect(function(input, processed)
 	if processed or HubState.IsBindingSpeed or HubState.IsBindingFly or HubState.IsBindingNoclip or ThemeObjects.FreeCam.Binding or HubState.IsBindingAutoLock or HubState.IsBindingESP or HubState.IsBindingFlingMenu or ThemeObjects.PlayerTP.Binding or HubState.IsBindingKeybindEditor then return end
 	if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
-	if input.KeyCode == HubState.SpeedKeybind then ToggleSpeed()
+	if ThemeObjects.RunFeatureKeybind and ThemeObjects.RunFeatureKeybind(input.KeyCode) then return
+	elseif input.KeyCode == HubState.SpeedKeybind then ToggleSpeed()
 	elseif input.KeyCode == HubState.FlyKeybind then ToggleFly()
 	elseif input.KeyCode == HubState.NoclipKeybind then ToggleNoclip()
 	elseif input.KeyCode == ThemeObjects.FreeCam.Keybind then ThemeObjects.FreeCam.ToggleState()
 	elseif input.KeyCode == HubState.AutoLockKeybind then ToggleAutoLock()
-    elseif input.KeyCode == HubState.ESPKeybind then ToggleESP()
+	elseif input.KeyCode == HubState.ESPKeybind then ToggleESP()
 	elseif input.KeyCode == HubState.FlingMenuKeybind then ToggleFlingMenu()
 	elseif input.KeyCode == ThemeObjects.PlayerTP.Keybind then ThemeObjects.PlayerTP.Toggle()
-	elseif ThemeObjects.RunFeatureKeybind and ThemeObjects.RunFeatureKeybind(input.KeyCode) then return
     elseif input.KeyCode == HubState.MinimizeKeybind then ToggleGUI() 
     end
 end)
@@ -6868,13 +6887,14 @@ end
 
 ThemeObjects.RunFeatureKeybind = function(keyCode)
 	if keyCode == Enum.KeyCode.Unknown then return false end
+	local ranAny = false
 	for _, entry in ipairs(ThemeObjects.BuildKeybindEditorEntries()) do
 		if entry.Action and entry.Get and entry.Get() == keyCode then
-			entry.Action()
-			return true
+			ranAny = true
+			pcall(entry.Action)
 		end
 	end
-	return false
+	return ranAny
 end
 
 ThemeObjects.RefreshKeybindEditor = function()
