@@ -4885,8 +4885,28 @@ FindPlayerByNameText = function(text)
 	return nil
 end
 
+ThemeObjects.ObjectPathHasRole = function(object, roleName)
+	if not object or type(roleName) ~= "string" then return false end
+	local lowerRole = roleName:lower()
+	local current = object
+	while current and current ~= game do
+		local objectName = current.Name and current.Name:lower() or ""
+		if objectName:find(lowerRole, 1, true) then return true end
+		current = current.Parent
+	end
+	return false
+end
+
 local function FindRoleHolderFromReplicatedClues(roleName)
-	local roots = {game:GetService("ReplicatedStorage"), Player:FindFirstChildOfClass("PlayerGui")}
+	local replicatedStorage = game:GetService("ReplicatedStorage")
+	local playerGui = Player:FindFirstChildOfClass("PlayerGui")
+	local roots = {replicatedStorage, playerGui}
+	local mainGui = replicatedStorage:FindFirstChild("MainGUI")
+	if mainGui then
+		local gameGui = mainGui:FindFirstChild("Game")
+		local roleSelector = gameGui and gameGui:FindFirstChild("RoleSelector")
+		if roleSelector then table.insert(roots, 1, roleSelector) end
+	end
 	local checked = 0
 	for _, rootObject in ipairs(roots) do
 		if rootObject then
@@ -4895,8 +4915,14 @@ local function FindRoleHolderFromReplicatedClues(roleName)
 				local object = table.remove(stack)
 				checked += 1
 				local lowerName = object.Name:lower()
-				if lowerName:find(roleName:lower(), 1, true) then
+				local roleNamedObject = lowerName:find(roleName:lower(), 1, true) or ThemeObjects.ObjectPathHasRole(object.Parent, roleName)
+				if roleNamedObject then
 					if object:IsA("ObjectValue") and object.Value and object.Value:IsA("Player") then return object.Value end
+					if object:IsA("IntValue") or object:IsA("NumberValue") then
+						for _, targetPlayer in ipairs(Players:GetPlayers()) do
+							if targetPlayer.UserId == object.Value then return targetPlayer end
+						end
+					end
 					if object:IsA("StringValue") then
 						local found = FindPlayerByNameText(tostring(object.Value))
 						if found then return found end
@@ -4949,16 +4975,115 @@ local function UpdateRoleAvatar(imageLabel, targetPlayer, roleName)
 	end)
 end
 
+ThemeObjects.SetMM2RoleFromClue = function(roleName, targetPlayer)
+	if not targetPlayer or not targetPlayer:IsA("Player") then return false end
+	if roleName == "Murderer" then
+		HubState.CurrentMurderer = targetPlayer
+		if HubState.LastMurdererAvatarId ~= targetPlayer.UserId then
+			HubState.LastMurdererAvatarId = targetPlayer.UserId
+			UpdateRoleAvatar(HubState.MurdererAvatar, targetPlayer, "Murderer")
+		end
+	elseif roleName == "Sheriff" then
+		HubState.CurrentSheriff = targetPlayer
+		if HubState.LastSheriffAvatarId ~= targetPlayer.UserId then
+			HubState.LastSheriffAvatarId = targetPlayer.UserId
+			UpdateRoleAvatar(HubState.SheriffAvatar, targetPlayer, "Sheriff")
+		end
+	else
+		return false
+	end
+	HubState.MurdererRoleLabel.Text = "Murderer: " .. FormatRolePlayer(HubState.CurrentMurderer)
+	HubState.SheriffRoleLabel.Text = "Sheriff: " .. FormatRolePlayer(HubState.CurrentSheriff)
+	UpdateRoleHighlights()
+	return true
+end
+
+ThemeObjects.ResolvePlayerFromRolePayload = function(...)
+	local seen = {}
+	local function resolve(value, depth)
+		if depth > 4 or value == nil then return nil end
+		local valueType = typeof(value)
+		if valueType == "Instance" then
+			if value:IsA("Player") then return value end
+			if value:IsA("ObjectValue") then return resolve(value.Value, depth + 1) end
+			if value:IsA("StringValue") then return FindPlayerByNameText(tostring(value.Value)) end
+			if value:IsA("IntValue") or value:IsA("NumberValue") then
+				for _, targetPlayer in ipairs(Players:GetPlayers()) do
+					if targetPlayer.UserId == value.Value then return targetPlayer end
+				end
+			end
+			if value:IsA("TextLabel") or value:IsA("TextButton") then return FindPlayerByNameText(value.Text) end
+			return FindPlayerByNameText(value.Name)
+		elseif valueType == "string" then
+			return FindPlayerByNameText(value)
+		elseif valueType == "number" then
+			for _, targetPlayer in ipairs(Players:GetPlayers()) do
+				if targetPlayer.UserId == value then return targetPlayer end
+			end
+		elseif valueType == "table" and not seen[value] then
+			seen[value] = true
+			for key, childValue in pairs(value) do
+				local found = resolve(childValue, depth + 1) or resolve(key, depth + 1)
+				if found then return found end
+			end
+		end
+		return nil
+	end
+	for _, value in ipairs({...}) do
+		local found = resolve(value, 0)
+		if found then return found end
+	end
+	return nil
+end
+
+ThemeObjects.TrySetMM2RoleFromPayload = function(roleName, ...)
+	local found = ThemeObjects.ResolvePlayerFromRolePayload(...)
+	if found then return ThemeObjects.SetMM2RoleFromClue(roleName, found) end
+	return false
+end
+
+ThemeObjects.HookMM2RoleRemotes = function()
+	local replicatedStorage = game:GetService("ReplicatedStorage")
+	local remotes = replicatedStorage:FindFirstChild("Remotes")
+	local extras = remotes and remotes:FindFirstChild("Extras")
+	local gameplay = remotes and remotes:FindFirstChild("Gameplay")
+	local function connectRemote(connectionName, remoteObject, roleName)
+		if not remoteObject or HubState.Connections[connectionName] then return end
+		if remoteObject:IsA("RemoteEvent") then
+			HubState.Connections[connectionName] = remoteObject.OnClientEvent:Connect(function(...)
+				if roleName then
+					ThemeObjects.TrySetMM2RoleFromPayload(roleName, ...)
+				else
+					task.defer(function()
+						local murderer = FindRoleHolderFromReplicatedClues("Murderer")
+						local sheriff = FindRoleHolderFromReplicatedClues("Sheriff")
+						if murderer then ThemeObjects.SetMM2RoleFromClue("Murderer", murderer) end
+						if sheriff then ThemeObjects.SetMM2RoleFromClue("Sheriff", sheriff) end
+					end)
+				end
+			end)
+		end
+	end
+	connectRemote("MM2SetSheriffRemote", extras and extras:FindFirstChild("SetSheriff"), "Sheriff")
+	connectRemote("MM2SetMurdererRemote", extras and extras:FindFirstChild("SetMurderer"), "Murderer")
+	connectRemote("MM2ShowRoleSelectRemote", gameplay and gameplay:FindFirstChild("ShowRoleSelect"), nil)
+	connectRemote("MM2ShowRoleSelectNewRemote", gameplay and gameplay:FindFirstChild("ShowRoleSelectNew"), nil)
+	connectRemote("MM2RoleSelectRemote", gameplay and gameplay:FindFirstChild("RoleSelect"), nil)
+end
+
 HubState.LastRoleCheck = 0
 HubState.Connections.MM2RoleDetector = RunService.Heartbeat:Connect(function()
 	local now = os.clock()
 	if now - HubState.LastRoleCheck < 0.5 then return end
 	HubState.LastRoleCheck = now
+	ThemeObjects.HookMM2RoleRemotes()
 	local mm2PageActive = HubState.ActiveContentPage == HubState.MM2Page or HubState.SelectedGame == "MM2"
 	local mm2FeatureActive = HubState.KillEnabled or HubState.AutoGunPickupEnabled or HubState.CoinFarmEnabled
 	if not mm2PageActive and not mm2FeatureActive and not HubState.ESPEnabled and not ThemeObjects.DeepESP.Enabled then return end
-	HubState.CurrentMurderer = FindRoleHolder("Knife")
-	HubState.CurrentSheriff = FindRoleHolder("Gun")
+	local foundMurderer = FindRoleHolder("Knife")
+	local foundSheriff = FindRoleHolder("Gun")
+	if foundMurderer then HubState.CurrentMurderer = foundMurderer end
+	if foundSheriff then HubState.CurrentSheriff = foundSheriff end
 	local murdererAvatarId = HubState.CurrentMurderer and HubState.CurrentMurderer.UserId or 0
 	local sheriffAvatarId = HubState.CurrentSheriff and HubState.CurrentSheriff.UserId or 0
 	if murdererAvatarId ~= HubState.LastMurdererAvatarId then
