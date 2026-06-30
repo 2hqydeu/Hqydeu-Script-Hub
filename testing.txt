@@ -4874,14 +4874,6 @@ local function PlayerHasRoleTool(targetPlayer, toolName)
 end
 
 local FindPlayerByNameText
-local function FindPlayerByRoleText(roleName, text)
-	if type(text) ~= "string" or text == "" then return nil end
-	local lowerText = text:lower()
-	local lowerRole = roleName:lower()
-	if not lowerText:find(lowerRole, 1, true) then return nil end
-	return FindPlayerByNameText(text)
-end
-
 FindPlayerByNameText = function(text)
 	if type(text) ~= "string" or text == "" then return nil end
 	local lowerText = text:lower()
@@ -4891,109 +4883,6 @@ FindPlayerByNameText = function(text)
 		if lowerText:find(name, 1, true) or lowerText:find(displayName, 1, true) then
 			return targetPlayer
 		end
-	end
-	return nil
-end
-
-ThemeObjects.ObjectPathHasRole = function(object, roleName)
-	if not object or type(roleName) ~= "string" then return false end
-	local lowerRole = roleName:lower()
-	local current = object
-	while current and current ~= game do
-		local objectName = current.Name and current.Name:lower() or ""
-		if objectName:find(lowerRole, 1, true) then return true end
-		current = current.Parent
-	end
-	return false
-end
-
-ThemeObjects.GetMM2CurrentRoundData = function()
-	if HubState.MM2CurrentRoundClient == false then return nil end
-	if HubState.MM2CurrentRoundClient == nil then
-		local modules = game:GetService("ReplicatedStorage"):FindFirstChild("Modules")
-		local roundModule = modules and modules:FindFirstChild("CurrentRoundClient")
-		if not roundModule then return nil end
-		local success, currentRoundClient = pcall(require, roundModule)
-		HubState.MM2CurrentRoundClient = success and currentRoundClient or false
-	end
-	local currentRoundClient = HubState.MM2CurrentRoundClient
-	if type(currentRoundClient) == "table" and type(currentRoundClient.PlayerData) == "table" then
-		return currentRoundClient.PlayerData
-	end
-	return nil
-end
-
-ThemeObjects.FindMM2RoleFromCurrentRound = function(roleName)
-	local playerData = ThemeObjects.GetMM2CurrentRoundData()
-	if not playerData then return nil end
-	for playerName, roundData in pairs(playerData) do
-		if type(roundData) == "table" then
-			local role = roundData.Role
-			local roleMatches = role == roleName or (roleName == "Sheriff" and role == "Hero")
-			if roleMatches then
-				local found = Players:FindFirstChild(tostring(playerName)) or FindPlayerByNameText(tostring(playerName))
-				if found then return found end
-			end
-		end
-	end
-	return nil
-end
-
-local function FindRoleHolderFromReplicatedClues(roleName)
-	local roundHolder = ThemeObjects.FindMM2RoleFromCurrentRound(roleName)
-	if roundHolder then return roundHolder end
-	local replicatedStorage = game:GetService("ReplicatedStorage")
-	local playerGui = Player:FindFirstChildOfClass("PlayerGui")
-	local roots = {}
-	local mainGui = replicatedStorage:FindFirstChild("MainGUI")
-	if mainGui then
-		local gameGui = mainGui:FindFirstChild("Game")
-		local roleSelector = gameGui and gameGui:FindFirstChild("RoleSelector")
-		if roleSelector then table.insert(roots, roleSelector) end
-	end
-	if playerGui then table.insert(roots, playerGui) end
-	local checked = 0
-	for _, rootObject in ipairs(roots) do
-		if rootObject then
-			local stack = rootObject:GetChildren()
-			while #stack > 0 and checked < 650 do
-				local object = table.remove(stack)
-				checked += 1
-				local lowerName = object.Name:lower()
-				local roleNamedObject = lowerName:find(roleName:lower(), 1, true) or ThemeObjects.ObjectPathHasRole(object.Parent, roleName)
-				if roleNamedObject then
-					if object:IsA("ObjectValue") and object.Value and object.Value:IsA("Player") then return object.Value end
-					if object:IsA("IntValue") or object:IsA("NumberValue") then
-						for _, targetPlayer in ipairs(Players:GetPlayers()) do
-							if targetPlayer.UserId == object.Value then return targetPlayer end
-						end
-					end
-					if object:IsA("StringValue") then
-						local found = FindPlayerByNameText(tostring(object.Value))
-						if found then return found end
-					elseif object:IsA("TextLabel") or object:IsA("TextButton") then
-						local found = FindPlayerByNameText(object.Text)
-						if found then return found end
-					end
-				elseif object:IsA("TextLabel") or object:IsA("TextButton") then
-					local found = FindPlayerByRoleText(roleName, object.Text)
-					if found then return found end
-				end
-				for _, child in ipairs(object:GetChildren()) do
-					table.insert(stack, child)
-				end
-			end
-		end
-	end
-	return nil
-end
-
-local function FindRoleHolder(toolName)
-	local roleName = toolName == "Knife" and "Murderer" or (toolName == "Gun" and "Sheriff" or toolName)
-	local earlyHolder = FindRoleHolderFromReplicatedClues(roleName)
-	if earlyHolder then return earlyHolder end
-	for _, targetPlayer in ipairs(Players:GetPlayers()) do
-		if PlayerHasRoleTool(targetPlayer, toolName) then return targetPlayer end
 	end
 	return nil
 end
@@ -5020,96 +4909,26 @@ local function UpdateRoleAvatar(imageLabel, targetPlayer, roleName)
 	end)
 end
 
-ThemeObjects.EnforceMM2DesktopGui = function(forceRoundEnd)
-	if not UserInputService.KeyboardEnabled then return end
-	local now = os.clock()
-	if not forceRoundEnd and HubState.LastMM2DesktopGuiEnforceAt and now - HubState.LastMM2DesktopGuiEnforceAt < 0.5 then return end
-	HubState.LastMM2DesktopGuiEnforceAt = now
-	local playerGui = Player:FindFirstChildOfClass("PlayerGui")
-	if not playerGui then return end
-
-	local function hasAncestor(object, ancestorName)
-		local current = object.Parent
-		while current and current ~= playerGui do
-			if current.Name == ancestorName then return true end
-			current = current.Parent
-		end
-		return false
+ThemeObjects.RefreshMM2RoleDisplay = function()
+	local murdererAvatarId = HubState.CurrentMurderer and HubState.CurrentMurderer.UserId or 0
+	local sheriffAvatarId = HubState.CurrentSheriff and HubState.CurrentSheriff.UserId or 0
+	if murdererAvatarId ~= HubState.LastMurdererAvatarId then
+		HubState.LastMurdererAvatarId = murdererAvatarId
+		UpdateRoleAvatar(HubState.MurdererAvatar, HubState.CurrentMurderer, "Murderer")
 	end
-
-	if forceRoundEnd and _G then _G.MobileDevice = nil end
-
-	local controlNames = {
-		TouchControls = true,
-		TouchInteractButtons = true,
-		EquipWeapon = true,
-		Throw = true,
-		Perk = true,
-		Knife = true,
-		Gun = true,
-		Crouch = true,
-	}
-	for _, object in ipairs(playerGui:GetDescendants()) do
-		local name = object.Name
-		if name == "TouchInteractButtons" and object:IsA("LayerCollector") then
-			object.Enabled = false
-		elseif object:IsA("GuiObject") and controlNames[name] then
-			if name == "TouchControls" or hasAncestor(object, "TouchControls") or hasAncestor(object, "Game") then
-				object.Visible = false
-			end
-		end
+	if sheriffAvatarId ~= HubState.LastSheriffAvatarId then
+		HubState.LastSheriffAvatarId = sheriffAvatarId
+		UpdateRoleAvatar(HubState.SheriffAvatar, HubState.CurrentSheriff, "Sheriff")
 	end
-
-	if forceRoundEnd then
-		local mainGui = playerGui:FindFirstChild("MainGUI")
-		local gameFrame = mainGui and mainGui:FindFirstChild("Game")
-		if gameFrame then
-			local fade = gameFrame:FindFirstChild("Fade")
-			if fade and fade:IsA("GuiObject") then
-				fade.BackgroundTransparency = 1
-			end
-			local dock = gameFrame:FindFirstChild("Dock")
-			local eventButton = dock and dock:FindFirstChild("Event")
-			if eventButton and eventButton:IsA("GuiObject") then
-				eventButton.Visible = false
-			end
-		end
-	end
+	HubState.MurdererRoleLabel.Text = "Murderer: " .. FormatRolePlayer(HubState.CurrentMurderer)
+	HubState.SheriffRoleLabel.Text = "Sheriff: " .. FormatRolePlayer(HubState.CurrentSheriff)
+	UpdateRoleHighlights()
 end
 
-ThemeObjects.HideMM2TouchButtonsOnDesktop = ThemeObjects.EnforceMM2DesktopGui
-
-ThemeObjects.BeginMM2RoundEndCleanup = function()
-	HubState.MM2RoundCleanupUntil = os.clock() + 4.5
-	ThemeObjects.ClearMM2Roles(true)
-	for _, delayTime in ipairs({0, 0.15, 0.45, 0.9, 1.6, 2.7, 4.2}) do
-		task.delay(delayTime, function()
-			if HubState.MM2RoundCleanupUntil and os.clock() <= HubState.MM2RoundCleanupUntil + 0.5 then
-				ThemeObjects.EnforceMM2DesktopGui(true)
-			end
-		end)
-	end
-end
-
-ThemeObjects.ClearMM2Roles = function(skipGuiCleanup)
-	local now = os.clock()
-	local hadRoles = HubState.CurrentMurderer ~= nil or HubState.CurrentSheriff ~= nil
-		or HubState.LastMurdererAvatarId ~= 0 or HubState.LastSheriffAvatarId ~= 0
-	if not hadRoles and HubState.LastMM2RoleClearAt and now - HubState.LastMM2RoleClearAt < 2 then return end
-	HubState.LastMM2RoleClearAt = now
+ThemeObjects.ClearMM2Roles = function()
 	HubState.CurrentMurderer = nil
 	HubState.CurrentSheriff = nil
-	HubState.LastMurdererAvatarId = 0
-	HubState.LastSheriffAvatarId = 0
-	if HubState.MurdererAvatar then HubState.MurdererAvatar.Image = "" end
-	if HubState.SheriffAvatar then HubState.SheriffAvatar.Image = "" end
-	if HubState.MurdererRoleLabel then HubState.MurdererRoleLabel.Text = "Murderer: Unknown" end
-	if HubState.SheriffRoleLabel then HubState.SheriffRoleLabel.Text = "Sheriff: Unknown" end
-	UpdateRoleHighlights()
-	if not skipGuiCleanup and (hadRoles or not HubState.LastMM2TouchCleanupAt or now - HubState.LastMM2TouchCleanupAt > 3) then
-		HubState.LastMM2TouchCleanupAt = now
-		ThemeObjects.HideMM2TouchButtonsOnDesktop(true)
-	end
+	ThemeObjects.RefreshMM2RoleDisplay()
 end
 
 ThemeObjects.SetMM2RoleFromClue = function(roleName, targetPlayer)
@@ -5130,26 +4949,68 @@ ThemeObjects.SetMM2RoleFromClue = function(roleName, targetPlayer)
 	else
 		return false
 	end
-	HubState.MurdererRoleLabel.Text = "Murderer: " .. FormatRolePlayer(HubState.CurrentMurderer)
-	HubState.SheriffRoleLabel.Text = "Sheriff: " .. FormatRolePlayer(HubState.CurrentSheriff)
-	UpdateRoleHighlights()
+	ThemeObjects.RefreshMM2RoleDisplay()
 	return true
 end
 
-ThemeObjects.GetMM2RoundRoleState = function()
-	local playerData = ThemeObjects.GetMM2CurrentRoundData()
-	if not playerData then return nil, nil, nil end
-	local hasAnyRoundRole = false
-	local hasTrackedRole = false
-	for _, roundData in pairs(playerData) do
+ThemeObjects.GetMM2CurrentRoundClient = function()
+	if HubState.MM2CurrentRoundClient ~= nil then
+		return HubState.MM2CurrentRoundClient ~= false and HubState.MM2CurrentRoundClient or nil
+	end
+	local modules = game:GetService("ReplicatedStorage"):FindFirstChild("Modules")
+	local roundModule = modules and modules:FindFirstChild("CurrentRoundClient")
+	if not roundModule then return nil end
+	local success, currentRoundClient = pcall(require, roundModule)
+	HubState.MM2CurrentRoundClient = success and currentRoundClient or false
+	if success and type(currentRoundClient) == "table" then return currentRoundClient end
+	return nil
+end
+
+ThemeObjects.GetMM2CurrentRoundData = function()
+	local currentRoundClient = ThemeObjects.GetMM2CurrentRoundClient()
+	if type(currentRoundClient) == "table" and type(currentRoundClient.PlayerData) == "table" then
+		return currentRoundClient.PlayerData
+	end
+	return nil
+end
+
+ThemeObjects.ApplyMM2RoleData = function(playerData)
+	if type(playerData) ~= "table" then return false end
+	local murderer = nil
+	local sheriff = nil
+	local sawRole = false
+	for playerName, roundData in pairs(playerData) do
 		if type(roundData) == "table" and type(roundData.Role) == "string" then
-			hasAnyRoundRole = true
-			if roundData.Role == "Murderer" or roundData.Role == "Sheriff" or roundData.Role == "Hero" then
-				hasTrackedRole = true
+			sawRole = true
+			local found = Players:FindFirstChild(tostring(playerName)) or FindPlayerByNameText(tostring(playerName))
+			if found and roundData.Role == "Murderer" then
+				murderer = found
+			elseif found and (roundData.Role == "Sheriff" or roundData.Role == "Hero") then
+				sheriff = found
 			end
 		end
 	end
-	return playerData, hasAnyRoundRole, hasTrackedRole
+	if sawRole then
+		HubState.CurrentMurderer = murderer
+		HubState.CurrentSheriff = sheriff
+		ThemeObjects.RefreshMM2RoleDisplay()
+		return true
+	end
+	return false
+end
+
+ThemeObjects.RefreshMM2RolesFromCurrentRound = function()
+	return ThemeObjects.ApplyMM2RoleData(ThemeObjects.GetMM2CurrentRoundData())
+end
+
+local function FindRoleHolder(toolName)
+	ThemeObjects.RefreshMM2RolesFromCurrentRound()
+	local roleHolder = toolName == "Knife" and HubState.CurrentMurderer or (toolName == "Gun" and HubState.CurrentSheriff or nil)
+	if roleHolder then return roleHolder end
+	for _, targetPlayer in ipairs(Players:GetPlayers()) do
+		if PlayerHasRoleTool(targetPlayer, toolName) then return targetPlayer end
+	end
+	return nil
 end
 
 ThemeObjects.ResolvePlayerFromRolePayload = function(...)
@@ -5227,10 +5088,7 @@ ThemeObjects.HookMM2RoleRemotes = function()
 				else
 					ThemeObjects.SetLocalMM2RoleFromPayload(...)
 					task.defer(function()
-						local murderer = FindRoleHolderFromReplicatedClues("Murderer")
-						local sheriff = FindRoleHolderFromReplicatedClues("Sheriff")
-						if murderer then ThemeObjects.SetMM2RoleFromClue("Murderer", murderer) end
-						if sheriff then ThemeObjects.SetMM2RoleFromClue("Sheriff", sheriff) end
+						ThemeObjects.RefreshMM2RolesFromCurrentRound()
 					end)
 				end
 			end)
@@ -5240,7 +5098,7 @@ ThemeObjects.HookMM2RoleRemotes = function()
 		if not remoteObject or HubState.Connections[connectionName] then return end
 		if remoteObject:IsA("RemoteEvent") then
 			HubState.Connections[connectionName] = remoteObject.OnClientEvent:Connect(function()
-				ThemeObjects.BeginMM2RoundEndCleanup()
+				ThemeObjects.ClearMM2Roles()
 			end)
 		end
 	end
@@ -5253,46 +5111,26 @@ ThemeObjects.HookMM2RoleRemotes = function()
 	connectRoundReset("MM2LoadingMapRemote", gameplay and gameplay:FindFirstChild("LoadingMap"))
 end
 
-HubState.LastRoleCheck = 0
-HubState.Connections.MM2RoleDetector = RunService.Heartbeat:Connect(function()
-	local now = os.clock()
-	if now - HubState.LastRoleCheck < 0.5 then return end
-	HubState.LastRoleCheck = now
-	ThemeObjects.HookMM2RoleRemotes()
-	local mm2PageActive = HubState.ActiveContentPage == HubState.MM2Page or HubState.SelectedGame == "MM2"
-	local mm2FeatureActive = HubState.KillEnabled or HubState.AutoGunPickupEnabled or HubState.CoinFarmEnabled
-	if not mm2PageActive and not mm2FeatureActive and not HubState.ESPEnabled and not ThemeObjects.DeepESP.Enabled then return end
-	local _, hasAnyRoundRole, hasTrackedRole = ThemeObjects.GetMM2RoundRoleState()
-	if hasAnyRoundRole == true and hasTrackedRole == false then
-		ThemeObjects.BeginMM2RoundEndCleanup()
-		return
+ThemeObjects.HookMM2CurrentRound = function()
+	local currentRoundClient = ThemeObjects.GetMM2CurrentRoundClient()
+	if not currentRoundClient or HubState.Connections.MM2CurrentRoundChanged then return end
+	ThemeObjects.RefreshMM2RolesFromCurrentRound()
+	local changedSignal = currentRoundClient.PlayerDataChanged
+	if changedSignal and changedSignal.Event then
+		HubState.Connections.MM2CurrentRoundChanged = changedSignal.Event:Connect(function()
+			ThemeObjects.RefreshMM2RolesFromCurrentRound()
+		end)
 	end
-	local foundMurderer = FindRoleHolder("Knife")
-	local foundSheriff = FindRoleHolder("Gun")
-	if foundMurderer then HubState.CurrentMurderer = foundMurderer end
-	if foundSheriff then HubState.CurrentSheriff = foundSheriff end
-	local murdererAvatarId = HubState.CurrentMurderer and HubState.CurrentMurderer.UserId or 0
-	local sheriffAvatarId = HubState.CurrentSheriff and HubState.CurrentSheriff.UserId or 0
-	if murdererAvatarId ~= HubState.LastMurdererAvatarId then
-		HubState.LastMurdererAvatarId = murdererAvatarId
-		UpdateRoleAvatar(HubState.MurdererAvatar, HubState.CurrentMurderer, "Murderer")
-	end
-	if sheriffAvatarId ~= HubState.LastSheriffAvatarId then
-		HubState.LastSheriffAvatarId = sheriffAvatarId
-		UpdateRoleAvatar(HubState.SheriffAvatar, HubState.CurrentSheriff, "Sheriff")
-	end
-	HubState.MurdererRoleLabel.Text = "Murderer: " .. FormatRolePlayer(HubState.CurrentMurderer)
-	HubState.SheriffRoleLabel.Text = "Sheriff: " .. FormatRolePlayer(HubState.CurrentSheriff)
-	UpdateRoleHighlights()
-end)
+end
 
-HubState.Connections.MM2DesktopGuiGuard = RunService.Heartbeat:Connect(function()
-	local now = os.clock()
-	if not HubState.MM2RoundCleanupUntil or now > HubState.MM2RoundCleanupUntil then return end
-	if HubState.LastMM2DesktopGuiGuardAt and now - HubState.LastMM2DesktopGuiGuardAt < 0.35 then return end
-	HubState.LastMM2DesktopGuiGuardAt = now
-	if game.PlaceId == 142823291 or game.PlaceId == 335132309 or game.PlaceId == 333740520 then
-		ThemeObjects.EnforceMM2DesktopGui(true)
+task.spawn(function()
+	for i = 1, 30 do
+		ThemeObjects.HookMM2RoleRemotes()
+		ThemeObjects.HookMM2CurrentRound()
+		if HubState.Connections.MM2CurrentRoundChanged then
+			break
+		end
+		task.wait(0.25)
 	end
 end)
 
