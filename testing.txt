@@ -954,25 +954,11 @@ HubState.Connections.GradientPulse = RunService.Heartbeat:Connect(function(delta
 	ThemeObjects.GradientPulseTime = ThemeObjects.GradientPulseTime + deltaTime
 	ThemeObjects.GradientPulseAccumulator = ThemeObjects.GradientPulseAccumulator + deltaTime
 	ThemeObjects.ToggleColorAccumulator = ThemeObjects.ToggleColorAccumulator + deltaTime
-	if ThemeObjects.ToggleColorAccumulator >= 0.12 then
+	if ThemeObjects.ToggleColorAccumulator >= 0.25 then
 		ThemeObjects.ToggleColorAccumulator = 0
-		pcall(function()
-			for _, object in ipairs(MainFrame:GetDescendants()) do
-				if object:IsA("TextButton") and (object.Text == "On" or object.Text == "Off")
-					and type(ThemeObjects.RefreshToggleButton) == "function" then
-					ThemeObjects.RefreshToggleButton(object)
-				elseif object:IsA("TextLabel") and object.Parent then
-					local parentName = object.Parent.Name
-					if (parentName:find("Card", 1, true) or parentName:find("Row", 1, true))
-						and not ThemeObjects.IsStateTextObject(object) then
-						object.TextColor3 = Color3.fromRGB(255, 255, 255)
-					end
-				end
-			end
-		end)
 		ThemeObjects.RefreshStateTexts(true)
 	end
-	if ThemeObjects.GradientPulseAccumulator < 0.025 then return end
+	if ThemeObjects.GradientPulseAccumulator < 0.033 then return end
 	ThemeObjects.GradientPulseAccumulator = 0
 	if type(ThemeObjects.ApplyMainGradient) == "function" then
 		local pulse = 0.5 + ((math.sin(ThemeObjects.GradientPulseTime * 1.35) + 1) * 0.25)
@@ -4896,6 +4882,9 @@ HubState.Connections.MM2RoleDetector = RunService.Heartbeat:Connect(function()
 	local now = os.clock()
 	if now - HubState.LastRoleCheck < 0.5 then return end
 	HubState.LastRoleCheck = now
+	local mm2PageActive = HubState.ActiveContentPage == HubState.MM2Page or HubState.SelectedGame == "MM2"
+	local mm2FeatureActive = HubState.KillEnabled or HubState.AutoGunPickupEnabled or HubState.CoinFarmEnabled
+	if not mm2PageActive and not mm2FeatureActive and not HubState.ESPEnabled and not ThemeObjects.DeepESP.Enabled then return end
 	HubState.CurrentMurderer = FindRoleHolder("Knife")
 	HubState.CurrentSheriff = FindRoleHolder("Gun")
 	local murdererAvatarId = HubState.CurrentMurderer and HubState.CurrentMurderer.UserId or 0
@@ -6115,6 +6104,7 @@ HubState.TabNames = {"Movement", "Combat", "Camera", "Teleport", "Games", "Extra
 ThemeObjects.ActiveTabName = "Movement"
 HubState.ActiveContentPage = HubState.MovementPage
 HubState.ActiveTabIndex = 1
+ThemeObjects.TabTransitionId = 0
 ThemeObjects.SwitchTab = function(name)
 	if HubState.settingsOpen then ToggleSettings(true) end
 	if ThemeObjects.CloseTransientPopups then ThemeObjects.CloseTransientPopups() end
@@ -6127,20 +6117,32 @@ ThemeObjects.SwitchTab = function(name)
 	local headerY = 32
 	local slideDistance = 92
 	local headerSlideDistance = 18
-	local slideTime = 0.38
+	local slideTime = 0.42
+	local slideTweenInfo = TweenInfo.new(slideTime, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+	local headerTweenInfo = TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 	local openingSelectedGame = name == "Games" and HubState.SelectedGame ~= nil
 	local quietPage = MainFrame:FindFirstChild("QuietOrDiePage")
 	local extrasPage = MainFrame:FindFirstChild("ExtrasPage")
 	local incomingPage = HubState.MovementPage
+	ThemeObjects.TabTransitionId += 1
+	local transitionId = ThemeObjects.TabTransitionId
 
 	ThemeObjects.ActiveTabName = name
 	HubState.ActiveTabIndex = nextIndex
 	HubState.PageHeader.Text = openingSelectedGame and HubState.SelectedGame or name
 	HubState.PageHeader.Position = UDim2.new(0, headerX, 0, headerY + (headerSlideDistance * direction))
-	HubState.PageHeader:TweenPosition(UDim2.new(0, headerX, 0, headerY), "Out", "Quart", slideTime, true)
+	TweenService:Create(HubState.PageHeader, headerTweenInfo, {Position = UDim2.new(0, headerX, 0, headerY)}):Play()
 	HubState.MM2BackButton.Visible = openingSelectedGame
 	if HubState.GamesTabButton then
 		HubState.GamesTabButton.Text = HubState.SelectedGame or "Games"
+	end
+	if HubState.TabScroll then
+		for _, tabButton in ipairs(HubState.TabScroll:GetChildren()) do
+			if tabButton:IsA("TextButton") then
+				local selected = tabButton.Text == name or (tabButton == HubState.GamesTabButton and name == "Games")
+				tabButton.TextColor3 = selected and AccentColor or Color3.fromRGB(255, 255, 255)
+			end
+		end
 	end
 
 	if name == "Teleport" and not ThemeObjects.PlayerListReady then UpdatePlayerList() end
@@ -6176,14 +6178,25 @@ ThemeObjects.SwitchTab = function(name)
 	incomingPage.Visible = true
 	if outgoingPage and outgoingPage ~= incomingPage and outgoingPage.Parent then
 		incomingPage.Position = UDim2.new(0, activeX, 0, activeY + (slideDistance * direction))
-		outgoingPage.Visible = false
-		outgoingPage.Position = UDim2.new(1.1, 0, 0, activeY)
-		incomingPage:TweenPosition(UDim2.new(0, activeX, 0, activeY), "Out", "Quart", slideTime, true)
+		outgoingPage.Visible = true
+		outgoingPage.Position = UDim2.new(0, activeX, 0, activeY)
+		TweenService:Create(outgoingPage, slideTweenInfo, {Position = UDim2.new(0, activeX, 0, activeY - (slideDistance * direction))}):Play()
+		local incomingTween = TweenService:Create(incomingPage, slideTweenInfo, {Position = UDim2.new(0, activeX, 0, activeY)})
+		incomingTween:Play()
+		task.delay(slideTime + 0.02, function()
+			if ThemeObjects.TabTransitionId == transitionId and outgoingPage and outgoingPage.Parent and outgoingPage ~= HubState.ActiveContentPage then
+				outgoingPage.Visible = false
+				outgoingPage.Position = UDim2.new(1.1, 0, 0, activeY)
+			end
+		end)
 	else
 		incomingPage.Position = UDim2.new(0, activeX, 0, activeY)
 	end
 	HubState.ActiveContentPage = incomingPage
-	UpdateTheme(true)
+	ThemeObjects.RefreshStateTexts(true)
+	task.delay(slideTime + 0.04, function()
+		if ThemeObjects.TabTransitionId == transitionId then UpdateTheme(true) end
+	end)
 end
 for i, name in ipairs(HubState.TabNames) do
 	local TabBtn = Instance.new("TextButton")
