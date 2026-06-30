@@ -2392,8 +2392,21 @@ do
 		pcall(function() attackRemote:FireServer() end)
 	end)
 
+	local function IsQuietOrDieEmoteSound(sound)
+		if not sound or not sound:IsA("Sound") then return false end
+		local emoteObject = Player:FindFirstChild("Emote")
+		if sound == emoteObject or (emoteObject and sound:IsDescendantOf(emoteObject)) then return true end
+		local current = sound
+		while current and current ~= game do
+			local lowerName = string.lower(current.Name or "")
+			if lowerName:find("emote", 1, true) or lowerName:find("taunt", 1, true) then return true end
+			current = current.Parent
+		end
+		return false
+	end
+
 	local function MuteQuietOrDieSound(sound)
-		if not farmState.MuteAudio or not sound:IsA("Sound") then return end
+		if not farmState.MuteAudio or not IsQuietOrDieEmoteSound(sound) then return end
 		if farmState.MutedSounds[sound] == nil then farmState.MutedSounds[sound] = sound.Volume end
 		sound.Volume = 0
 	end
@@ -2412,7 +2425,7 @@ do
 		local pendingSounds = {}
 		local processing = false
 		local function queueSound(sound)
-			if sound and sound:IsA("Sound") then table.insert(pendingSounds, sound) end
+			if sound and IsQuietOrDieEmoteSound(sound) then table.insert(pendingSounds, sound) end
 			if processing then return end
 			processing = true
 			task.spawn(function()
@@ -2428,9 +2441,10 @@ do
 			end)
 		end
 
-		local roots = {Player.Character, Player:FindFirstChildOfClass("PlayerGui"), workspace.CurrentCamera, game:GetService("SoundService")}
+		local roots = {Player:FindFirstChild("Emote"), Player.Character, Player:FindFirstChildOfClass("PlayerGui")}
 		for _, rootObject in ipairs(roots) do
 			if rootObject then
+				if rootObject:IsA("Sound") then queueSound(rootObject) end
 				for _, object in ipairs(rootObject:GetDescendants()) do
 					if object:IsA("Sound") then queueSound(object) end
 				end
@@ -2439,8 +2453,24 @@ do
 				end))
 			end
 		end
-		table.insert(farmState.AudioConnections, workspace.DescendantAdded:Connect(function(object)
-			if object:IsA("Sound") then queueSound(object) end
+		table.insert(farmState.AudioConnections, Player.ChildAdded:Connect(function(object)
+			if object.Name == "Emote" then
+				if object:IsA("Sound") then queueSound(object) end
+				for _, descendant in ipairs(object:GetDescendants()) do
+					if descendant:IsA("Sound") then queueSound(descendant) end
+				end
+				table.insert(farmState.AudioConnections, object.DescendantAdded:Connect(function(descendant)
+					if descendant:IsA("Sound") then queueSound(descendant) end
+				end))
+			end
+		end))
+		table.insert(farmState.AudioConnections, Player.CharacterAdded:Connect(function(character)
+			for _, descendant in ipairs(character:GetDescendants()) do
+				if descendant:IsA("Sound") then queueSound(descendant) end
+			end
+			table.insert(farmState.AudioConnections, character.DescendantAdded:Connect(function(descendant)
+				if descendant:IsA("Sound") then queueSound(descendant) end
+			end))
 		end))
 	end
 
@@ -2463,7 +2493,7 @@ do
 		end)
 	end
 
-	HubState.Connections.QuietOrDieAutoFarm = RunService.RenderStepped:Connect(function()
+	HubState.Connections.QuietOrDieAutoFarm = RunService.Heartbeat:Connect(function()
 		if not farmState.Enabled then return end
 		if not IsQuietOrDieSurvivor() then return end
 		local character = Player.Character
@@ -2475,7 +2505,9 @@ do
 			root.CFrame = CFrame.new(-82, 53, -145)
 			root.AssemblyLinearVelocity = Vector3.new(0, -3, 0)
 		end
-		if TriggerQuietOrDieTaunt() then farmState.LastEmote = os.clock() end
+		local now = os.clock()
+		if farmState.LastEmote ~= 0 and now - farmState.LastEmote < 0.18 then return end
+		if TriggerQuietOrDieTaunt() then farmState.LastEmote = now end
 	end)
 
 	HubState.Connections.QuietOrDieAutoEvent = RunService.Heartbeat:Connect(function()
@@ -2728,6 +2760,7 @@ ThemeObjects.SetQODESP = function(enabled)
 	ThemeObjects.DeepESP.Toggle.Text = ThemeObjects.DeepESP.Enabled and "On" or "Off"
 	ThemeObjects.DeepESP.Title.TextColor3 = ThemeObjects.DeepESP.Enabled and AccentColor or InactiveTextColor()
 	if not ThemeObjects.DeepESP.Enabled and ThemeObjects.ClearESPAdornments then ThemeObjects.ClearESPAdornments() end
+	if not ThemeObjects.DeepESP.Enabled and not HubState.ESPEnabled and ThemeObjects.ClearESPLabels then ThemeObjects.ClearESPLabels() end
 end
 
 ThemeObjects.DeepESP.Toggle.MouseButton1Click:Connect(function()
@@ -2818,6 +2851,20 @@ ThemeObjects.ClearESPAdornments = function(targetPlayer)
 		ThemeObjects.ESPAdornments[playerObject] = nil
 	end
 end
+ThemeObjects.ClearESPLabels = function(targetPlayer)
+	local function clearForPlayer(playerObject)
+		local character = ThemeObjects.ResolveESPCharacter(playerObject)
+		if not character then return end
+		local head = character:FindFirstChild("Head")
+		local root = character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso") or character.PrimaryPart
+		if head and head:FindFirstChild("ESPGui") then head.ESPGui:Destroy() end
+		if root and root:FindFirstChild("ESPGui") then root.ESPGui:Destroy() end
+	end
+	if targetPlayer then clearForPlayer(targetPlayer) return end
+	for _, playerObject in ipairs(Players:GetPlayers()) do
+		if playerObject ~= Player then clearForPlayer(playerObject) end
+	end
+end
 
 ThemeObjects.DisableOtherESP = function(activeMode)
 	return activeMode
@@ -2831,16 +2878,7 @@ local function ToggleESP()
 	HubState.ESPTitle.TextColor3 = HubState.ESPEnabled and AccentColor or InactiveTextColor()
 	if not HubState.ESPEnabled then
 		ThemeObjects.ClearESPAdornments()
-		for _, p in pairs(Players:GetPlayers()) do
-			local character = ThemeObjects.ResolveESPCharacter(p)
-			if character then
-				if character:FindFirstChild("ESPHighlight") then character.ESPHighlight:Destroy() end
-				local head = character:FindFirstChild("Head")
-				if head and head:FindFirstChild("ESPGui") then head.ESPGui:Destroy() end
-				local root = character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso") or character.PrimaryPart
-				if root and root:FindFirstChild("ESPGui") then root.ESPGui:Destroy() end
-			end
-		end
+		ThemeObjects.ClearESPLabels()
 	end
 end
 ThemeObjects.DisableRegularESP = function()
@@ -5815,8 +5853,16 @@ HubState.Connections.MainLoop = RunService.RenderStepped:Connect(function()
 		end
 	end
 
-	local refreshESPBody = os.clock() - (ThemeObjects.LastESPBodyRefresh or 0) >= 0.1
-	if refreshESPBody then ThemeObjects.LastESPBodyRefresh = os.clock() end
+	local hasESPVisuals = next(ThemeObjects.ESPHighlights) ~= nil or next(ThemeObjects.ESPAdornments) ~= nil
+	local needsPlayerMaintenance = HubState.AntiFlingEnabled or HubState.ESPEnabled or ThemeObjects.DeepESP.Enabled or hasESPVisuals
+	if not needsPlayerMaintenance then return end
+	local now = os.clock()
+	local maintenanceInterval = HubState.AntiFlingEnabled and 0.05 or 0.12
+	if now - (ThemeObjects.LastPlayerMaintenanceRefresh or 0) < maintenanceInterval then return end
+	ThemeObjects.LastPlayerMaintenanceRefresh = now
+	local refreshESPBody = ThemeObjects.DeepESP.Enabled and now - (ThemeObjects.LastESPBodyRefresh or 0) >= 0.18
+	if refreshESPBody then ThemeObjects.LastESPBodyRefresh = now end
+	local killerFolder = (HubState.ESPEnabled or ThemeObjects.DeepESP.Enabled) and workspace:FindFirstChild("KillerFolder") or nil
     for _, p in pairs(Players:GetPlayers()) do
 		local char = ThemeObjects.ResolveESPCharacter(p)
 		local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -5840,7 +5886,6 @@ HubState.Connections.MainLoop = RunService.RenderStepped:Connect(function()
 				end
 			end
             
-			local killerFolder = workspace:FindFirstChild("KillerFolder")
 			local sharedESPEnabled = HubState.ESPEnabled or ThemeObjects.DeepESP.Enabled
 			local isQODKillerESP = sharedESPEnabled and killerFolder and killerFolder:FindFirstChild(p.Name) ~= nil
 			local isMurdererRoleESP = sharedESPEnabled and p == HubState.CurrentMurderer
@@ -5947,6 +5992,18 @@ end)
 HubState.settingsOpen = false
 HubState.minimized = false
 
+ThemeObjects.CloseTransientPopups = function()
+	if ThemeObjects.PickerDock then ThemeObjects.PickerDock.Visible = false end
+	if ThemeObjects.GuiSizeDock then ThemeObjects.GuiSizeDock.Visible = false end
+	if ThemeObjects.KeybindEditorFrame then ThemeObjects.KeybindEditorFrame.Visible = false end
+	if ThemeObjects.ConfirmClearFrame then ThemeObjects.ConfirmClearFrame.Visible = false end
+	if ThemeObjects.KeybindEditorConnection then
+		ThemeObjects.KeybindEditorConnection:Disconnect()
+		ThemeObjects.KeybindEditorConnection = nil
+	end
+	HubState.IsBindingKeybindEditor = false
+end
+
 local function ToggleSettings(forceClose)
 	HubState.settingsOpen = forceClose and false or not HubState.settingsOpen
 	ThemeObjects.UpdateEmblemPosition()
@@ -5966,8 +6023,7 @@ local function ToggleSettings(forceClose)
 	if quietPage then quietPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true) end
 	HubState.TabScroll.Visible = not HubState.minimized
 	if not HubState.settingsOpen then
-		if ThemeObjects.PickerDock then ThemeObjects.PickerDock.Visible = false end
-		if ThemeObjects.GuiSizeDock then ThemeObjects.GuiSizeDock.Visible = false end
+		ThemeObjects.CloseTransientPopups()
 	end
 	HubState.PageHeader:TweenPosition(UDim2.new(posMove, activeX, 0, 32), "Out", "Quart", 0.4, true)
 	HubState.SettingsPage:TweenPosition(UDim2.new(posSet, activeX, 0, 32), "Out", "Quart", 0.4, true)
@@ -5981,6 +6037,7 @@ local function ToggleGUI()
 	HubState.minimized = not HubState.minimized
 	PlayMinimizeSound(HubState.minimized)
 	if HubState.minimized and HubState.settingsOpen then ToggleSettings(true) end
+	if HubState.minimized and ThemeObjects.CloseTransientPopups then ThemeObjects.CloseTransientPopups() end
 	HubState.TabScroll.Visible = not HubState.minimized
 	HubState.PageHeader.Visible = not HubState.minimized
 	ThemeObjects.UpdateEmblemPosition()
@@ -6026,6 +6083,7 @@ HubState.ActiveContentPage = HubState.MovementPage
 HubState.ActiveTabIndex = 1
 ThemeObjects.SwitchTab = function(name)
 	if HubState.settingsOpen then ToggleSettings(true) end
+	if ThemeObjects.CloseTransientPopups then ThemeObjects.CloseTransientPopups() end
 	local previousIndex = HubState.ActiveTabIndex or table.find(HubState.TabNames, ThemeObjects.ActiveTabName) or 1
 	local nextIndex = table.find(HubState.TabNames, name) or previousIndex
 	local direction = nextIndex >= previousIndex and 1 or -1
@@ -6657,6 +6715,7 @@ ConfirmClearFrame.Position = UDim2.new(0, 90, 0, 99)
 ConfirmClearFrame.BackgroundTransparency = 1
 ConfirmClearFrame.Visible = false
 ConfirmClearFrame.Parent = HubState.SettingsPage
+ThemeObjects.ConfirmClearFrame = ConfirmClearFrame
 
 local ConfirmClearText = Instance.new("TextLabel")
 ConfirmClearText.Size = UDim2.new(0, 150, 0, 32)
@@ -6700,6 +6759,7 @@ KeybindEditorFrame.BorderSizePixel = 0
 KeybindEditorFrame.Visible = false
 KeybindEditorFrame.ZIndex = 90
 KeybindEditorFrame.Parent = ScreenGui
+ThemeObjects.KeybindEditorFrame = KeybindEditorFrame
 table.insert(ThemeObjects.Backgrounds, KeybindEditorFrame)
 local KeybindEditorScale = Instance.new("UIScale", KeybindEditorFrame)
 KeybindEditorScale.Scale = GuiScaleFromValue(GuiSizeValue)
