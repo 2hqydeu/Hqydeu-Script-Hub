@@ -621,7 +621,17 @@ ThemeObjects.RefreshStateTexts = function(instant)
 			end
 			entry.LastEnabled = enabled
 			local stateColor = enabled and AccentColor or InactiveTextColor()
-			TweenService:Create(entry.Object, tweenInfo, {TextColor3 = stateColor}):Play()
+			local currentColor = entry.Object.TextColor3
+			local needsColorUpdate = math.abs(currentColor.R - stateColor.R) > 0.004
+				or math.abs(currentColor.G - stateColor.G) > 0.004
+				or math.abs(currentColor.B - stateColor.B) > 0.004
+			if needsColorUpdate then
+				if instant then
+					entry.Object.TextColor3 = stateColor
+				else
+					TweenService:Create(entry.Object, tweenInfo, {TextColor3 = stateColor}):Play()
+				end
+			end
 		else
 			table.remove(ThemeObjects.StateTexts, i)
 		end
@@ -5010,22 +5020,38 @@ local function UpdateRoleAvatar(imageLabel, targetPlayer, roleName)
 	end)
 end
 
-ThemeObjects.HideMM2TouchButtonsOnDesktop = function()
-	if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then return end
+ThemeObjects.EnforceMM2DesktopGui = function(force)
+	if not UserInputService.KeyboardEnabled then return end
+	local now = os.clock()
+	if not force and HubState.LastMM2DesktopGuiEnforceAt and now - HubState.LastMM2DesktopGuiEnforceAt < 0.35 then return end
+	HubState.LastMM2DesktopGuiEnforceAt = now
 	local playerGui = Player:FindFirstChildOfClass("PlayerGui")
 	if not playerGui then return end
-	local buttonNames = {
-		Throw = true,
-		Equip = true,
-		Perk = true,
-		Crouch = true,
-	}
-	for _, object in ipairs(playerGui:GetDescendants()) do
-		if buttonNames[object.Name] and object:IsA("GuiObject") then
-			object.Visible = false
+
+	if playerGui:GetAttribute("Device") ~= "PC" then
+		pcall(function() playerGui:SetAttribute("Device", "PC") end)
+	end
+	if _G then _G.MobileDevice = nil end
+
+	local touchButtons = playerGui:FindFirstChild("TouchInteractButtons")
+	if touchButtons then
+		if touchButtons:IsA("LayerCollector") then touchButtons.Enabled = false end
+		if touchButtons:IsA("GuiObject") then touchButtons.Visible = false end
+	end
+
+	local mainGui = playerGui:FindFirstChild("MainGUI")
+	local gameFrame = mainGui and mainGui:FindFirstChild("Game")
+	if gameFrame then
+		for _, controlName in ipairs({"Knife", "Gun", "Perk", "Crouch"}) do
+			local control = gameFrame:FindFirstChild(controlName)
+			if control and control:IsA("GuiObject") then
+				control.Visible = false
+			end
 		end
 	end
 end
+
+ThemeObjects.HideMM2TouchButtonsOnDesktop = ThemeObjects.EnforceMM2DesktopGui
 
 ThemeObjects.ClearMM2Roles = function()
 	local now = os.clock()
@@ -5220,6 +5246,15 @@ HubState.Connections.MM2RoleDetector = RunService.Heartbeat:Connect(function()
 	HubState.MurdererRoleLabel.Text = "Murderer: " .. FormatRolePlayer(HubState.CurrentMurderer)
 	HubState.SheriffRoleLabel.Text = "Sheriff: " .. FormatRolePlayer(HubState.CurrentSheriff)
 	UpdateRoleHighlights()
+end)
+
+HubState.Connections.MM2DesktopGuiGuard = RunService.Heartbeat:Connect(function()
+	local now = os.clock()
+	if HubState.LastMM2DesktopGuiGuardAt and now - HubState.LastMM2DesktopGuiGuardAt < 0.35 then return end
+	HubState.LastMM2DesktopGuiGuardAt = now
+	if game.PlaceId == 142823291 or game.PlaceId == 335132309 or game.PlaceId == 333740520 then
+		ThemeObjects.EnforceMM2DesktopGui(false)
+	end
 end)
 
 local function RestoreKillHitboxes()
