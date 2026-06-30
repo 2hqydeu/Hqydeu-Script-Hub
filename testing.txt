@@ -652,10 +652,40 @@ ThemeObjects.ApplyHoveredButtonStyle = function(obj)
 	if not obj:IsA("TextButton") then return end
 	local hoverColor = obj.BackgroundColor3:Lerp(AccentColor, obj.Text == "On" and 0.24 or 0.42)
 	local hoverTransparency = math.max(0, obj.BackgroundTransparency - 0.32)
-	TweenService:Create(obj, TweenInfo.new(0.08, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-		BackgroundColor3 = hoverColor,
-		BackgroundTransparency = hoverTransparency
-	}):Play()
+	obj.BackgroundColor3 = hoverColor
+	obj.BackgroundTransparency = hoverTransparency
+end
+
+ThemeObjects.ApplyRestingButtonStyle = function(obj)
+	if not obj:IsA("TextButton") then return end
+	local bgColor = FrameThemeColor
+	local secBgColor = bgColor:Lerp(Color3.new(0, 0, 0), 0.22)
+	local keepSolid = obj.Name == "DestroyBtn" or obj.Name == "ResetCharacterBtn" or obj.Name == "RejoinBtn"
+		or obj.Name == "ServerHopBtn" or obj.Name == "GuiSizeBtn" or obj.Name == "ClearKeybindsBtn"
+		or obj.Name == "EditKeybindsBtn"
+	local target = secBgColor
+	local targetTransparency = (keepSolid or obj.Text == "On") and 0 or 0.8
+	if obj.Name == "MM2GameButton" or obj.Name == "QuietOrDieGameButton" then
+		target = Color3.fromRGB(65, 65, 67)
+		targetTransparency = 0.92
+	elseif obj.Name == "ESPColorBtn" then
+		target = HubState.ESPColor
+		targetTransparency = 0
+	elseif obj.Name:find("SavedColorSlot", 1, true) then
+		target = obj.BackgroundColor3
+		targetTransparency = obj.Text == "+" and 0.8 or 0.15
+	elseif obj.Text == "On" then
+		target = AccentColor
+	end
+	if obj.Name == "DestroyBtn" then target = Color3.fromRGB(255, 35, 35)
+	elseif obj.Name == "ResetCharacterBtn" then target = Color3.fromRGB(255, 230, 0)
+	elseif obj.Name == "RejoinBtn" then target = Color3.fromRGB(0, 230, 255)
+	elseif obj.Name == "ServerHopBtn" then target = Color3.fromRGB(0, 105, 255)
+	elseif obj.Name == "GuiSizeBtn" then target = Color3.fromRGB(70, 255, 70)
+	elseif obj.Name == "ClearKeybindsBtn" then target = Color3.fromRGB(195, 35, 255)
+	elseif obj.Name == "EditKeybindsBtn" then target = Color3.fromRGB(255, 130, 35) end
+	obj.BackgroundColor3 = target
+	obj.BackgroundTransparency = targetTransparency
 end
 
 ThemeObjects.StyleControlOutline = function(obj)
@@ -680,35 +710,45 @@ end
 
 ThemeObjects.AttachHoverSound = function(obj)
 	if not obj:IsA("TextButton") or obj:GetAttribute("HoverSoundAttached") then return end
+	if obj.BackgroundTransparency >= 0.98 and obj.Text == "" then return end
 	obj:SetAttribute("HoverSoundAttached", true)
 	obj.MouseEnter:Connect(function()
 		PlayHover()
 		obj:SetAttribute("ButtonHovered", true)
+		obj:SetAttribute("HoverBaseTransparency", obj.BackgroundTransparency)
+		obj:SetAttribute("HoverBaseR", obj.BackgroundColor3.R)
+		obj:SetAttribute("HoverBaseG", obj.BackgroundColor3.G)
+		obj:SetAttribute("HoverBaseB", obj.BackgroundColor3.B)
 		ThemeObjects.ApplyHoveredButtonStyle(obj)
 		local outline = obj:FindFirstChild("ControlOutline")
 		if outline and outline:IsA("UIStroke") then
 			outline:SetAttribute("HoverBaseThickness", outline.Thickness)
 			outline:SetAttribute("HoverBaseTransparency", outline.Transparency)
-			TweenService:Create(outline, TweenInfo.new(0.1, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-				Thickness = math.max(outline.Thickness, 1.8),
-				Transparency = 0
-			}):Play()
+			outline.Thickness = math.max(outline.Thickness, 1.8)
+			outline.Transparency = 0
 		end
 	end)
 	obj.MouseLeave:Connect(function()
 		obj:SetAttribute("ButtonHovered", false)
+		local baseR = obj:GetAttribute("HoverBaseR")
+		local baseG = obj:GetAttribute("HoverBaseG")
+		local baseB = obj:GetAttribute("HoverBaseB")
+		local baseTransparency = obj:GetAttribute("HoverBaseTransparency")
+		if baseR and baseG and baseB and baseTransparency then
+			obj.BackgroundColor3 = Color3.new(baseR, baseG, baseB)
+			obj.BackgroundTransparency = baseTransparency
+		else
+			ThemeObjects.ApplyRestingButtonStyle(obj)
+		end
 		local outline = obj:FindFirstChild("ControlOutline")
 		if outline and outline:IsA("UIStroke") then
 			local baseThickness = outline:GetAttribute("HoverBaseThickness")
 			local baseStrokeTransparency = outline:GetAttribute("HoverBaseTransparency")
 			if baseThickness and baseStrokeTransparency then
-				TweenService:Create(outline, TweenInfo.new(0.14, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-					Thickness = baseThickness,
-					Transparency = baseStrokeTransparency
-				}):Play()
+				outline.Thickness = baseThickness
+				outline.Transparency = baseStrokeTransparency
 			end
 		end
-		if ThemeObjects.UpdateTheme then ThemeObjects.UpdateTheme(true) end
 	end)
 end
 
@@ -1555,7 +1595,7 @@ do
 	quietPage.ClipsDescendants = true
 	quietPage.ScrollBarThickness = 3
 	quietPage.ScrollBarImageColor3 = AccentColor
-	quietPage.CanvasSize = UDim2.new(0, 0, 0, 292)
+	quietPage.CanvasSize = UDim2.new(0, 0, 0, 206)
 	quietPage.Visible = false
 	quietPage.Parent = MainFrame
 
@@ -1840,7 +1880,7 @@ do
 	local eventRow = Instance.new("Frame")
 	eventRow.Name = "QuietOrDieEventRow"
 	eventRow.Size = UDim2.new(1, -8, 0, 38)
-	eventRow.Position = UDim2.new(0, 4, 0, 206)
+	eventRow.Position = UDim2.new(0, 4, 0, 162)
 	eventRow.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 	eventRow.BackgroundTransparency = 0.92
 	eventRow.BorderSizePixel = 0
@@ -1876,7 +1916,7 @@ do
 	local reviveRow = Instance.new("Frame")
 	reviveRow.Name = "QuietOrDieReviveRow"
 	reviveRow.Size = UDim2.new(1, -8, 0, 38)
-	reviveRow.Position = UDim2.new(0, 4, 0, 162)
+	reviveRow.Position = UDim2.new(0, 4, 0, 118)
 	reviveRow.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 	reviveRow.BackgroundTransparency = 0.92
 	reviveRow.BorderSizePixel = 0
@@ -1913,7 +1953,7 @@ do
 	ThemeObjects.QODReveal.Row = Instance.new("Frame")
 	ThemeObjects.QODReveal.Row.Name = "QuietOrDieRevealRow"
 	ThemeObjects.QODReveal.Row.Size = UDim2.new(1, -8, 0, 38)
-	ThemeObjects.QODReveal.Row.Position = UDim2.new(0, 4, 0, 250)
+	ThemeObjects.QODReveal.Row.Position = UDim2.new(0, 4, 0, 206)
 	ThemeObjects.QODReveal.Row.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 	ThemeObjects.QODReveal.Row.BackgroundTransparency = 0.92
 	ThemeObjects.QODReveal.Row.BorderSizePixel = 0
