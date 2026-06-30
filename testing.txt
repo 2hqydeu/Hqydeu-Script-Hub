@@ -67,6 +67,21 @@ local function LoadColor(settingName, fallback)
 	return fallback
 end
 
+local function PackColor(color)
+	return {
+		R = math.floor(color.R * 255 + 0.5),
+		G = math.floor(color.G * 255 + 0.5),
+		B = math.floor(color.B * 255 + 0.5),
+	}
+end
+
+local function UnpackColor(saved, fallback)
+	if type(saved) == "table" and tonumber(saved.R) and tonumber(saved.G) and tonumber(saved.B) then
+		return Color3.fromRGB(saved.R, saved.G, saved.B)
+	end
+	return fallback
+end
+
 local DefaultFrameColor = Color3.fromRGB(28, 28, 38)
 local DefaultAccentColor = Color3.fromRGB(0, 210, 255)
 local FrameThemeColor = DefaultFrameColor
@@ -74,11 +89,7 @@ local AccentColor = LoadColor("ThemeAccent", DefaultAccentColor)
 
 local function SaveThemeColors()
 	SavedKeybinds.ThemeFrame = nil
-	SavedKeybinds.ThemeAccent = {
-		R = math.floor(AccentColor.R * 255 + 0.5),
-		G = math.floor(AccentColor.G * 255 + 0.5),
-		B = math.floor(AccentColor.B * 255 + 0.5),
-	}
+	SavedKeybinds.ThemeAccent = PackColor(AccentColor)
 	SavePersistentSettings()
 end
 
@@ -253,12 +264,18 @@ MinimizeSound.Volume = 0.6
 MinimizeSound.Parent = MainFrame
 
 local UnminimizeSound = Instance.new("Sound")
-UnminimizeSound.SoundId = "rbxassetid://72384898525651"
+UnminimizeSound.SoundId = "rbxassetid://124834506603771"
 UnminimizeSound.Volume = 0.6
 UnminimizeSound.Parent = MainFrame
 
+local HoverSound = Instance.new("Sound")
+HoverSound.SoundId = "rbxassetid://133216848606395"
+HoverSound.Volume = 0.35
+HoverSound.Parent = MainFrame
+
 local function PlayClick() ClickSound:Play() end
 local function PlaySwoosh() SwooshSound:Play() end
+local function PlayHover() HoverSound:Play() end
 local function PlayMinimizeSound(isMinimizing)
 	if isMinimizing then MinimizeSound:Play() else UnminimizeSound:Play() end
 end
@@ -644,6 +661,14 @@ ThemeObjects.StyleControlOutline = function(obj)
 	outline.Parent = obj
 end
 
+ThemeObjects.AttachHoverSound = function(obj)
+	if not obj:IsA("TextButton") or obj:GetAttribute("HoverSoundAttached") then return end
+	obj:SetAttribute("HoverSoundAttached", true)
+	obj.MouseEnter:Connect(function()
+		PlayHover()
+	end)
+end
+
 ThemeObjects.NormalizeMainTileWidth = function(obj)
 	if not obj:IsA("GuiObject") or not obj:IsDescendantOf(MainFrame) then return end
 	local name = obj.Name or ""
@@ -663,6 +688,7 @@ end
 local function CompactGuiText(root)
 	for _, obj in ipairs(root:GetDescendants()) do
 		ThemeObjects.NormalizeMainTileWidth(obj)
+		ThemeObjects.AttachHoverSound(obj)
 		ThemeObjects.StyleTextOutline(obj)
 		ThemeObjects.StyleControlOutline(obj)
 		local isMainContent = obj:IsDescendantOf(MainFrame)
@@ -708,12 +734,17 @@ local function UpdateTheme(instant)
 		local obj = ThemeObjects.Backgrounds[i]
 		if obj.Parent then
 			ThemeObjects.NormalizeMainTileWidth(obj)
+			ThemeObjects.AttachHoverSound(obj)
 			if (obj:IsA("TextButton") or obj:IsA("TextBox")) then
 				local keepSolid = obj.Name == "DestroyBtn" or obj.Name == "ResetCharacterBtn" or obj.Name == "RejoinBtn"
 					or obj.Name == "ServerHopBtn" or obj.Name == "GuiSizeBtn" or obj.Name == "ClearKeybindsBtn"
 					or obj.Name == "EditKeybindsBtn"
 				if obj.Name == "MM2GameButton" or obj.Name == "QuietOrDieGameButton" then
 					obj.BackgroundTransparency = 0.92
+				elseif obj.Name == "ESPColorBtn" then
+					obj.BackgroundTransparency = 0
+				elseif obj.Name:find("SavedColorSlot", 1, true) then
+					obj.BackgroundTransparency = obj.Text == "+" and 0.8 or 0.15
 				else
 					obj.BackgroundTransparency = (keepSolid or obj.Text == "On") and 0 or 0.8
 				end
@@ -722,6 +753,8 @@ local function UpdateTheme(instant)
 			if obj.Name == "PlayerTPFrame" then target = Color3.fromRGB(14, 18, 26)
 			end
 			if obj.Name == "MM2GameButton" or obj.Name == "QuietOrDieGameButton" then target = Color3.fromRGB(65, 65, 67) end
+			if obj.Name == "ESPColorBtn" then target = HubState.ESPColor end
+			if obj.Name:find("SavedColorSlot", 1, true) then target = obj.BackgroundColor3 end
 			if obj:IsA("TextButton") and obj.Text == "On" then target = AccentColor end
 			if obj.Name == "DestroyBtn" then target = Color3.fromRGB(255, 35, 35)
 			elseif obj.Name == "ResetCharacterBtn" then target = Color3.fromRGB(255, 230, 0)
@@ -792,7 +825,7 @@ HubState.IsBindingAutoLock = false
 HubState.ESPEnabled = false
 HubState.ESPKeybind = LoadKeybind("ESP")
 HubState.IsBindingESP = false
-HubState.ESPColor = Color3.fromRGB(100, 255, 100)
+HubState.ESPColor = LoadColor("PlayerESPColor", Color3.fromRGB(100, 255, 100))
 HubState.AntiFlingEnabled = false
 HubState.Flinging = false
 HubState.AntiFlingOriginalCollision = {}
@@ -1573,8 +1606,8 @@ do
 	Instance.new("UICorner", farmToggle).CornerRadius = UDim.new(0, 5)
 
 	local safePlaceToggle = Instance.new("TextButton")
-	safePlaceToggle.Size = UDim2.new(0, 112, 0, 17)
-	safePlaceToggle.Position = UDim2.new(0.5, -56, 0, 38)
+	safePlaceToggle.Size = UDim2.new(0, 140, 0, 17)
+	safePlaceToggle.Position = UDim2.new(1, -146, 0, 38)
 	safePlaceToggle.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	safePlaceToggle.BackgroundTransparency = 0.8
 	safePlaceToggle.BorderSizePixel = 0
@@ -2543,37 +2576,25 @@ table.insert(ThemeObjects.Accents, HubState.ESPBindBtn)
 Instance.new("UICorner", HubState.ESPBindBtn).CornerRadius = UDim.new(0, 4)
 
 HubState.ColorContainer = Instance.new("Frame")
-HubState.ColorContainer.Size = UDim2.new(0, 88, 0, 14)
-HubState.ColorContainer.Position = UDim2.new(0, 12, 0, 66)
+HubState.ColorContainer.Size = UDim2.new(0, 68, 0, 22)
+HubState.ColorContainer.Position = UDim2.new(0, 12, 0, 68)
 HubState.ColorContainer.BackgroundTransparency = 1
 HubState.ColorContainer.Parent = HubState.CombatPage
 
-HubState.RedBtn = Instance.new("TextButton")
-HubState.RedBtn.Size = UDim2.new(0, 24, 0, 14)
-HubState.RedBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
-HubState.RedBtn.Text = ""
-HubState.RedBtn.Parent = HubState.ColorContainer
-Instance.new("UICorner", HubState.RedBtn).CornerRadius = UDim.new(0, 3)
-
-HubState.WhiteBtn = Instance.new("TextButton")
-HubState.WhiteBtn.Size = UDim2.new(0, 24, 0, 14)
-HubState.WhiteBtn.Position = UDim2.new(0, 32, 0, 0)
-HubState.WhiteBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-HubState.WhiteBtn.Text = ""
-HubState.WhiteBtn.Parent = HubState.ColorContainer
-Instance.new("UICorner", HubState.WhiteBtn).CornerRadius = UDim.new(0, 3)
-
-HubState.GreenBtn = Instance.new("TextButton")
-HubState.GreenBtn.Size = UDim2.new(0, 24, 0, 14)
-HubState.GreenBtn.Position = UDim2.new(0, 64, 0, 0)
-HubState.GreenBtn.BackgroundColor3 = Color3.fromRGB(100, 255, 100)
-HubState.GreenBtn.Text = ""
-HubState.GreenBtn.Parent = HubState.ColorContainer
-Instance.new("UICorner", HubState.GreenBtn).CornerRadius = UDim.new(0, 3)
-
-HubState.RedBtn.MouseButton1Click:Connect(function() PlayClick() HubState.ESPColor = Color3.fromRGB(255, 100, 100) end)
-HubState.WhiteBtn.MouseButton1Click:Connect(function() PlayClick() HubState.ESPColor = Color3.fromRGB(255, 255, 255) end)
-HubState.GreenBtn.MouseButton1Click:Connect(function() PlayClick() HubState.ESPColor = Color3.fromRGB(100, 255, 100) end)
+HubState.ESPColorBtn = Instance.new("TextButton")
+HubState.ESPColorBtn.Name = "ESPColorBtn"
+HubState.ESPColorBtn.Size = UDim2.new(0, 68, 0, 22)
+HubState.ESPColorBtn.BackgroundColor3 = HubState.ESPColor
+HubState.ESPColorBtn.BackgroundTransparency = 0
+HubState.ESPColorBtn.BorderSizePixel = 0
+HubState.ESPColorBtn.Text = "Color"
+HubState.ESPColorBtn.Font = Enum.Font.GothamBold
+HubState.ESPColorBtn.TextSize = 9
+HubState.ESPColorBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+HubState.ESPColorBtn.Parent = HubState.ColorContainer
+table.insert(ThemeObjects.Backgrounds, HubState.ESPColorBtn)
+table.insert(ThemeObjects.Texts, HubState.ESPColorBtn)
+Instance.new("UICorner", HubState.ESPColorBtn).CornerRadius = UDim.new(0, 5)
 
 ThemeObjects.DeepESP = {Enabled = false}
 ThemeObjects.DeepESP.Row = Instance.new("Frame")
@@ -2591,7 +2612,7 @@ ThemeObjects.DeepESP.Title = Instance.new("TextLabel")
 ThemeObjects.DeepESP.Title.Size = UDim2.new(0, 82, 0, 24)
 ThemeObjects.DeepESP.Title.Position = UDim2.new(0, 8, 0, 7)
 ThemeObjects.DeepESP.Title.BackgroundTransparency = 1
-ThemeObjects.DeepESP.Title.Text = "Survivor ESP"
+ThemeObjects.DeepESP.Title.Text = "QOD ESP"
 ThemeObjects.DeepESP.Title.Font = Enum.Font.GothamBold
 ThemeObjects.DeepESP.Title.TextSize = 11
 ThemeObjects.DeepESP.Title.TextXAlignment = Enum.TextXAlignment.Left
@@ -2612,18 +2633,20 @@ table.insert(ThemeObjects.Backgrounds, ThemeObjects.DeepESP.Toggle)
 table.insert(ThemeObjects.Texts, ThemeObjects.DeepESP.Toggle)
 Instance.new("UICorner", ThemeObjects.DeepESP.Toggle).CornerRadius = UDim.new(0, 3)
 
+ThemeObjects.SetQODESP = function(enabled)
+	if enabled and ThemeObjects.DisableOtherESP then ThemeObjects.DisableOtherESP("QOD") end
+	ThemeObjects.DeepESP.Enabled = enabled == true
+	ThemeObjects.DeepESP.Toggle.Text = ThemeObjects.DeepESP.Enabled and "On" or "Off"
+	ThemeObjects.DeepESP.Title.TextColor3 = ThemeObjects.DeepESP.Enabled and AccentColor or InactiveTextColor()
+	if not ThemeObjects.DeepESP.Enabled and ThemeObjects.ClearESPAdornments then ThemeObjects.ClearESPAdornments() end
+end
+
 ThemeObjects.DeepESP.Toggle.MouseButton1Click:Connect(function()
 	PlayClick()
-	ThemeObjects.DeepESP.Enabled = not ThemeObjects.DeepESP.Enabled
-	ThemeObjects.DeepESP.Toggle.Text = ThemeObjects.DeepESP.Enabled and "On" or "Off"
-	ThemeObjects.DeepESP.Title.TextColor3 = ThemeObjects.DeepESP.Enabled and AccentColor or InactiveTextColor()
-	if not ThemeObjects.DeepESP.Enabled and ThemeObjects.ClearESPAdornments then ThemeObjects.ClearESPAdornments() end
+	ThemeObjects.SetQODESP(not ThemeObjects.DeepESP.Enabled)
 end)
-ThemeObjects.AddFeatureKeybind({Name = "Survivor ESP", Storage = "QODSurvivorESP", Parent = ThemeObjects.DeepESP.Row, Toggle = ThemeObjects.DeepESP.Toggle, Get = function() return LoadKeybind("QODSurvivorESP") end, Set = function(key) SaveKeybind("QODSurvivorESP", key) end, Action = function()
-	ThemeObjects.DeepESP.Enabled = not ThemeObjects.DeepESP.Enabled
-	ThemeObjects.DeepESP.Toggle.Text = ThemeObjects.DeepESP.Enabled and "On" or "Off"
-	ThemeObjects.DeepESP.Title.TextColor3 = ThemeObjects.DeepESP.Enabled and AccentColor or InactiveTextColor()
-	if not ThemeObjects.DeepESP.Enabled and ThemeObjects.ClearESPAdornments then ThemeObjects.ClearESPAdornments() end
+ThemeObjects.AddFeatureKeybind({Name = "QOD ESP", Storage = "QODESP", Parent = ThemeObjects.DeepESP.Row, Toggle = ThemeObjects.DeepESP.Toggle, Get = function() return LoadKeybind("QODESP") end, Set = function(key) SaveKeybind("QODESP", key) end, Action = function()
+	ThemeObjects.SetQODESP(not ThemeObjects.DeepESP.Enabled)
 end})
 
 local function ToggleAutoLock()
@@ -2677,8 +2700,24 @@ ThemeObjects.ClearESPAdornments = function(targetPlayer)
 	end
 end
 
+ThemeObjects.DisableOtherESP = function(activeMode)
+	if activeMode ~= "Player" and HubState.ESPEnabled then
+		HubState.ESPEnabled = false
+		HubState.ESPToggleBtn.Text = "Off"
+		HubState.ESPTitle.TextColor3 = InactiveTextColor()
+	end
+	if activeMode ~= "QOD" and ThemeObjects.DeepESP and ThemeObjects.DeepESP.Enabled and ThemeObjects.SetQODESP then
+		ThemeObjects.SetQODESP(false)
+	end
+	if activeMode ~= "MM2" and HubState.MM2ESPEnabled and ThemeObjects.SetMM2ESP then
+		ThemeObjects.SetMM2ESP(false)
+	end
+end
+
 local function ToggleESP()
-	HubState.ESPEnabled = not HubState.ESPEnabled
+	local nextEnabled = not HubState.ESPEnabled
+	if nextEnabled and ThemeObjects.DisableOtherESP then ThemeObjects.DisableOtherESP("Player") end
+	HubState.ESPEnabled = nextEnabled
 	HubState.ESPToggleBtn.Text = HubState.ESPEnabled and "On" or "Off"
 	HubState.ESPTitle.TextColor3 = HubState.ESPEnabled and AccentColor or InactiveTextColor()
 	if not HubState.ESPEnabled then
@@ -2788,14 +2827,11 @@ do
 	HubState.ESPBindBtn.Position = UDim2.new(1, -48, 0.5, -10)
 	HubState.ESPBindBtn.TextSize = 8
 	HubState.ESPBindBtn.Parent = espRow
-	HubState.ColorContainer.Size = UDim2.new(0, 80, 0, 14)
-	HubState.ColorContainer.Position = UDim2.new(0, 106, 0.5, -7)
+	HubState.ColorContainer.Size = UDim2.new(0, 44, 0, 20)
+	HubState.ColorContainer.Position = UDim2.new(1, -144, 0.5, -10)
 	HubState.ColorContainer.Parent = espRow
-	HubState.RedBtn.Size = UDim2.new(0, 22, 0, 14)
-	HubState.WhiteBtn.Size = UDim2.new(0, 22, 0, 14)
-	HubState.WhiteBtn.Position = UDim2.new(0, 29, 0, 0)
-	HubState.GreenBtn.Size = UDim2.new(0, 22, 0, 14)
-	HubState.GreenBtn.Position = UDim2.new(0, 58, 0, 0)
+	HubState.ESPColorBtn.Size = UDim2.new(0, 44, 0, 20)
+	HubState.ESPColorBtn.TextSize = 8
 
 	ThemeObjects.FlingTargetTitle = Instance.new("TextLabel")
 	ThemeObjects.FlingTargetTitle.Size = UDim2.new(0, 120, 0, 20)
@@ -4515,6 +4551,7 @@ HubState.MurdererESPBtn.TextColor3 = Color3.fromRGB(255, 90, 90)
 HubState.MurdererESPBtn.Parent = HubState.MM2Page
 table.insert(ThemeObjects.Backgrounds, HubState.MurdererESPBtn)
 Instance.new("UICorner", HubState.MurdererESPBtn).CornerRadius = UDim.new(0, 3)
+HubState.MurdererESPBtn.Visible = false
 
 HubState.SheriffESPBtn = Instance.new("TextButton")
 HubState.SheriffESPBtn.Size = UDim2.new(0, 50, 0, 19)
@@ -4529,7 +4566,9 @@ HubState.SheriffESPBtn.TextColor3 = Color3.fromRGB(90, 150, 255)
 HubState.SheriffESPBtn.Parent = HubState.MM2Page
 table.insert(ThemeObjects.Backgrounds, HubState.SheriffESPBtn)
 Instance.new("UICorner", HubState.SheriffESPBtn).CornerRadius = UDim.new(0, 3)
+HubState.SheriffESPBtn.Visible = false
 
+HubState.MM2ESPEnabled = false
 HubState.MurdererRoleESPEnabled = false
 HubState.SheriffRoleESPEnabled = false
 HubState.CurrentMurderer = nil
@@ -4598,6 +4637,20 @@ HubState.SheriffESPBtn.MouseButton1Click:Connect(function()
 	HubState.GunDropESP.Refresh()
 	UpdateRoleHighlights()
 end)
+
+ThemeObjects.SetMM2ESP = function(enabled)
+	if enabled and ThemeObjects.DisableOtherESP then ThemeObjects.DisableOtherESP("MM2") end
+	HubState.MM2ESPEnabled = enabled == true
+	HubState.MurdererRoleESPEnabled = HubState.MM2ESPEnabled
+	HubState.SheriffRoleESPEnabled = HubState.MM2ESPEnabled
+	HubState.MurdererESPBtn.Text = HubState.MM2ESPEnabled and "ON" or "ESP"
+	HubState.SheriffESPBtn.Text = HubState.MM2ESPEnabled and "ON" or "ESP"
+	if HubState.MM2ESPToggle then HubState.MM2ESPToggle.Text = HubState.MM2ESPEnabled and "On" or "Off" end
+	if HubState.MM2ESPTitle then HubState.MM2ESPTitle.TextColor3 = HubState.MM2ESPEnabled and AccentColor or InactiveTextColor() end
+	HubState.GunDropESP.Enabled = HubState.MM2ESPEnabled
+	HubState.GunDropESP.Refresh()
+	UpdateRoleHighlights()
+end
 
 local function PlayerHasRoleTool(targetPlayer, toolName)
 	local wantedName = toolName:lower()
@@ -4818,7 +4871,7 @@ do
 	MM2ControlsScroll.ScrollingDirection = Enum.ScrollingDirection.Y
 	MM2ControlsScroll.ElasticBehavior = Enum.ElasticBehavior.Never
 	MM2ControlsScroll.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-	MM2ControlsScroll.CanvasSize = UDim2.new(0, 0, 0, 206)
+	MM2ControlsScroll.CanvasSize = UDim2.new(0, 0, 0, 250)
 	MM2ControlsScroll.ClipsDescendants = true
 	MM2ControlsScroll.Parent = HubState.MM2Page
 
@@ -4836,10 +4889,11 @@ do
 		return row
 	end
 
-	local stabRow = CreateMM2ControlRow("AutoStabRow", 1, -8, 0, 4, 4, 38)
-	local shootRow = CreateMM2ControlRow("AutoShootRow", 1, -8, 0, 4, 48, 38)
-	local gunRow = CreateMM2ControlRow("AutoGunRow", 1, -8, 0, 4, 92, 38)
-	local coinRow = CreateMM2ControlRow("CoinFarmRow", 1, -8, 0, 4, 136, 38)
+	local mm2ESPRow = CreateMM2ControlRow("MM2ESPRow", 1, -8, 0, 4, 4, 38)
+	local stabRow = CreateMM2ControlRow("AutoStabRow", 1, -8, 0, 4, 48, 38)
+	local shootRow = CreateMM2ControlRow("AutoShootRow", 1, -8, 0, 4, 92, 38)
+	local gunRow = CreateMM2ControlRow("AutoGunRow", 1, -8, 0, 4, 136, 38)
+	local coinRow = CreateMM2ControlRow("CoinFarmRow", 1, -8, 0, 4, 180, 38)
 
 	local function PlaceMM2Control(title, toggle, row, fullWidth)
 		title.Size = fullWidth and UDim2.new(0, 130, 0, 24) or UDim2.new(0, 82, 0, 22)
@@ -4851,6 +4905,32 @@ do
 		toggle.TextSize = 9
 		toggle.Parent = row
 	end
+
+	HubState.MM2ESPTitle = Instance.new("TextLabel")
+	HubState.MM2ESPTitle.BackgroundTransparency = 1
+	HubState.MM2ESPTitle.Text = "MM2 ESP:"
+	HubState.MM2ESPTitle.Font = Enum.Font.GothamBold
+	HubState.MM2ESPTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+	HubState.MM2ESPTitle.TextXAlignment = Enum.TextXAlignment.Left
+	table.insert(ThemeObjects.Texts, HubState.MM2ESPTitle)
+	HubState.MM2ESPToggle = Instance.new("TextButton")
+	HubState.MM2ESPToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 68)
+	HubState.MM2ESPToggle.BackgroundTransparency = 0.8
+	HubState.MM2ESPToggle.BorderSizePixel = 0
+	HubState.MM2ESPToggle.Text = "Off"
+	HubState.MM2ESPToggle.Font = Enum.Font.GothamBold
+	table.insert(ThemeObjects.Backgrounds, HubState.MM2ESPToggle)
+	table.insert(ThemeObjects.Texts, HubState.MM2ESPToggle)
+	Instance.new("UICorner", HubState.MM2ESPToggle).CornerRadius = UDim.new(0, 4)
+	PlaceMM2Control(HubState.MM2ESPTitle, HubState.MM2ESPToggle, mm2ESPRow)
+	HubState.MM2ESPToggle.MouseButton1Click:Connect(function()
+		PlayClick()
+		ThemeObjects.SetMM2ESP(not HubState.MM2ESPEnabled)
+	end)
+	table.insert(ThemeObjects.StateTexts, {Object = HubState.MM2ESPTitle, IsEnabled = function() return HubState.MM2ESPEnabled end})
+	ThemeObjects.AddFeatureKeybind({Name = "MM2 ESP", Storage = "MM2ESP", Parent = mm2ESPRow, Toggle = HubState.MM2ESPToggle, Get = function() return LoadKeybind("MM2ESP") end, Set = function(key) SaveKeybind("MM2ESP", key) end, Action = function()
+		ThemeObjects.SetMM2ESP(not HubState.MM2ESPEnabled)
+	end})
 
 	PlaceMM2Control(HubState.KillTitle, HubState.KillToggle, stabRow)
 	PlaceMM2Control(autoShootTitle, autoShootToggle, shootRow)
@@ -5632,20 +5712,22 @@ HubState.Connections.MainLoop = RunService.RenderStepped:Connect(function()
 				end
 			end
             
+			local killerFolder = workspace:FindFirstChild("KillerFolder")
+			local isQODKillerESP = ThemeObjects.DeepESP.Enabled and killerFolder and killerFolder:FindFirstChild(p.Name) ~= nil
 			local isMurdererRoleESP = HubState.MurdererRoleESPEnabled and p == HubState.CurrentMurderer
 			local isSheriffRoleESP = HubState.SheriffRoleESPEnabled and p == HubState.CurrentSheriff
 			local roleColor = nil
-			if isMurdererRoleESP then
+			if isQODKillerESP or isMurdererRoleESP then
 				roleColor = Color3.fromRGB(255, 70, 70)
 			elseif isSheriffRoleESP then
 				roleColor = Color3.fromRGB(70, 130, 255)
 			end
-			local showPlayerESP = HubState.ESPEnabled or roleColor ~= nil
+			local showPlayerESP = HubState.ESPEnabled or ThemeObjects.DeepESP.Enabled or roleColor ~= nil
 
 			-- Infinite Yield-style body ESP. These adornments live under CoreGui
 			-- instead of the character, so local transparency/hide effects used by
 			-- games such as QOD do not erase the overlay for the killer.
-			if ThemeObjects.DeepESP.Enabled and roleColor == nil and refreshESPBody then
+			if ThemeObjects.DeepESP.Enabled and refreshESPBody then
 				local adornments = ThemeObjects.ESPAdornments[p]
 				if not adornments then
 					adornments = {}
@@ -5670,11 +5752,11 @@ HubState.Connections.MainLoop = RunService.RenderStepped:Connect(function()
 							adornments[part] = adornment
 						end
 						adornment.Size = part.Size
-						adornment.Color3 = HubState.ESPColor
+						adornment.Color3 = roleColor or HubState.ESPColor
 						adornment.Transparency = 0.64
 					end
 				end
-			elseif not ThemeObjects.DeepESP.Enabled or roleColor ~= nil then
+			elseif not ThemeObjects.DeepESP.Enabled then
 				ThemeObjects.ClearESPAdornments(p)
 			end
 
@@ -6276,7 +6358,7 @@ GuiSizeResetBtn.MouseButton1Click:Connect(function() PlayClick() ApplyGuiSize(50
 
 local PickerFrame = Instance.new("Frame")
 PickerFrame.Name = "AccentPickerDock"
-PickerFrame.Size = UDim2.new(0, 130, 0, 140)
+PickerFrame.Size = UDim2.new(0, 130, 0, 190)
 PickerFrame.AnchorPoint = Vector2.new(1, 0)
 PickerFrame.BackgroundColor3 = FrameThemeColor
 PickerFrame.BackgroundTransparency = 0.04
@@ -6389,6 +6471,48 @@ HueMarker.Position = UDim2.new(0, -2, 0, 0)
 HueMarker.BackgroundColor3 = Color3.new(1, 1, 1)
 HueMarker.BorderSizePixel = 0
 HueMarker.Parent = HueInput
+
+local SaveCurrentColorBtn = Instance.new("TextButton")
+SaveCurrentColorBtn.Name = "SaveCurrentColorBtn"
+SaveCurrentColorBtn.Size = UDim2.new(0, 114, 0, 20)
+SaveCurrentColorBtn.Position = UDim2.new(0, 8, 0, 138)
+SaveCurrentColorBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+SaveCurrentColorBtn.BackgroundTransparency = 0.8
+SaveCurrentColorBtn.BorderSizePixel = 0
+SaveCurrentColorBtn.Text = "Save Current Color"
+SaveCurrentColorBtn.Font = Enum.Font.GothamBold
+SaveCurrentColorBtn.TextSize = 8
+SaveCurrentColorBtn.ZIndex = 81
+SaveCurrentColorBtn.Parent = PickerFrame
+table.insert(ThemeObjects.Backgrounds, SaveCurrentColorBtn)
+table.insert(ThemeObjects.Texts, SaveCurrentColorBtn)
+Instance.new("UICorner", SaveCurrentColorBtn).CornerRadius = UDim.new(0, 5)
+
+local SavedColorButtons = {}
+for index = 1, 5 do
+	local swatch = Instance.new("TextButton")
+	swatch.Name = "SavedColorSlot" .. index
+	swatch.Size = UDim2.new(0, 18, 0, 18)
+	swatch.Position = UDim2.new(0, 8 + ((index - 1) * 24), 0, 164)
+	swatch.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	swatch.BackgroundTransparency = 0.15
+	swatch.BorderSizePixel = 0
+	swatch.Text = ""
+	swatch.Font = Enum.Font.GothamBold
+	swatch.TextSize = 10
+	swatch.TextColor3 = Color3.fromRGB(255, 255, 255)
+	swatch.ZIndex = 81
+	swatch.Parent = PickerFrame
+	table.insert(ThemeObjects.Backgrounds, swatch)
+	Instance.new("UICorner", swatch).CornerRadius = UDim.new(0, 4)
+	local swatchStroke = Instance.new("UIStroke")
+	swatchStroke.Name = "ControlOutline"
+	swatchStroke.Color = Color3.fromRGB(0, 0, 0)
+	swatchStroke.Thickness = 1
+	swatchStroke.Transparency = 0
+	swatchStroke.Parent = swatch
+	SavedColorButtons[index] = swatch
+end
 
 for _, pickerObject in ipairs(PickerFrame:GetDescendants()) do
 	if pickerObject:IsA("GuiObject") then pickerObject.ZIndex = 81 end
@@ -6618,6 +6742,7 @@ EditKeybindsBtn.MouseButton1Click:Connect(function()
 	if ThemeObjects.PickerDock then ThemeObjects.PickerDock.Visible = false end
 	if ThemeObjects.GuiSizeDock then ThemeObjects.GuiSizeDock.Visible = false end
 	ResetThemeBtn.Visible = false
+	if SaveCurrentColorBtn then SaveCurrentColorBtn.Visible = false end
 	ConfirmClearFrame.Visible = false
 	KeybindEditorFrame.Visible = not KeybindEditorFrame.Visible
 	if KeybindEditorFrame.Visible and ThemeObjects.UpdateKeybindEditorDockPosition then
@@ -6650,6 +6775,10 @@ local DraggingHue = false
 local function RefreshThemePreviews()
 	AccentColorBtn.BackgroundColor3 = AccentColor
 	AccentColorBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	if HubState.ESPColorBtn then
+		HubState.ESPColorBtn.BackgroundColor3 = HubState.ESPColor
+		HubState.ESPColorBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	end
 end
 
 local function RefreshPickerMarkers()
@@ -6658,31 +6787,83 @@ local function RefreshPickerMarkers()
 	HueMarker.Position = UDim2.new(0, -2, PickerH, -1)
 end
 
+local function PickerPaletteKey()
+	return PickerTarget == "ESP" and "PlayerESPSavedColors" or "AccentSavedColors"
+end
+
+local function PickerCurrentColor()
+	return PickerTarget == "ESP" and HubState.ESPColor or AccentColor
+end
+
+local function SaveESPColor()
+	SavedKeybinds.PlayerESPColor = PackColor(HubState.ESPColor)
+	SavePersistentSettings()
+end
+
+local function RefreshSavedColorButtons()
+	local savedColors = type(SavedKeybinds[PickerPaletteKey()]) == "table" and SavedKeybinds[PickerPaletteKey()] or {}
+	for index, swatch in ipairs(SavedColorButtons) do
+		local color = UnpackColor(savedColors[index], Color3.fromRGB(45, 45, 45))
+		swatch.BackgroundColor3 = color
+		swatch.Text = savedColors[index] and "" or "+"
+	end
+end
+
 local function ApplyPickerColor()
 	local selectedColor = Color3.fromHSV(PickerH, PickerS, PickerV)
-	AccentColor = selectedColor
+	if PickerTarget == "ESP" then
+		HubState.ESPColor = selectedColor
+		SaveESPColor()
+	else
+		AccentColor = selectedColor
+	end
 	RefreshThemePreviews()
 	RefreshPickerMarkers()
 	UpdateTheme(true)
-	if not ThemeObjects.LastPickerSave or os.clock() - ThemeObjects.LastPickerSave > 0.15 then
+	if PickerTarget == "Accent" and (not ThemeObjects.LastPickerSave or os.clock() - ThemeObjects.LastPickerSave > 0.15) then
 		ThemeObjects.LastPickerSave = os.clock()
 		SaveThemeColors()
 	end
 end
 
 local function OpenColorPicker(target)
-	PickerTarget = "Accent"
+	PickerTarget = target == "ESP" and "ESP" or "Accent"
 	GuiSizeFrame.Visible = false
 	if KeybindEditorFrame then KeybindEditorFrame.Visible = false end
 	if ThemeObjects.ExtrasFeature.CopyFrame and ThemeObjects.ExtrasFeature.CopyFrame.Visible then
 		ThemeObjects.ExtrasFeature.EndSelection(true)
 	end
-	local selectedColor = AccentColor
+	local selectedColor = PickerCurrentColor()
 	PickerH, PickerS, PickerV = Color3.toHSV(selectedColor)
 	ConfirmClearFrame.Visible = false
 	PickerFrame.Visible = true
-	ResetThemeBtn.Visible = true
+	ResetThemeBtn.Visible = PickerTarget == "Accent"
+	SaveCurrentColorBtn.Visible = true
 	RefreshPickerMarkers()
+	RefreshSavedColorButtons()
+end
+
+SaveCurrentColorBtn.MouseButton1Click:Connect(function()
+	PlayClick()
+	local key = PickerPaletteKey()
+	local savedColors = type(SavedKeybinds[key]) == "table" and SavedKeybinds[key] or {}
+	table.insert(savedColors, 1, PackColor(PickerCurrentColor()))
+	while #savedColors > 5 do table.remove(savedColors) end
+	SavedKeybinds[key] = savedColors
+	SavePersistentSettings()
+	RefreshSavedColorButtons()
+end)
+
+for index, swatch in ipairs(SavedColorButtons) do
+	swatch.MouseButton1Click:Connect(function()
+		PlayClick()
+		local savedColors = type(SavedKeybinds[PickerPaletteKey()]) == "table" and SavedKeybinds[PickerPaletteKey()] or {}
+		local color = UnpackColor(savedColors[index], nil)
+		if not color then return end
+		PickerH, PickerS, PickerV = Color3.toHSV(color)
+		ApplyPickerColor()
+		RefreshSavedColorButtons()
+	end)
 end
 
 local function UpdateSVFromPosition(position)
@@ -6729,19 +6910,35 @@ AccentColorBtn.MouseButton1Click:Connect(function()
 	PlayClick()
 	GuiSizeFrame.Visible = false
 	if KeybindEditorFrame then KeybindEditorFrame.Visible = false end
-	if PickerFrame.Visible then
+	if PickerFrame.Visible and PickerTarget == "Accent" then
 		PickerFrame.Visible = false
 		ResetThemeBtn.Visible = false
+		SaveCurrentColorBtn.Visible = false
 	else
 		OpenColorPicker("Accent")
 	end
 end)
+
+if HubState.ESPColorBtn then
+	HubState.ESPColorBtn.MouseButton1Click:Connect(function()
+		PlayClick()
+		GuiSizeFrame.Visible = false
+		if KeybindEditorFrame then KeybindEditorFrame.Visible = false end
+		if PickerFrame.Visible and PickerTarget == "ESP" then
+			PickerFrame.Visible = false
+			SaveCurrentColorBtn.Visible = false
+		else
+			OpenColorPicker("ESP")
+		end
+	end)
+end
 
 GuiSizeBtn.MouseButton1Click:Connect(function()
 	PlayClick()
 	local willOpen = not GuiSizeFrame.Visible
 	PickerFrame.Visible = false
 	ResetThemeBtn.Visible = false
+	if SaveCurrentColorBtn then SaveCurrentColorBtn.Visible = false end
 	ConfirmClearFrame.Visible = false
 	if KeybindEditorFrame then KeybindEditorFrame.Visible = false end
 	GuiSizeFrame.Visible = willOpen
@@ -6763,6 +6960,7 @@ ClearKeybindsBtn.MouseButton1Click:Connect(function()
 	PickerFrame.Visible = false
 	GuiSizeFrame.Visible = false
 	ResetThemeBtn.Visible = false
+	if SaveCurrentColorBtn then SaveCurrentColorBtn.Visible = false end
 	if KeybindEditorFrame then KeybindEditorFrame.Visible = false end
 	ConfirmClearFrame.Visible = true
 end)
