@@ -275,7 +275,14 @@ HoverSound.Parent = MainFrame
 
 local function PlayClick() ClickSound:Play() end
 local function PlaySwoosh() SwooshSound:Play() end
-local function PlayHover() HoverSound:Play() end
+local LastHoverSound = 0
+local function PlayHover()
+	local now = os.clock()
+	if now - LastHoverSound < 0.12 then return end
+	if HoverSound.IsPlaying and HoverSound.TimePosition < 0.06 then return end
+	LastHoverSound = now
+	HoverSound:Play()
+end
 local function PlayMinimizeSound(isMinimizing)
 	if isMinimizing then MinimizeSound:Play() else UnminimizeSound:Play() end
 end
@@ -549,9 +556,10 @@ end
 
 ThemeObjects.ShowNotification = function(message)
 	if not HubState.NotificationHolder or not HubState.NotificationHolder.Parent then return end
-	HubState.NotificationSound:Stop()
-	HubState.NotificationSound.TimePosition = 0
-	HubState.NotificationSound:Play()
+	if not HubState.NotificationSound.IsPlaying then
+		HubState.NotificationSound.TimePosition = 0
+		HubState.NotificationSound:Play()
+	end
 	local item = {}
 	item.Frame = Instance.new("Frame")
 	item.Frame.Size = UDim2.new(1, 0, 0, 24)
@@ -2658,14 +2666,44 @@ HubState.AutoLockToggleBtn.MouseButton1Click:Connect(function() PlayClick() Togg
 
 ThemeObjects.ResolveESPCharacter = function(targetPlayer)
 	if not targetPlayer then return nil end
-	-- Infinite Yield follows Player.Character first. QOD's PlayersFolder may contain
-	-- an incomplete/hidden proxy while the local player is the killer.
 	local character = targetPlayer.Character
-	if character and character:IsA("Model") then return character end
 	local playersFolder = workspace:FindFirstChild("PlayersFolder")
 	local folderCharacter = playersFolder and playersFolder:FindFirstChild(targetPlayer.Name)
-	if folderCharacter and folderCharacter:IsA("Model") then return folderCharacter end
+	local function hasCoreParts(model)
+		if not model or not model:IsA("Model") then return false end
+		return model:FindFirstChildOfClass("Humanoid") ~= nil
+			and (model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("UpperTorso") or model:FindFirstChild("Torso") or model.PrimaryPart) ~= nil
+	end
+	if ThemeObjects.DeepESP and ThemeObjects.DeepESP.Enabled and hasCoreParts(folderCharacter) then return folderCharacter end
+	if hasCoreParts(character) then return character end
+	if hasCoreParts(folderCharacter) then return folderCharacter end
 	return nil
+end
+
+ThemeObjects.IsBodyESPPart = function(part, character)
+	if not part or not part:IsA("BasePart") or not character then return false end
+	if part.Parent ~= character then return false end
+	if part.Name == "HumanoidRootPart" then return true end
+	return part.Name == "Head"
+		or part.Name == "Torso"
+		or part.Name == "UpperTorso"
+		or part.Name == "LowerTorso"
+		or part.Name == "LeftUpperArm"
+		or part.Name == "LeftLowerArm"
+		or part.Name == "LeftHand"
+		or part.Name == "RightUpperArm"
+		or part.Name == "RightLowerArm"
+		or part.Name == "RightHand"
+		or part.Name == "LeftUpperLeg"
+		or part.Name == "LeftLowerLeg"
+		or part.Name == "LeftFoot"
+		or part.Name == "RightUpperLeg"
+		or part.Name == "RightLowerLeg"
+		or part.Name == "RightFoot"
+		or part.Name == "Left Arm"
+		or part.Name == "Right Arm"
+		or part.Name == "Left Leg"
+		or part.Name == "Right Leg"
 end
 
 ThemeObjects.ESPAdornmentRoot = Instance.new("Folder")
@@ -2701,17 +2739,7 @@ ThemeObjects.ClearESPAdornments = function(targetPlayer)
 end
 
 ThemeObjects.DisableOtherESP = function(activeMode)
-	if activeMode ~= "Player" and HubState.ESPEnabled then
-		HubState.ESPEnabled = false
-		HubState.ESPToggleBtn.Text = "Off"
-		HubState.ESPTitle.TextColor3 = InactiveTextColor()
-	end
-	if activeMode ~= "QOD" and ThemeObjects.DeepESP and ThemeObjects.DeepESP.Enabled and ThemeObjects.SetQODESP then
-		ThemeObjects.SetQODESP(false)
-	end
-	if activeMode ~= "MM2" and HubState.MM2ESPEnabled and ThemeObjects.SetMM2ESP then
-		ThemeObjects.SetMM2ESP(false)
-	end
+	return activeMode
 end
 
 local function ToggleESP()
@@ -2728,6 +2756,8 @@ local function ToggleESP()
 				if character:FindFirstChild("ESPHighlight") then character.ESPHighlight:Destroy() end
 				local head = character:FindFirstChild("Head")
 				if head and head:FindFirstChild("ESPGui") then head.ESPGui:Destroy() end
+				local root = character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso") or character.PrimaryPart
+				if root and root:FindFirstChild("ESPGui") then root.ESPGui:Destroy() end
 			end
 		end
 	end
@@ -5734,13 +5764,13 @@ HubState.Connections.MainLoop = RunService.RenderStepped:Connect(function()
 					ThemeObjects.ESPAdornments[p] = adornments
 				end
 				for part, adornment in pairs(adornments) do
-					if not part.Parent or not part:IsDescendantOf(char) then
+					if not part.Parent or not part:IsDescendantOf(char) or not ThemeObjects.IsBodyESPPart(part, char) then
 						if adornment then adornment:Destroy() end
 						adornments[part] = nil
 					end
 				end
-				for _, part in ipairs(char:GetDescendants()) do
-					if part:IsA("BasePart") then
+				for _, part in ipairs(char:GetChildren()) do
+					if ThemeObjects.IsBodyESPPart(part, char) then
 						local adornment = adornments[part]
 						if not adornment then
 							adornment = Instance.new("BoxHandleAdornment")
@@ -5783,10 +5813,13 @@ HubState.Connections.MainLoop = RunService.RenderStepped:Connect(function()
 			end
 
 			local head = char:FindFirstChild("Head")
-			if showPlayerESP and head then
-				local espGui = head:FindFirstChild("ESPGui")
+			local labelPart = head or root
+			if showPlayerESP and labelPart then
+				if labelPart ~= head and head and head:FindFirstChild("ESPGui") then head.ESPGui:Destroy() end
+				if labelPart ~= root and root and root:FindFirstChild("ESPGui") then root.ESPGui:Destroy() end
+				local espGui = labelPart:FindFirstChild("ESPGui")
 				if not espGui then
-					espGui = Instance.new("BillboardGui", head)
+					espGui = Instance.new("BillboardGui", labelPart)
 					espGui.Name = "ESPGui"
 					espGui.Size = UDim2.new(0, 200, 0, 50)
 					espGui.AlwaysOnTop = true
@@ -5802,8 +5835,9 @@ HubState.Connections.MainLoop = RunService.RenderStepped:Connect(function()
 				local dist = (RootPart and (RootPart.Position - root.Position).Magnitude) or 0
 				espGui.ESPLabel.TextColor3 = roleColor or HubState.ESPColor
 				espGui.ESPLabel.Text = string.format("%s\nHP: %d | %d Studs", p.DisplayName, math.floor(hum.Health), math.floor(dist))
-			elseif head and head:FindFirstChild("ESPGui") then
-				head.ESPGui:Destroy()
+			else
+				if head and head:FindFirstChild("ESPGui") then head.ESPGui:Destroy() end
+				if root and root:FindFirstChild("ESPGui") then root.ESPGui:Destroy() end
 			end
 
         end
@@ -6008,7 +6042,7 @@ HubState.LocalCountLabel.Size = UDim2.new(0, 310, 0, 10)
 HubState.LocalCountLabel.Position = UDim2.new(0, 10, 1, -14)
 HubState.LocalCountLabel.BackgroundTransparency = 1
 HubState.LocalCountLabel.BorderSizePixel = 0
-HubState.LocalCountLabel.Text = "11 / 200"
+HubState.LocalCountLabel.Text = "12 / 200"
 HubState.LocalCountLabel.Font = Enum.Font.GothamBold
 HubState.LocalCountLabel.TextSize = 7
 HubState.LocalCountLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -7036,6 +7070,8 @@ local function Cleanup()
 			if cleanupCharacter:FindFirstChild("MurdererRoleHighlight") then cleanupCharacter.MurdererRoleHighlight:Destroy() end
 			if cleanupCharacter:FindFirstChild("SheriffRoleHighlight") then cleanupCharacter.SheriffRoleHighlight:Destroy() end
 			if cleanupCharacter:FindFirstChild("Head") and cleanupCharacter.Head:FindFirstChild("ESPGui") then cleanupCharacter.Head.ESPGui:Destroy() end
+			local cleanupRoot = cleanupCharacter:FindFirstChild("HumanoidRootPart") or cleanupCharacter:FindFirstChild("UpperTorso") or cleanupCharacter:FindFirstChild("Torso") or cleanupCharacter.PrimaryPart
+			if cleanupRoot and cleanupRoot:FindFirstChild("ESPGui") then cleanupRoot.ESPGui:Destroy() end
 		end
 	end
 	for _, connection in pairs(HubState.Connections) do if connection then connection:Disconnect() end end
