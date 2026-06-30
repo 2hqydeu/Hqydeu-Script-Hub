@@ -4934,18 +4934,19 @@ local function FindRoleHolderFromReplicatedClues(roleName)
 	if roundHolder then return roundHolder end
 	local replicatedStorage = game:GetService("ReplicatedStorage")
 	local playerGui = Player:FindFirstChildOfClass("PlayerGui")
-	local roots = {replicatedStorage, playerGui}
+	local roots = {}
 	local mainGui = replicatedStorage:FindFirstChild("MainGUI")
 	if mainGui then
 		local gameGui = mainGui:FindFirstChild("Game")
 		local roleSelector = gameGui and gameGui:FindFirstChild("RoleSelector")
-		if roleSelector then table.insert(roots, 1, roleSelector) end
+		if roleSelector then table.insert(roots, roleSelector) end
 	end
+	if playerGui then table.insert(roots, playerGui) end
 	local checked = 0
 	for _, rootObject in ipairs(roots) do
 		if rootObject then
 			local stack = rootObject:GetChildren()
-			while #stack > 0 and checked < 1600 do
+			while #stack > 0 and checked < 650 do
 				local object = table.remove(stack)
 				checked += 1
 				local lowerName = object.Name:lower()
@@ -5009,8 +5010,47 @@ local function UpdateRoleAvatar(imageLabel, targetPlayer, roleName)
 	end)
 end
 
+ThemeObjects.HideMM2TouchButtonsOnDesktop = function()
+	if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then return end
+	local playerGui = Player:FindFirstChildOfClass("PlayerGui")
+	if not playerGui then return end
+	local buttonNames = {
+		Throw = true,
+		Equip = true,
+		Perk = true,
+		Crouch = true,
+	}
+	for _, object in ipairs(playerGui:GetDescendants()) do
+		if buttonNames[object.Name] and object:IsA("GuiObject") then
+			object.Visible = false
+		end
+	end
+end
+
+ThemeObjects.ClearMM2Roles = function()
+	local now = os.clock()
+	local hadRoles = HubState.CurrentMurderer ~= nil or HubState.CurrentSheriff ~= nil
+		or HubState.LastMurdererAvatarId ~= 0 or HubState.LastSheriffAvatarId ~= 0
+	if not hadRoles and HubState.LastMM2RoleClearAt and now - HubState.LastMM2RoleClearAt < 2 then return end
+	HubState.LastMM2RoleClearAt = now
+	HubState.CurrentMurderer = nil
+	HubState.CurrentSheriff = nil
+	HubState.LastMurdererAvatarId = 0
+	HubState.LastSheriffAvatarId = 0
+	if HubState.MurdererAvatar then HubState.MurdererAvatar.Image = "" end
+	if HubState.SheriffAvatar then HubState.SheriffAvatar.Image = "" end
+	if HubState.MurdererRoleLabel then HubState.MurdererRoleLabel.Text = "Murderer: Unknown" end
+	if HubState.SheriffRoleLabel then HubState.SheriffRoleLabel.Text = "Sheriff: Unknown" end
+	UpdateRoleHighlights()
+	if hadRoles or not HubState.LastMM2TouchCleanupAt or now - HubState.LastMM2TouchCleanupAt > 3 then
+		HubState.LastMM2TouchCleanupAt = now
+		ThemeObjects.HideMM2TouchButtonsOnDesktop()
+	end
+end
+
 ThemeObjects.SetMM2RoleFromClue = function(roleName, targetPlayer)
 	if not targetPlayer or not targetPlayer:IsA("Player") then return false end
+	HubState.LastMM2RoleClueAt = os.clock()
 	if roleName == "Murderer" then
 		HubState.CurrentMurderer = targetPlayer
 		if HubState.LastMurdererAvatarId ~= targetPlayer.UserId then
@@ -5030,6 +5070,22 @@ ThemeObjects.SetMM2RoleFromClue = function(roleName, targetPlayer)
 	HubState.SheriffRoleLabel.Text = "Sheriff: " .. FormatRolePlayer(HubState.CurrentSheriff)
 	UpdateRoleHighlights()
 	return true
+end
+
+ThemeObjects.GetMM2RoundRoleState = function()
+	local playerData = ThemeObjects.GetMM2CurrentRoundData()
+	if not playerData then return nil, nil, nil end
+	local hasAnyRoundRole = false
+	local hasTrackedRole = false
+	for _, roundData in pairs(playerData) do
+		if type(roundData) == "table" and type(roundData.Role) == "string" then
+			hasAnyRoundRole = true
+			if roundData.Role == "Murderer" or roundData.Role == "Sheriff" or roundData.Role == "Hero" then
+				hasTrackedRole = true
+			end
+		end
+	end
+	return playerData, hasAnyRoundRole, hasTrackedRole
 end
 
 ThemeObjects.ResolvePlayerFromRolePayload = function(...)
@@ -5116,11 +5172,21 @@ ThemeObjects.HookMM2RoleRemotes = function()
 			end)
 		end
 	end
+	local function connectRoundReset(connectionName, remoteObject)
+		if not remoteObject or HubState.Connections[connectionName] then return end
+		if remoteObject:IsA("RemoteEvent") then
+			HubState.Connections[connectionName] = remoteObject.OnClientEvent:Connect(function()
+				ThemeObjects.ClearMM2Roles()
+			end)
+		end
+	end
 	connectRemote("MM2SetSheriffRemote", extras and extras:FindFirstChild("SetSheriff"), "Sheriff")
 	connectRemote("MM2SetMurdererRemote", extras and extras:FindFirstChild("SetMurderer"), "Murderer")
 	connectRemote("MM2ShowRoleSelectRemote", gameplay and gameplay:FindFirstChild("ShowRoleSelect"), nil)
 	connectRemote("MM2ShowRoleSelectNewRemote", gameplay and gameplay:FindFirstChild("ShowRoleSelectNew"), nil)
 	connectRemote("MM2RoleSelectRemote", gameplay and gameplay:FindFirstChild("RoleSelect"), nil)
+	connectRoundReset("MM2VictoryScreenRemote", gameplay and gameplay:FindFirstChild("VictoryScreen"))
+	connectRoundReset("MM2LoadingMapRemote", gameplay and gameplay:FindFirstChild("LoadingMap"))
 end
 
 HubState.LastRoleCheck = 0
@@ -5132,6 +5198,11 @@ HubState.Connections.MM2RoleDetector = RunService.Heartbeat:Connect(function()
 	local mm2PageActive = HubState.ActiveContentPage == HubState.MM2Page or HubState.SelectedGame == "MM2"
 	local mm2FeatureActive = HubState.KillEnabled or HubState.AutoGunPickupEnabled or HubState.CoinFarmEnabled
 	if not mm2PageActive and not mm2FeatureActive and not HubState.ESPEnabled and not ThemeObjects.DeepESP.Enabled then return end
+	local _, hasAnyRoundRole, hasTrackedRole = ThemeObjects.GetMM2RoundRoleState()
+	if hasAnyRoundRole == true and hasTrackedRole == false then
+		ThemeObjects.ClearMM2Roles()
+		return
+	end
 	local foundMurderer = FindRoleHolder("Knife")
 	local foundSheriff = FindRoleHolder("Gun")
 	if foundMurderer then HubState.CurrentMurderer = foundMurderer end
