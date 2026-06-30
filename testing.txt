@@ -6115,7 +6115,7 @@ ThemeObjects.SwitchTab = function(name)
 	local activeY = 54
 	local headerX = 120
 	local headerY = 32
-	local slideDistance = 92
+	local slideDistance = 270
 	local headerSlideDistance = 18
 	local slideTime = 0.42
 	local slideTweenInfo = TweenInfo.new(slideTime, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
@@ -6126,6 +6126,28 @@ ThemeObjects.SwitchTab = function(name)
 	local incomingPage = HubState.MovementPage
 	ThemeObjects.TabTransitionId += 1
 	local transitionId = ThemeObjects.TabTransitionId
+	local function restoreTransitionPage(page)
+		if not page or not page.Parent then return end
+		local originalTransparency = page:GetAttribute("TransitionBackgroundTransparency")
+		local originalZIndex = page:GetAttribute("TransitionZIndex")
+		if originalTransparency ~= nil then
+			page.BackgroundTransparency = originalTransparency
+			page:SetAttribute("TransitionBackgroundTransparency", nil)
+		end
+		if originalZIndex ~= nil then
+			page.ZIndex = originalZIndex
+			page:SetAttribute("TransitionZIndex", nil)
+		end
+	end
+	local function prepareIncomingTransitionPage(page)
+		if not page or not page.Parent then return end
+		restoreTransitionPage(page)
+		page:SetAttribute("TransitionBackgroundTransparency", page.BackgroundTransparency)
+		page:SetAttribute("TransitionZIndex", page.ZIndex)
+		page.BackgroundColor3 = MainFrame.BackgroundColor3
+		page.BackgroundTransparency = 0
+		page.ZIndex = 40
+	end
 
 	ThemeObjects.ActiveTabName = name
 	HubState.ActiveTabIndex = nextIndex
@@ -6170,6 +6192,7 @@ ThemeObjects.SwitchTab = function(name)
 	local outgoingPage = HubState.ActiveContentPage
 	for _, page in ipairs(pages) do
 		if page and page ~= incomingPage and page ~= outgoingPage then
+			restoreTransitionPage(page)
 			page.Visible = false
 			page.Position = UDim2.new(1.1, 0, 0, activeY)
 		end
@@ -6177,6 +6200,8 @@ ThemeObjects.SwitchTab = function(name)
 
 	incomingPage.Visible = true
 	if outgoingPage and outgoingPage ~= incomingPage and outgoingPage.Parent then
+		prepareIncomingTransitionPage(incomingPage)
+		restoreTransitionPage(outgoingPage)
 		incomingPage.Position = UDim2.new(0, activeX, 0, activeY + (slideDistance * direction))
 		outgoingPage.Visible = true
 		outgoingPage.Position = UDim2.new(0, activeX, 0, activeY)
@@ -6187,15 +6212,20 @@ ThemeObjects.SwitchTab = function(name)
 			if ThemeObjects.TabTransitionId == transitionId and outgoingPage and outgoingPage.Parent and outgoingPage ~= HubState.ActiveContentPage then
 				outgoingPage.Visible = false
 				outgoingPage.Position = UDim2.new(1.1, 0, 0, activeY)
+				restoreTransitionPage(outgoingPage)
 			end
 		end)
 	else
+		restoreTransitionPage(incomingPage)
 		incomingPage.Position = UDim2.new(0, activeX, 0, activeY)
 	end
 	HubState.ActiveContentPage = incomingPage
 	ThemeObjects.RefreshStateTexts(true)
 	task.delay(slideTime + 0.04, function()
-		if ThemeObjects.TabTransitionId == transitionId then UpdateTheme(true) end
+		if ThemeObjects.TabTransitionId == transitionId then
+			restoreTransitionPage(incomingPage)
+			UpdateTheme(true)
+		end
 	end)
 end
 for i, name in ipairs(HubState.TabNames) do
