@@ -291,6 +291,7 @@ ThemeObjects.AddFeatureKeybind = function(entry)
 		ThemeObjects.AttachFeatureKeybindButton(entry, entry.Parent, entry.Toggle)
 	end
 	if entry.Button and ThemeObjects.AttachKeybindClearPrompt then
+		if ThemeObjects.EnsureKeybindOutline then ThemeObjects.EnsureKeybindOutline(entry.Button) end
 		ThemeObjects.AttachKeybindClearPrompt(entry, entry.Button)
 	end
 	if ThemeObjects.RefreshKeybindEditor then ThemeObjects.RefreshKeybindEditor() end
@@ -706,6 +707,20 @@ ThemeObjects.StyleControlOutline = function(obj)
 	outline.Thickness = 1
 	outline.Transparency = 0.18
 	outline.Parent = obj
+end
+
+ThemeObjects.EnsureKeybindOutline = function(button)
+	if not button or not button:IsA("GuiObject") then return end
+	local outline = button:FindFirstChild("ControlOutline")
+	if not outline then
+		outline = Instance.new("UIStroke")
+		outline.Name = "ControlOutline"
+		outline.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		outline.Parent = button
+	end
+	outline.Color = Color3.fromRGB(0, 0, 0)
+	outline.Thickness = 1
+	outline.Transparency = 0
 end
 
 ThemeObjects.AttachHoverSound = function(obj)
@@ -4848,7 +4863,64 @@ local function PlayerHasRoleTool(targetPlayer, toolName)
 	return ContainerHasTool(targetPlayer.Character) or ContainerHasTool(targetPlayer:FindFirstChild("Backpack"))
 end
 
+local FindPlayerByNameText
+local function FindPlayerByRoleText(roleName, text)
+	if type(text) ~= "string" or text == "" then return nil end
+	local lowerText = text:lower()
+	local lowerRole = roleName:lower()
+	if not lowerText:find(lowerRole, 1, true) then return nil end
+	return FindPlayerByNameText(text)
+end
+
+FindPlayerByNameText = function(text)
+	if type(text) ~= "string" or text == "" then return nil end
+	local lowerText = text:lower()
+	for _, targetPlayer in ipairs(Players:GetPlayers()) do
+		local name = targetPlayer.Name:lower()
+		local displayName = (targetPlayer.DisplayName or targetPlayer.Name):lower()
+		if lowerText:find(name, 1, true) or lowerText:find(displayName, 1, true) then
+			return targetPlayer
+		end
+	end
+	return nil
+end
+
+local function FindRoleHolderFromReplicatedClues(roleName)
+	local roots = {game:GetService("ReplicatedStorage"), Player:FindFirstChildOfClass("PlayerGui")}
+	local checked = 0
+	for _, rootObject in ipairs(roots) do
+		if rootObject then
+			local stack = rootObject:GetChildren()
+			while #stack > 0 and checked < 1600 do
+				local object = table.remove(stack)
+				checked += 1
+				local lowerName = object.Name:lower()
+				if lowerName:find(roleName:lower(), 1, true) then
+					if object:IsA("ObjectValue") and object.Value and object.Value:IsA("Player") then return object.Value end
+					if object:IsA("StringValue") then
+						local found = FindPlayerByNameText(tostring(object.Value))
+						if found then return found end
+					elseif object:IsA("TextLabel") or object:IsA("TextButton") then
+						local found = FindPlayerByNameText(object.Text)
+						if found then return found end
+					end
+				elseif object:IsA("TextLabel") or object:IsA("TextButton") then
+					local found = FindPlayerByRoleText(roleName, object.Text)
+					if found then return found end
+				end
+				for _, child in ipairs(object:GetChildren()) do
+					table.insert(stack, child)
+				end
+			end
+		end
+	end
+	return nil
+end
+
 local function FindRoleHolder(toolName)
+	local roleName = toolName == "Knife" and "Murderer" or (toolName == "Gun" and "Sheriff" or toolName)
+	local earlyHolder = FindRoleHolderFromReplicatedClues(roleName)
+	if earlyHolder then return earlyHolder end
 	for _, targetPlayer in ipairs(Players:GetPlayers()) do
 		if PlayerHasRoleTool(targetPlayer, toolName) then return targetPlayer end
 	end
@@ -6133,7 +6205,14 @@ ThemeObjects.SwitchTab = function(name)
 				object.TextTransparency = value
 			elseif object:IsA("ImageLabel") or object:IsA("ImageButton") then
 				object.ImageTransparency = value
-			elseif object:IsA("GuiObject") and object.BackgroundTransparency < 1 then
+			elseif object:IsA("UIStroke") then
+				if object:GetAttribute("TransitionBaseStrokeTransparency") == nil then
+					object:SetAttribute("TransitionBaseStrokeTransparency", object.Transparency)
+				end
+				local baseTransparency = object:GetAttribute("TransitionBaseStrokeTransparency") or 0
+				object.Transparency = math.clamp(baseTransparency + value, 0, 1)
+			end
+			if object:IsA("GuiObject") and object.BackgroundTransparency < 1 then
 				if object:GetAttribute("TransitionBaseBackgroundTransparency") == nil then
 					object:SetAttribute("TransitionBaseBackgroundTransparency", object.BackgroundTransparency)
 				end
@@ -6149,7 +6228,14 @@ ThemeObjects.SwitchTab = function(name)
 				object.TextTransparency = 0
 			elseif object:IsA("ImageLabel") or object:IsA("ImageButton") then
 				object.ImageTransparency = 0
-			elseif object:IsA("GuiObject") then
+			elseif object:IsA("UIStroke") then
+				local baseTransparency = object:GetAttribute("TransitionBaseStrokeTransparency")
+				if baseTransparency ~= nil then
+					object.Transparency = baseTransparency
+					object:SetAttribute("TransitionBaseStrokeTransparency", nil)
+				end
+			end
+			if object:IsA("GuiObject") then
 				local baseTransparency = object:GetAttribute("TransitionBaseBackgroundTransparency")
 				if baseTransparency ~= nil then
 					object.BackgroundTransparency = baseTransparency
@@ -7354,6 +7440,10 @@ for _, surface in ipairs(MainFrame:GetDescendants()) do
 end
 
 CompactGuiText(ScreenGui)
+for _, entry in ipairs(ThemeObjects.FeatureKeybindEntries) do
+	if entry.Button then ThemeObjects.EnsureKeybindOutline(entry.Button) end
+	if entry.InlineButton then ThemeObjects.EnsureKeybindOutline(entry.InlineButton) end
+end
 UpdateTheme()
 
 -- Dragging
