@@ -4897,7 +4897,41 @@ ThemeObjects.ObjectPathHasRole = function(object, roleName)
 	return false
 end
 
+ThemeObjects.GetMM2CurrentRoundData = function()
+	if HubState.MM2CurrentRoundClient == false then return nil end
+	if HubState.MM2CurrentRoundClient == nil then
+		local modules = game:GetService("ReplicatedStorage"):FindFirstChild("Modules")
+		local roundModule = modules and modules:FindFirstChild("CurrentRoundClient")
+		if not roundModule then return nil end
+		local success, currentRoundClient = pcall(require, roundModule)
+		HubState.MM2CurrentRoundClient = success and currentRoundClient or false
+	end
+	local currentRoundClient = HubState.MM2CurrentRoundClient
+	if type(currentRoundClient) == "table" and type(currentRoundClient.PlayerData) == "table" then
+		return currentRoundClient.PlayerData
+	end
+	return nil
+end
+
+ThemeObjects.FindMM2RoleFromCurrentRound = function(roleName)
+	local playerData = ThemeObjects.GetMM2CurrentRoundData()
+	if not playerData then return nil end
+	for playerName, roundData in pairs(playerData) do
+		if type(roundData) == "table" then
+			local role = roundData.Role
+			local roleMatches = role == roleName or (roleName == "Sheriff" and role == "Hero")
+			if roleMatches then
+				local found = Players:FindFirstChild(tostring(playerName)) or FindPlayerByNameText(tostring(playerName))
+				if found then return found end
+			end
+		end
+	end
+	return nil
+end
+
 local function FindRoleHolderFromReplicatedClues(roleName)
+	local roundHolder = ThemeObjects.FindMM2RoleFromCurrentRound(roleName)
+	if roundHolder then return roundHolder end
 	local replicatedStorage = game:GetService("ReplicatedStorage")
 	local playerGui = Player:FindFirstChildOfClass("PlayerGui")
 	local roots = {replicatedStorage, playerGui}
@@ -5042,6 +5076,23 @@ ThemeObjects.TrySetMM2RoleFromPayload = function(roleName, ...)
 	return false
 end
 
+ThemeObjects.SetLocalMM2RoleFromPayload = function(...)
+	local args = {...}
+	local selectedRole = nil
+	local firstArg = args[1]
+	if type(firstArg) == "string" then
+		selectedRole = firstArg
+	elseif type(firstArg) == "table" then
+		selectedRole = firstArg.SelectedRole or firstArg.Role
+	end
+	if selectedRole == "Murderer" then
+		return ThemeObjects.SetMM2RoleFromClue("Murderer", Player)
+	elseif selectedRole == "Sheriff" or selectedRole == "Hero" then
+		return ThemeObjects.SetMM2RoleFromClue("Sheriff", Player)
+	end
+	return false
+end
+
 ThemeObjects.HookMM2RoleRemotes = function()
 	local replicatedStorage = game:GetService("ReplicatedStorage")
 	local remotes = replicatedStorage:FindFirstChild("Remotes")
@@ -5054,6 +5105,7 @@ ThemeObjects.HookMM2RoleRemotes = function()
 				if roleName then
 					ThemeObjects.TrySetMM2RoleFromPayload(roleName, ...)
 				else
+					ThemeObjects.SetLocalMM2RoleFromPayload(...)
 					task.defer(function()
 						local murderer = FindRoleHolderFromReplicatedClues("Murderer")
 						local sheriff = FindRoleHolderFromReplicatedClues("Sheriff")
