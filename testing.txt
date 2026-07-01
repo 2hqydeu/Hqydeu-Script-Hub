@@ -1945,8 +1945,8 @@ do
 	Instance.new("UICorner", eventToggle).CornerRadius = UDim.new(0, 5)
 
 	local eventCountValue = Instance.new("TextLabel")
-	eventCountValue.Size = UDim2.new(0, 20, 0, 22)
-	eventCountValue.Position = UDim2.new(1, -82, 0, 8)
+	eventCountValue.Size = UDim2.new(0, 18, 0, 22)
+	eventCountValue.Position = UDim2.new(1, -124, 0, 8)
 	eventCountValue.BackgroundTransparency = 1
 	eventCountValue.Text = "0"
 	eventCountValue.Font = Enum.Font.GothamBold
@@ -1992,8 +1992,8 @@ do
 	Instance.new("UICorner", reviveToggle).CornerRadius = UDim.new(0, 5)
 
 	local reviveCountValue = Instance.new("TextLabel")
-	reviveCountValue.Size = UDim2.new(0, 20, 0, 22)
-	reviveCountValue.Position = UDim2.new(1, -82, 0, 8)
+	reviveCountValue.Size = UDim2.new(0, 18, 0, 22)
+	reviveCountValue.Position = UDim2.new(1, -124, 0, 8)
 	reviveCountValue.BackgroundTransparency = 1
 	reviveCountValue.Text = "0"
 	reviveCountValue.Font = Enum.Font.GothamBold
@@ -7038,11 +7038,11 @@ Instance.new("UICorner", HubState.DestroyBtn).CornerRadius = UDim.new(0, 6)
 
 HubState.LocalCountLabel = Instance.new("TextLabel")
 HubState.LocalCountLabel.Name = "LocalCountLabel"
-HubState.LocalCountLabel.Size = UDim2.new(0, 140, 0, 10)
-HubState.LocalCountLabel.Position = UDim2.new(0, 10, 1, -14)
+HubState.LocalCountLabel.Size = UDim2.new(0, 112, 0, 10)
+HubState.LocalCountLabel.Position = UDim2.new(0, 34, 1, -14)
 HubState.LocalCountLabel.BackgroundTransparency = 1
 HubState.LocalCountLabel.BorderSizePixel = 0
-HubState.LocalCountLabel.Text = tostring(#Players:GetPlayers()) .. " / " .. tostring(Players.MaxPlayers)
+HubState.LocalCountLabel.Text = "11 / 200"
 HubState.LocalCountLabel.Font = Enum.Font.GothamBold
 HubState.LocalCountLabel.TextSize = 7
 HubState.LocalCountLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -7052,8 +7052,8 @@ table.insert(ThemeObjects.Texts, HubState.LocalCountLabel)
 
 HubState.RuntimeLabel = Instance.new("TextLabel")
 HubState.RuntimeLabel.Name = "RuntimeLabel"
-HubState.RuntimeLabel.Size = UDim2.new(0, 140, 0, 10)
-HubState.RuntimeLabel.Position = UDim2.new(1, -150, 1, -14)
+HubState.RuntimeLabel.Size = UDim2.new(0, 112, 0, 10)
+HubState.RuntimeLabel.Position = UDim2.new(1, -146, 1, -14)
 HubState.RuntimeLabel.BackgroundTransparency = 1
 HubState.RuntimeLabel.BorderSizePixel = 0
 HubState.RuntimeLabel.Text = "0 Sec"
@@ -8084,9 +8084,6 @@ end
 HubState.Connections.SettingsFooter = RunService.Heartbeat:Connect(function()
 	if os.clock() - (HubState.LastSettingsFooterUpdate or 0) < 1 then return end
 	HubState.LastSettingsFooterUpdate = os.clock()
-	if HubState.LocalCountLabel then
-		HubState.LocalCountLabel.Text = tostring(#Players:GetPlayers()) .. " / " .. tostring(Players.MaxPlayers)
-	end
 	if HubState.RuntimeLabel then
 		HubState.RuntimeLabel.Text = FormatScriptRuntime(os.clock() - ScriptStartTime)
 	end
