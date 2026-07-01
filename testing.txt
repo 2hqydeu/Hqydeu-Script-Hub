@@ -1602,6 +1602,8 @@ HubState.MM2GameButton.MouseButton1Click:Connect(function()
 	ThemeObjects.ActiveTabName = "Games"
 	HubState.ActiveTabIndex = table.find(HubState.TabNames, "Games") or HubState.ActiveTabIndex
 	HubState.ActiveContentPage = HubState.MM2Page
+	if ThemeObjects.RefreshMM2RolesFromRemote then ThemeObjects.RefreshMM2RolesFromRemote() end
+	if ThemeObjects.RefreshMM2RolesFromTools then ThemeObjects.RefreshMM2RolesFromTools() end
 	UpdateTheme(true)
 end)
 
@@ -5032,17 +5034,26 @@ ThemeObjects.RefreshMM2RolesFromRemote = function()
 	if ThemeObjects.EnsureMM2RoleClueListeners then ThemeObjects.EnsureMM2RoleClueListeners() end
 end
 
+task.spawn(function()
+	for _ = 1, 40 do
+		if ThemeObjects.EnsureMM2RoleClueListeners then ThemeObjects.EnsureMM2RoleClueListeners() end
+		if HubState.MM2RoleClueListenersStarted then break end
+		task.wait(0.25)
+	end
+end)
+
 ThemeObjects.RefreshMM2RolesFromTools = function()
 	local murderer = FindRoleHolder("Knife")
 	local sheriff = FindRoleHolder("Gun")
-	if not murderer and not sheriff and HubState.MM2RoleSource == "Remote" and os.clock() - (HubState.LastMM2RemoteRoleAt or 0) < 3 then
+	if not murderer and not sheriff and HubState.MM2RoleSource == "Remote" and os.clock() - (HubState.LastMM2RemoteRoleAt or 0) < 45 then
 		return HubState.CurrentMurderer, HubState.CurrentSheriff
 	end
 	return ThemeObjects.ApplyMM2Roles(murderer, sheriff, "Tools")
 end
 
 HubState.Connections.MM2ToolRoleScanner = RunService.Heartbeat:Connect(function()
-	local needsScan = HubState.MM2ESPEnabled or HubState.MurdererRoleESPEnabled or HubState.SheriffRoleESPEnabled or HubState.KillEnabled or HubState.AutoShootEnabled or HubState.ESPEnabled or ThemeObjects.DeepESP.Enabled
+	local mm2PageActive = HubState.SelectedGame == "MM2" or (HubState.MM2Page and HubState.MM2Page.Visible)
+	local needsScan = mm2PageActive or HubState.MM2ESPEnabled or HubState.MurdererRoleESPEnabled or HubState.SheriffRoleESPEnabled or HubState.KillEnabled or HubState.AutoShootEnabled or HubState.ESPEnabled or ThemeObjects.DeepESP.Enabled
 	if not needsScan then return end
 	local now = os.clock()
 	if now - (HubState.LastMM2ToolRoleScan or 0) < 0.25 then return end
@@ -6360,6 +6371,11 @@ ThemeObjects.SwitchTab = function(name)
 	elseif name == "Games" and openingSelectedGame and HubState.SelectedGame == "MM2" then incomingPage = HubState.MM2Page
 	elseif name == "Games" and openingSelectedGame and HubState.SelectedGame == "Quiet Or Die" and quietPage then incomingPage = quietPage
 	elseif name == "Games" then incomingPage = HubState.GamesPage end
+
+	if name == "Games" and openingSelectedGame and HubState.SelectedGame == "MM2" then
+		if ThemeObjects.RefreshMM2RolesFromRemote then ThemeObjects.RefreshMM2RolesFromRemote() end
+		if ThemeObjects.RefreshMM2RolesFromTools then ThemeObjects.RefreshMM2RolesFromTools() end
+	end
 
 	local quietCoins = HubState.PageHeader:FindFirstChild("QuietOrDieCoinsDisplay")
 	if quietCoins then quietCoins.Visible = openingSelectedGame and HubState.SelectedGame == "Quiet Or Die" end
