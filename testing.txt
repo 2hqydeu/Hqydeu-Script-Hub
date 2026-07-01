@@ -1625,7 +1625,7 @@ do
 	quietPage.ClipsDescendants = true
 	quietPage.ScrollBarThickness = 3
 	quietPage.ScrollBarImageColor3 = AccentColor
-	quietPage.CanvasSize = UDim2.new(0, 0, 0, 294)
+	quietPage.CanvasSize = UDim2.new(0, 0, 0, 250)
 	quietPage.Visible = false
 	quietPage.Parent = MainFrame
 
@@ -1943,39 +1943,16 @@ do
 	table.insert(ThemeObjects.Texts, eventToggle)
 	Instance.new("UICorner", eventToggle).CornerRadius = UDim.new(0, 5)
 
-	local statusRow = Instance.new("Frame")
-	statusRow.Name = "QuietOrDieStatusRow"
-	statusRow.Size = UDim2.new(1, -8, 0, 38)
-	statusRow.Position = UDim2.new(0, 4, 0, 206)
-	statusRow.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
-	statusRow.BackgroundTransparency = 0.92
-	statusRow.BorderSizePixel = 0
-	statusRow.Parent = quietPage
-	table.insert(ThemeObjects.Backgrounds, statusRow)
-	Instance.new("UICorner", statusRow).CornerRadius = UDim.new(0, 6)
-
-	local statusTitle = Instance.new("TextLabel")
-	statusTitle.Size = UDim2.new(0, 82, 0, 24)
-	statusTitle.Position = UDim2.new(0, 8, 0, 7)
-	statusTitle.BackgroundTransparency = 1
-	statusTitle.Text = "Status:"
-	statusTitle.Font = Enum.Font.GothamBold
-	statusTitle.TextSize = 11
-	statusTitle.TextXAlignment = Enum.TextXAlignment.Left
-	statusTitle.Parent = statusRow
-	table.insert(ThemeObjects.Texts, statusTitle)
-
-	local statusValue = Instance.new("TextLabel")
-	statusValue.Size = UDim2.new(1, -96, 0, 24)
-	statusValue.Position = UDim2.new(0, 86, 0, 7)
-	statusValue.BackgroundTransparency = 1
-	statusValue.Text = "Waiting"
-	statusValue.Font = Enum.Font.GothamBold
-	statusValue.TextSize = 9
-	statusValue.TextXAlignment = Enum.TextXAlignment.Right
-	statusValue.TextTruncate = Enum.TextTruncate.AtEnd
-	statusValue.Parent = statusRow
-	table.insert(ThemeObjects.Texts, statusValue)
+	local eventCountValue = Instance.new("TextLabel")
+	eventCountValue.Size = UDim2.new(0, 34, 0, 22)
+	eventCountValue.Position = UDim2.new(1, -86, 0, 8)
+	eventCountValue.BackgroundTransparency = 1
+	eventCountValue.Text = "0"
+	eventCountValue.Font = Enum.Font.GothamBold
+	eventCountValue.TextSize = 11
+	eventCountValue.TextXAlignment = Enum.TextXAlignment.Center
+	eventCountValue.Parent = eventRow
+	table.insert(ThemeObjects.Texts, eventCountValue)
 
 	local reviveRow = Instance.new("Frame")
 	reviveRow.Name = "QuietOrDieReviveRow"
@@ -2012,6 +1989,17 @@ do
 	table.insert(ThemeObjects.Backgrounds, reviveToggle)
 	table.insert(ThemeObjects.Texts, reviveToggle)
 	Instance.new("UICorner", reviveToggle).CornerRadius = UDim.new(0, 5)
+
+	local reviveCountValue = Instance.new("TextLabel")
+	reviveCountValue.Size = UDim2.new(0, 34, 0, 22)
+	reviveCountValue.Position = UDim2.new(1, -86, 0, 8)
+	reviveCountValue.BackgroundTransparency = 1
+	reviveCountValue.Text = "0"
+	reviveCountValue.Font = Enum.Font.GothamBold
+	reviveCountValue.TextSize = 11
+	reviveCountValue.TextXAlignment = Enum.TextXAlignment.Center
+	reviveCountValue.Parent = reviveRow
+	table.insert(ThemeObjects.Texts, reviveCountValue)
 
 	ThemeObjects.QODReveal = {Enabled = false, LastFire = 0}
 	ThemeObjects.QODReveal.Row = Instance.new("Frame")
@@ -2064,7 +2052,7 @@ do
 		end
 	end)
 
-	local killState = {Enabled = false, TargetIndex = 0, LastAttack = 0}
+	local killState = {Enabled = false, TargetIndex = 0, LastAttack = 0, AttackDelay = 0.03, AttackBurst = 2, KillSweepLimit = 6, SnapBack = true}
 	local farmState = {Enabled = false, SafePlace = false, MuteAudio = false, MutedSounds = {}, AudioConnections = {}, LastCoins = nil, ExecutionGain = 0, LastWins = nil, ExecutionWins = 0, LastEmote = 0, TauntBurst = 3, TauntDelay = 0.02, DroppedCharacter = nil, SurvivorSince = 0}
 	local eventState = {Enabled = false, LastMove = 0, Current = nil, Started = 0, Skipped = {}}
 	local reviveState = {Enabled = false, LastCheck = 0, Triggered = {}}
@@ -2373,21 +2361,6 @@ do
 	HubState.Connections.QuietOrDieStatus = RunService.Heartbeat:Connect(function()
 		if os.clock() - (coinsDisplayState.LastStatusUpdate or 0) < 0.25 then return end
 		coinsDisplayState.LastStatusUpdate = os.clock()
-		local playerGui = Player:FindFirstChildOfClass("PlayerGui")
-		local inGameGui = playerGui and playerGui:FindFirstChild("InGameGui")
-		local abilityEvent = game:GetService("ReplicatedStorage"):FindFirstChild("AbilityEvent")
-		if not inGameGui or not abilityEvent then
-			statusValue.Text = "Outside game"
-			statusTitle.TextColor3 = InactiveTextColor()
-			return
-		end
-
-		local role = "Lobby"
-		if IsQuietOrDieKiller() then
-			role = "Killer"
-		elseif IsQuietOrDieSurvivor() then
-			role = "Survivor"
-		end
 
 		local eventCount = 0
 		local eventFolder = workspace:FindFirstChild("EventSpawns")
@@ -2408,8 +2381,10 @@ do
 			end
 		end
 
-		statusValue.Text = string.format("%s | Events %d | Revives %d", role, eventCount, reviveCount)
-		statusTitle.TextColor3 = AccentColor
+		eventCountValue.Text = tostring(eventCount)
+		reviveCountValue.Text = tostring(reviveCount)
+		eventCountValue.TextColor3 = eventCount > 0 and AccentColor or InactiveTextColor()
+		reviveCountValue.TextColor3 = reviveCount > 0 and AccentColor or InactiveTextColor()
 	end)
 
 	HubState.Connections.QuietOrDieAutoReveal = RunService.Heartbeat:Connect(function()
@@ -2457,11 +2432,9 @@ do
 					reviveState.Triggered[prompt] = now
 					if type(fireproximityprompt) == "function" then
 						local originalHoldDuration = prompt.HoldDuration
-						local originalMaxDistance = prompt.MaxActivationDistance
 						local originalRequiresLineOfSight = prompt.RequiresLineOfSight
 						pcall(function()
 							prompt.HoldDuration = 0
-							prompt.MaxActivationDistance = 1000000
 							prompt.RequiresLineOfSight = false
 						end)
 						pcall(function() fireproximityprompt(prompt) end)
@@ -2469,7 +2442,6 @@ do
 							if prompt and prompt.Parent then
 								pcall(function()
 									prompt.HoldDuration = originalHoldDuration
-									prompt.MaxActivationDistance = originalMaxDistance
 									prompt.RequiresLineOfSight = originalRequiresLineOfSight
 								end)
 							end
@@ -2481,7 +2453,7 @@ do
 	end)
 
 	HubState.Connections.QuietOrDieAutoKill = RunService.Heartbeat:Connect(function()
-		if not killState.Enabled or not IsQuietOrDieKiller() or os.clock() - killState.LastAttack < 0.1 then return end
+		if not killState.Enabled or not IsQuietOrDieKiller() or os.clock() - killState.LastAttack < killState.AttackDelay then return end
 		local character = Player.Character
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		local root = character and character:FindFirstChild("HumanoidRootPart")
@@ -2492,7 +2464,7 @@ do
 		local targets = {}
 		for _, targetPlayer in ipairs(Players:GetPlayers()) do
 			if targetPlayer ~= Player and playersFolder:FindFirstChild(targetPlayer.Name) then
-				local targetCharacter = targetPlayer.Character
+				local targetCharacter = playersFolder:FindFirstChild(targetPlayer.Name) or targetPlayer.Character
 				local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
 				local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
 				if targetHumanoid and targetHumanoid.Health > 0 and targetRoot then table.insert(targets, targetRoot) end
@@ -2500,12 +2472,24 @@ do
 		end
 		if #targets == 0 then return end
 
-		killState.TargetIndex = (killState.TargetIndex % #targets) + 1
-		local targetRoot = targets[killState.TargetIndex]
-		root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 2)
-		root.AssemblyLinearVelocity = Vector3.zero
+		local returnCFrame = root.CFrame
+		local returnVelocity = root.AssemblyLinearVelocity
 		killState.LastAttack = os.clock()
-		pcall(function() attackRemote:FireServer() end)
+		for _ = 1, math.min(#targets, killState.KillSweepLimit) do
+			killState.TargetIndex = (killState.TargetIndex % #targets) + 1
+			local targetRoot = targets[killState.TargetIndex]
+			if targetRoot and targetRoot.Parent then
+				root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 2)
+				root.AssemblyLinearVelocity = Vector3.zero
+				for _ = 1, killState.AttackBurst do
+					pcall(function() attackRemote:FireServer() end)
+				end
+			end
+		end
+		if killState.SnapBack and root and root.Parent then
+			root.CFrame = returnCFrame
+			root.AssemblyLinearVelocity = returnVelocity
+		end
 	end)
 
 	local function MuteQuietOrDieSound(sound)
@@ -2832,7 +2816,7 @@ ThemeObjects.DeepESP = {Enabled = false}
 ThemeObjects.DeepESP.Row = Instance.new("Frame")
 ThemeObjects.DeepESP.Row.Name = "QuietOrDieDeepESPRow"
 ThemeObjects.DeepESP.Row.Size = UDim2.new(1, -8, 0, 38)
-ThemeObjects.DeepESP.Row.Position = UDim2.new(0, 4, 0, 250)
+ThemeObjects.DeepESP.Row.Position = UDim2.new(0, 4, 0, 206)
 ThemeObjects.DeepESP.Row.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 ThemeObjects.DeepESP.Row.BackgroundTransparency = 0.92
 ThemeObjects.DeepESP.Row.BorderSizePixel = 0
