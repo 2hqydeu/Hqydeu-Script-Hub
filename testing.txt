@@ -9,6 +9,7 @@ local HttpService = game:GetService("HttpService")
 
 local Player = Players.LocalPlayer
 local InterfaceScale = 1.18
+local ScriptStartTime = os.clock()
 
 local KeybindStorageFile = "HqydeuLoader_Keybinds.json"
 local SavedKeybinds = {}
@@ -1944,12 +1945,12 @@ do
 	Instance.new("UICorner", eventToggle).CornerRadius = UDim.new(0, 5)
 
 	local eventCountValue = Instance.new("TextLabel")
-	eventCountValue.Size = UDim2.new(0, 34, 0, 22)
-	eventCountValue.Position = UDim2.new(1, -86, 0, 8)
+	eventCountValue.Size = UDim2.new(0, 20, 0, 22)
+	eventCountValue.Position = UDim2.new(1, -82, 0, 8)
 	eventCountValue.BackgroundTransparency = 1
 	eventCountValue.Text = "0"
 	eventCountValue.Font = Enum.Font.GothamBold
-	eventCountValue.TextSize = 11
+	eventCountValue.TextSize = 8
 	eventCountValue.TextXAlignment = Enum.TextXAlignment.Center
 	eventCountValue.Parent = eventRow
 	table.insert(ThemeObjects.Texts, eventCountValue)
@@ -1991,12 +1992,12 @@ do
 	Instance.new("UICorner", reviveToggle).CornerRadius = UDim.new(0, 5)
 
 	local reviveCountValue = Instance.new("TextLabel")
-	reviveCountValue.Size = UDim2.new(0, 34, 0, 22)
-	reviveCountValue.Position = UDim2.new(1, -86, 0, 8)
+	reviveCountValue.Size = UDim2.new(0, 20, 0, 22)
+	reviveCountValue.Position = UDim2.new(1, -82, 0, 8)
 	reviveCountValue.BackgroundTransparency = 1
 	reviveCountValue.Text = "0"
 	reviveCountValue.Font = Enum.Font.GothamBold
-	reviveCountValue.TextSize = 11
+	reviveCountValue.TextSize = 8
 	reviveCountValue.TextXAlignment = Enum.TextXAlignment.Center
 	reviveCountValue.Parent = reviveRow
 	table.insert(ThemeObjects.Texts, reviveCountValue)
@@ -7037,17 +7038,31 @@ Instance.new("UICorner", HubState.DestroyBtn).CornerRadius = UDim.new(0, 6)
 
 HubState.LocalCountLabel = Instance.new("TextLabel")
 HubState.LocalCountLabel.Name = "LocalCountLabel"
-HubState.LocalCountLabel.Size = UDim2.new(0, 310, 0, 10)
+HubState.LocalCountLabel.Size = UDim2.new(0, 140, 0, 10)
 HubState.LocalCountLabel.Position = UDim2.new(0, 10, 1, -14)
 HubState.LocalCountLabel.BackgroundTransparency = 1
 HubState.LocalCountLabel.BorderSizePixel = 0
-HubState.LocalCountLabel.Text = "11 / 200"
+HubState.LocalCountLabel.Text = tostring(#Players:GetPlayers()) .. " / " .. tostring(Players.MaxPlayers)
 HubState.LocalCountLabel.Font = Enum.Font.GothamBold
 HubState.LocalCountLabel.TextSize = 7
 HubState.LocalCountLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-HubState.LocalCountLabel.TextXAlignment = Enum.TextXAlignment.Center
+HubState.LocalCountLabel.TextXAlignment = Enum.TextXAlignment.Left
 HubState.LocalCountLabel.Parent = HubState.SettingsPage
 table.insert(ThemeObjects.Texts, HubState.LocalCountLabel)
+
+HubState.RuntimeLabel = Instance.new("TextLabel")
+HubState.RuntimeLabel.Name = "RuntimeLabel"
+HubState.RuntimeLabel.Size = UDim2.new(0, 140, 0, 10)
+HubState.RuntimeLabel.Position = UDim2.new(1, -150, 1, -14)
+HubState.RuntimeLabel.BackgroundTransparency = 1
+HubState.RuntimeLabel.BorderSizePixel = 0
+HubState.RuntimeLabel.Text = "0 Sec"
+HubState.RuntimeLabel.Font = Enum.Font.GothamBold
+HubState.RuntimeLabel.TextSize = 7
+HubState.RuntimeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+HubState.RuntimeLabel.TextXAlignment = Enum.TextXAlignment.Right
+HubState.RuntimeLabel.Parent = HubState.SettingsPage
+table.insert(ThemeObjects.Texts, HubState.RuntimeLabel)
 
 local AccentColorBtn = Instance.new("TextButton")
 AccentColorBtn.Size = UDim2.new(0, 150, 0, 24)
@@ -8048,6 +8063,34 @@ end)
 RefreshThemePreviews()
 end
 BuildSettingsPage()
+
+local function FormatScriptRuntime(seconds)
+	seconds = math.max(0, math.floor(tonumber(seconds) or 0))
+	if seconds < 60 then
+		return tostring(seconds) .. " Sec"
+	end
+	local minutes = math.floor(seconds / 60)
+	if minutes < 60 then
+		return tostring(minutes) .. " Min"
+	end
+	local hours = math.floor(minutes / 60)
+	if hours < 24 then
+		return tostring(hours) .. " Hrs"
+	end
+	local days = math.floor(hours / 24)
+	return tostring(days) .. (days == 1 and " Day" or " Days")
+end
+
+HubState.Connections.SettingsFooter = RunService.Heartbeat:Connect(function()
+	if os.clock() - (HubState.LastSettingsFooterUpdate or 0) < 1 then return end
+	HubState.LastSettingsFooterUpdate = os.clock()
+	if HubState.LocalCountLabel then
+		HubState.LocalCountLabel.Text = tostring(#Players:GetPlayers()) .. " / " .. tostring(Players.MaxPlayers)
+	end
+	if HubState.RuntimeLabel then
+		HubState.RuntimeLabel.Text = FormatScriptRuntime(os.clock() - ScriptStartTime)
+	end
+end)
 
 local function Cleanup()
 	if ThemeObjects.FreeCam and ThemeObjects.FreeCam.Enabled then ThemeObjects.FreeCam.Disable() end
