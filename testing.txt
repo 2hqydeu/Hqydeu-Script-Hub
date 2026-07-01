@@ -4965,10 +4965,51 @@ ThemeObjects.ApplyMM2RolesFromRoundData = function(playerData)
 	return false
 end
 
+ThemeObjects.GetMM2CurrentRoundClientReadOnly = function()
+	if HubState.MM2CurrentRoundClientReadOnly ~= nil then
+		return HubState.MM2CurrentRoundClientReadOnly ~= false and HubState.MM2CurrentRoundClientReadOnly or nil
+	end
+	local replicatedStorage = game:GetService("ReplicatedStorage")
+	local modules = replicatedStorage:FindFirstChild("Modules")
+	local currentRoundModule = modules and modules:FindFirstChild("CurrentRoundClient")
+	if not currentRoundModule or not currentRoundModule:IsA("ModuleScript") then
+		return nil
+	end
+	local success, currentRoundClient = pcall(require, currentRoundModule)
+	if success and type(currentRoundClient) == "table" then
+		HubState.MM2CurrentRoundClientReadOnly = currentRoundClient
+		return currentRoundClient
+	end
+	HubState.MM2CurrentRoundClientReadOnly = false
+	return nil
+end
+
+ThemeObjects.RefreshMM2RolesFromCurrentRoundReadOnly = function()
+	local currentRoundClient = ThemeObjects.GetMM2CurrentRoundClientReadOnly()
+	if type(currentRoundClient) ~= "table" then return false end
+	if ThemeObjects.ApplyMM2RolesFromRoundData(currentRoundClient.PlayerData) then
+		return true
+	end
+	if type(currentRoundClient.GetLatestPlayerData) == "function" and os.clock() - (HubState.LastMM2LatestDataRequest or 0) >= 1.5 then
+		HubState.LastMM2LatestDataRequest = os.clock()
+		local success, latestPlayerData = pcall(function()
+			return currentRoundClient.GetLatestPlayerData()
+		end)
+		if success then
+			return ThemeObjects.ApplyMM2RolesFromRoundData(latestPlayerData)
+		end
+	end
+	return false
+end
+
 ThemeObjects.RefreshMM2RolesFromRemote = function()
 	if HubState.MM2RoleRemoteBusy then return end
 	HubState.MM2RoleRemoteBusy = true
 	task.spawn(function()
+		if ThemeObjects.RefreshMM2RolesFromCurrentRoundReadOnly and ThemeObjects.RefreshMM2RolesFromCurrentRoundReadOnly() then
+			HubState.MM2RoleRemoteBusy = false
+			return
+		end
 		local replicatedStorage = game:GetService("ReplicatedStorage")
 		local remotes = replicatedStorage:FindFirstChild("Remotes")
 		local gameplay = remotes and remotes:FindFirstChild("Gameplay")
