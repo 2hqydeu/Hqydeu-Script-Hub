@@ -651,8 +651,8 @@ ThemeObjects.RefreshToggleButton = function(obj)
 	local baseColor = obj.Text == "On" and AccentColor or FrameThemeColor:Lerp(Color3.new(0, 0, 0), 0.22)
 	local baseTransparency = obj.Text == "On" and 0 or 0.8
 	if obj:GetAttribute("ButtonHovered") then
-		baseColor = baseColor:Lerp(AccentColor, obj.Text == "On" and 0.24 or 0.42)
-		baseTransparency = math.max(0, baseTransparency - 0.32)
+		baseColor = baseColor:Lerp(AccentColor, obj.Text == "On" and 0.24 or 0.12)
+		baseTransparency = math.max(0, baseTransparency - (obj.Text == "On" and 0.32 or 0.12))
 	end
 	obj.BackgroundColor3 = baseColor
 	obj.BackgroundTransparency = baseTransparency
@@ -661,8 +661,8 @@ end
 
 ThemeObjects.ApplyHoveredButtonStyle = function(obj)
 	if not obj:IsA("TextButton") then return end
-	local hoverColor = obj.BackgroundColor3:Lerp(AccentColor, obj.Text == "On" and 0.24 or 0.42)
-	local hoverTransparency = math.max(0, obj.BackgroundTransparency - 0.32)
+	local hoverColor = obj.BackgroundColor3:Lerp(AccentColor, obj.Text == "On" and 0.24 or 0.12)
+	local hoverTransparency = math.max(0, obj.BackgroundTransparency - (obj.Text == "On" and 0.32 or 0.12))
 	obj.BackgroundColor3 = hoverColor
 	obj.BackgroundTransparency = hoverTransparency
 end
@@ -759,7 +759,9 @@ ThemeObjects.AttachHoverSound = function(obj)
 		local baseG = obj:GetAttribute("HoverBaseG")
 		local baseB = obj:GetAttribute("HoverBaseB")
 		local baseTransparency = obj:GetAttribute("HoverBaseTransparency")
-		if baseR and baseG and baseB and baseTransparency then
+		if obj.Text == "On" or obj.Text == "Off" then
+			ThemeObjects.RefreshToggleButton(obj)
+		elseif baseR and baseG and baseB and baseTransparency then
 			obj.BackgroundColor3 = Color3.new(baseR, baseG, baseB)
 			obj.BackgroundTransparency = baseTransparency
 		else
@@ -864,7 +866,11 @@ local function UpdateTheme(instant)
 			if obj.Name == "MM2GameButton" or obj.Name == "QuietOrDieGameButton" then target = Color3.fromRGB(65, 65, 67) end
 			if obj.Name == "ESPColorBtn" then target = HubState.ESPColor end
 			if obj.Name:find("SavedColorSlot", 1, true) then target = obj.BackgroundColor3 end
-			if obj:IsA("TextButton") and obj.Text == "On" then target = AccentColor end
+			if obj:IsA("TextButton") and (obj.Text == "On" or obj.Text == "Off") then
+				target = obj.Text == "On" and AccentColor or secBgColor
+				targetTransparency = obj.Text == "On" and 0 or 0.8
+				obj.BackgroundTransparency = targetTransparency
+			end
 			if obj.Name == "DestroyBtn" then target = Color3.fromRGB(255, 35, 35)
 			elseif obj.Name == "ResetCharacterBtn" then target = Color3.fromRGB(255, 230, 0)
 			elseif obj.Name == "RejoinBtn" then target = Color3.fromRGB(0, 230, 255)
@@ -873,8 +879,8 @@ local function UpdateTheme(instant)
 			elseif obj.Name == "ClearKeybindsBtn" then target = Color3.fromRGB(195, 35, 255)
 			elseif obj.Name == "EditKeybindsBtn" then target = Color3.fromRGB(255, 130, 35) end
 			if obj:IsA("TextButton") and obj:GetAttribute("ButtonHovered") then
-				target = target:Lerp(AccentColor, obj.Text == "On" and 0.24 or 0.42)
-				obj.BackgroundTransparency = math.max(0, targetTransparency - 0.32)
+				target = target:Lerp(AccentColor, obj.Text == "On" and 0.24 or 0.12)
+				obj.BackgroundTransparency = math.max(0, targetTransparency - (obj.Text == "On" and 0.32 or 0.12))
 			end
 			TweenService:Create(obj, tweenInfo, {BackgroundColor3 = target}):Play()
 		else
@@ -4575,17 +4581,17 @@ function HubState.GunDropESP.Refresh()
 		HubState.GunDropESP.Label = Instance.new("BillboardGui")
 		HubState.GunDropESP.Label.Name = "HqydeuGunDropLabel"
 		HubState.GunDropESP.Label.Adornee = labelPart
-		HubState.GunDropESP.Label.Size = UDim2.new(0, 64, 0, 20)
-		HubState.GunDropESP.Label.StudsOffsetWorldSpace = Vector3.new(0, 2.2, 0)
+		HubState.GunDropESP.Label.Size = UDim2.new(0, 82, 0, 34)
+		HubState.GunDropESP.Label.StudsOffsetWorldSpace = Vector3.new(0, 2.8, 0)
 		HubState.GunDropESP.Label.AlwaysOnTop = true
 		HubState.GunDropESP.Label.Parent = gunDrop
 		local labelText = Instance.new("TextLabel")
 		labelText.Size = UDim2.new(1, 0, 1, 0)
 		labelText.BackgroundTransparency = 1
-		labelText.Text = "Gun"
+		labelText.Text = "GUN\nDropped"
 		labelText.Font = Enum.Font.GothamBold
 		labelText.TextSize = 12
-		labelText.TextColor3 = Color3.fromRGB(255, 225, 80)
+		labelText.TextColor3 = Color3.fromRGB(255, 225, 60)
 		labelText.TextStrokeColor3 = Color3.fromRGB(25, 25, 25)
 		labelText.TextStrokeTransparency = 0.2
 		labelText.Parent = HubState.GunDropESP.Label
@@ -4595,6 +4601,10 @@ end
 HubState.Connections.GunDropESP = RunService.Heartbeat:Connect(function()
 	if os.clock() - HubState.GunDropESP.LastCheck < 0.2 then return end
 	HubState.GunDropESP.LastCheck = os.clock()
+	local deepESPEnabled = ThemeObjects.DeepESP and ThemeObjects.DeepESP.Enabled
+	local regularESPEnabled = HubState.ESPEnabled or deepESPEnabled
+	local mm2GunESPEnabled = game.PlaceId == 142823291 and (regularESPEnabled or HubState.MM2ESPEnabled or HubState.MurdererRoleESPEnabled or HubState.SheriffRoleESPEnabled)
+	HubState.GunDropESP.Enabled = mm2GunESPEnabled
 	HubState.GunDropESP.Refresh()
 end)
 
@@ -4851,15 +4861,37 @@ HubState.MM2RoleDetailsPanel.BackgroundTransparency = 0.04
 HubState.MM2RoleDetailsPanel.BorderSizePixel = 0
 HubState.MM2RoleDetailsPanel.Visible = false
 HubState.MM2RoleDetailsPanel.ZIndex = 80
-HubState.MM2RoleDetailsPanel.Parent = MainFrame
+HubState.MM2RoleDetailsPanel.Parent = ScreenGui
 table.insert(ThemeObjects.Backgrounds, HubState.MM2RoleDetailsPanel)
 Instance.new("UICorner", HubState.MM2RoleDetailsPanel).CornerRadius = UDim.new(0, 8)
+ThemeObjects.MM2RoleDetailsScale = Instance.new("UIScale")
+ThemeObjects.MM2RoleDetailsScale.Scale = GuiScaleFromValue(GuiSizeValue)
+ThemeObjects.MM2RoleDetailsScale.Parent = HubState.MM2RoleDetailsPanel
 local detailsStroke = Instance.new("UIStroke")
 detailsStroke.Name = "ControlOutline"
 detailsStroke.Color = Color3.fromRGB(0, 0, 0)
 detailsStroke.Thickness = 1
 detailsStroke.Transparency = 0.15
 detailsStroke.Parent = HubState.MM2RoleDetailsPanel
+
+ThemeObjects.UpdateMM2RoleDetailsPosition = function()
+	local scale = GuiScaleFromValue(GuiSizeValue)
+	local mainPos = MainFrame.AbsolutePosition
+	local mainSize = MainFrame.AbsoluteSize
+	local popupWidth = HubState.MM2RoleDetailsPanel.AbsoluteSize.X
+	local rightX = mainPos.X + mainSize.X + (8 * scale)
+	local leftX = mainPos.X - popupWidth - (8 * scale)
+	local targetX = rightX
+	local currentCamera = workspace.CurrentCamera
+	local viewportWidth = currentCamera and currentCamera.ViewportSize.X or 9999
+	if rightX + popupWidth > viewportWidth - 8 then
+		targetX = math.max(8, leftX)
+	end
+	HubState.MM2RoleDetailsPanel.Position = UDim2.fromOffset(targetX, mainPos.Y + (56 * scale))
+end
+TrackConnection("MM2RoleDetailsPosition", MainFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(ThemeObjects.UpdateMM2RoleDetailsPosition))
+TrackConnection("MM2RoleDetailsSize", MainFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(ThemeObjects.UpdateMM2RoleDetailsPosition))
+ThemeObjects.UpdateMM2RoleDetailsPosition()
 
 local function CreateMM2RoleDetailRow(y, title, color)
 	local row = Instance.new("Frame")
@@ -5625,9 +5657,6 @@ do
 
 	local autoShootEnabled = false
 	local lastGunFired = 0
-	local shotPending = false
-	local AutoShootConfirmWindow = 0.05
-	local AutoShootLeadTime = 0.035
 
 	local function GetLocalGun()
 		local character = Player.Character
@@ -5706,7 +5735,7 @@ do
 			pcall(function() humanoid:EquipTool(gun) end)
 			return
 		end
-		if shotPending or shootNow - lastGunFired < 0.72 then return end
+		if shootNow - lastGunFired < 0.35 then return end
 		local localRoot = character:FindFirstChild("HumanoidRootPart")
 		local raycastAttachment = localRoot and localRoot:FindFirstChild("GunRaycastAttachment")
 		local shootRemote = gun:FindFirstChild("Shoot")
@@ -5714,52 +5743,18 @@ do
 		local shotOrigin = raycastAttachment and raycastAttachment.WorldCFrame or nil
 		if not shotOrigin or not HasClearGunLine(shotOrigin.Position, targetCharacter, targetPart) then return end
 
-		-- Take a second movement sample before firing. Sharp reversals cancel this
-		-- attempt, preventing a quick juke from baiting a stale shot.
-		local confirmedMurderer = HubState.CurrentMurderer
-		local firstPosition = targetPart.Position
-		local firstVelocity = targetPart.AssemblyLinearVelocity
-		shotPending = true
-		task.delay(AutoShootConfirmWindow, function()
-			shotPending = false
-			if not autoShootEnabled or HubState.CurrentSheriff ~= Player or HubState.CurrentMurderer ~= confirmedMurderer then return end
-
-			local freshCharacter = Player.Character
-			local freshHumanoid = freshCharacter and freshCharacter:FindFirstChildOfClass("Humanoid")
-			local freshTargetCharacter = confirmedMurderer and confirmedMurderer.Character
-			local freshTargetHumanoid = freshTargetCharacter and freshTargetCharacter:FindFirstChildOfClass("Humanoid")
-			local freshTargetPart = freshTargetCharacter and (freshTargetCharacter:FindFirstChild("UpperTorso") or freshTargetCharacter:FindFirstChild("HumanoidRootPart") or freshTargetCharacter:FindFirstChild("Head"))
-			local freshGun = GetLocalGun()
-			if not freshCharacter or not freshHumanoid or freshHumanoid.Health <= 0 or not freshTargetHumanoid or freshTargetHumanoid.Health <= 0 or not freshTargetPart or not freshGun then return end
-			if freshGun.Parent ~= freshCharacter then return end
-
-			local freshRoot = freshCharacter:FindFirstChild("HumanoidRootPart")
-			local freshAttachment = freshRoot and freshRoot:FindFirstChild("GunRaycastAttachment")
-			local freshRemote = freshGun:FindFirstChild("Shoot")
-			local freshOrigin = freshAttachment and freshAttachment.WorldCFrame
-			if not freshOrigin or not freshRemote or not freshRemote:IsA("RemoteEvent") then return end
-
-			local currentPosition = freshTargetPart.Position
-			local currentVelocity = freshTargetPart.AssemblyLinearVelocity
-			local expectedPosition = firstPosition + firstVelocity * AutoShootConfirmWindow
-			local movementError = (currentPosition - expectedPosition).Magnitude
-			local velocityChange = (currentVelocity - firstVelocity).Magnitude
-			if movementError > 6.0 or velocityChange > 60 then return end
-			if not HasClearGunLine(freshOrigin.Position, freshTargetCharacter, freshTargetPart) then return end
-
-			local leadVelocity = Vector3.new(currentVelocity.X, math.clamp(currentVelocity.Y, -12, 12), currentVelocity.Z)
-			local leadOffset = leadVelocity * AutoShootLeadTime
-			if leadOffset.Magnitude > 4 then leadOffset = leadOffset.Unit * 4 end
-			local aimPosition = currentPosition + leadOffset
-			if freshTargetPart.Name == "HumanoidRootPart" then
-				aimPosition = aimPosition + Vector3.new(0, 1.15, 0)
-			elseif freshTargetPart.Name == "Head" then
-				aimPosition = aimPosition + Vector3.new(0, -0.15, 0)
-			end
-			local targetCFrame = CFrame.new(aimPosition)
-			lastGunFired = os.clock()
-			pcall(function() freshRemote:FireServer(freshOrigin, targetCFrame) end)
-		end)
+		local currentVelocity = targetPart.AssemblyLinearVelocity
+		local leadVelocity = Vector3.new(currentVelocity.X, math.clamp(currentVelocity.Y, -12, 12), currentVelocity.Z)
+		local leadOffset = leadVelocity * 0.025
+		if leadOffset.Magnitude > 3 then leadOffset = leadOffset.Unit * 3 end
+		local aimPosition = targetPart.Position + leadOffset
+		if targetPart.Name == "HumanoidRootPart" then
+			aimPosition = aimPosition + Vector3.new(0, 1.15, 0)
+		elseif targetPart.Name == "Head" then
+			aimPosition = aimPosition + Vector3.new(0, -0.15, 0)
+		end
+		lastGunFired = shootNow
+		pcall(function() shootRemote:FireServer(shotOrigin, CFrame.new(aimPosition)) end)
 	end)
 end
 
@@ -7165,7 +7160,7 @@ local function ApplyGuiSize(value)
 	GuiSizeValue = math.clamp(value, 20, 100)
 	GuiSizeValueLabel.Text = tostring(GuiSizeValue)
 	local targetScale = GuiScaleFromValue(GuiSizeValue)
-	for _, scaleObject in ipairs({MainScaleObject, HubState.TargetScaleObject, ThemeObjects.PlayerTP.Scale, SplashScaleObject, ThemeObjects.PickerDockScale, ThemeObjects.GuiSizeDockScale, ThemeObjects.KeybindEditorScale, ThemeObjects.ExtrasFeature.CopyScale}) do
+	for _, scaleObject in ipairs({MainScaleObject, HubState.TargetScaleObject, ThemeObjects.PlayerTP.Scale, SplashScaleObject, ThemeObjects.PickerDockScale, ThemeObjects.GuiSizeDockScale, ThemeObjects.KeybindEditorScale, ThemeObjects.ExtrasFeature.CopyScale, ThemeObjects.MM2RoleDetailsScale}) do
 		if scaleObject and scaleObject.Parent then
 			TweenService:Create(scaleObject, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Scale = targetScale}):Play()
 		end
@@ -7174,6 +7169,7 @@ local function ApplyGuiSize(value)
 	if ThemeObjects.UpdateGuiSizeDockPosition then ThemeObjects.UpdateGuiSizeDockPosition() end
 	if ThemeObjects.UpdateKeybindEditorDockPosition then ThemeObjects.UpdateKeybindEditorDockPosition() end
 	if ThemeObjects.ExtrasFeature.UpdateDockPosition then ThemeObjects.ExtrasFeature.UpdateDockPosition() end
+	if ThemeObjects.UpdateMM2RoleDetailsPosition then ThemeObjects.UpdateMM2RoleDetailsPosition() end
 	SavedKeybinds.GuiSize = GuiSizeValue
 	SavePersistentSettings()
 end
