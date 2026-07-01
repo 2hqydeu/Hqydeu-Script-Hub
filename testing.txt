@@ -5046,29 +5046,46 @@ ThemeObjects.ApplyMM2RolesFromPlayerData = function(playerData)
 	return true
 end
 
-ThemeObjects.RefreshMM2RolesFromCurrentRound = function()
-	if HubState.MM2CurrentRoundClient == false then return false end
-	if not HubState.MM2CurrentRoundClient then
-		local replicatedStorage = game:GetService("ReplicatedStorage")
-		local modules = replicatedStorage:FindFirstChild("Modules")
-		local currentRoundModule = modules and modules:FindFirstChild("CurrentRoundClient")
-		if not currentRoundModule or not currentRoundModule:IsA("ModuleScript") then return false end
-		local success, currentRoundClient = pcall(require, currentRoundModule)
-		if not success or type(currentRoundClient) ~= "table" then
-			HubState.MM2CurrentRoundClient = false
-			return false
-		end
-		HubState.MM2CurrentRoundClient = currentRoundClient
-		local changedSignal = currentRoundClient.PlayerDataChanged
-		if changedSignal and changedSignal.Event and not HubState.Connections.MM2CurrentRoundChanged then
-			HubState.Connections.MM2CurrentRoundChanged = changedSignal.Event:Connect(function()
-				ThemeObjects.ApplyMM2RolesFromPlayerData(currentRoundClient.PlayerData)
-				if ThemeObjects.RepairMM2PCGui then ThemeObjects.RepairMM2PCGui() end
-			end)
+ThemeObjects.IsMM2PlayerDataTable = function(playerData)
+	if type(playerData) ~= "table" then return false end
+	for playerName, roundData in pairs(playerData) do
+		if type(playerName) == "string" and type(roundData) == "table" and Players:FindFirstChild(playerName) then
+			local roleName = rawget(roundData, "Role")
+			if type(roleName) == "string" then return true end
 		end
 	end
-	if type(HubState.MM2CurrentRoundClient) == "table" then
-		return ThemeObjects.ApplyMM2RolesFromPlayerData(HubState.MM2CurrentRoundClient.PlayerData)
+	return false
+end
+
+ThemeObjects.FindLoadedMM2CurrentRoundClient = function()
+	if type(HubState.MM2CurrentRoundClient) == "table" and ThemeObjects.IsMM2PlayerDataTable(rawget(HubState.MM2CurrentRoundClient, "PlayerData")) then
+		return HubState.MM2CurrentRoundClient
+	end
+	if type(getgc) ~= "function" then return nil end
+	local success, objects = pcall(getgc, true)
+	if not success then
+		success, objects = pcall(getgc)
+	end
+	if not success or type(objects) ~= "table" then return nil end
+	for _, object in ipairs(objects) do
+		if type(object) == "table" and ThemeObjects.IsMM2PlayerDataTable(rawget(object, "PlayerData")) then
+			HubState.MM2CurrentRoundClient = object
+			local changedSignal = rawget(object, "PlayerDataChanged")
+			if changedSignal and changedSignal.Event and not HubState.Connections.MM2CurrentRoundChanged then
+				HubState.Connections.MM2CurrentRoundChanged = changedSignal.Event:Connect(function()
+					ThemeObjects.ApplyMM2RolesFromPlayerData(rawget(object, "PlayerData"))
+				end)
+			end
+			return object
+		end
+	end
+	return nil
+end
+
+ThemeObjects.RefreshMM2RolesFromCurrentRound = function()
+	local currentRoundClient = ThemeObjects.FindLoadedMM2CurrentRoundClient and ThemeObjects.FindLoadedMM2CurrentRoundClient()
+	if type(currentRoundClient) == "table" then
+		return ThemeObjects.ApplyMM2RolesFromPlayerData(rawget(currentRoundClient, "PlayerData"))
 	end
 	return false
 end
