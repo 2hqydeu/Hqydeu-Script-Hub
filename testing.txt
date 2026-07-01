@@ -5009,71 +5009,54 @@ ThemeObjects.SetMM2RoleFromClue = function(roleName, ...)
 	return true
 end
 
-ThemeObjects.MM2PlayerDataLooksUseful = function(playerData)
-	if type(playerData) ~= "table" then return false end
-	local matchedPlayers = 0
-	local sawRole = false
-	for playerName, roundData in pairs(playerData) do
-		if type(playerName) == "string" and type(roundData) == "table" and Players:FindFirstChild(playerName) then
-			matchedPlayers += 1
-			if type(rawget(roundData, "Role")) == "string" then
-				sawRole = true
-			end
-			if matchedPlayers >= 2 and sawRole then
-				return true
-			end
-		end
-	end
-	return matchedPlayers >= 1 and sawRole
-end
-
 ThemeObjects.ApplyMM2RolesFromPlayerData = function(playerData)
-	if not ThemeObjects.MM2PlayerDataLooksUseful(playerData) then return false end
+	if type(playerData) ~= "table" then return false end
 	local murderer = nil
 	local sheriff = nil
+	local sawRoleData = false
 	for playerName, roundData in pairs(playerData) do
 		if type(playerName) == "string" and type(roundData) == "table" then
 			local targetPlayer = Players:FindFirstChild(playerName)
 			local roleName = rawget(roundData, "Role")
-			if targetPlayer and roleName == "Murderer" then
-				murderer = targetPlayer
-			elseif targetPlayer and (roleName == "Sheriff" or roleName == "Hero") then
-				sheriff = targetPlayer
+			if targetPlayer and type(roleName) == "string" then
+				sawRoleData = true
+				if roleName == "Murderer" then
+					murderer = targetPlayer
+				elseif roleName == "Sheriff" or roleName == "Hero" then
+					sheriff = targetPlayer
+				end
 			end
 		end
 	end
+	if not sawRoleData then return false end
 	HubState.LastMM2RemoteRoleAt = os.clock()
-	ThemeObjects.ApplyMM2Roles(murderer, sheriff, "Memory")
+	ThemeObjects.ApplyMM2Roles(murderer, sheriff, "RoundData")
 	return true
 end
 
-ThemeObjects.RefreshMM2RolesFromMemory = function()
-	if os.clock() - (HubState.LastMM2MemoryScan or 0) < 1 then return false end
-	HubState.LastMM2MemoryScan = os.clock()
-	if type(HubState.MM2MemoryRoundSource) == "table" then
-		local cachedPlayerData = rawget(HubState.MM2MemoryRoundSource, "PlayerData")
-		if ThemeObjects.ApplyMM2RolesFromPlayerData(cachedPlayerData or HubState.MM2MemoryRoundSource) then
-			return true
+ThemeObjects.RefreshMM2RolesFromCurrentRound = function()
+	if HubState.MM2CurrentRoundClient == false then return false end
+	if not HubState.MM2CurrentRoundClient then
+		local replicatedStorage = game:GetService("ReplicatedStorage")
+		local modules = replicatedStorage:FindFirstChild("Modules")
+		local currentRoundModule = modules and modules:FindFirstChild("CurrentRoundClient")
+		if not currentRoundModule or not currentRoundModule:IsA("ModuleScript") then return false end
+		local success, currentRoundClient = pcall(require, currentRoundModule)
+		if not success or type(currentRoundClient) ~= "table" then
+			HubState.MM2CurrentRoundClient = false
+			return false
 		end
-		HubState.MM2MemoryRoundSource = nil
+		HubState.MM2CurrentRoundClient = currentRoundClient
+		local changedSignal = currentRoundClient.PlayerDataChanged
+		if changedSignal and changedSignal.Event and not HubState.Connections.MM2CurrentRoundChanged then
+			HubState.Connections.MM2CurrentRoundChanged = changedSignal.Event:Connect(function()
+				ThemeObjects.ApplyMM2RolesFromPlayerData(currentRoundClient.PlayerData)
+				if ThemeObjects.RepairMM2PCGui then ThemeObjects.RepairMM2PCGui() end
+			end)
+		end
 	end
-	local getgcFunction = type(getgc) == "function" and getgc or nil
-	if not getgcFunction then return false end
-	local success, objects = pcall(getgcFunction, true)
-	if not success or type(objects) ~= "table" then return false end
-
-	for _, object in ipairs(objects) do
-		if type(object) == "table" then
-			local playerData = rawget(object, "PlayerData")
-			if ThemeObjects.ApplyMM2RolesFromPlayerData(playerData) then
-				HubState.MM2MemoryRoundSource = object
-				return true
-			end
-			if ThemeObjects.MM2PlayerDataLooksUseful(object) and ThemeObjects.ApplyMM2RolesFromPlayerData(object) then
-				HubState.MM2MemoryRoundSource = object
-				return true
-			end
-		end
+	if type(HubState.MM2CurrentRoundClient) == "table" then
+		return ThemeObjects.ApplyMM2RolesFromPlayerData(HubState.MM2CurrentRoundClient.PlayerData)
 	end
 	return false
 end
@@ -5100,8 +5083,44 @@ ThemeObjects.EnsureMM2RoleClueListeners = function()
 end
 
 ThemeObjects.RefreshMM2RolesFromRemote = function()
-	if ThemeObjects.RefreshMM2RolesFromMemory and ThemeObjects.RefreshMM2RolesFromMemory() then return end
+	if ThemeObjects.RefreshMM2RolesFromCurrentRound and ThemeObjects.RefreshMM2RolesFromCurrentRound() then return end
 	if ThemeObjects.EnsureMM2RoleClueListeners then ThemeObjects.EnsureMM2RoleClueListeners() end
+end
+
+ThemeObjects.RepairMM2PCGui = function()
+	if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then return end
+	local playerGui = Player:FindFirstChildOfClass("PlayerGui")
+	if not playerGui then return end
+	pcall(function() _G.MobileDevice = nil end)
+
+	local touchInteractButtons = playerGui:FindFirstChild("TouchInteractButtons")
+	if touchInteractButtons then
+		pcall(function() touchInteractButtons.Enabled = false end)
+	end
+
+	local mainGui = playerGui:FindFirstChild("MainGUI")
+	local gameFrame = mainGui and mainGui:FindFirstChild("Game")
+	if gameFrame then
+		local rightBar = gameFrame:FindFirstChild("RightBar")
+		if rightBar then rightBar.Visible = false end
+		local bottomBar = gameFrame:FindFirstChild("BottomBar")
+		local perkButton = bottomBar and bottomBar:FindFirstChild("Perk")
+		if perkButton then perkButton.Visible = false end
+	end
+
+	if mainGui then
+		for _, guiName in ipairs({"Loading", "Loading_Clean"}) do
+			local loadingGui = playerGui:FindFirstChild(guiName)
+			if loadingGui and loadingGui:IsA("ScreenGui") then
+				loadingGui.Enabled = false
+			end
+		end
+	end
+
+	pcall(function()
+		local touchGui = CoreGui:FindFirstChild("TouchGui")
+		if touchGui then touchGui.Enabled = false end
+	end)
 end
 
 task.spawn(function()
@@ -5128,6 +5147,7 @@ HubState.Connections.MM2ToolRoleScanner = RunService.Heartbeat:Connect(function(
 	local now = os.clock()
 	if now - (HubState.LastMM2ToolRoleScan or 0) < 0.25 then return end
 	HubState.LastMM2ToolRoleScan = now
+	if ThemeObjects.RepairMM2PCGui then ThemeObjects.RepairMM2PCGui() end
 	ThemeObjects.RefreshMM2RolesFromTools()
 	if now - (HubState.LastMM2RoleRemoteScan or 0) >= 0.8 then
 		HubState.LastMM2RoleRemoteScan = now
