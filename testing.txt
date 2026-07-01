@@ -5626,8 +5626,8 @@ do
 	local autoShootEnabled = false
 	local lastGunFired = 0
 	local shotPending = false
-	local AutoShootConfirmWindow = 0.035
-	local AutoShootLeadTime = 0.085
+	local AutoShootConfirmWindow = 0.05
+	local AutoShootLeadTime = 0.035
 
 	local function GetLocalGun()
 		local character = Player.Character
@@ -5686,7 +5686,7 @@ do
 		if not autoShootEnabled then return end
 		if HubState.AutoLockEnabled then ToggleAutoLock() end
 		local shootNow = os.clock()
-		if shootNow - (HubState.LastAutoShootThink or 0) < 0.055 then return end
+		if shootNow - (HubState.LastAutoShootThink or 0) < 0.035 then return end
 		HubState.LastAutoShootThink = shootNow
 		if ThemeObjects.RefreshMM2RolesFromTools and shootNow - (HubState.LastMM2AutoShootRoleScan or 0) >= 0.45 then
 			HubState.LastMM2AutoShootRoleScan = shootNow
@@ -5706,7 +5706,7 @@ do
 			pcall(function() humanoid:EquipTool(gun) end)
 			return
 		end
-		if shotPending or shootNow - lastGunFired < 0.62 then return end
+		if shotPending or shootNow - lastGunFired < 0.72 then return end
 		local localRoot = character:FindFirstChild("HumanoidRootPart")
 		local raycastAttachment = localRoot and localRoot:FindFirstChild("GunRaycastAttachment")
 		local shootRemote = gun:FindFirstChild("Shoot")
@@ -5744,12 +5744,19 @@ do
 			local expectedPosition = firstPosition + firstVelocity * AutoShootConfirmWindow
 			local movementError = (currentPosition - expectedPosition).Magnitude
 			local velocityChange = (currentVelocity - firstVelocity).Magnitude
-			if movementError > 7.5 or velocityChange > 75 then return end
+			if movementError > 6.0 or velocityChange > 60 then return end
 			if not HasClearGunLine(freshOrigin.Position, freshTargetCharacter, freshTargetPart) then return end
 
-			local leadOffset = currentVelocity * AutoShootLeadTime
-			if leadOffset.Magnitude > 8 then leadOffset = leadOffset.Unit * 8 end
-			local targetCFrame = CFrame.new(currentPosition + leadOffset)
+			local leadVelocity = Vector3.new(currentVelocity.X, math.clamp(currentVelocity.Y, -12, 12), currentVelocity.Z)
+			local leadOffset = leadVelocity * AutoShootLeadTime
+			if leadOffset.Magnitude > 4 then leadOffset = leadOffset.Unit * 4 end
+			local aimPosition = currentPosition + leadOffset
+			if freshTargetPart.Name == "HumanoidRootPart" then
+				aimPosition = aimPosition + Vector3.new(0, 1.15, 0)
+			elseif freshTargetPart.Name == "Head" then
+				aimPosition = aimPosition + Vector3.new(0, -0.15, 0)
+			end
+			local targetCFrame = CFrame.new(aimPosition)
 			lastGunFired = os.clock()
 			pcall(function() freshRemote:FireServer(freshOrigin, targetCFrame) end)
 		end)
