@@ -1946,7 +1946,7 @@ do
 
 	local eventCountValue = Instance.new("TextLabel")
 	eventCountValue.Size = UDim2.new(0, 18, 0, 22)
-	eventCountValue.Position = UDim2.new(1, -124, 0, 8)
+	eventCountValue.Position = UDim2.new(1, -164, 0, 8)
 	eventCountValue.BackgroundTransparency = 1
 	eventCountValue.Text = "0"
 	eventCountValue.Font = Enum.Font.GothamBold
@@ -1993,7 +1993,7 @@ do
 
 	local reviveCountValue = Instance.new("TextLabel")
 	reviveCountValue.Size = UDim2.new(0, 18, 0, 22)
-	reviveCountValue.Position = UDim2.new(1, -124, 0, 8)
+	reviveCountValue.Position = UDim2.new(1, -164, 0, 8)
 	reviveCountValue.BackgroundTransparency = 1
 	reviveCountValue.Text = "0"
 	reviveCountValue.Font = Enum.Font.GothamBold
@@ -2053,7 +2053,7 @@ do
 		end
 	end)
 
-	local killState = {Enabled = false, TargetIndex = 0, LastAttack = 0, AttackDelay = 0.03, AttackBurst = 2, KillSweepLimit = 6, SnapBack = true}
+	local killState = {Enabled = false, TargetIndex = 0, LastAttack = 0}
 	local farmState = {Enabled = false, SafePlace = false, MuteAudio = false, MutedSounds = {}, AudioConnections = {}, LastCoins = nil, ExecutionGain = 0, LastWins = nil, ExecutionWins = 0, LastEmote = 0, TauntBurst = 3, TauntDelay = 0.02, DroppedCharacter = nil, SurvivorSince = 0}
 	local eventState = {Enabled = false, LastMove = 0, Current = nil, Started = 0, Skipped = {}}
 	local reviveState = {Enabled = false, LastCheck = 0, Triggered = {}}
@@ -2454,7 +2454,7 @@ do
 	end)
 
 	HubState.Connections.QuietOrDieAutoKill = RunService.Heartbeat:Connect(function()
-		if not killState.Enabled or not IsQuietOrDieKiller() or os.clock() - killState.LastAttack < killState.AttackDelay then return end
+		if not killState.Enabled or not IsQuietOrDieKiller() or os.clock() - killState.LastAttack < 0.1 then return end
 		local character = Player.Character
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		local root = character and character:FindFirstChild("HumanoidRootPart")
@@ -2465,7 +2465,7 @@ do
 		local targets = {}
 		for _, targetPlayer in ipairs(Players:GetPlayers()) do
 			if targetPlayer ~= Player and playersFolder:FindFirstChild(targetPlayer.Name) then
-				local targetCharacter = playersFolder:FindFirstChild(targetPlayer.Name) or targetPlayer.Character
+				local targetCharacter = targetPlayer.Character
 				local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
 				local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
 				if targetHumanoid and targetHumanoid.Health > 0 and targetRoot then table.insert(targets, targetRoot) end
@@ -2473,24 +2473,12 @@ do
 		end
 		if #targets == 0 then return end
 
-		local returnCFrame = root.CFrame
-		local returnVelocity = root.AssemblyLinearVelocity
+		killState.TargetIndex = (killState.TargetIndex % #targets) + 1
+		local targetRoot = targets[killState.TargetIndex]
+		root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 2)
+		root.AssemblyLinearVelocity = Vector3.zero
 		killState.LastAttack = os.clock()
-		for _ = 1, math.min(#targets, killState.KillSweepLimit) do
-			killState.TargetIndex = (killState.TargetIndex % #targets) + 1
-			local targetRoot = targets[killState.TargetIndex]
-			if targetRoot and targetRoot.Parent then
-				root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 2)
-				root.AssemblyLinearVelocity = Vector3.zero
-				for _ = 1, killState.AttackBurst do
-					pcall(function() attackRemote:FireServer() end)
-				end
-			end
-		end
-		if killState.SnapBack and root and root.Parent then
-			root.CFrame = returnCFrame
-			root.AssemblyLinearVelocity = returnVelocity
-		end
+		pcall(function() attackRemote:FireServer() end)
 	end)
 
 	local function MuteQuietOrDieSound(sound)
@@ -7038,29 +7026,29 @@ Instance.new("UICorner", HubState.DestroyBtn).CornerRadius = UDim.new(0, 6)
 
 HubState.LocalCountLabel = Instance.new("TextLabel")
 HubState.LocalCountLabel.Name = "LocalCountLabel"
-HubState.LocalCountLabel.Size = UDim2.new(0, 112, 0, 10)
-HubState.LocalCountLabel.Position = UDim2.new(0, 34, 1, -14)
+HubState.LocalCountLabel.Size = UDim2.new(0, 78, 0, 10)
+HubState.LocalCountLabel.Position = UDim2.new(0.5, -92, 1, -14)
 HubState.LocalCountLabel.BackgroundTransparency = 1
 HubState.LocalCountLabel.BorderSizePixel = 0
 HubState.LocalCountLabel.Text = "11 / 200"
 HubState.LocalCountLabel.Font = Enum.Font.GothamBold
 HubState.LocalCountLabel.TextSize = 7
 HubState.LocalCountLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-HubState.LocalCountLabel.TextXAlignment = Enum.TextXAlignment.Left
+HubState.LocalCountLabel.TextXAlignment = Enum.TextXAlignment.Right
 HubState.LocalCountLabel.Parent = HubState.SettingsPage
 table.insert(ThemeObjects.Texts, HubState.LocalCountLabel)
 
 HubState.RuntimeLabel = Instance.new("TextLabel")
 HubState.RuntimeLabel.Name = "RuntimeLabel"
-HubState.RuntimeLabel.Size = UDim2.new(0, 112, 0, 10)
-HubState.RuntimeLabel.Position = UDim2.new(1, -146, 1, -14)
+HubState.RuntimeLabel.Size = UDim2.new(0, 78, 0, 10)
+HubState.RuntimeLabel.Position = UDim2.new(0.5, 14, 1, -14)
 HubState.RuntimeLabel.BackgroundTransparency = 1
 HubState.RuntimeLabel.BorderSizePixel = 0
 HubState.RuntimeLabel.Text = "0 Sec"
 HubState.RuntimeLabel.Font = Enum.Font.GothamBold
 HubState.RuntimeLabel.TextSize = 7
 HubState.RuntimeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-HubState.RuntimeLabel.TextXAlignment = Enum.TextXAlignment.Right
+HubState.RuntimeLabel.TextXAlignment = Enum.TextXAlignment.Left
 HubState.RuntimeLabel.Parent = HubState.SettingsPage
 table.insert(ThemeObjects.Texts, HubState.RuntimeLabel)
 
