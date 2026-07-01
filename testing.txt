@@ -5046,47 +5046,27 @@ ThemeObjects.ApplyMM2RolesFromPlayerData = function(playerData)
 	return true
 end
 
-ThemeObjects.IsMM2PlayerDataTable = function(playerData)
-	if type(playerData) ~= "table" then return false end
-	for playerName, roundData in pairs(playerData) do
-		if type(playerName) == "string" and type(roundData) == "table" and Players:FindFirstChild(playerName) then
-			local roleName = rawget(roundData, "Role")
-			if type(roleName) == "string" then return true end
-		end
-	end
-	return false
-end
-
-ThemeObjects.FindLoadedMM2CurrentRoundClient = function()
-	if type(HubState.MM2CurrentRoundClient) == "table" and ThemeObjects.IsMM2PlayerDataTable(rawget(HubState.MM2CurrentRoundClient, "PlayerData")) then
-		return HubState.MM2CurrentRoundClient
-	end
-	if type(getgc) ~= "function" then return nil end
-	local success, objects = pcall(getgc, true)
-	if not success then
-		success, objects = pcall(getgc)
-	end
-	if not success or type(objects) ~= "table" then return nil end
-	for _, object in ipairs(objects) do
-		if type(object) == "table" and ThemeObjects.IsMM2PlayerDataTable(rawget(object, "PlayerData")) then
-			HubState.MM2CurrentRoundClient = object
-			local changedSignal = rawget(object, "PlayerDataChanged")
-			if changedSignal and changedSignal.Event and not HubState.Connections.MM2CurrentRoundChanged then
-				HubState.Connections.MM2CurrentRoundChanged = changedSignal.Event:Connect(function()
-					ThemeObjects.ApplyMM2RolesFromPlayerData(rawget(object, "PlayerData"))
-				end)
-			end
-			return object
-		end
-	end
-	return nil
-end
-
 ThemeObjects.RefreshMM2RolesFromCurrentRound = function()
-	local currentRoundClient = ThemeObjects.FindLoadedMM2CurrentRoundClient and ThemeObjects.FindLoadedMM2CurrentRoundClient()
-	if type(currentRoundClient) == "table" then
-		return ThemeObjects.ApplyMM2RolesFromPlayerData(rawget(currentRoundClient, "PlayerData"))
-	end
+	if game.PlaceId ~= 142823291 then return false end
+	local now = os.clock()
+	if now - (HubState.LastMM2CurrentPlayerDataRequest or 0) < 1.25 then return false end
+	HubState.LastMM2CurrentPlayerDataRequest = now
+	local replicatedStorage = game:GetService("ReplicatedStorage")
+	local remotes = replicatedStorage:FindFirstChild("Remotes")
+	local gameplay = remotes and remotes:FindFirstChild("Gameplay")
+	local getCurrentPlayerData = gameplay and gameplay:FindFirstChild("GetCurrentPlayerData")
+	if not getCurrentPlayerData or not getCurrentPlayerData:IsA("RemoteFunction") then return false end
+	if HubState.MM2CurrentPlayerDataRequestBusy then return false end
+	HubState.MM2CurrentPlayerDataRequestBusy = true
+	task.spawn(function()
+		local success, playerData = pcall(function()
+			return getCurrentPlayerData:InvokeServer()
+		end)
+		HubState.MM2CurrentPlayerDataRequestBusy = false
+		if success then
+			ThemeObjects.ApplyMM2RolesFromPlayerData(playerData)
+		end
+	end)
 	return false
 end
 
@@ -5234,12 +5214,11 @@ end
 
 HubState.Connections.MM2ToolRoleScanner = RunService.Heartbeat:Connect(function()
 	local mm2PageActive = HubState.SelectedGame == "MM2" or (HubState.MM2Page and HubState.MM2Page.Visible)
-	local needsScan = game.PlaceId == 142823291 or mm2PageActive or HubState.MM2ESPEnabled or HubState.MurdererRoleESPEnabled or HubState.SheriffRoleESPEnabled or HubState.KillEnabled or HubState.AutoShootEnabled or HubState.ESPEnabled or ThemeObjects.DeepESP.Enabled
+	local needsScan = mm2PageActive or HubState.MM2ESPEnabled or HubState.MurdererRoleESPEnabled or HubState.SheriffRoleESPEnabled or HubState.KillEnabled or HubState.AutoShootEnabled or HubState.ESPEnabled or ThemeObjects.DeepESP.Enabled
 	if not needsScan then return end
 	local now = os.clock()
 	if now - (HubState.LastMM2ToolRoleScan or 0) < 0.25 then return end
 	HubState.LastMM2ToolRoleScan = now
-	if ThemeObjects.RepairMM2PCGui then ThemeObjects.RepairMM2PCGui() end
 	if now - (HubState.LastMM2RoleRemoteScan or 0) >= 0.8 then
 		HubState.LastMM2RoleRemoteScan = now
 		ThemeObjects.RefreshMM2RolesFromRemote()
