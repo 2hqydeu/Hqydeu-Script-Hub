@@ -4940,92 +4940,96 @@ ThemeObjects.ApplyMM2Roles = function(murderer, sheriff, source)
 	return murderer, sheriff
 end
 
-ThemeObjects.ApplyMM2RolesFromRoundData = function(playerData)
-	if type(playerData) ~= "table" then return false end
-	local murderer = nil
-	local sheriff = nil
-	local sawRole = false
-	for playerName, roundData in pairs(playerData) do
-		if type(roundData) == "table" and type(roundData.Role) == "string" then
-			sawRole = true
-			local roleName = roundData.Role
-			local targetPlayer = Players:FindFirstChild(tostring(playerName))
-			if targetPlayer and roleName == "Murderer" then
-				murderer = targetPlayer
-			elseif targetPlayer and (roleName == "Sheriff" or roleName == "Hero") then
-				sheriff = targetPlayer
+ThemeObjects.ResolveMM2RolePlayer = function(...)
+	local seen = {}
+	local function playerFromText(text)
+		if type(text) ~= "string" or text == "" then return nil end
+		local lowerText = text:lower()
+		for _, targetPlayer in ipairs(Players:GetPlayers()) do
+			local name = targetPlayer.Name:lower()
+			local displayName = (targetPlayer.DisplayName or targetPlayer.Name):lower()
+			if lowerText == name or lowerText == displayName or lowerText:find(name, 1, true) or lowerText:find(displayName, 1, true) then
+				return targetPlayer
 			end
 		end
-	end
-	if sawRole then
-		HubState.LastMM2RemoteRoleAt = os.clock()
-		ThemeObjects.ApplyMM2Roles(murderer, sheriff, "Remote")
-		return true
-	end
-	return false
-end
-
-ThemeObjects.GetMM2CurrentRoundClientReadOnly = function()
-	if HubState.MM2CurrentRoundClientReadOnly ~= nil then
-		return HubState.MM2CurrentRoundClientReadOnly ~= false and HubState.MM2CurrentRoundClientReadOnly or nil
-	end
-	local replicatedStorage = game:GetService("ReplicatedStorage")
-	local modules = replicatedStorage:FindFirstChild("Modules")
-	local currentRoundModule = modules and modules:FindFirstChild("CurrentRoundClient")
-	if not currentRoundModule or not currentRoundModule:IsA("ModuleScript") then
 		return nil
 	end
-	local success, currentRoundClient = pcall(require, currentRoundModule)
-	if success and type(currentRoundClient) == "table" then
-		HubState.MM2CurrentRoundClientReadOnly = currentRoundClient
-		return currentRoundClient
+	local function resolve(value, depth)
+		if depth > 4 or value == nil then return nil end
+		local valueType = typeof(value)
+		if valueType == "Instance" then
+			if value:IsA("Player") then return value end
+			if value:IsA("ObjectValue") then return resolve(value.Value, depth + 1) end
+			if value:IsA("StringValue") then return playerFromText(tostring(value.Value)) end
+			if value:IsA("IntValue") or value:IsA("NumberValue") then
+				for _, targetPlayer in ipairs(Players:GetPlayers()) do
+					if targetPlayer.UserId == value.Value then return targetPlayer end
+				end
+			end
+			if value:IsA("TextLabel") or value:IsA("TextButton") then return playerFromText(value.Text) end
+			return playerFromText(value.Name)
+		elseif valueType == "string" then
+			return playerFromText(value)
+		elseif valueType == "number" then
+			for _, targetPlayer in ipairs(Players:GetPlayers()) do
+				if targetPlayer.UserId == value then return targetPlayer end
+			end
+		elseif valueType == "table" and not seen[value] then
+			seen[value] = true
+			for key, childValue in pairs(value) do
+				local found = resolve(childValue, depth + 1) or resolve(key, depth + 1)
+				if found then return found end
+			end
+		end
+		return nil
 	end
-	HubState.MM2CurrentRoundClientReadOnly = false
+	for _, value in ipairs({...}) do
+		local found = resolve(value, 0)
+		if found then return found end
+	end
 	return nil
 end
 
-ThemeObjects.RefreshMM2RolesFromCurrentRoundReadOnly = function()
-	local currentRoundClient = ThemeObjects.GetMM2CurrentRoundClientReadOnly()
-	if type(currentRoundClient) ~= "table" then return false end
-	if ThemeObjects.ApplyMM2RolesFromRoundData(currentRoundClient.PlayerData) then
-		return true
+ThemeObjects.SetMM2RoleFromClue = function(roleName, ...)
+	local targetPlayer = ThemeObjects.ResolveMM2RolePlayer(...)
+	if not targetPlayer then return false end
+	local murderer = HubState.CurrentMurderer
+	local sheriff = HubState.CurrentSheriff
+	if roleName == "Murderer" then
+		murderer = targetPlayer
+	elseif roleName == "Sheriff" then
+		sheriff = targetPlayer
+	else
+		return false
 	end
-	if type(currentRoundClient.GetLatestPlayerData) == "function" and os.clock() - (HubState.LastMM2LatestDataRequest or 0) >= 1.5 then
-		HubState.LastMM2LatestDataRequest = os.clock()
-		local success, latestPlayerData = pcall(function()
-			return currentRoundClient.GetLatestPlayerData()
+	HubState.LastMM2RemoteRoleAt = os.clock()
+	ThemeObjects.ApplyMM2Roles(murderer, sheriff, "Remote")
+	return true
+end
+
+ThemeObjects.EnsureMM2RoleClueListeners = function()
+	if HubState.MM2RoleClueListenersStarted then return end
+	local replicatedStorage = game:GetService("ReplicatedStorage")
+	local remotes = replicatedStorage:FindFirstChild("Remotes")
+	local extras = remotes and remotes:FindFirstChild("Extras")
+	local setMurderer = extras and extras:FindFirstChild("SetMurderer")
+	local setSheriff = extras and extras:FindFirstChild("SetSheriff")
+	if not setMurderer and not setSheriff then return end
+	HubState.MM2RoleClueListenersStarted = true
+	if setMurderer and setMurderer:IsA("RemoteEvent") then
+		HubState.Connections.MM2SetMurdererClue = setMurderer.OnClientEvent:Connect(function(...)
+			ThemeObjects.SetMM2RoleFromClue("Murderer", ...)
 		end)
-		if success then
-			return ThemeObjects.ApplyMM2RolesFromRoundData(latestPlayerData)
-		end
 	end
-	return false
+	if setSheriff and setSheriff:IsA("RemoteEvent") then
+		HubState.Connections.MM2SetSheriffClue = setSheriff.OnClientEvent:Connect(function(...)
+			ThemeObjects.SetMM2RoleFromClue("Sheriff", ...)
+		end)
+	end
 end
 
 ThemeObjects.RefreshMM2RolesFromRemote = function()
-	if HubState.MM2RoleRemoteBusy then return end
-	HubState.MM2RoleRemoteBusy = true
-	task.spawn(function()
-		if ThemeObjects.RefreshMM2RolesFromCurrentRoundReadOnly and ThemeObjects.RefreshMM2RolesFromCurrentRoundReadOnly() then
-			HubState.MM2RoleRemoteBusy = false
-			return
-		end
-		local replicatedStorage = game:GetService("ReplicatedStorage")
-		local remotes = replicatedStorage:FindFirstChild("Remotes")
-		local gameplay = remotes and remotes:FindFirstChild("Gameplay")
-		local getCurrentPlayerData = gameplay and gameplay:FindFirstChild("GetCurrentPlayerData")
-		if not getCurrentPlayerData or not getCurrentPlayerData:IsA("RemoteFunction") then
-			HubState.MM2RoleRemoteBusy = false
-			return
-		end
-		local success, playerData = pcall(function()
-			return getCurrentPlayerData:InvokeServer()
-		end)
-		if success then
-			ThemeObjects.ApplyMM2RolesFromRoundData(playerData)
-		end
-		HubState.MM2RoleRemoteBusy = false
-	end)
+	if ThemeObjects.EnsureMM2RoleClueListeners then ThemeObjects.EnsureMM2RoleClueListeners() end
 end
 
 ThemeObjects.RefreshMM2RolesFromTools = function()
