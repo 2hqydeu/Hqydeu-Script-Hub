@@ -1625,7 +1625,7 @@ do
 	quietPage.ClipsDescendants = true
 	quietPage.ScrollBarThickness = 3
 	quietPage.ScrollBarImageColor3 = AccentColor
-	quietPage.CanvasSize = UDim2.new(0, 0, 0, 206)
+	quietPage.CanvasSize = UDim2.new(0, 0, 0, 294)
 	quietPage.Visible = false
 	quietPage.Parent = MainFrame
 
@@ -1863,7 +1863,7 @@ do
 	historyBest.Size = UDim2.new(1, -16, 0, 13)
 	historyBest.Position = UDim2.new(0, 8, 0, 22)
 	historyBest.BackgroundTransparency = 1
-	historyBest.Text = "Best  •  +0 Coins  •  +0 Wins"
+	historyBest.Text = "Best  |  +0 Coins  |  +0 Wins"
 	historyBest.Font = Enum.Font.GothamBold
 	historyBest.TextSize = 8
 	historyBest.TextXAlignment = Enum.TextXAlignment.Center
@@ -1898,7 +1898,7 @@ do
 	historyPanel.TotalLabel.Size = UDim2.new(1, -16, 0, 14)
 	historyPanel.TotalLabel.Position = UDim2.new(0, 8, 0, 110)
 	historyPanel.TotalLabel.BackgroundTransparency = 1
-	historyPanel.TotalLabel.Text = "Total  0 Coins  •  0 Wins"
+	historyPanel.TotalLabel.Text = "Total  0 Coins  |  0 Wins"
 	historyPanel.TotalLabel.Font = Enum.Font.GothamMedium
 	historyPanel.TotalLabel.TextSize = 7
 	historyPanel.TotalLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1943,6 +1943,40 @@ do
 	table.insert(ThemeObjects.Texts, eventToggle)
 	Instance.new("UICorner", eventToggle).CornerRadius = UDim.new(0, 5)
 
+	local statusRow = Instance.new("Frame")
+	statusRow.Name = "QuietOrDieStatusRow"
+	statusRow.Size = UDim2.new(1, -8, 0, 38)
+	statusRow.Position = UDim2.new(0, 4, 0, 206)
+	statusRow.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
+	statusRow.BackgroundTransparency = 0.92
+	statusRow.BorderSizePixel = 0
+	statusRow.Parent = quietPage
+	table.insert(ThemeObjects.Backgrounds, statusRow)
+	Instance.new("UICorner", statusRow).CornerRadius = UDim.new(0, 6)
+
+	local statusTitle = Instance.new("TextLabel")
+	statusTitle.Size = UDim2.new(0, 82, 0, 24)
+	statusTitle.Position = UDim2.new(0, 8, 0, 7)
+	statusTitle.BackgroundTransparency = 1
+	statusTitle.Text = "Status:"
+	statusTitle.Font = Enum.Font.GothamBold
+	statusTitle.TextSize = 11
+	statusTitle.TextXAlignment = Enum.TextXAlignment.Left
+	statusTitle.Parent = statusRow
+	table.insert(ThemeObjects.Texts, statusTitle)
+
+	local statusValue = Instance.new("TextLabel")
+	statusValue.Size = UDim2.new(1, -96, 0, 24)
+	statusValue.Position = UDim2.new(0, 86, 0, 7)
+	statusValue.BackgroundTransparency = 1
+	statusValue.Text = "Waiting"
+	statusValue.Font = Enum.Font.GothamBold
+	statusValue.TextSize = 9
+	statusValue.TextXAlignment = Enum.TextXAlignment.Right
+	statusValue.TextTruncate = Enum.TextTruncate.AtEnd
+	statusValue.Parent = statusRow
+	table.insert(ThemeObjects.Texts, statusValue)
+
 	local reviveRow = Instance.new("Frame")
 	reviveRow.Name = "QuietOrDieReviveRow"
 	reviveRow.Size = UDim2.new(1, -8, 0, 38)
@@ -1983,7 +2017,7 @@ do
 	ThemeObjects.QODReveal.Row = Instance.new("Frame")
 	ThemeObjects.QODReveal.Row.Name = "QuietOrDieRevealRow"
 	ThemeObjects.QODReveal.Row.Size = UDim2.new(1, -8, 0, 38)
-	ThemeObjects.QODReveal.Row.Position = UDim2.new(0, 4, 0, 206)
+	ThemeObjects.QODReveal.Row.Position = UDim2.new(0, 4, 0, 250)
 	ThemeObjects.QODReveal.Row.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 	ThemeObjects.QODReveal.Row.BackgroundTransparency = 0.92
 	ThemeObjects.QODReveal.Row.BorderSizePixel = 0
@@ -2031,7 +2065,7 @@ do
 	end)
 
 	local killState = {Enabled = false, TargetIndex = 0, LastAttack = 0}
-	local farmState = {Enabled = false, SafePlace = false, MuteAudio = false, MutedSounds = {}, AudioConnections = {}, LastCoins = nil, ExecutionGain = 0, LastWins = nil, ExecutionWins = 0, LastEmote = 0, DroppedCharacter = nil, SurvivorSince = 0}
+	local farmState = {Enabled = false, SafePlace = false, MuteAudio = false, MutedSounds = {}, AudioConnections = {}, LastCoins = nil, ExecutionGain = 0, LastWins = nil, ExecutionWins = 0, LastEmote = 0, TauntBurst = 3, TauntDelay = 0.02, DroppedCharacter = nil, SurvivorSince = 0}
 	local eventState = {Enabled = false, LastMove = 0, Current = nil, Started = 0, Skipped = {}}
 	local reviveState = {Enabled = false, LastCheck = 0, Triggered = {}}
 	local coinsDisplayState = {LastUpdate = 0, LastHistorySave = os.clock(), HistoryDirty = false}
@@ -2092,10 +2126,10 @@ do
 			end
 		end
 		bestEntry = {Coins = farmState.AllTime.BestCoins, Wins = farmState.AllTime.BestWins}
-		historyBest.Text = string.format("Best  •  +%s Coins  •  +%s Wins", FormatCompactNumber(bestEntry.Coins or 0), FormatCompactNumber(bestEntry.Wins or 0))
+		historyBest.Text = string.format("Best  |  +%s Coins  |  +%s Wins", FormatCompactNumber(bestEntry.Coins or 0), FormatCompactNumber(bestEntry.Wins or 0))
 		for index, entry in ipairs(executionHistory) do
 			local useNumber = #executionHistory - index + 1
-			table.insert(lines, string.format("%d.  +%s Coins   •   +%s Wins", useNumber, FormatCompactNumber(entry.Coins or 0), FormatCompactNumber(entry.Wins or 0)))
+			table.insert(lines, string.format("%d.  +%s Coins   |   +%s Wins", useNumber, FormatCompactNumber(entry.Coins or 0), FormatCompactNumber(entry.Wins or 0)))
 		end
 		historyText.Text = table.concat(lines, "\n")
 		historyPanel.TotalLabel.Text = string.format('Total  <font color="#7DFF4B">%s Coins</font>  |  <font color="#FFDC41">%s Wins</font>', FormatCompactNumber(farmState.AllTime.Coins), FormatCompactNumber(farmState.AllTime.Wins))
@@ -2297,7 +2331,7 @@ do
 			farmState.SurvivorSince = os.clock()
 			return false
 		end
-		return os.clock() - farmState.SurvivorSince >= 0.75
+		return os.clock() - farmState.SurvivorSince >= 0.05
 	end
 
 	local function IsQuietOrDieKiller()
@@ -2336,6 +2370,48 @@ do
 		return false
 	end
 
+	HubState.Connections.QuietOrDieStatus = RunService.Heartbeat:Connect(function()
+		if os.clock() - (coinsDisplayState.LastStatusUpdate or 0) < 0.25 then return end
+		coinsDisplayState.LastStatusUpdate = os.clock()
+		local playerGui = Player:FindFirstChildOfClass("PlayerGui")
+		local inGameGui = playerGui and playerGui:FindFirstChild("InGameGui")
+		local abilityEvent = game:GetService("ReplicatedStorage"):FindFirstChild("AbilityEvent")
+		if not inGameGui or not abilityEvent then
+			statusValue.Text = "Outside game"
+			statusTitle.TextColor3 = InactiveTextColor()
+			return
+		end
+
+		local role = "Lobby"
+		if IsQuietOrDieKiller() then
+			role = "Killer"
+		elseif IsQuietOrDieSurvivor() then
+			role = "Survivor"
+		end
+
+		local eventCount = 0
+		local eventFolder = workspace:FindFirstChild("EventSpawns")
+		if eventFolder then
+			for _, item in ipairs(eventFolder:GetChildren()) do
+				if item.Name:match("^EventItem%d+$") then eventCount = eventCount + 1 end
+			end
+		end
+
+		local reviveCount = 0
+		local playersFolder = workspace:FindFirstChild("PlayersFolder")
+		if playersFolder then
+			for _, targetCharacter in ipairs(playersFolder:GetChildren()) do
+				if targetCharacter:IsA("Model") and targetCharacter ~= Player.Character then
+					local prompt = targetCharacter:FindFirstChild("RevivePrompt", true)
+					if prompt and prompt:IsA("ProximityPrompt") and prompt.Enabled then reviveCount = reviveCount + 1 end
+				end
+			end
+		end
+
+		statusValue.Text = string.format("%s | Events %d | Revives %d", role, eventCount, reviveCount)
+		statusTitle.TextColor3 = AccentColor
+	end)
+
 	HubState.Connections.QuietOrDieAutoReveal = RunService.Heartbeat:Connect(function()
 		if not ThemeObjects.QODReveal.Enabled then return end
 		if ThemeObjects.QODReveal.LastFire ~= 0 and os.clock() - ThemeObjects.QODReveal.LastFire < 0.5 then return end
@@ -2359,17 +2435,16 @@ do
 	end)
 
 	HubState.Connections.QuietOrDieAutoRevive = RunService.Heartbeat:Connect(function()
-		if not reviveState.Enabled or os.clock() - reviveState.LastCheck < 0.03 then return end
+		if not reviveState.Enabled or os.clock() - reviveState.LastCheck < 0.01 then return end
 		reviveState.LastCheck = os.clock()
 		local playersFolder = workspace:FindFirstChild("PlayersFolder")
 		local character = Player.Character
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		local root = character and character:FindFirstChild("HumanoidRootPart")
-		if not playersFolder or not humanoid or humanoid.Health <= 0 or not root then return end
+		if not playersFolder or not humanoid or humanoid.Health <= 0 then return end
 
 		local now = os.clock()
 		for prompt, lastTriggered in pairs(reviveState.Triggered) do
-			if not prompt.Parent or now - lastTriggered > 2 then reviveState.Triggered[prompt] = nil end
+			if not prompt.Parent or now - lastTriggered > 0.5 then reviveState.Triggered[prompt] = nil end
 		end
 		for _, targetCharacter in ipairs(playersFolder:GetChildren()) do
 			if targetCharacter ~= character and targetCharacter:IsA("Model") then
@@ -2377,16 +2452,27 @@ do
 				local attachment = targetRoot and targetRoot:FindFirstChild("ReviveAttachment")
 					or targetCharacter:FindFirstChild("ReviveAttachment", true)
 				local prompt = attachment and attachment:FindFirstChild("RevivePrompt", true)
-				if prompt and prompt:IsA("ProximityPrompt") and prompt.Enabled and targetRoot
-					and (root.Position - targetRoot.Position).Magnitude <= 50
-					and (not reviveState.Triggered[prompt] or now - reviveState.Triggered[prompt] >= 0.1) then
+				if prompt and prompt:IsA("ProximityPrompt") and prompt.Enabled
+					and (not reviveState.Triggered[prompt] or now - reviveState.Triggered[prompt] >= 0.02) then
 					reviveState.Triggered[prompt] = now
 					if type(fireproximityprompt) == "function" then
 						local originalHoldDuration = prompt.HoldDuration
-						prompt.HoldDuration = 0
+						local originalMaxDistance = prompt.MaxActivationDistance
+						local originalRequiresLineOfSight = prompt.RequiresLineOfSight
+						pcall(function()
+							prompt.HoldDuration = 0
+							prompt.MaxActivationDistance = 1000000
+							prompt.RequiresLineOfSight = false
+						end)
 						pcall(function() fireproximityprompt(prompt) end)
-						task.delay(0.1, function()
-							if prompt and prompt.Parent then prompt.HoldDuration = originalHoldDuration end
+						task.delay(0.05, function()
+							if prompt and prompt.Parent then
+								pcall(function()
+									prompt.HoldDuration = originalHoldDuration
+									prompt.MaxActivationDistance = originalMaxDistance
+									prompt.RequiresLineOfSight = originalRequiresLineOfSight
+								end)
+							end
 						end)
 					end
 				end
@@ -2527,8 +2613,12 @@ do
 			root.AssemblyLinearVelocity = Vector3.new(0, -3, 0)
 		end
 		local now = os.clock()
-		if farmState.LastEmote ~= 0 and now - farmState.LastEmote < 0.18 then return end
-		if TriggerQuietOrDieTaunt() then farmState.LastEmote = now end
+		if farmState.LastEmote ~= 0 and now - farmState.LastEmote < farmState.TauntDelay then return end
+		local fired = false
+		for _ = 1, farmState.TauntBurst do
+			if TriggerQuietOrDieTaunt() then fired = true end
+		end
+		if fired then farmState.LastEmote = now end
 	end)
 
 	HubState.Connections.QuietOrDieAutoEvent = RunService.Heartbeat:Connect(function()
@@ -2742,7 +2832,7 @@ ThemeObjects.DeepESP = {Enabled = false}
 ThemeObjects.DeepESP.Row = Instance.new("Frame")
 ThemeObjects.DeepESP.Row.Name = "QuietOrDieDeepESPRow"
 ThemeObjects.DeepESP.Row.Size = UDim2.new(1, -8, 0, 38)
-ThemeObjects.DeepESP.Row.Position = UDim2.new(0, 4, 0, 118)
+ThemeObjects.DeepESP.Row.Position = UDim2.new(0, 4, 0, 250)
 ThemeObjects.DeepESP.Row.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 ThemeObjects.DeepESP.Row.BackgroundTransparency = 0.92
 ThemeObjects.DeepESP.Row.BorderSizePixel = 0
