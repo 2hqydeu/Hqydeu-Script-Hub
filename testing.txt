@@ -5009,6 +5009,75 @@ ThemeObjects.SetMM2RoleFromClue = function(roleName, ...)
 	return true
 end
 
+ThemeObjects.MM2PlayerDataLooksUseful = function(playerData)
+	if type(playerData) ~= "table" then return false end
+	local matchedPlayers = 0
+	local sawRole = false
+	for playerName, roundData in pairs(playerData) do
+		if type(playerName) == "string" and type(roundData) == "table" and Players:FindFirstChild(playerName) then
+			matchedPlayers += 1
+			if type(rawget(roundData, "Role")) == "string" then
+				sawRole = true
+			end
+			if matchedPlayers >= 2 and sawRole then
+				return true
+			end
+		end
+	end
+	return matchedPlayers >= 1 and sawRole
+end
+
+ThemeObjects.ApplyMM2RolesFromPlayerData = function(playerData)
+	if not ThemeObjects.MM2PlayerDataLooksUseful(playerData) then return false end
+	local murderer = nil
+	local sheriff = nil
+	for playerName, roundData in pairs(playerData) do
+		if type(playerName) == "string" and type(roundData) == "table" then
+			local targetPlayer = Players:FindFirstChild(playerName)
+			local roleName = rawget(roundData, "Role")
+			if targetPlayer and roleName == "Murderer" then
+				murderer = targetPlayer
+			elseif targetPlayer and (roleName == "Sheriff" or roleName == "Hero") then
+				sheriff = targetPlayer
+			end
+		end
+	end
+	HubState.LastMM2RemoteRoleAt = os.clock()
+	ThemeObjects.ApplyMM2Roles(murderer, sheriff, "Memory")
+	return true
+end
+
+ThemeObjects.RefreshMM2RolesFromMemory = function()
+	if os.clock() - (HubState.LastMM2MemoryScan or 0) < 1 then return false end
+	HubState.LastMM2MemoryScan = os.clock()
+	if type(HubState.MM2MemoryRoundSource) == "table" then
+		local cachedPlayerData = rawget(HubState.MM2MemoryRoundSource, "PlayerData")
+		if ThemeObjects.ApplyMM2RolesFromPlayerData(cachedPlayerData or HubState.MM2MemoryRoundSource) then
+			return true
+		end
+		HubState.MM2MemoryRoundSource = nil
+	end
+	local getgcFunction = type(getgc) == "function" and getgc or nil
+	if not getgcFunction then return false end
+	local success, objects = pcall(getgcFunction, true)
+	if not success or type(objects) ~= "table" then return false end
+
+	for _, object in ipairs(objects) do
+		if type(object) == "table" then
+			local playerData = rawget(object, "PlayerData")
+			if ThemeObjects.ApplyMM2RolesFromPlayerData(playerData) then
+				HubState.MM2MemoryRoundSource = object
+				return true
+			end
+			if ThemeObjects.MM2PlayerDataLooksUseful(object) and ThemeObjects.ApplyMM2RolesFromPlayerData(object) then
+				HubState.MM2MemoryRoundSource = object
+				return true
+			end
+		end
+	end
+	return false
+end
+
 ThemeObjects.EnsureMM2RoleClueListeners = function()
 	if HubState.MM2RoleClueListenersStarted then return end
 	local replicatedStorage = game:GetService("ReplicatedStorage")
@@ -5031,6 +5100,7 @@ ThemeObjects.EnsureMM2RoleClueListeners = function()
 end
 
 ThemeObjects.RefreshMM2RolesFromRemote = function()
+	if ThemeObjects.RefreshMM2RolesFromMemory and ThemeObjects.RefreshMM2RolesFromMemory() then return end
 	if ThemeObjects.EnsureMM2RoleClueListeners then ThemeObjects.EnsureMM2RoleClueListeners() end
 end
 
