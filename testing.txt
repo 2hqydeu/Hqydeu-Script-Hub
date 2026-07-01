@@ -4835,6 +4835,7 @@ HubState.MurdererESPBtn.MouseButton1Click:Connect(function()
 	HubState.MurdererRoleESPEnabled = not HubState.MurdererRoleESPEnabled
 	HubState.MurdererESPBtn.Text = HubState.MurdererRoleESPEnabled and "ON" or "ESP"
 	if ThemeObjects.RefreshMM2RolesFromTools then ThemeObjects.RefreshMM2RolesFromTools() end
+	if HubState.MurdererRoleESPEnabled and ThemeObjects.RefreshMM2RolesFromRemote then ThemeObjects.RefreshMM2RolesFromRemote() end
 	UpdateRoleHighlights()
 end)
 
@@ -4845,6 +4846,7 @@ HubState.SheriffESPBtn.MouseButton1Click:Connect(function()
 	HubState.GunDropESP.Enabled = HubState.SheriffRoleESPEnabled
 	HubState.GunDropESP.Refresh()
 	if ThemeObjects.RefreshMM2RolesFromTools then ThemeObjects.RefreshMM2RolesFromTools() end
+	if HubState.SheriffRoleESPEnabled and ThemeObjects.RefreshMM2RolesFromRemote then ThemeObjects.RefreshMM2RolesFromRemote() end
 	UpdateRoleHighlights()
 end)
 
@@ -4860,6 +4862,7 @@ ThemeObjects.SetMM2ESP = function(enabled)
 	HubState.GunDropESP.Enabled = HubState.MM2ESPEnabled
 	HubState.GunDropESP.Refresh()
 	if ThemeObjects.RefreshMM2RolesFromTools then ThemeObjects.RefreshMM2RolesFromTools() end
+	if HubState.MM2ESPEnabled and ThemeObjects.RefreshMM2RolesFromRemote then ThemeObjects.RefreshMM2RolesFromRemote() end
 	UpdateRoleHighlights()
 end
 
@@ -4927,9 +4930,8 @@ local function FindRoleHolder(toolName)
 	return nil
 end
 
-ThemeObjects.RefreshMM2RolesFromTools = function()
-	local murderer = FindRoleHolder("Knife")
-	local sheriff = FindRoleHolder("Gun")
+ThemeObjects.ApplyMM2Roles = function(murderer, sheriff, source)
+	if source then HubState.MM2RoleSource = source end
 	if murderer ~= HubState.CurrentMurderer or sheriff ~= HubState.CurrentSheriff then
 		HubState.CurrentMurderer = murderer
 		HubState.CurrentSheriff = sheriff
@@ -4938,12 +4940,73 @@ ThemeObjects.RefreshMM2RolesFromTools = function()
 	return murderer, sheriff
 end
 
+ThemeObjects.ApplyMM2RolesFromRoundData = function(playerData)
+	if type(playerData) ~= "table" then return false end
+	local murderer = nil
+	local sheriff = nil
+	local sawRole = false
+	for playerName, roundData in pairs(playerData) do
+		if type(roundData) == "table" and type(roundData.Role) == "string" then
+			sawRole = true
+			local roleName = roundData.Role
+			local targetPlayer = Players:FindFirstChild(tostring(playerName))
+			if targetPlayer and roleName == "Murderer" then
+				murderer = targetPlayer
+			elseif targetPlayer and (roleName == "Sheriff" or roleName == "Hero") then
+				sheriff = targetPlayer
+			end
+		end
+	end
+	if sawRole then
+		HubState.LastMM2RemoteRoleAt = os.clock()
+		ThemeObjects.ApplyMM2Roles(murderer, sheriff, "Remote")
+		return true
+	end
+	return false
+end
+
+ThemeObjects.RefreshMM2RolesFromRemote = function()
+	if HubState.MM2RoleRemoteBusy then return end
+	HubState.MM2RoleRemoteBusy = true
+	task.spawn(function()
+		local replicatedStorage = game:GetService("ReplicatedStorage")
+		local remotes = replicatedStorage:FindFirstChild("Remotes")
+		local gameplay = remotes and remotes:FindFirstChild("Gameplay")
+		local getCurrentPlayerData = gameplay and gameplay:FindFirstChild("GetCurrentPlayerData")
+		if not getCurrentPlayerData or not getCurrentPlayerData:IsA("RemoteFunction") then
+			HubState.MM2RoleRemoteBusy = false
+			return
+		end
+		local success, playerData = pcall(function()
+			return getCurrentPlayerData:InvokeServer()
+		end)
+		if success then
+			ThemeObjects.ApplyMM2RolesFromRoundData(playerData)
+		end
+		HubState.MM2RoleRemoteBusy = false
+	end)
+end
+
+ThemeObjects.RefreshMM2RolesFromTools = function()
+	local murderer = FindRoleHolder("Knife")
+	local sheriff = FindRoleHolder("Gun")
+	if not murderer and not sheriff and HubState.MM2RoleSource == "Remote" and os.clock() - (HubState.LastMM2RemoteRoleAt or 0) < 3 then
+		return HubState.CurrentMurderer, HubState.CurrentSheriff
+	end
+	return ThemeObjects.ApplyMM2Roles(murderer, sheriff, "Tools")
+end
+
 HubState.Connections.MM2ToolRoleScanner = RunService.Heartbeat:Connect(function()
 	local needsScan = HubState.MM2ESPEnabled or HubState.MurdererRoleESPEnabled or HubState.SheriffRoleESPEnabled or HubState.KillEnabled or HubState.AutoShootEnabled or HubState.ESPEnabled or ThemeObjects.DeepESP.Enabled
 	if not needsScan then return end
-	if os.clock() - (HubState.LastMM2ToolRoleScan or 0) < 0.25 then return end
-	HubState.LastMM2ToolRoleScan = os.clock()
+	local now = os.clock()
+	if now - (HubState.LastMM2ToolRoleScan or 0) < 0.25 then return end
+	HubState.LastMM2ToolRoleScan = now
 	ThemeObjects.RefreshMM2RolesFromTools()
+	if now - (HubState.LastMM2RoleRemoteScan or 0) >= 0.8 then
+		HubState.LastMM2RoleRemoteScan = now
+		ThemeObjects.RefreshMM2RolesFromRemote()
+	end
 end)
 
 local function RestoreKillHitboxes()
@@ -4971,6 +5034,7 @@ local function SetKillEnabled(enabled)
 	HubState.KillEnabled = enabled
 	HubState.KillToggle.Text = enabled and "On" or "Off"
 	HubState.KillTitle.TextColor3 = enabled and Color3.fromRGB(255, 80, 80) or InactiveTextColor()
+	if enabled and ThemeObjects.RefreshMM2RolesFromRemote then ThemeObjects.RefreshMM2RolesFromRemote() end
 	if not enabled then RestoreKillHitboxes() end
 end
 
@@ -5220,6 +5284,7 @@ do
 		autoShootToggle.Text = enabled and "On" or "Off"
 		autoShootTitle.TextColor3 = enabled and Color3.fromRGB(90, 150, 255) or InactiveTextColor()
 		if enabled and ThemeObjects.RefreshMM2RolesFromTools then ThemeObjects.RefreshMM2RolesFromTools() end
+		if enabled and ThemeObjects.RefreshMM2RolesFromRemote then ThemeObjects.RefreshMM2RolesFromRemote() end
 		if enabled and HubState.AutoLockEnabled then ToggleAutoLock() end
 	end
 
