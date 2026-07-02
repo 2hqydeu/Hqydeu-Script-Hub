@@ -47,6 +47,9 @@ do
 	quietPage.ClipsDescendants = true
 	quietPage.ScrollBarThickness = 3
 	quietPage.ScrollBarImageColor3 = AccentColor
+	quietPage.ScrollingDirection = Enum.ScrollingDirection.Y
+	quietPage.ElasticBehavior = Enum.ElasticBehavior.Never
+	quietPage.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
 	quietPage.CanvasSize = UDim2.new(0, 0, 0, 250)
 	quietPage.Visible = false
 	quietPage.Parent = MainFrame
