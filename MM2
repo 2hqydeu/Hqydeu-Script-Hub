@@ -21,6 +21,8 @@ local KeybindText = Runtime.KeybindText or function(keyCode) return keyCode and 
 local LoadKeybind = Runtime.LoadKeybind or function() return Enum.KeyCode.Unknown end
 local SaveKeybind = Runtime.SaveKeybind or function() end
 local SavePersistentSettings = Runtime.SavePersistentSettings or function() end
+local GuiSizeValue = Runtime.GuiSizeValue or 50
+local GuiScaleFromValue = Runtime.GuiScaleFromValue or function(value) return 1 end
 local PlayClick = Runtime.PlayClick or function() end
 local PlaySwoosh = Runtime.PlaySwoosh or function() end
 local TrackConnection = Runtime.TrackConnection or function(name, connection) HubState.Connections[name] = connection; return connection end
