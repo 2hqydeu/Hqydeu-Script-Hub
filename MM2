@@ -250,7 +250,7 @@ HubState.GunDropESP = {Enabled = false, Highlight = nil, Adornee = nil, LastChec
 
 HubState.AutoGunPickupEnabled = false
 HubState.LastGunDrop = nil
-HubState.GunPickupDelay = 0.15
+HubState.GunPickupDelay = 0
 
 local function FindGunDrop()
 	local nestedGunDrop = workspace:FindFirstChild("GunDrop", true)
@@ -339,6 +339,15 @@ local function GetGunDropCFrame(gunDrop)
 	return nil
 end
 
+local function GetGunDropTouchPart(gunDrop)
+	if not gunDrop then return nil end
+	if gunDrop:IsA("BasePart") then return gunDrop end
+	if gunDrop:IsA("Model") then
+		return gunDrop.PrimaryPart or gunDrop:FindFirstChildWhichIsA("BasePart", true)
+	end
+	return nil
+end
+
 local function IsAliveAndInsideActiveMap(gunDrop)
 	local character = Player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -381,7 +390,29 @@ local function TryPickUpGun(gunDrop)
 	if not HubState.IsGunPickupSafe(gunCFrame.Position) then return end
 
 	HubState.AutoGunPickupBusy = true
-	task.wait(0.22)
+	local touchPart = GetGunDropTouchPart(gunDrop)
+	if touchPart and type(firetouchinterest) == "function" then
+		local character = Player.Character
+		local touched = false
+		if character then
+			for _, part in ipairs(character:GetDescendants()) do
+				if part:IsA("BasePart") then
+					pcall(function()
+						firetouchinterest(part, touchPart, 0)
+						firetouchinterest(part, touchPart, 1)
+						touched = true
+					end)
+				end
+			end
+		end
+		if touched then
+			task.delay(0.12, function()
+				HubState.AutoGunPickupBusy = false
+			end)
+			return
+		end
+	end
+	task.wait(0.08)
 	if not HubState.AutoGunPickupEnabled or not gunDrop.Parent or not root.Parent or not HubState.IsGunPickupSafe(gunCFrame.Position) then
 		HubState.AutoGunPickupBusy = false
 		return
@@ -390,7 +421,7 @@ local function TryPickUpGun(gunDrop)
 	ThemeObjects.SetRootUpright(root, root.CFrame, gunCFrame.Position + Vector3.new(0, 1.2, 0))
 	root.AssemblyLinearVelocity = Vector3.zero
 	root.AssemblyAngularVelocity = Vector3.zero
-	task.wait(0.08)
+	task.wait(0.045)
 	if root and root.Parent then
 		ThemeObjects.SetRootUpright(root, root.CFrame, originalCFrame.Position)
 		root.AssemblyLinearVelocity = Vector3.zero
@@ -412,7 +443,7 @@ HubState.Connections.AutoGunPickup = RunService.Heartbeat:Connect(function()
 		HubState.LastGunPickupAttempt = 0
 	end
 
-	if os.clock() - (HubState.LastGunPickupAttempt or 0) >= 0.75 then
+	if os.clock() - (HubState.LastGunPickupAttempt or 0) >= 0.25 then
 		HubState.LastGunPickupAttempt = os.clock()
 		task.delay(HubState.GunPickupDelay, function()
 			if HubState.LastGunDrop == gunDrop then
