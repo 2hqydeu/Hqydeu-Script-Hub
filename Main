@@ -1218,6 +1218,88 @@ ThemeObjects.ScriptRunner.Loaded = {}
 ThemeObjects.ScriptRunner.InfiniteYieldLoading = false
 ThemeObjects.ScriptRunner.InfiniteYieldLoadToken = 0
 ThemeObjects.ScriptRunner.InfiniteYieldBaseline = nil
+ThemeObjects.ScriptRunner.InfiniteYieldConnectionSnapshot = nil
+ThemeObjects.ScriptRunner.GetInfiniteYieldSignals = function()
+	local signals = {
+		UserInputService.InputBegan,
+		UserInputService.InputEnded,
+		UserInputService.InputChanged,
+		RunService.RenderStepped,
+		RunService.Heartbeat,
+		RunService.Stepped,
+		Players.PlayerAdded,
+		Players.PlayerRemoving,
+		Player.CharacterAdded,
+		Player.CharacterRemoving,
+		Player.Chatted,
+	}
+	pcall(function()
+		local mouse = Player:GetMouse()
+		table.insert(signals, mouse.KeyDown)
+		table.insert(signals, mouse.KeyUp)
+		table.insert(signals, mouse.Button1Down)
+		table.insert(signals, mouse.Button1Up)
+		table.insert(signals, mouse.Button2Down)
+		table.insert(signals, mouse.Button2Up)
+		table.insert(signals, mouse.Move)
+	end)
+	pcall(function()
+		local camera = workspace.CurrentCamera
+		if camera then
+			table.insert(signals, camera:GetPropertyChangedSignal("CameraType"))
+			table.insert(signals, camera:GetPropertyChangedSignal("CameraSubject"))
+			table.insert(signals, camera:GetPropertyChangedSignal("CFrame"))
+		end
+	end)
+	return signals
+end
+ThemeObjects.ScriptRunner.CaptureInfiniteYieldConnections = function()
+	if type(getconnections) ~= "function" then
+		ThemeObjects.ScriptRunner.InfiniteYieldConnectionSnapshot = nil
+		return false
+	end
+	local snapshot = {}
+	for _, signal in ipairs(ThemeObjects.ScriptRunner.GetInfiniteYieldSignals()) do
+		pcall(function()
+			for _, connection in ipairs(getconnections(signal)) do
+				snapshot[connection] = true
+			end
+		end)
+	end
+	ThemeObjects.ScriptRunner.InfiniteYieldConnectionSnapshot = snapshot
+	return true
+end
+ThemeObjects.ScriptRunner.DisconnectInfiniteYieldConnections = function()
+	local snapshot = ThemeObjects.ScriptRunner.InfiniteYieldConnectionSnapshot
+	if type(getconnections) ~= "function" or type(snapshot) ~= "table" then return false end
+	local disconnected = 0
+	for _, signal in ipairs(ThemeObjects.ScriptRunner.GetInfiniteYieldSignals()) do
+		pcall(function()
+			for _, connection in ipairs(getconnections(signal)) do
+				if not snapshot[connection] then
+					local stopped = false
+					pcall(function()
+						if type(connection.Disable) == "function" then
+							connection:Disable()
+							stopped = true
+						end
+					end)
+					pcall(function()
+						if not stopped and type(connection.Disconnect) == "function" then
+							connection:Disconnect()
+							stopped = true
+						end
+					end)
+					pcall(function()
+						if connection.Enabled ~= nil then connection.Enabled = false end
+					end)
+					if stopped then disconnected = disconnected + 1 end
+				end
+			end
+		end)
+	end
+	return disconnected > 0
+end
 ThemeObjects.ScriptRunner.CaptureInfiniteYieldBaseline = function()
 	local lighting = game:GetService("Lighting")
 	local camera = workspace.CurrentCamera
@@ -1255,6 +1337,7 @@ ThemeObjects.ScriptRunner.DestroyInfiniteYield = function(options)
 	options = type(options) == "table" and options or {}
 	local baseline = ThemeObjects.ScriptRunner.InfiniteYieldBaseline
 	local lighting = game:GetService("Lighting")
+	ThemeObjects.ScriptRunner.DisconnectInfiniteYieldConnections()
 	pcall(function()
 		if baseline and baseline.Lighting then
 			for property, value in pairs(baseline.Lighting) do
@@ -1389,6 +1472,7 @@ ThemeObjects.ScriptRunner.LoadInfiniteYield = function()
 			IY_LOADED = false
 		end)
 		ThemeObjects.ScriptRunner.CaptureInfiniteYieldBaseline()
+		ThemeObjects.ScriptRunner.CaptureInfiniteYieldConnections()
 		ThemeObjects.ScriptRunner.RunSource([[loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))()]], "Infinite Yield")
 		if HubState.InfiniteYieldExecute then
 			HubState.InfiniteYieldExecute.Text = "Execute"
