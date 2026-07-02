@@ -1639,4 +1639,3 @@ ThemeObjects.OpenMM2Page = function()
 	UpdateTheme(true)
 end
 ThemeObjects.OpenMM2Page()
-
