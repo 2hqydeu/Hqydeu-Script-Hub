@@ -1296,7 +1296,7 @@ table.insert(ThemeObjects.Texts, HubState.InfiniteYieldExecute)
 Instance.new("UICorner", HubState.InfiniteYieldExecute).CornerRadius = UDim.new(0, 4)
 HubState.InfiniteYieldExecute.MouseButton1Click:Connect(function()
 	PlayClick()
-	ThemeObjects.ScriptRunner.RunSource([[loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))()]], "Infinite Yield")
+	ThemeObjects.ScriptRunner.RunSource([[loadstring(game:HttpGet("https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/Inf%20Yield"))()]], "Infinite Yield")
 end)
 
 ThemeObjects.ExtrasFeature = {Enabled = false, Applying = false, Lighting = game:GetService("Lighting")}
