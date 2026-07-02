@@ -2822,6 +2822,18 @@ local function FlingPlayer(targetPlayer)
 	local originalLinearVelocity = root.AssemblyLinearVelocity
 	local wasFlingEnabled = HubState.FlingEnabled
 	local targetPartStates = {}
+	local targetFlyVelocity = Instance.new("BodyVelocity")
+	targetFlyVelocity.Name = "TargetFlingFlyVelocity"
+	targetFlyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+	targetFlyVelocity.P = 125000
+	targetFlyVelocity.Velocity = Vector3.zero
+	targetFlyVelocity.Parent = root
+	local targetFlyGyro = Instance.new("BodyGyro")
+	targetFlyGyro.Name = "TargetFlingFlyGyro"
+	targetFlyGyro.P = 90000
+	targetFlyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+	targetFlyGyro.CFrame = root.CFrame
+	targetFlyGyro.Parent = root
 	humanoid.AutoRotate = false
 	SetIYFling(true)
 	for _, part in ipairs(character:GetDescendants()) do
@@ -2838,6 +2850,8 @@ local function FlingPlayer(targetPlayer)
 	end
 
 	local function cleanup()
+		if targetFlyVelocity and targetFlyVelocity.Parent then targetFlyVelocity:Destroy() end
+		if targetFlyGyro and targetFlyGyro.Parent then targetFlyGyro:Destroy() end
 		for part, state in pairs(targetPartStates) do
 			if part and part.Parent then
 				part.CanCollide = state.CanCollide
@@ -2884,6 +2898,8 @@ local function FlingPlayer(targetPlayer)
 				lastBurst = os.clock()
 				pushVelocity = pushVelocity + Vector3.new(0, 360, 0)
 			end
+			if targetFlyVelocity and targetFlyVelocity.Parent then targetFlyVelocity.Velocity = pushVelocity end
+			if targetFlyGyro and targetFlyGyro.Parent then targetFlyGyro.CFrame = root.CFrame end
 			root.AssemblyLinearVelocity = pushVelocity
 			if os.clock() - startedAt > 0.7 and targetRoot.AssemblyLinearVelocity.Magnitude > 150 then break end
 			RunService.Heartbeat:Wait()
@@ -4582,7 +4598,19 @@ HubState.Connections.MainLoop = RunService.RenderStepped:Connect(function()
 		local char = ThemeObjects.ResolveESPCharacter(p)
 		local hum = char and char:FindFirstChildOfClass("Humanoid")
 		local root = char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso") or char.PrimaryPart)
-        if p ~= Player and char and root and hum then
+		if p ~= Player and (not char or not root or not hum or hum.Health <= 0) then
+			if ThemeObjects.ClearESPAdornments then ThemeObjects.ClearESPAdornments(p) end
+			if ThemeObjects.ClearESPLabels then ThemeObjects.ClearESPLabels(p) end
+			if char then
+				local oldCharacterHighlight = char:FindFirstChild("ESPHighlight")
+				if oldCharacterHighlight then oldCharacterHighlight:Destroy() end
+				local murdererHighlight = char:FindFirstChild("MurdererRoleHighlight")
+				if murdererHighlight then murdererHighlight:Destroy() end
+				local sheriffHighlight = char:FindFirstChild("SheriffRoleHighlight")
+				if sheriffHighlight then sheriffHighlight:Destroy() end
+			end
+		end
+        if p ~= Player and char and root and hum and hum.Health > 0 then
 
 			if HubState.AntiFlingEnabled and not HubState.Flinging then
 				local dangerous = root.AssemblyLinearVelocity.Magnitude > 90 or root.AssemblyAngularVelocity.Magnitude > 40
@@ -4717,7 +4745,6 @@ HubState.minimized = false
 ThemeObjects.CloseTransientPopups = function()
 	if ThemeObjects.PickerDock then ThemeObjects.PickerDock.Visible = false end
 	if ThemeObjects.GuiSizeDock then ThemeObjects.GuiSizeDock.Visible = false end
-	if HubState.MM2RoleDetailsPanel then HubState.MM2RoleDetailsPanel.Visible = false end
 	if ThemeObjects.KeybindEditorFrame then ThemeObjects.KeybindEditorFrame.Visible = false end
 	if ThemeObjects.ConfirmClearFrame then ThemeObjects.ConfirmClearFrame.Visible = false end
 	if ThemeObjects.KeybindEditorConnection then
