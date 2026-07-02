@@ -953,10 +953,12 @@ HubState.FlingEnabled = false
 HubState.Flinging = false
 HubState.FlingOriginalPartStates = {}
 HubState.AntiFlingOriginalCollision = {}
-HubState.FlingMenuKeybind = LoadKeybind("FlingMenu")
+HubState.FlingKeybind = LoadKeybind("Fling")
+HubState.FlingTargetKeybind = LoadKeybind("FlingTarget")
+if HubState.FlingTargetKeybind == Enum.KeyCode.Unknown then HubState.FlingTargetKeybind = LoadKeybind("FlingMenu") end
 HubState.MinimizeKeybind = LoadKeybind("MinimizeGUI")
 if HubState.MinimizeKeybind == Enum.KeyCode.Unknown then HubState.MinimizeKeybind = Enum.KeyCode.LeftControl end
-HubState.IsBindingFlingMenu = false
+HubState.IsBindingFlingTarget = false
 ThemeObjects.PlayerTP = {Keybind = LoadKeybind("PlayerTPMenu"), Binding = false, Dragging = false}
 ThemeObjects.MM2RoleDetails = {Keybind = LoadKeybind("MM2RoleDetails"), Binding = false, Dragging = false, Moved = false}
 HubState.BodyVelocity = nil
@@ -1021,6 +1023,20 @@ HubState.MiniButton.Parent = MainFrame
 table.insert(ThemeObjects.Backgrounds, HubState.MiniButton)
 table.insert(ThemeObjects.Texts, HubState.MiniButton)
 Instance.new("UICorner", HubState.MiniButton).CornerRadius = UDim.new(0, 5)
+
+HubState.MinimizeKeybindLabel = Instance.new("TextLabel")
+HubState.MinimizeKeybindLabel.Name = "MinimizeKeybindLabel"
+HubState.MinimizeKeybindLabel.Size = UDim2.new(0, 70, 0, 18)
+HubState.MinimizeKeybindLabel.Position = UDim2.new(1, -100, 0, 8)
+HubState.MinimizeKeybindLabel.BackgroundTransparency = 1
+HubState.MinimizeKeybindLabel.BorderSizePixel = 0
+HubState.MinimizeKeybindLabel.Text = KeybindText(HubState.MinimizeKeybind)
+HubState.MinimizeKeybindLabel.Font = Enum.Font.GothamBold
+HubState.MinimizeKeybindLabel.TextSize = 9
+HubState.MinimizeKeybindLabel.TextXAlignment = Enum.TextXAlignment.Right
+HubState.MinimizeKeybindLabel.TextColor3 = AccentColor
+HubState.MinimizeKeybindLabel.Parent = MainFrame
+table.insert(ThemeObjects.Accents, HubState.MinimizeKeybindLabel)
 
 HubState.ToggleHint = Instance.new("TextLabel")
 HubState.ToggleHint.Name = "ToggleHint"
@@ -2466,7 +2482,7 @@ HubState.FlingBindBtn.Position = UDim2.new(0, 290, 0, 8)
 HubState.FlingBindBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
 HubState.FlingBindBtn.BackgroundTransparency = 0.8
 HubState.FlingBindBtn.BorderSizePixel = 0
-HubState.FlingBindBtn.Text = KeybindText(HubState.FlingMenuKeybind)
+HubState.FlingBindBtn.Text = KeybindText(HubState.FlingTargetKeybind)
 HubState.FlingBindBtn.Font = Enum.Font.GothamBold
 HubState.FlingBindBtn.TextColor3 = AccentColor
 HubState.FlingBindBtn.Parent = HubState.CombatPage
@@ -2520,8 +2536,9 @@ do
 	local lockRow = CreateCombatRow("AutoLockCard", 4)
 	local espRow = CreateCombatRow("PlayerESPCard", 46)
 	local bodyESPRow = ThemeObjects.DeepESP.Row
-	local flingRow = CreateCombatRow("FlingTargetCard", 130)
-	local antiFlingRow = CreateCombatRow("AntiFlingCard", 172)
+	local flingRow = CreateCombatRow("FlingCard", 130)
+	local flingTargetRow = CreateCombatRow("FlingTargetCard", 172)
+	local antiFlingRow = CreateCombatRow("AntiFlingCard", 214)
 
 	HubState.AutoLockTitle.Size = UDim2.new(0, 90, 0, 20)
 	HubState.AutoLockTitle.Position = UDim2.new(0, 8, 0.5, -10)
@@ -2586,19 +2603,30 @@ do
 	ThemeObjects.FlingTargetTitle.Parent = flingRow
 	table.insert(ThemeObjects.Texts, ThemeObjects.FlingTargetTitle)
 	HubState.FlingToggleBtn.Size = UDim2.new(0, 44, 0, 20)
-	HubState.FlingToggleBtn.Position = UDim2.new(1, -144, 0.5, -10)
+	HubState.FlingToggleBtn.Position = UDim2.new(1, -96, 0.5, -10)
 	HubState.FlingToggleBtn.TextSize = 9
 	HubState.FlingToggleBtn.Parent = flingRow
+	ThemeObjects.FlingMenuTitle = Instance.new("TextLabel")
+	ThemeObjects.FlingMenuTitle.Size = UDim2.new(0, 120, 0, 20)
+	ThemeObjects.FlingMenuTitle.Position = UDim2.new(0, 8, 0.5, -10)
+	ThemeObjects.FlingMenuTitle.BackgroundTransparency = 1
+	ThemeObjects.FlingMenuTitle.Text = "Fling Target:"
+	ThemeObjects.FlingMenuTitle.Font = Enum.Font.GothamBold
+	ThemeObjects.FlingMenuTitle.TextSize = 11
+	ThemeObjects.FlingMenuTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+	ThemeObjects.FlingMenuTitle.TextXAlignment = Enum.TextXAlignment.Left
+	ThemeObjects.FlingMenuTitle.Parent = flingTargetRow
+	table.insert(ThemeObjects.Texts, ThemeObjects.FlingMenuTitle)
 	HubState.FlingTargetBtn.Size = UDim2.new(0, 44, 0, 20)
 	HubState.FlingTargetBtn.Position = UDim2.new(1, -96, 0.5, -10)
 	HubState.FlingTargetBtn.Text = "Target"
 	HubState.FlingTargetBtn.TextSize = 9
 	HubState.FlingTargetBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-	HubState.FlingTargetBtn.Parent = flingRow
+	HubState.FlingTargetBtn.Parent = flingTargetRow
 	HubState.FlingBindBtn.Size = UDim2.new(0, 44, 0, 20)
 	HubState.FlingBindBtn.Position = UDim2.new(1, -48, 0.5, -10)
 	HubState.FlingBindBtn.TextSize = 8
-	HubState.FlingBindBtn.Parent = flingRow
+	HubState.FlingBindBtn.Parent = flingTargetRow
 
 	ThemeObjects.AntiFlingTitle = Instance.new("TextLabel")
 	ThemeObjects.AntiFlingTitle.Size = UDim2.new(0, 120, 0, 20)
@@ -2977,7 +3005,10 @@ local function ToggleFlingMenu()
 	if not HubState.TargetFrame.Visible then RefreshFlingTargets() end
 	HubState.TargetFrame.Visible = not HubState.TargetFrame.Visible
 end
-ThemeObjects.AddFeatureKeybind({Name = "Fling Menu", Storage = "FlingMenu", Button = HubState.FlingBindBtn, Get = function() return HubState.FlingMenuKeybind end, Set = function(key) HubState.FlingMenuKeybind = key; SaveKeybind("FlingMenu", key); if HubState.FlingBindBtn then HubState.FlingBindBtn.Text = KeybindText(key) end end, Action = ToggleFlingMenu})
+ThemeObjects.AddFeatureKeybind({Name = "Fling Target", Storage = "FlingTarget", Button = HubState.FlingBindBtn, Get = function() return HubState.FlingTargetKeybind end, Set = function(key) HubState.FlingTargetKeybind = key; SaveKeybind("FlingTarget", key); if HubState.FlingBindBtn then HubState.FlingBindBtn.Text = KeybindText(key) end end, Action = ToggleFlingMenu})
+ThemeObjects.AddFeatureKeybind({Name = "Fling", Storage = "Fling", Parent = HubState.FlingToggleBtn and HubState.FlingToggleBtn.Parent, Toggle = HubState.FlingToggleBtn, Get = function() return HubState.FlingKeybind end, Set = function(key) HubState.FlingKeybind = key; SaveKeybind("Fling", key) end, Action = function()
+	SetIYFling(not HubState.FlingEnabled)
+end})
 
 HubState.FlingTargetBtn.MouseButton1Click:Connect(function() PlayClick() ToggleFlingMenu() end)
 HubState.FlingToggleBtn.MouseButton1Click:Connect(function()
@@ -3267,7 +3298,7 @@ HubState.FlingBindBtn.MouseButton1Click:Connect(function()
 		HubState.FlingBindConnection:Disconnect()
 		HubState.FlingBindConnection = nil
 	end
-	HubState.IsBindingFlingMenu = true
+	HubState.IsBindingFlingTarget = true
 	HubState.FlingBindBtn.Text = "..."
 	HubState.FlingBindConnection = UserInputService.InputBegan:Connect(function(input, processed)
 		if processed then return end
@@ -3276,10 +3307,10 @@ HubState.FlingBindBtn.MouseButton1Click:Connect(function()
 			if selectedKey == Enum.KeyCode.Backspace or selectedKey == Enum.KeyCode.Delete then
 				selectedKey = Enum.KeyCode.Unknown
 			end
-			HubState.FlingMenuKeybind = selectedKey
-			SaveKeybind("FlingMenu", selectedKey)
+			HubState.FlingTargetKeybind = selectedKey
+			SaveKeybind("FlingTarget", selectedKey)
 			HubState.FlingBindBtn.Text = KeybindText(selectedKey)
-			HubState.IsBindingFlingMenu = false
+			HubState.IsBindingFlingTarget = false
 			if HubState.FlingBindConnection then
 				HubState.FlingBindConnection:Disconnect()
 				HubState.FlingBindConnection = nil
@@ -4613,18 +4644,12 @@ HubState.Connections.MainLoop = RunService.RenderStepped:Connect(function()
         if p ~= Player and char and root and hum and hum.Health > 0 then
 
 			if HubState.AntiFlingEnabled and not HubState.Flinging then
-				local dangerous = root.AssemblyLinearVelocity.Magnitude > 90 or root.AssemblyAngularVelocity.Magnitude > 40
 				for _, part in ipairs(char:GetDescendants()) do
 					if part:IsA("BasePart") then
-						if dangerous then
-							if HubState.AntiFlingOriginalCollision[part] == nil then
-								HubState.AntiFlingOriginalCollision[part] = part.CanCollide
-							end
-							part.CanCollide = false
-						elseif HubState.AntiFlingOriginalCollision[part] ~= nil then
-							part.CanCollide = HubState.AntiFlingOriginalCollision[part]
-							HubState.AntiFlingOriginalCollision[part] = nil
+						if HubState.AntiFlingOriginalCollision[part] == nil then
+							HubState.AntiFlingOriginalCollision[part] = part.CanCollide
 						end
+						part.CanCollide = false
 					end
 				end
 			end
@@ -4812,7 +4837,7 @@ HubState.MiniButton.MouseButton1Click:Connect(ToggleGUI)
 
 -- Input Listener
 HubState.Connections.InputBegan = UserInputService.InputBegan:Connect(function(input, processed)
-	if processed or UserInputService:GetFocusedTextBox() or HubState.IsBindingSpeed or HubState.IsBindingFly or HubState.IsBindingNoclip or ThemeObjects.FreeCam.Binding or HubState.IsBindingAutoLock or HubState.IsBindingESP or HubState.IsBindingFlingMenu or ThemeObjects.PlayerTP.Binding or HubState.IsBindingKeybindEditor then return end
+	if processed or UserInputService:GetFocusedTextBox() or HubState.IsBindingSpeed or HubState.IsBindingFly or HubState.IsBindingNoclip or ThemeObjects.FreeCam.Binding or HubState.IsBindingAutoLock or HubState.IsBindingESP or HubState.IsBindingFlingTarget or ThemeObjects.PlayerTP.Binding or HubState.IsBindingKeybindEditor then return end
 	if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
 	if ThemeObjects.RunFeatureKeybind and ThemeObjects.RunFeatureKeybind(input.KeyCode) then return
 	elseif input.KeyCode == HubState.SpeedKeybind then ToggleSpeed()
@@ -4821,7 +4846,7 @@ HubState.Connections.InputBegan = UserInputService.InputBegan:Connect(function(i
 	elseif input.KeyCode == ThemeObjects.FreeCam.Keybind then ThemeObjects.FreeCam.ToggleState()
 	elseif input.KeyCode == HubState.AutoLockKeybind then ToggleAutoLock()
 	elseif input.KeyCode == HubState.ESPKeybind then ToggleESP()
-	elseif input.KeyCode == HubState.FlingMenuKeybind then ToggleFlingMenu()
+	elseif input.KeyCode == HubState.FlingTargetKeybind then ToggleFlingMenu()
 	elseif input.KeyCode == ThemeObjects.PlayerTP.Keybind then ThemeObjects.PlayerTP.Toggle()
     elseif input.KeyCode == HubState.MinimizeKeybind then ToggleGUI() 
     end
@@ -4843,11 +4868,11 @@ ThemeObjects.SwitchTab = function(name)
 	local activeY = 54
 	local headerX = 124
 	local headerY = 32
-	local slideDistance = 18
-	local headerSlideDistance = 18
-	local slideTime = 0.18
+	local slideDistance = 10
+	local headerSlideDistance = 8
+	local slideTime = 0.11
 	local slideTweenInfo = TweenInfo.new(slideTime, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-	local headerTweenInfo = TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+	local headerTweenInfo = TweenInfo.new(0.11, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 	local openingSelectedGame = name == "Games" and HubState.SelectedGame ~= nil
 	local quietPage = MainFrame:FindFirstChild("QuietOrDiePage")
 	local extrasPage = MainFrame:FindFirstChild("ExtrasPage")
@@ -4855,27 +4880,7 @@ ThemeObjects.SwitchTab = function(name)
 	ThemeObjects.TabTransitionId += 1
 	local transitionId = ThemeObjects.TabTransitionId
 	local function setPageContentTransparency(page, value)
-		if not page or not page.Parent then return end
-		for _, object in ipairs(page:GetDescendants()) do
-			if object:IsA("TextLabel") or object:IsA("TextButton") or object:IsA("TextBox") then
-				object.TextTransparency = value
-			elseif object:IsA("ImageLabel") or object:IsA("ImageButton") then
-				object.ImageTransparency = value
-			elseif object:IsA("UIStroke") then
-				if object:GetAttribute("TransitionBaseStrokeTransparency") == nil then
-					object:SetAttribute("TransitionBaseStrokeTransparency", object.Transparency)
-				end
-				local baseTransparency = object:GetAttribute("TransitionBaseStrokeTransparency") or 0
-				object.Transparency = math.clamp(baseTransparency + value, 0, 1)
-			end
-			if object:IsA("GuiObject") and object.BackgroundTransparency < 1 then
-				if object:GetAttribute("TransitionBaseBackgroundTransparency") == nil then
-					object:SetAttribute("TransitionBaseBackgroundTransparency", object.BackgroundTransparency)
-				end
-				local baseTransparency = object:GetAttribute("TransitionBaseBackgroundTransparency") or 0
-				object.BackgroundTransparency = math.clamp(baseTransparency + value, 0, 1)
-			end
-		end
+		return
 	end
 	local function restorePageContentTransparency(page)
 		if not page or not page.Parent then return end
@@ -5698,6 +5703,7 @@ ThemeObjects.BuildKeybindEditorEntries = function()
 		{Name = "Minimize GUI", Storage = "MinimizeGUI", Get = function() return HubState.MinimizeKeybind end, Set = function(key)
 			HubState.MinimizeKeybind = key
 			SaveKeybind("MinimizeGUI", key)
+			if HubState.MinimizeKeybindLabel then HubState.MinimizeKeybindLabel.Text = KeybindText(key) end
 		end, Action = ToggleGUI},
 	}
 	local featureEntries = {}
@@ -6030,7 +6036,8 @@ ConfirmYesBtn.MouseButton1Click:Connect(function()
 	ThemeObjects.FreeCam.Keybind = Enum.KeyCode.Unknown
 	HubState.AutoLockKeybind = Enum.KeyCode.Unknown
 	HubState.ESPKeybind = Enum.KeyCode.Unknown
-	HubState.FlingMenuKeybind = Enum.KeyCode.Unknown
+	HubState.FlingKeybind = Enum.KeyCode.Unknown
+	HubState.FlingTargetKeybind = Enum.KeyCode.Unknown
 	ThemeObjects.PlayerTP.Keybind = Enum.KeyCode.Unknown
 	SavedKeybinds.Speed = "Unknown"
 	SavedKeybinds.Fly = "Unknown"
@@ -6038,7 +6045,8 @@ ConfirmYesBtn.MouseButton1Click:Connect(function()
 	SavedKeybinds.FreeCam = "Unknown"
 	SavedKeybinds.AutoLock = "Unknown"
 	SavedKeybinds.ESP = "Unknown"
-	SavedKeybinds.FlingMenu = "Unknown"
+	SavedKeybinds.Fling = "Unknown"
+	SavedKeybinds.FlingTarget = "Unknown"
 	SavedKeybinds.PlayerTPMenu = "Unknown"
 	HubState.SpeedBindBtn.Text = "..."
 	HubState.FlyBindBtn.Text = "..."
