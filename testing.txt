@@ -1058,6 +1058,7 @@ HubState.TabScroll.ElasticBehavior = Enum.ElasticBehavior.Never
 HubState.TabScroll.ScrollBarThickness = 2
 HubState.TabScroll.ScrollBarImageColor3 = AccentColor
 HubState.TabScroll.CanvasSize = UDim2.new(0, 0, 0, 252)
+HubState.TabScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 HubState.TabScroll.Parent = MainFrame
 ThemeObjects.TabScroll = HubState.TabScroll
 HubState.SettingsBtn.Parent = MainFrame
@@ -1078,6 +1079,13 @@ HubState.TabListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 HubState.TabListLayout.Padding = UDim.new(0, 6)
 HubState.TabListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 HubState.TabListLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+
+local function UpdateTabScrollCanvas()
+	if not HubState.TabScroll or not HubState.TabListLayout then return end
+	HubState.TabScroll.CanvasSize = UDim2.new(0, 0, 0, math.max(252, HubState.TabListLayout.AbsoluteContentSize.Y + 12))
+end
+HubState.TabListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(UpdateTabScrollCanvas)
+task.defer(UpdateTabScrollCanvas)
 
 HubState.PageHeader = Instance.new("TextLabel")
 HubState.PageHeader.Name = "PageHeader"
@@ -1213,163 +1221,48 @@ ThemeObjects.ScriptRunner.RunUrl = function(url, label)
 	ThemeObjects.ScriptRunner.RunSource(source, label)
 end
 
-ThemeObjects.ScriptRunner.Presets = {
-	{
-		Name = "Admin",
-		Source = [[loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))()]],
-	},
-}
+HubState.InfiniteYieldRow = Instance.new("Frame")
+HubState.InfiniteYieldRow.Name = "InfiniteYieldRow"
+HubState.InfiniteYieldRow.Size = UDim2.new(1, -8, 0, 38)
+HubState.InfiniteYieldRow.Position = UDim2.new(0, 4, 0, 4)
+HubState.InfiniteYieldRow.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
+HubState.InfiniteYieldRow.BackgroundTransparency = 0.92
+HubState.InfiniteYieldRow.BorderSizePixel = 0
+HubState.InfiniteYieldRow.Parent = HubState.ScriptsPage
+table.insert(ThemeObjects.Backgrounds, HubState.InfiniteYieldRow)
+Instance.new("UICorner", HubState.InfiniteYieldRow).CornerRadius = UDim.new(0, 6)
 
-local ScriptsPresetLabel = Instance.new("TextLabel")
-ScriptsPresetLabel.Size = UDim2.new(1, -8, 0, 18)
-ScriptsPresetLabel.Position = UDim2.new(0, 4, 0, 0)
-ScriptsPresetLabel.BackgroundTransparency = 1
-ScriptsPresetLabel.BorderSizePixel = 0
-ScriptsPresetLabel.Text = "Presets"
-ScriptsPresetLabel.Font = Enum.Font.GothamBold
-ScriptsPresetLabel.TextSize = 11
-ScriptsPresetLabel.TextXAlignment = Enum.TextXAlignment.Left
-ScriptsPresetLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-ScriptsPresetLabel.Parent = HubState.ScriptsPage
-table.insert(ThemeObjects.Texts, ScriptsPresetLabel)
+HubState.InfiniteYieldTitle = Instance.new("TextLabel")
+HubState.InfiniteYieldTitle.Size = UDim2.new(1, -104, 1, 0)
+HubState.InfiniteYieldTitle.Position = UDim2.new(0, 10, 0, 0)
+HubState.InfiniteYieldTitle.BackgroundTransparency = 1
+HubState.InfiniteYieldTitle.BorderSizePixel = 0
+HubState.InfiniteYieldTitle.Text = "Infinite Yield:"
+HubState.InfiniteYieldTitle.Font = Enum.Font.GothamBold
+HubState.InfiniteYieldTitle.TextSize = 11
+HubState.InfiniteYieldTitle.TextXAlignment = Enum.TextXAlignment.Left
+HubState.InfiniteYieldTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+HubState.InfiniteYieldTitle.Parent = HubState.InfiniteYieldRow
+table.insert(ThemeObjects.Texts, HubState.InfiniteYieldTitle)
 
-for index, preset in ipairs(ThemeObjects.ScriptRunner.Presets) do
-	local presetButton = Instance.new("TextButton")
-	presetButton.Name = "ScriptPresetButton"
-	presetButton.Size = UDim2.new(0, 104, 0, 28)
-	presetButton.Position = UDim2.new(0, 4 + ((index - 1) * 110), 0, 22)
-	presetButton.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
-	presetButton.BackgroundTransparency = 0.8
-	presetButton.BorderSizePixel = 0
-	presetButton.Text = preset.Name
-	presetButton.Font = Enum.Font.GothamBold
-	presetButton.TextSize = 10
-	presetButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-	presetButton.Parent = HubState.ScriptsPage
-	table.insert(ThemeObjects.Backgrounds, presetButton)
-	table.insert(ThemeObjects.Texts, presetButton)
-	Instance.new("UICorner", presetButton).CornerRadius = UDim.new(0, 6)
-	presetButton.MouseButton1Click:Connect(function()
-		PlayClick()
-		if preset.Source then
-			ThemeObjects.ScriptRunner.RunSource(preset.Source, preset.Name)
-		else
-			ThemeObjects.ScriptRunner.RunUrl(preset.Url, preset.Name)
-		end
-	end)
-end
-
-local ScriptUrlBox = Instance.new("TextBox")
-ScriptUrlBox.Name = "ScriptUrlBox"
-ScriptUrlBox.Size = UDim2.new(1, -88, 0, 28)
-ScriptUrlBox.Position = UDim2.new(0, 4, 0, 60)
-ScriptUrlBox.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
-ScriptUrlBox.BackgroundTransparency = 0.8
-ScriptUrlBox.BorderSizePixel = 0
-ScriptUrlBox.ClearTextOnFocus = false
-ScriptUrlBox.Text = "https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"
-ScriptUrlBox.PlaceholderText = "Script URL"
-ScriptUrlBox.Font = Enum.Font.Gotham
-ScriptUrlBox.TextSize = 9
-ScriptUrlBox.TextXAlignment = Enum.TextXAlignment.Left
-ScriptUrlBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-ScriptUrlBox.PlaceholderColor3 = Color3.fromRGB(180, 180, 180)
-ScriptUrlBox.Parent = HubState.ScriptsPage
-table.insert(ThemeObjects.Backgrounds, ScriptUrlBox)
-table.insert(ThemeObjects.Texts, ScriptUrlBox)
-Instance.new("UICorner", ScriptUrlBox).CornerRadius = UDim.new(0, 6)
-local ScriptUrlPadding = Instance.new("UIPadding")
-ScriptUrlPadding.PaddingLeft = UDim.new(0, 8)
-ScriptUrlPadding.PaddingRight = UDim.new(0, 8)
-ScriptUrlPadding.Parent = ScriptUrlBox
-
-local RunUrlButton = Instance.new("TextButton")
-RunUrlButton.Name = "RunScriptUrlButton"
-RunUrlButton.Size = UDim2.new(0, 72, 0, 28)
-RunUrlButton.Position = UDim2.new(1, -76, 0, 60)
-RunUrlButton.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
-RunUrlButton.BackgroundTransparency = 0.8
-RunUrlButton.BorderSizePixel = 0
-RunUrlButton.Text = "Run URL"
-RunUrlButton.Font = Enum.Font.GothamBold
-RunUrlButton.TextSize = 10
-RunUrlButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-RunUrlButton.Parent = HubState.ScriptsPage
-table.insert(ThemeObjects.Backgrounds, RunUrlButton)
-table.insert(ThemeObjects.Texts, RunUrlButton)
-Instance.new("UICorner", RunUrlButton).CornerRadius = UDim.new(0, 6)
-RunUrlButton.MouseButton1Click:Connect(function()
+HubState.InfiniteYieldExecute = Instance.new("TextButton")
+HubState.InfiniteYieldExecute.Name = "InfiniteYieldExecute"
+HubState.InfiniteYieldExecute.Size = UDim2.new(0, 82, 0, 22)
+HubState.InfiniteYieldExecute.Position = UDim2.new(1, -90, 0, 8)
+HubState.InfiniteYieldExecute.BackgroundColor3 = Color3.fromRGB(50, 50, 68)
+HubState.InfiniteYieldExecute.BackgroundTransparency = 0.8
+HubState.InfiniteYieldExecute.BorderSizePixel = 0
+HubState.InfiniteYieldExecute.Text = "Execute"
+HubState.InfiniteYieldExecute.Font = Enum.Font.GothamBold
+HubState.InfiniteYieldExecute.TextSize = 9
+HubState.InfiniteYieldExecute.TextColor3 = Color3.fromRGB(255, 255, 255)
+HubState.InfiniteYieldExecute.Parent = HubState.InfiniteYieldRow
+table.insert(ThemeObjects.Backgrounds, HubState.InfiniteYieldExecute)
+table.insert(ThemeObjects.Texts, HubState.InfiniteYieldExecute)
+Instance.new("UICorner", HubState.InfiniteYieldExecute).CornerRadius = UDim.new(0, 4)
+HubState.InfiniteYieldExecute.MouseButton1Click:Connect(function()
 	PlayClick()
-	ThemeObjects.ScriptRunner.RunUrl(ScriptUrlBox.Text, "URL script")
-end)
-
-local ScriptCodeBox = Instance.new("TextBox")
-ScriptCodeBox.Name = "ScriptCodeBox"
-ScriptCodeBox.Size = UDim2.new(1, -8, 0, 112)
-ScriptCodeBox.Position = UDim2.new(0, 4, 0, 98)
-ScriptCodeBox.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
-ScriptCodeBox.BackgroundTransparency = 0.8
-ScriptCodeBox.BorderSizePixel = 0
-ScriptCodeBox.ClearTextOnFocus = false
-ScriptCodeBox.MultiLine = true
-ScriptCodeBox.Text = [[loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))()]]
-ScriptCodeBox.PlaceholderText = "Paste script"
-ScriptCodeBox.Font = Enum.Font.Code
-ScriptCodeBox.TextSize = 10
-ScriptCodeBox.TextWrapped = true
-ScriptCodeBox.TextXAlignment = Enum.TextXAlignment.Left
-ScriptCodeBox.TextYAlignment = Enum.TextYAlignment.Top
-ScriptCodeBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-ScriptCodeBox.PlaceholderColor3 = Color3.fromRGB(180, 180, 180)
-ScriptCodeBox.Parent = HubState.ScriptsPage
-table.insert(ThemeObjects.Backgrounds, ScriptCodeBox)
-table.insert(ThemeObjects.Texts, ScriptCodeBox)
-Instance.new("UICorner", ScriptCodeBox).CornerRadius = UDim.new(0, 6)
-local ScriptCodePadding = Instance.new("UIPadding")
-ScriptCodePadding.PaddingLeft = UDim.new(0, 8)
-ScriptCodePadding.PaddingRight = UDim.new(0, 8)
-ScriptCodePadding.PaddingTop = UDim.new(0, 6)
-ScriptCodePadding.PaddingBottom = UDim.new(0, 6)
-ScriptCodePadding.Parent = ScriptCodeBox
-
-local RunCodeButton = Instance.new("TextButton")
-RunCodeButton.Name = "RunScriptCodeButton"
-RunCodeButton.Size = UDim2.new(0, 92, 0, 28)
-RunCodeButton.Position = UDim2.new(1, -96, 0, 218)
-RunCodeButton.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
-RunCodeButton.BackgroundTransparency = 0.8
-RunCodeButton.BorderSizePixel = 0
-RunCodeButton.Text = "Run Code"
-RunCodeButton.Font = Enum.Font.GothamBold
-RunCodeButton.TextSize = 10
-RunCodeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-RunCodeButton.Parent = HubState.ScriptsPage
-table.insert(ThemeObjects.Backgrounds, RunCodeButton)
-table.insert(ThemeObjects.Texts, RunCodeButton)
-Instance.new("UICorner", RunCodeButton).CornerRadius = UDim.new(0, 6)
-RunCodeButton.MouseButton1Click:Connect(function()
-	PlayClick()
-	ThemeObjects.ScriptRunner.RunSource(ScriptCodeBox.Text, "Custom script")
-end)
-
-local ClearCodeButton = Instance.new("TextButton")
-ClearCodeButton.Name = "ClearScriptCodeButton"
-ClearCodeButton.Size = UDim2.new(0, 72, 0, 28)
-ClearCodeButton.Position = UDim2.new(1, -174, 0, 218)
-ClearCodeButton.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
-ClearCodeButton.BackgroundTransparency = 0.8
-ClearCodeButton.BorderSizePixel = 0
-ClearCodeButton.Text = "Clear"
-ClearCodeButton.Font = Enum.Font.GothamBold
-ClearCodeButton.TextSize = 10
-ClearCodeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-ClearCodeButton.Parent = HubState.ScriptsPage
-table.insert(ThemeObjects.Backgrounds, ClearCodeButton)
-table.insert(ThemeObjects.Texts, ClearCodeButton)
-Instance.new("UICorner", ClearCodeButton).CornerRadius = UDim.new(0, 6)
-ClearCodeButton.MouseButton1Click:Connect(function()
-	PlayClick()
-	ScriptCodeBox.Text = ""
+	ThemeObjects.ScriptRunner.RunSource([[loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))()]], "Infinite Yield")
 end)
 
 ThemeObjects.ExtrasFeature = {Enabled = false, Applying = false, Lighting = game:GetService("Lighting")}
