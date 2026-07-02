@@ -2480,7 +2480,7 @@ HubState.FlingToggleBtn.Position = UDim2.new(0, 150, 0, 8)
 HubState.FlingToggleBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
 HubState.FlingToggleBtn.BackgroundTransparency = 0.8
 HubState.FlingToggleBtn.BorderSizePixel = 0
-HubState.FlingToggleBtn.Text = "Off"
+HubState.FlingToggleBtn.Text = "IY Off"
 HubState.FlingToggleBtn.Font = Enum.Font.GothamBold
 HubState.FlingToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 HubState.FlingToggleBtn.Parent = HubState.CombatPage
@@ -2578,20 +2578,20 @@ do
 	ThemeObjects.FlingTargetTitle.Size = UDim2.new(0, 120, 0, 20)
 	ThemeObjects.FlingTargetTitle.Position = UDim2.new(0, 8, 0.5, -10)
 	ThemeObjects.FlingTargetTitle.BackgroundTransparency = 1
-	ThemeObjects.FlingTargetTitle.Text = "Fling:"
+	ThemeObjects.FlingTargetTitle.Text = "IY Fling:"
 	ThemeObjects.FlingTargetTitle.Font = Enum.Font.GothamBold
 	ThemeObjects.FlingTargetTitle.TextSize = 11
 	ThemeObjects.FlingTargetTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 	ThemeObjects.FlingTargetTitle.TextXAlignment = Enum.TextXAlignment.Left
 	ThemeObjects.FlingTargetTitle.Parent = flingRow
 	table.insert(ThemeObjects.Texts, ThemeObjects.FlingTargetTitle)
-	HubState.FlingToggleBtn.Size = UDim2.new(0, 44, 0, 20)
-	HubState.FlingToggleBtn.Position = UDim2.new(1, -144, 0.5, -10)
-	HubState.FlingToggleBtn.TextSize = 9
+	HubState.FlingToggleBtn.Size = UDim2.new(0, 56, 0, 20)
+	HubState.FlingToggleBtn.Position = UDim2.new(1, -156, 0.5, -10)
+	HubState.FlingToggleBtn.TextSize = 8
 	HubState.FlingToggleBtn.Parent = flingRow
 	HubState.FlingTargetBtn.Size = UDim2.new(0, 44, 0, 20)
 	HubState.FlingTargetBtn.Position = UDim2.new(1, -96, 0.5, -10)
-	HubState.FlingTargetBtn.Text = "Open"
+	HubState.FlingTargetBtn.Text = "Target"
 	HubState.FlingTargetBtn.TextSize = 9
 	HubState.FlingTargetBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	HubState.FlingTargetBtn.Parent = flingRow
@@ -2719,7 +2719,7 @@ local function RestoreAntiFlingCollisions()
 end
 
 local function RefreshFlingToggle()
-	if HubState.FlingToggleBtn then HubState.FlingToggleBtn.Text = HubState.FlingEnabled and "On" or "Off" end
+	if HubState.FlingToggleBtn then HubState.FlingToggleBtn.Text = HubState.FlingEnabled and "IY On" or "IY Off" end
 	if ThemeObjects.FlingTargetTitle then ThemeObjects.FlingTargetTitle.TextColor3 = HubState.FlingEnabled and AccentColor or Color3.fromRGB(255, 255, 255) end
 end
 
@@ -2821,22 +2821,10 @@ local function FlingPlayer(targetPlayer)
 	local originalAngularVelocity = root.AssemblyAngularVelocity
 	local originalLinearVelocity = root.AssemblyLinearVelocity
 	local wasFlingEnabled = HubState.FlingEnabled
-	local movers = {}
 	humanoid.AutoRotate = false
 	SetIYFling(true)
 
-	local bodyVelocity = Instance.new("BodyVelocity")
-	bodyVelocity.Name = "R15FlingPush"
-	bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-	bodyVelocity.P = 125000
-	bodyVelocity.Velocity = Vector3.new(0, 0, 0)
-	bodyVelocity.Parent = root
-	table.insert(movers, bodyVelocity)
-
 	local function cleanup()
-		for _, mover in ipairs(movers) do
-			if mover and mover.Parent then mover:Destroy() end
-		end
 		if not wasFlingEnabled then SetIYFling(false) end
 		if root and root.Parent then
 			root.AssemblyAngularVelocity = originalAngularVelocity
@@ -2854,36 +2842,30 @@ local function FlingPlayer(targetPlayer)
 			or targetCharacter:FindFirstChild("Torso")
 			or targetCharacter:FindFirstChild("LowerTorso")
 			or targetRoot
-		local yOffsets = {0, 1.15, -0.85, 0.45, -0.35}
-		local radiusSteps = {0.1, 0.65, 1.25, 0.35, 0.95}
+		local hitOffsets = {
+			Vector3.new(0, 0, 0),
+			Vector3.new(0, 1.15, 0),
+			Vector3.new(0, -0.85, 0),
+			Vector3.new(0.55, 0, 0),
+			Vector3.new(-0.55, 0, 0),
+			Vector3.new(0, 0, 0.55),
+			Vector3.new(0, 0, -0.55),
+		}
 		local startedAt = os.clock()
 		local step = 0
-		local lastHardPass = 0
-		while os.clock() - startedAt < 3.65 and targetRoot.Parent and targetHumanoid.Health > 0 and root.Parent and humanoid.Health > 0 do
+		while os.clock() - startedAt < 3.2 and targetRoot.Parent and targetHumanoid.Health > 0 and root.Parent and humanoid.Health > 0 do
 			step += 1
 			targetContactPart = targetCharacter:FindFirstChild("UpperTorso")
 				or targetCharacter:FindFirstChild("Torso")
 				or targetCharacter:FindFirstChild("LowerTorso")
 				or targetRoot
-			local targetPosition = targetContactPart.Position + (targetRoot.AssemblyLinearVelocity * 0.13)
-			local angle = step * 1.75
-			local radius = radiusSteps[((step - 1) % #radiusSteps) + 1]
-			local yOffset = yOffsets[((step - 1) % #yOffsets) + 1]
-			local orbitOffset = Vector3.new(math.cos(angle) * radius, yOffset, math.sin(angle) * radius)
-			local passPosition = targetPosition + orbitOffset
-			root.CFrame = CFrame.lookAt(passPosition, targetPosition) * CFrame.Angles(math.rad(90), 0, 0)
-			local pushDirection = (targetPosition - root.Position)
-			if pushDirection.Magnitude < 0.05 then pushDirection = Vector3.new(0, 1, 0) end
-			local verticalBoost = Vector3.new(0, (step % 2 == 0) and 220 or -90, 0)
-			local pushVelocity = pushDirection.Unit * 620 + targetRoot.AssemblyLinearVelocity + verticalBoost
-			if os.clock() - lastHardPass >= 0.12 then
-				lastHardPass = os.clock()
-				pushVelocity = pushVelocity + Vector3.new(0, 420, 0)
-			end
+			local targetPosition = targetContactPart.Position + (targetRoot.AssemblyLinearVelocity * 0.08)
+			local offset = hitOffsets[((step - 1) % #hitOffsets) + 1]
+			local passPosition = targetPosition + offset
+			root.CFrame = CFrame.new(passPosition, targetPosition) * CFrame.Angles(math.rad(90), 0, 0)
 			root.AssemblyAngularVelocity = Vector3.new(0, 99999, 0)
-			root.AssemblyLinearVelocity = pushVelocity
-			bodyVelocity.Velocity = pushVelocity
-			if os.clock() - startedAt > 0.85 and targetRoot.AssemblyLinearVelocity.Magnitude > 180 then break end
+			root.AssemblyLinearVelocity = targetRoot.AssemblyLinearVelocity
+			if os.clock() - startedAt > 0.7 and targetRoot.AssemblyLinearVelocity.Magnitude > 150 then break end
 			RunService.Heartbeat:Wait()
 		end
 	end)
