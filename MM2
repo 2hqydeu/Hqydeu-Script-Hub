@@ -1454,11 +1454,25 @@ do
 		ThemeObjects.SetMM2ESP(not HubState.MM2ESPEnabled)
 	end)
 	table.insert(ThemeObjects.StateTexts, {Object = HubState.MM2ESPTitle, IsEnabled = function() return HubState.MM2ESPEnabled end})
-	HubState.MM2RoleDetailsButton.Size = UDim2.new(1, -54, 0, 23)
-	HubState.MM2RoleDetailsButton.Position = UDim2.new(0, 8, 0, 7)
+	HubState.MM2RoleDetailsTitle = Instance.new("TextLabel")
+	HubState.MM2RoleDetailsTitle.BackgroundTransparency = 1
+	HubState.MM2RoleDetailsTitle.Text = "Role Info:"
+	HubState.MM2RoleDetailsTitle.Font = Enum.Font.GothamBold
+	HubState.MM2RoleDetailsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+	HubState.MM2RoleDetailsTitle.TextXAlignment = Enum.TextXAlignment.Left
+	HubState.MM2RoleDetailsTitle.Size = UDim2.new(0, 110, 0, 22)
+	HubState.MM2RoleDetailsTitle.Position = UDim2.new(0, 8, 0, 7)
+	HubState.MM2RoleDetailsTitle.TextSize = 11
+	HubState.MM2RoleDetailsTitle.Parent = roleInfoRow
+	table.insert(ThemeObjects.Texts, HubState.MM2RoleDetailsTitle)
+	HubState.MM2RoleDetailsButton.Size = UDim2.new(0, 44, 0, 20)
+	HubState.MM2RoleDetailsButton.Position = UDim2.new(1, -96, 0, 8)
+	HubState.MM2RoleDetailsButton.Text = "Open"
+	HubState.MM2RoleDetailsButton.TextSize = 9
 	HubState.MM2RoleDetailsButton.Parent = roleInfoRow
-	HubState.MM2RoleDetailsBindButton.Size = UDim2.new(0, 30, 0, 23)
-	HubState.MM2RoleDetailsBindButton.Position = UDim2.new(1, -38, 0, 7)
+	HubState.MM2RoleDetailsBindButton.Size = UDim2.new(0, 44, 0, 20)
+	HubState.MM2RoleDetailsBindButton.Position = UDim2.new(1, -48, 0, 8)
+	HubState.MM2RoleDetailsBindButton.TextSize = 8
 	HubState.MM2RoleDetailsBindButton.Parent = roleInfoRow
 	PlaceMM2Control(HubState.KillTitle, HubState.KillToggle, stabRow)
 	PlaceMM2Control(autoShootTitle, autoShootToggle, shootRow)
@@ -1481,8 +1495,10 @@ do
 	local autoShootEnabled = false
 	local lastGunFired = 0
 	local shotPending = false
-	local AutoShootConfirmWindow = 0.05
-	local AutoShootLeadTime = 0.035
+	local AutoShootConfirmWindow = 0.025
+	local AutoShootMinLeadTime = 0.035
+	local AutoShootMaxLeadTime = 0.09
+	local AutoShootMotion = {}
 
 	local function GetLocalGun()
 		local character = Player.Character
@@ -1515,6 +1531,36 @@ do
 			end
 		end
 		return false
+	end
+
+	local function GetAutoShootPart(targetCharacter)
+		if not targetCharacter then return nil end
+		return targetCharacter:FindFirstChild("UpperTorso")
+			or targetCharacter:FindFirstChild("HumanoidRootPart")
+			or targetCharacter:FindFirstChild("Torso")
+			or targetCharacter:FindFirstChild("Head")
+	end
+
+	local function GetSmoothedTargetVelocity(targetPlayer, targetPart, now)
+		if not targetPlayer or not targetPart then return Vector3.zero end
+		local entry = AutoShootMotion[targetPlayer]
+		if not entry then
+			entry = {}
+			AutoShootMotion[targetPlayer] = entry
+		end
+		local position = targetPart.Position
+		local rawVelocity = targetPart.AssemblyLinearVelocity
+		if entry.Position and entry.Time then
+			local dt = math.max(now - entry.Time, 1 / 240)
+			local measuredVelocity = (position - entry.Position) / dt
+			if measuredVelocity.Magnitude < 120 then
+				rawVelocity = rawVelocity:Lerp(measuredVelocity, 0.45)
+			end
+		end
+		entry.SmoothedVelocity = entry.SmoothedVelocity and entry.SmoothedVelocity:Lerp(rawVelocity, 0.38) or rawVelocity
+		entry.Position = position
+		entry.Time = now
+		return entry.SmoothedVelocity
 	end
 
 	local function SetAutoShootEnabled(enabled)
@@ -1554,14 +1600,14 @@ do
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		local targetCharacter = HubState.CurrentMurderer.Character
 		local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
-		local targetPart = targetCharacter and (targetCharacter:FindFirstChild("UpperTorso") or targetCharacter:FindFirstChild("HumanoidRootPart") or targetCharacter:FindFirstChild("Head"))
+		local targetPart = GetAutoShootPart(targetCharacter)
 		if not gun or not humanoid or humanoid.Health <= 0 or not targetHumanoid or targetHumanoid.Health <= 0 or not targetPart then return end
 
 		if gun.Parent ~= character then
 			pcall(function() humanoid:EquipTool(gun) end)
 			return
 		end
-		if shotPending or shootNow - lastGunFired < 0.72 then return end
+		if shotPending or shootNow - lastGunFired < 0.56 then return end
 		local localRoot = character:FindFirstChild("HumanoidRootPart")
 		local raycastAttachment = localRoot and localRoot:FindFirstChild("GunRaycastAttachment")
 		local shootRemote = gun:FindFirstChild("Shoot")
@@ -1571,7 +1617,7 @@ do
 
 		local confirmedMurderer = HubState.CurrentMurderer
 		local firstPosition = targetPart.Position
-		local firstVelocity = targetPart.AssemblyLinearVelocity
+		local firstVelocity = GetSmoothedTargetVelocity(confirmedMurderer, targetPart, shootNow)
 		shotPending = true
 		task.delay(AutoShootConfirmWindow, function()
 			shotPending = false
@@ -1581,7 +1627,7 @@ do
 			local freshHumanoid = freshCharacter and freshCharacter:FindFirstChildOfClass("Humanoid")
 			local freshTargetCharacter = confirmedMurderer and confirmedMurderer.Character
 			local freshTargetHumanoid = freshTargetCharacter and freshTargetCharacter:FindFirstChildOfClass("Humanoid")
-			local freshTargetPart = freshTargetCharacter and (freshTargetCharacter:FindFirstChild("UpperTorso") or freshTargetCharacter:FindFirstChild("HumanoidRootPart") or freshTargetCharacter:FindFirstChild("Head"))
+			local freshTargetPart = GetAutoShootPart(freshTargetCharacter)
 			local freshGun = GetLocalGun()
 			if not freshCharacter or not freshHumanoid or freshHumanoid.Health <= 0 or not freshTargetHumanoid or freshTargetHumanoid.Health <= 0 or not freshTargetPart or not freshGun then return end
 			if freshGun.Parent ~= freshCharacter then return end
@@ -1593,16 +1639,18 @@ do
 			if not freshOrigin or not freshRemote or not freshRemote:IsA("RemoteEvent") then return end
 
 			local currentPosition = freshTargetPart.Position
-			local currentVelocity = freshTargetPart.AssemblyLinearVelocity
+			local currentVelocity = GetSmoothedTargetVelocity(confirmedMurderer, freshTargetPart, os.clock())
 			local expectedPosition = firstPosition + firstVelocity * AutoShootConfirmWindow
 			local movementError = (currentPosition - expectedPosition).Magnitude
 			local velocityChange = (currentVelocity - firstVelocity).Magnitude
-			if movementError > 6.0 or velocityChange > 60 then return end
+			if movementError > 9.0 or velocityChange > 95 then return end
 			if not HasClearGunLine(freshOrigin.Position, freshTargetCharacter, freshTargetPart) then return end
 
 			local leadVelocity = Vector3.new(currentVelocity.X, math.clamp(currentVelocity.Y, -12, 12), currentVelocity.Z)
-			local leadOffset = leadVelocity * AutoShootLeadTime
-			if leadOffset.Magnitude > 4 then leadOffset = leadOffset.Unit * 4 end
+			local distance = (currentPosition - freshOrigin.Position).Magnitude
+			local leadTime = math.clamp(distance / 900, AutoShootMinLeadTime, AutoShootMaxLeadTime)
+			local leadOffset = leadVelocity * leadTime
+			if leadOffset.Magnitude > 7 then leadOffset = leadOffset.Unit * 7 end
 			local aimPosition = currentPosition + leadOffset
 			if freshTargetPart.Name == "HumanoidRootPart" then
 				aimPosition = aimPosition + Vector3.new(0, 1.15, 0)
