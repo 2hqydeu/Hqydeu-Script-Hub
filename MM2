@@ -1553,9 +1553,10 @@ do
 	local autoShootEnabled = false
 	local lastGunFired = 0
 	local shotPending = false
-	local AutoShootConfirmWindow = 0.008
+	local AutoShootConfirmWindow = 0.018
+	local AutoShootVisibleHold = 0.045
 	local AutoShootMinLeadTime = 0.055
-	local AutoShootMaxLeadTime = 0.18
+	local AutoShootMaxLeadTime = 0.145
 	local AutoShootMotion = {}
 
 	local function GetLocalGun()
@@ -1673,6 +1674,9 @@ do
 		}
 		for _, part in ipairs(GetAutoShootParts(targetCharacter, preferredPart)) do
 			local baseAim = GetAutoShootAimPosition(originPosition, part, targetVelocity)
+			if not HasClearGunLine(originPosition, targetCharacter, part, baseAim) then
+				continue
+			end
 			for _, offset in ipairs(softOffsets) do
 				local candidate = baseAim + offset
 				if HasClearGunLine(originPosition, targetCharacter, part, candidate) then
@@ -1715,6 +1719,10 @@ do
 			ThemeObjects.RefreshMM2RolesFromTools()
 		end
 		if HubState.CurrentSheriff ~= Player or not HubState.CurrentMurderer or HubState.CurrentMurderer == Player then return end
+		if HubState.AutoShootClearTarget ~= HubState.CurrentMurderer then
+			HubState.AutoShootClearTarget = HubState.CurrentMurderer
+			HubState.AutoShootClearSince = nil
+		end
 
 		local gun = GetLocalGun()
 		local character = Player.Character
@@ -1723,12 +1731,13 @@ do
 		local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
 		local targetPart = GetAutoShootPart(targetCharacter)
 		if not gun or not humanoid or humanoid.Health <= 0 or not targetHumanoid or targetHumanoid.Health <= 0 or not targetPart then return end
+		if gun.Enabled == false then return end
 
 		if gun.Parent ~= character then
 			pcall(function() humanoid:EquipTool(gun) end)
 			return
 		end
-		if shotPending or shootNow - lastGunFired < 0.38 then return end
+		if shotPending or shootNow - lastGunFired < 0.2 then return end
 		local localRoot = character:FindFirstChild("HumanoidRootPart")
 		local raycastAttachment = localRoot and localRoot:FindFirstChild("GunRaycastAttachment")
 		local shootRemote = gun:FindFirstChild("Shoot")
@@ -1737,7 +1746,13 @@ do
 		if not shotOrigin then return end
 		local firstVelocity = GetSmoothedTargetVelocity(HubState.CurrentMurderer, targetPart, shootNow)
 		local firstAimPosition = SelectAutoShootAimPosition(shotOrigin.Position, targetCharacter, targetPart, firstVelocity)
-		if not firstAimPosition then return end
+		if not firstAimPosition then
+			HubState.AutoShootClearSince = nil
+			return
+		end
+		if not HubState.AutoShootClearSince then HubState.AutoShootClearSince = shootNow end
+		local requiredHold = firstVelocity.Magnitude > 55 and (AutoShootVisibleHold + 0.02) or AutoShootVisibleHold
+		if shootNow - HubState.AutoShootClearSince < requiredHold then return end
 
 		local confirmedMurderer = HubState.CurrentMurderer
 		local firstPosition = targetPart.Position
@@ -1754,6 +1769,7 @@ do
 			local freshGun = GetLocalGun()
 			if not freshCharacter or not freshHumanoid or freshHumanoid.Health <= 0 or not freshTargetHumanoid or freshTargetHumanoid.Health <= 0 or not freshTargetPart or not freshGun then return end
 			if freshGun.Parent ~= freshCharacter then return end
+			if freshGun.Enabled == false then return end
 
 			local freshRoot = freshCharacter:FindFirstChild("HumanoidRootPart")
 			local freshAttachment = freshRoot and freshRoot:FindFirstChild("GunRaycastAttachment")
@@ -1771,6 +1787,7 @@ do
 			local aimPosition = SelectAutoShootAimPosition(freshOrigin.Position, freshTargetCharacter, freshTargetPart, currentVelocity)
 			if not aimPosition then return end
 			lastGunFired = os.clock()
+			HubState.AutoShootClearSince = nil
 			pcall(function() freshRemote:FireServer(freshOrigin, CFrame.new(aimPosition)) end)
 		end)
 	end)
