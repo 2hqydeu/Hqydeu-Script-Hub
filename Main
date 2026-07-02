@@ -949,7 +949,9 @@ HubState.ESPKeybind = LoadKeybind("ESP")
 HubState.IsBindingESP = false
 HubState.ESPColor = LoadColor("PlayerESPColor", Color3.fromRGB(100, 255, 100))
 HubState.AntiFlingEnabled = false
+HubState.FlingEnabled = false
 HubState.Flinging = false
+HubState.FlingOriginalPartStates = {}
 HubState.AntiFlingOriginalCollision = {}
 HubState.FlingMenuKeybind = LoadKeybind("FlingMenu")
 HubState.MinimizeKeybind = LoadKeybind("MinimizeGUI")
@@ -2472,6 +2474,20 @@ table.insert(ThemeObjects.Backgrounds, HubState.FlingBindBtn)
 table.insert(ThemeObjects.Accents, HubState.FlingBindBtn)
 Instance.new("UICorner", HubState.FlingBindBtn).CornerRadius = UDim.new(0, 4)
 
+HubState.FlingToggleBtn = Instance.new("TextButton")
+HubState.FlingToggleBtn.Size = UDim2.new(0, 58, 0, 23)
+HubState.FlingToggleBtn.Position = UDim2.new(0, 150, 0, 8)
+HubState.FlingToggleBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+HubState.FlingToggleBtn.BackgroundTransparency = 0.8
+HubState.FlingToggleBtn.BorderSizePixel = 0
+HubState.FlingToggleBtn.Text = "Off"
+HubState.FlingToggleBtn.Font = Enum.Font.GothamBold
+HubState.FlingToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+HubState.FlingToggleBtn.Parent = HubState.CombatPage
+table.insert(ThemeObjects.Backgrounds, HubState.FlingToggleBtn)
+table.insert(ThemeObjects.Texts, HubState.FlingToggleBtn)
+Instance.new("UICorner", HubState.FlingToggleBtn).CornerRadius = UDim.new(0, 4)
+
 HubState.AntiFlingBtn = Instance.new("TextButton")
 HubState.AntiFlingBtn.Size = UDim2.new(0, 108, 0, 23)
 HubState.AntiFlingBtn.Position = UDim2.new(0, 212, 0, 38)
@@ -2562,13 +2578,17 @@ do
 	ThemeObjects.FlingTargetTitle.Size = UDim2.new(0, 120, 0, 20)
 	ThemeObjects.FlingTargetTitle.Position = UDim2.new(0, 8, 0.5, -10)
 	ThemeObjects.FlingTargetTitle.BackgroundTransparency = 1
-	ThemeObjects.FlingTargetTitle.Text = "Fling Target:"
+	ThemeObjects.FlingTargetTitle.Text = "Fling:"
 	ThemeObjects.FlingTargetTitle.Font = Enum.Font.GothamBold
 	ThemeObjects.FlingTargetTitle.TextSize = 11
 	ThemeObjects.FlingTargetTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 	ThemeObjects.FlingTargetTitle.TextXAlignment = Enum.TextXAlignment.Left
 	ThemeObjects.FlingTargetTitle.Parent = flingRow
 	table.insert(ThemeObjects.Texts, ThemeObjects.FlingTargetTitle)
+	HubState.FlingToggleBtn.Size = UDim2.new(0, 44, 0, 20)
+	HubState.FlingToggleBtn.Position = UDim2.new(1, -144, 0.5, -10)
+	HubState.FlingToggleBtn.TextSize = 9
+	HubState.FlingToggleBtn.Parent = flingRow
 	HubState.FlingTargetBtn.Size = UDim2.new(0, 44, 0, 20)
 	HubState.FlingTargetBtn.Position = UDim2.new(1, -96, 0.5, -10)
 	HubState.FlingTargetBtn.Text = "Open"
@@ -2698,6 +2718,93 @@ local function RestoreAntiFlingCollisions()
 	HubState.AntiFlingOriginalCollision = {}
 end
 
+local function RefreshFlingToggle()
+	if HubState.FlingToggleBtn then HubState.FlingToggleBtn.Text = HubState.FlingEnabled and "On" or "Off" end
+	if ThemeObjects.FlingTargetTitle then ThemeObjects.FlingTargetTitle.TextColor3 = HubState.FlingEnabled and AccentColor or Color3.fromRGB(255, 255, 255) end
+end
+
+local function SetIYFling(enabled)
+	HubState.FlingEnabled = enabled == true
+	local character = Player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not HubState.FlingEnabled then
+		if HubState.Connections.IYFlingPulse then
+			HubState.Connections.IYFlingPulse:Disconnect()
+			HubState.Connections.IYFlingPulse = nil
+		end
+		if HubState.IYFlingMover and HubState.IYFlingMover.Parent then HubState.IYFlingMover:Destroy() end
+		HubState.IYFlingMover = nil
+		for part, state in pairs(HubState.FlingOriginalPartStates) do
+			if part and part.Parent then
+				part.CanCollide = state.CanCollide
+				part.Massless = state.Massless
+				part.CustomPhysicalProperties = state.CustomPhysicalProperties
+			end
+		end
+		HubState.FlingOriginalPartStates = {}
+		if root then
+			root.AssemblyAngularVelocity = Vector3.zero
+			root.AssemblyLinearVelocity = Vector3.zero
+		end
+		RefreshFlingToggle()
+		return
+	end
+	if not character or not humanoid or humanoid.Health <= 0 or not root then
+		HubState.FlingEnabled = false
+		RefreshFlingToggle()
+		return
+	end
+	for _, part in ipairs(character:GetDescendants()) do
+		if part:IsA("BasePart") then
+			if not HubState.FlingOriginalPartStates[part] then
+				HubState.FlingOriginalPartStates[part] = {
+					CanCollide = part.CanCollide,
+					Massless = part.Massless,
+					CustomPhysicalProperties = part.CustomPhysicalProperties,
+				}
+			end
+			part.CustomPhysicalProperties = PhysicalProperties.new(100, 0.3, 0.5)
+			part.CanCollide = false
+			part.Massless = true
+			part.AssemblyLinearVelocity = Vector3.zero
+		end
+	end
+	if not HubState.IYFlingMover or HubState.IYFlingMover.Parent ~= root then
+		if HubState.IYFlingMover and HubState.IYFlingMover.Parent then HubState.IYFlingMover:Destroy() end
+		local spin = Instance.new("BodyAngularVelocity")
+		spin.Name = "IYFlingSpin"
+		spin.AngularVelocity = Vector3.new(0, 99999, 0)
+		spin.MaxTorque = Vector3.new(0, math.huge, 0)
+		spin.P = math.huge
+		spin.Parent = root
+		HubState.IYFlingMover = spin
+	end
+	if HubState.Connections.IYFlingPulse then HubState.Connections.IYFlingPulse:Disconnect() end
+	local pulseStart = os.clock()
+	HubState.Connections.IYFlingPulse = RunService.Heartbeat:Connect(function()
+		local liveCharacter = Player.Character
+		local liveHumanoid = liveCharacter and liveCharacter:FindFirstChildOfClass("Humanoid")
+		local liveRoot = liveCharacter and liveCharacter:FindFirstChild("HumanoidRootPart")
+		if not HubState.FlingEnabled or not liveCharacter or not liveHumanoid or liveHumanoid.Health <= 0 or not liveRoot then
+			SetIYFling(false)
+			return
+		end
+		if not HubState.IYFlingMover or HubState.IYFlingMover.Parent ~= liveRoot then
+			if HubState.IYFlingMover and HubState.IYFlingMover.Parent then HubState.IYFlingMover:Destroy() end
+			local spin = Instance.new("BodyAngularVelocity")
+			spin.Name = "IYFlingSpin"
+			spin.MaxTorque = Vector3.new(0, math.huge, 0)
+			spin.P = math.huge
+			spin.Parent = liveRoot
+			HubState.IYFlingMover = spin
+		end
+		local phase = (os.clock() - pulseStart) % 0.3
+		HubState.IYFlingMover.AngularVelocity = phase < 0.2 and Vector3.new(0, 99999, 0) or Vector3.zero
+	end)
+	RefreshFlingToggle()
+end
+
 local function FlingPlayer(targetPlayer)
 	if HubState.Flinging or not targetPlayer or targetPlayer == Player then return end
 	local character = Player.Character
@@ -2711,36 +2818,12 @@ local function FlingPlayer(targetPlayer)
 	HubState.Flinging = true
 	local originalCFrame = root.CFrame
 	local originalAutoRotate = humanoid.AutoRotate
-	local originalPlatformStand = humanoid.PlatformStand
-	local originalRootCollision = root.CanCollide
 	local originalAngularVelocity = root.AssemblyAngularVelocity
 	local originalLinearVelocity = root.AssemblyLinearVelocity
-	local originalPartStates = {}
+	local wasFlingEnabled = HubState.FlingEnabled
 	local movers = {}
 	humanoid.AutoRotate = false
-	humanoid.PlatformStand = true
-	pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Physics) end)
-	root.CanCollide = true
-	for _, part in ipairs(character:GetDescendants()) do
-		if part:IsA("BasePart") then
-			originalPartStates[part] = {
-				CanCollide = part.CanCollide,
-				Massless = part.Massless,
-				CustomPhysicalProperties = part.CustomPhysicalProperties,
-			}
-			part.CanCollide = true
-			part.Massless = false
-			part.CustomPhysicalProperties = PhysicalProperties.new(100, 0.3, 0.5)
-		end
-	end
-
-	local angularVelocity = Instance.new("BodyAngularVelocity")
-	angularVelocity.Name = "R15FlingVelocity"
-	angularVelocity.AngularVelocity = Vector3.new(0, 9000000, 0)
-	angularVelocity.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-	angularVelocity.P = math.huge
-	angularVelocity.Parent = root
-	table.insert(movers, angularVelocity)
+	SetIYFling(true)
 
 	local bodyVelocity = Instance.new("BodyVelocity")
 	bodyVelocity.Name = "R15FlingPush"
@@ -2754,23 +2837,14 @@ local function FlingPlayer(targetPlayer)
 		for _, mover in ipairs(movers) do
 			if mover and mover.Parent then mover:Destroy() end
 		end
-		for part, state in pairs(originalPartStates) do
-			if part and part.Parent then
-				part.CanCollide = state.CanCollide
-				part.Massless = state.Massless
-				part.CustomPhysicalProperties = state.CustomPhysicalProperties
-			end
-		end
+		if not wasFlingEnabled then SetIYFling(false) end
 		if root and root.Parent then
-			root.CanCollide = originalRootCollision
 			root.AssemblyAngularVelocity = originalAngularVelocity
 			root.AssemblyLinearVelocity = originalLinearVelocity
 			root.CFrame = originalCFrame
 		end
 		if humanoid and humanoid.Parent then
 			humanoid.AutoRotate = originalAutoRotate
-			humanoid.PlatformStand = originalPlatformStand
-			pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end)
 		end
 		HubState.Flinging = false
 	end
@@ -2806,7 +2880,7 @@ local function FlingPlayer(targetPlayer)
 				lastHardPass = os.clock()
 				pushVelocity = pushVelocity + Vector3.new(0, 420, 0)
 			end
-			root.AssemblyAngularVelocity = Vector3.new(0, 9000000, 0)
+			root.AssemblyAngularVelocity = Vector3.new(0, 99999, 0)
 			root.AssemblyLinearVelocity = pushVelocity
 			bodyVelocity.Velocity = pushVelocity
 			if os.clock() - startedAt > 0.85 and targetRoot.AssemblyLinearVelocity.Magnitude > 180 then break end
@@ -2888,6 +2962,10 @@ end
 ThemeObjects.AddFeatureKeybind({Name = "Fling Menu", Storage = "FlingMenu", Button = HubState.FlingBindBtn, Get = function() return HubState.FlingMenuKeybind end, Set = function(key) HubState.FlingMenuKeybind = key; SaveKeybind("FlingMenu", key); if HubState.FlingBindBtn then HubState.FlingBindBtn.Text = KeybindText(key) end end, Action = ToggleFlingMenu})
 
 HubState.FlingTargetBtn.MouseButton1Click:Connect(function() PlayClick() ToggleFlingMenu() end)
+HubState.FlingToggleBtn.MouseButton1Click:Connect(function()
+	PlayClick()
+	SetIYFling(not HubState.FlingEnabled)
+end)
 
 ThemeObjects.PlayerTP.Frame = Instance.new("Frame")
 ThemeObjects.PlayerTP.Frame.Name = "PlayerTPFrame"
@@ -5714,6 +5792,7 @@ table.insert(ThemeObjects.StateTexts, {Object = HubState.NoclipTitle, IsEnabled 
 table.insert(ThemeObjects.StateTexts, {Object = ThemeObjects.FreeCam.Title, IsEnabled = function() return ThemeObjects.FreeCam.Enabled end})
 table.insert(ThemeObjects.StateTexts, {Object = HubState.AutoLockTitle, IsEnabled = function() return HubState.AutoLockEnabled end})
 table.insert(ThemeObjects.StateTexts, {Object = HubState.ESPTitle, IsEnabled = function() return HubState.ESPEnabled end})
+if ThemeObjects.FlingTargetTitle then table.insert(ThemeObjects.StateTexts, {Object = ThemeObjects.FlingTargetTitle, IsEnabled = function() return HubState.FlingEnabled end}) end
 if ThemeObjects.AntiFlingTitle then table.insert(ThemeObjects.StateTexts, {Object = ThemeObjects.AntiFlingTitle, IsEnabled = function() return HubState.AntiFlingEnabled end}) end
 
 local PickerTarget = "Accent"
@@ -5984,6 +6063,7 @@ end)
 
 local function Cleanup()
 	if ThemeObjects.FreeCam and ThemeObjects.FreeCam.Enabled then ThemeObjects.FreeCam.Disable() end
+	SetIYFling(false)
 	if ThemeObjects.ClearESPAdornments then ThemeObjects.ClearESPAdornments() end
 	RestoreAntiFlingCollisions()
 	if RestoreKillHitboxes then RestoreKillHitboxes() end
