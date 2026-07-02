@@ -348,13 +348,21 @@ local function GetGunDropTouchPart(gunDrop)
 	return nil
 end
 
+local function GetTopLevelWorkspaceObject(instance)
+	local current = instance
+	while current and current.Parent and current.Parent ~= workspace do
+		current = current.Parent
+	end
+	return current
+end
+
 local function IsAliveAndInsideActiveMap(gunDrop)
 	local character = Player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	if not humanoid or humanoid.Health <= 0 or not root then return false end
 
-	local map = gunDrop and gunDrop.Parent
+	local map = GetTopLevelWorkspaceObject(gunDrop)
 	if not map or map.Parent ~= workspace then return false end
 
 	if map:IsA("Model") then
@@ -367,7 +375,7 @@ local function IsAliveAndInsideActiveMap(gunDrop)
 			and math.abs(localPosition.Z) <= halfSize.Z
 	end
 
-	return false
+	return true
 end
 
 function HubState.IsGunPickupSafe(gunPosition)
@@ -430,6 +438,24 @@ local function TryPickUpGun(gunDrop)
 	HubState.AutoGunPickupBusy = false
 end
 
+local function SetAutoGunPickupEnabled(enabled)
+	HubState.AutoGunPickupEnabled = enabled
+	HubState.AutoGunToggle.Text = enabled and "On" or "Off"
+	HubState.AutoGunTitle.TextColor3 = enabled and AccentColor or InactiveTextColor()
+	HubState.LastGunDrop = nil
+	HubState.LastGunPickupAttempt = nil
+	if enabled then
+		task.defer(function()
+			local gunDrop = FindGunDrop()
+			if gunDrop and gunDrop.Parent then
+				HubState.LastGunDrop = gunDrop
+				HubState.LastGunPickupAttempt = os.clock()
+				TryPickUpGun(gunDrop)
+			end
+		end)
+	end
+end
+
 HubState.Connections.AutoGunPickup = RunService.Heartbeat:Connect(function()
 	if not HubState.AutoGunPickupEnabled or HubState.AutoGunPickupBusy then return end
 	local gunDrop = FindGunDrop()
@@ -455,16 +481,7 @@ end)
 
 HubState.AutoGunToggle.MouseButton1Click:Connect(function()
 	PlayClick()
-	HubState.AutoGunPickupEnabled = not HubState.AutoGunPickupEnabled
-	HubState.AutoGunToggle.Text = HubState.AutoGunPickupEnabled and "On" or "Off"
-	HubState.AutoGunTitle.TextColor3 = HubState.AutoGunPickupEnabled and AccentColor or InactiveTextColor()
-	if HubState.AutoGunPickupEnabled then
-		HubState.LastGunDrop = nil
-		HubState.LastGunPickupAttempt = nil
-	else
-		HubState.LastGunDrop = nil
-		HubState.LastGunPickupAttempt = nil
-	end
+	SetAutoGunPickupEnabled(not HubState.AutoGunPickupEnabled)
 end)
 
 HubState.KillTitle = Instance.new("TextLabel")
@@ -1083,7 +1100,8 @@ end
 ThemeObjects.RefreshMM2RolesFromCurrentRound = function()
 	if game.PlaceId ~= 142823291 then return false end
 	local now = os.clock()
-	if now - (HubState.LastMM2CurrentPlayerDataRequest or 0) < 1.25 then return false end
+	local requestCooldown = HubState.MM2RoleRevealBurstActive and 0.25 or 0.75
+	if now - (HubState.LastMM2CurrentPlayerDataRequest or 0) < requestCooldown then return false end
 	HubState.LastMM2CurrentPlayerDataRequest = now
 	local replicatedStorage = game:GetService("ReplicatedStorage")
 	local remotes = replicatedStorage:FindFirstChild("Remotes")
@@ -1128,6 +1146,19 @@ end
 ThemeObjects.RefreshMM2RolesFromRemote = function()
 	if ThemeObjects.RefreshMM2RolesFromCurrentRound and ThemeObjects.RefreshMM2RolesFromCurrentRound() then return end
 	if ThemeObjects.EnsureMM2RoleClueListeners then ThemeObjects.EnsureMM2RoleClueListeners() end
+end
+
+ThemeObjects.StartMM2RoleRevealBurst = function()
+	if HubState.MM2RoleRevealBurstActive then return end
+	HubState.MM2RoleRevealBurstActive = true
+	task.spawn(function()
+		for _ = 1, 8 do
+			if ThemeObjects.RefreshMM2RolesFromRemote then ThemeObjects.RefreshMM2RolesFromRemote() end
+			if ThemeObjects.RefreshMM2RolesFromTools then ThemeObjects.RefreshMM2RolesFromTools() end
+			task.wait(0.18)
+		end
+		HubState.MM2RoleRevealBurstActive = false
+	end)
 end
 
 ThemeObjects.RepairMM2PCGui = function()
@@ -1512,11 +1543,7 @@ do
 	HubState.CoinFarmStatus.Visible = false
 	HubState.CoinFarmStatus.Parent = coinRow
 	ThemeObjects.AddFeatureKeybind({Name = "Auto Gun", Storage = "MM2AutoGun", Parent = gunRow, Toggle = HubState.AutoGunToggle, Get = function() return LoadKeybind("MM2AutoGun") end, Set = function(key) SaveKeybind("MM2AutoGun", key) end, Action = function()
-		HubState.AutoGunPickupEnabled = not HubState.AutoGunPickupEnabled
-		HubState.AutoGunToggle.Text = HubState.AutoGunPickupEnabled and "On" or "Off"
-		HubState.AutoGunTitle.TextColor3 = HubState.AutoGunPickupEnabled and AccentColor or InactiveTextColor()
-		HubState.LastGunDrop = nil
-		HubState.LastGunPickupAttempt = nil
+		SetAutoGunPickupEnabled(not HubState.AutoGunPickupEnabled)
 	end})
 	ThemeObjects.AddFeatureKeybind({Name = "Auto Stab", Storage = "MM2AutoStab", Parent = stabRow, Toggle = HubState.KillToggle, Get = function() return LoadKeybind("MM2AutoStab") end, Set = function(key) SaveKeybind("MM2AutoStab", key) end, Action = function()
 		SetKillEnabled(not HubState.KillEnabled)
@@ -1526,9 +1553,9 @@ do
 	local autoShootEnabled = false
 	local lastGunFired = 0
 	local shotPending = false
-	local AutoShootConfirmWindow = 0.012
+	local AutoShootConfirmWindow = 0.008
 	local AutoShootMinLeadTime = 0.055
-	local AutoShootMaxLeadTime = 0.16
+	local AutoShootMaxLeadTime = 0.18
 	local AutoShootMotion = {}
 
 	local function GetLocalGun()
@@ -1572,6 +1599,24 @@ do
 			or targetCharacter:FindFirstChild("Head")
 	end
 
+	local function GetAutoShootParts(targetCharacter, preferredPart)
+		local parts = {}
+		local added = {}
+		local function add(part)
+			if part and part:IsA("BasePart") and not added[part] then
+				added[part] = true
+				table.insert(parts, part)
+			end
+		end
+		add(preferredPart)
+		add(targetCharacter and targetCharacter:FindFirstChild("UpperTorso"))
+		add(targetCharacter and targetCharacter:FindFirstChild("Torso"))
+		add(targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart"))
+		add(targetCharacter and targetCharacter:FindFirstChild("LowerTorso"))
+		add(targetCharacter and targetCharacter:FindFirstChild("Head"))
+		return parts
+	end
+
 	local function GetSmoothedTargetVelocity(targetPlayer, targetPart, now)
 		if not targetPlayer or not targetPart then return Vector3.zero end
 		local entry = AutoShootMotion[targetPlayer]
@@ -1612,6 +1657,32 @@ do
 		return aimPosition
 	end
 
+	local function SelectAutoShootAimPosition(originPosition, targetCharacter, preferredPart, targetVelocity)
+		local horizontalVelocity = Vector3.new(targetVelocity.X, 0, targetVelocity.Z)
+		local sideOffset = Vector3.zero
+		if horizontalVelocity.Magnitude > 1 then
+			sideOffset = horizontalVelocity.Unit:Cross(Vector3.new(0, 1, 0))
+			if sideOffset.Magnitude > 0 then sideOffset = sideOffset.Unit * 0.85 end
+		end
+		local softOffsets = {
+			Vector3.zero,
+			Vector3.new(0, 0.7, 0),
+			Vector3.new(0, -0.55, 0),
+			sideOffset,
+			sideOffset * -1,
+		}
+		for _, part in ipairs(GetAutoShootParts(targetCharacter, preferredPart)) do
+			local baseAim = GetAutoShootAimPosition(originPosition, part, targetVelocity)
+			for _, offset in ipairs(softOffsets) do
+				local candidate = baseAim + offset
+				if HasClearGunLine(originPosition, targetCharacter, part, candidate) then
+					return candidate
+				end
+			end
+		end
+		return nil
+	end
+
 	local function SetAutoShootEnabled(enabled)
 		autoShootEnabled = enabled
 		HubState.AutoShootEnabled = enabled
@@ -1619,6 +1690,7 @@ do
 		autoShootTitle.TextColor3 = enabled and Color3.fromRGB(90, 150, 255) or InactiveTextColor()
 		if enabled and ThemeObjects.RefreshMM2RolesFromTools then ThemeObjects.RefreshMM2RolesFromTools() end
 		if enabled and ThemeObjects.RefreshMM2RolesFromRemote then ThemeObjects.RefreshMM2RolesFromRemote() end
+		if enabled and ThemeObjects.StartMM2RoleRevealBurst then ThemeObjects.StartMM2RoleRevealBurst() end
 		if enabled and HubState.AutoLockEnabled then ToggleAutoLock() end
 	end
 
@@ -1656,7 +1728,7 @@ do
 			pcall(function() humanoid:EquipTool(gun) end)
 			return
 		end
-		if shotPending or shootNow - lastGunFired < 0.42 then return end
+		if shotPending or shootNow - lastGunFired < 0.38 then return end
 		local localRoot = character:FindFirstChild("HumanoidRootPart")
 		local raycastAttachment = localRoot and localRoot:FindFirstChild("GunRaycastAttachment")
 		local shootRemote = gun:FindFirstChild("Shoot")
@@ -1664,8 +1736,8 @@ do
 		local shotOrigin = raycastAttachment and raycastAttachment.WorldCFrame or nil
 		if not shotOrigin then return end
 		local firstVelocity = GetSmoothedTargetVelocity(HubState.CurrentMurderer, targetPart, shootNow)
-		local firstAimPosition = GetAutoShootAimPosition(shotOrigin.Position, targetPart, firstVelocity)
-		if not HasClearGunLine(shotOrigin.Position, targetCharacter, targetPart, firstAimPosition) then return end
+		local firstAimPosition = SelectAutoShootAimPosition(shotOrigin.Position, targetCharacter, targetPart, firstVelocity)
+		if not firstAimPosition then return end
 
 		local confirmedMurderer = HubState.CurrentMurderer
 		local firstPosition = targetPart.Position
@@ -1696,8 +1768,8 @@ do
 			local velocityChange = (currentVelocity - firstVelocity).Magnitude
 			if movementError > 16.0 or velocityChange > 180 then return end
 
-			local aimPosition = GetAutoShootAimPosition(freshOrigin.Position, freshTargetPart, currentVelocity)
-			if not HasClearGunLine(freshOrigin.Position, freshTargetCharacter, freshTargetPart, aimPosition) then return end
+			local aimPosition = SelectAutoShootAimPosition(freshOrigin.Position, freshTargetCharacter, freshTargetPart, currentVelocity)
+			if not aimPosition then return end
 			lastGunFired = os.clock()
 			pcall(function() freshRemote:FireServer(freshOrigin, CFrame.new(aimPosition)) end)
 		end)
@@ -1727,6 +1799,7 @@ ThemeObjects.OpenMM2Page = function()
 	HubState.ActiveContentPage = HubState.MM2Page
 	if ThemeObjects.RefreshMM2RolesFromRemote then ThemeObjects.RefreshMM2RolesFromRemote() end
 	if ThemeObjects.RefreshMM2RolesFromTools then ThemeObjects.RefreshMM2RolesFromTools() end
+	if ThemeObjects.StartMM2RoleRevealBurst then ThemeObjects.StartMM2RoleRevealBurst() end
 	UpdateTheme(true)
 end
 ThemeObjects.OpenMM2Page()
