@@ -1215,6 +1215,148 @@ ThemeObjects.ScriptRunner.RunUrl = function(url, label)
 end
 
 ThemeObjects.ScriptRunner.Loaded = {}
+ThemeObjects.ScriptRunner.InfiniteYieldBaseline = nil
+ThemeObjects.ScriptRunner.CaptureInfiniteYieldBaseline = function()
+	local lighting = game:GetService("Lighting")
+	local camera = workspace.CurrentCamera
+	local character = Player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	ThemeObjects.ScriptRunner.InfiniteYieldBaseline = {
+		Lighting = {
+			Brightness = lighting.Brightness,
+			ClockTime = lighting.ClockTime,
+			FogEnd = lighting.FogEnd,
+			FogStart = lighting.FogStart,
+			GlobalShadows = lighting.GlobalShadows,
+			Ambient = lighting.Ambient,
+			OutdoorAmbient = lighting.OutdoorAmbient,
+			ExposureCompensation = lighting.ExposureCompensation,
+		},
+		Camera = camera and {
+			FieldOfView = camera.FieldOfView,
+			CameraType = camera.CameraType,
+			CameraSubject = camera.CameraSubject,
+		} or nil,
+		Humanoid = humanoid and {
+			WalkSpeed = humanoid.WalkSpeed,
+			JumpPower = humanoid.JumpPower,
+			JumpHeight = humanoid.JumpHeight,
+			HipHeight = humanoid.HipHeight,
+			UseJumpPower = humanoid.UseJumpPower,
+			AutoRotate = humanoid.AutoRotate,
+		} or nil,
+		RootAnchored = root and root.Anchored or nil,
+	}
+end
+ThemeObjects.ScriptRunner.DestroyInfiniteYield = function()
+	local baseline = ThemeObjects.ScriptRunner.InfiniteYieldBaseline
+	local lighting = game:GetService("Lighting")
+	pcall(function()
+		if baseline and baseline.Lighting then
+			for property, value in pairs(baseline.Lighting) do
+				lighting[property] = value
+			end
+		end
+	end)
+	pcall(function()
+		if type(getgenv) == "function" then getgenv().IY_LOADED = false end
+		IY_LOADED = false
+	end)
+	local function destroyInfiniteYieldGui(root)
+		if not root then return end
+		local targets = {}
+		for _, item in ipairs(root:GetDescendants()) do
+			local isTitle = item:IsA("TextLabel") and item.Name == "Title" and tostring(item.Text):find("Infinite Yield", 1, true)
+			local isCommandBar = item:IsA("TextBox") and item.Name == "Cmdbar" and tostring(item.PlaceholderText):find("Command Bar", 1, true)
+			if isTitle or isCommandBar then
+				local top = item
+				local previous = item
+				while top.Parent and top.Parent ~= root do
+					if top:IsA("ScreenGui") then break end
+					previous = top
+					top = top.Parent
+				end
+				if top.Name == "RobloxGui" then top = previous end
+				targets[top] = true
+			end
+		end
+		for target in pairs(targets) do
+			if target and target.Parent then
+				target:Destroy()
+			end
+		end
+	end
+	pcall(function() destroyInfiniteYieldGui(CoreGui) end)
+	pcall(function()
+		if get_hidden_gui or gethui then
+			destroyInfiniteYieldGui((get_hidden_gui or gethui)())
+		end
+	end)
+	pcall(function()
+		for _, object in ipairs(CoreGui:GetDescendants()) do
+			if object.Name:sub(-4) == "_ESP" or object.Name:sub(-5) == "_CHMS" or object.Name:sub(-3) == "_LC" then
+				object:Destroy()
+			end
+		end
+	end)
+	pcall(function()
+		for _, object in ipairs(workspace:GetDescendants()) do
+			if object:IsA("BoxHandleAdornment") and object.Name:sub(-5) == "_PESP" then
+				object:Destroy()
+			end
+		end
+	end)
+	pcall(function()
+		local character = Player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if humanoid then
+			humanoid.PlatformStand = false
+			humanoid.Sit = false
+			humanoid.AutoRotate = baseline and baseline.Humanoid and baseline.Humanoid.AutoRotate or true
+			humanoid.WalkSpeed = baseline and baseline.Humanoid and baseline.Humanoid.WalkSpeed or 16
+			if humanoid.UseJumpPower ~= nil and baseline and baseline.Humanoid and baseline.Humanoid.UseJumpPower ~= nil then
+				humanoid.UseJumpPower = baseline.Humanoid.UseJumpPower
+			end
+			if baseline and baseline.Humanoid then
+				humanoid.JumpPower = baseline.Humanoid.JumpPower
+				humanoid.JumpHeight = baseline.Humanoid.JumpHeight
+				humanoid.HipHeight = baseline.Humanoid.HipHeight
+			else
+				humanoid.JumpPower = 50
+				humanoid.JumpHeight = 7.2
+			end
+		end
+		if root then
+			root.Anchored = baseline and baseline.RootAnchored or false
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.AssemblyAngularVelocity = Vector3.zero
+			for _, child in ipairs(root:GetChildren()) do
+				if child:IsA("BodyVelocity") or child:IsA("BodyGyro") or child:IsA("BodyPosition") or child:IsA("BodyAngularVelocity") or child:IsA("BodyForce") then
+					child:Destroy()
+				end
+			end
+		end
+	end)
+	pcall(function()
+		local camera = workspace.CurrentCamera
+		local character = Player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if camera then
+			if baseline and baseline.Camera then
+				camera.FieldOfView = baseline.Camera.FieldOfView
+				camera.CameraType = baseline.Camera.CameraType
+				camera.CameraSubject = baseline.Camera.CameraSubject or humanoid
+			else
+				camera.FieldOfView = 70
+				camera.CameraType = Enum.CameraType.Custom
+				camera.CameraSubject = humanoid
+			end
+		end
+	end)
+	ThemeObjects.ScriptRunner.Notify("Infinite Yield cleanup ran")
+end
 ThemeObjects.ScriptRunner.RunOnceUrl = function(key, url, label)
 	key = tostring(key or label or url or "Script")
 	if ThemeObjects.ScriptRunner.Loaded[key] then
@@ -1267,7 +1409,7 @@ table.insert(ThemeObjects.Backgrounds, HubState.InfiniteYieldRow)
 Instance.new("UICorner", HubState.InfiniteYieldRow).CornerRadius = UDim.new(0, 6)
 
 HubState.InfiniteYieldTitle = Instance.new("TextLabel")
-HubState.InfiniteYieldTitle.Size = UDim2.new(1, -104, 1, 0)
+HubState.InfiniteYieldTitle.Size = UDim2.new(1, -190, 1, 0)
 HubState.InfiniteYieldTitle.Position = UDim2.new(0, 10, 0, 0)
 HubState.InfiniteYieldTitle.BackgroundTransparency = 1
 HubState.InfiniteYieldTitle.BorderSizePixel = 0
@@ -1294,9 +1436,34 @@ HubState.InfiniteYieldExecute.Parent = HubState.InfiniteYieldRow
 table.insert(ThemeObjects.Backgrounds, HubState.InfiniteYieldExecute)
 table.insert(ThemeObjects.Texts, HubState.InfiniteYieldExecute)
 Instance.new("UICorner", HubState.InfiniteYieldExecute).CornerRadius = UDim.new(0, 4)
+HubState.InfiniteYieldDestroy = Instance.new("TextButton")
+HubState.InfiniteYieldDestroy.Name = "InfiniteYieldDestroy"
+HubState.InfiniteYieldDestroy.Size = UDim2.new(0, 82, 0, 22)
+HubState.InfiniteYieldDestroy.Position = UDim2.new(1, -90, 0, 8)
+HubState.InfiniteYieldDestroy.BackgroundColor3 = Color3.fromRGB(255, 35, 35)
+HubState.InfiniteYieldDestroy.BackgroundTransparency = 0
+HubState.InfiniteYieldDestroy.BorderSizePixel = 0
+HubState.InfiniteYieldDestroy.Text = "Destroy"
+HubState.InfiniteYieldDestroy.Font = Enum.Font.GothamBold
+HubState.InfiniteYieldDestroy.TextSize = 9
+HubState.InfiniteYieldDestroy.TextColor3 = Color3.fromRGB(255, 255, 255)
+HubState.InfiniteYieldDestroy.Visible = false
+HubState.InfiniteYieldDestroy.Parent = HubState.InfiniteYieldRow
+table.insert(ThemeObjects.Backgrounds, HubState.InfiniteYieldDestroy)
+table.insert(ThemeObjects.Texts, HubState.InfiniteYieldDestroy)
+Instance.new("UICorner", HubState.InfiniteYieldDestroy).CornerRadius = UDim.new(0, 4)
 HubState.InfiniteYieldExecute.MouseButton1Click:Connect(function()
 	PlayClick()
-	ThemeObjects.ScriptRunner.RunSource([[loadstring(game:HttpGet("https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/Inf%20Yield"))()]], "Infinite Yield")
+	ThemeObjects.ScriptRunner.CaptureInfiniteYieldBaseline()
+	ThemeObjects.ScriptRunner.RunSource([[loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))()]], "Infinite Yield")
+	HubState.InfiniteYieldExecute.Position = UDim2.new(1, -176, 0, 8)
+	HubState.InfiniteYieldDestroy.Visible = true
+end)
+HubState.InfiniteYieldDestroy.MouseButton1Click:Connect(function()
+	PlayClick()
+	ThemeObjects.ScriptRunner.DestroyInfiniteYield()
+	HubState.InfiniteYieldExecute.Position = UDim2.new(1, -90, 0, 8)
+	HubState.InfiniteYieldDestroy.Visible = false
 end)
 
 ThemeObjects.ExtrasFeature = {Enabled = false, Applying = false, Lighting = game:GetService("Lighting")}
