@@ -1526,9 +1526,9 @@ do
 	local autoShootEnabled = false
 	local lastGunFired = 0
 	local shotPending = false
-	local AutoShootConfirmWindow = 0.025
-	local AutoShootMinLeadTime = 0.035
-	local AutoShootMaxLeadTime = 0.09
+	local AutoShootConfirmWindow = 0.012
+	local AutoShootMinLeadTime = 0.055
+	local AutoShootMaxLeadTime = 0.16
 	local AutoShootMotion = {}
 
 	local function GetLocalGun()
@@ -1539,7 +1539,7 @@ do
 		return gun and gun:IsA("Tool") and gun or nil
 	end
 
-	local function HasClearGunLine(originPosition, targetCharacter, targetPart)
+	local function HasClearGunLine(originPosition, targetCharacter, targetPart, aimPosition)
 		local ignoreList = {Player.Character}
 		for _, passthrough in ipairs(game:GetService("CollectionService"):GetTagged("WeaponPassthrough")) do
 			table.insert(ignoreList, passthrough)
@@ -1548,7 +1548,7 @@ do
 		raycastParams.FilterType = Enum.RaycastFilterType.Exclude
 		raycastParams.IgnoreWater = true
 		raycastParams.FilterDescendantsInstances = ignoreList
-		local direction = targetPart.Position - originPosition
+		local direction = (aimPosition or targetPart.Position) - originPosition
 
 		for _ = 1, 6 do
 			local result = workspace:Raycast(originPosition, direction, raycastParams)
@@ -1584,14 +1584,32 @@ do
 		if entry.Position and entry.Time then
 			local dt = math.max(now - entry.Time, 1 / 240)
 			local measuredVelocity = (position - entry.Position) / dt
-			if measuredVelocity.Magnitude < 120 then
-				rawVelocity = rawVelocity:Lerp(measuredVelocity, 0.45)
+			if measuredVelocity.Magnitude < 220 then
+				rawVelocity = rawVelocity:Lerp(measuredVelocity, 0.65)
 			end
 		end
-		entry.SmoothedVelocity = entry.SmoothedVelocity and entry.SmoothedVelocity:Lerp(rawVelocity, 0.38) or rawVelocity
+		entry.SmoothedVelocity = entry.SmoothedVelocity and entry.SmoothedVelocity:Lerp(rawVelocity, 0.55) or rawVelocity
 		entry.Position = position
 		entry.Time = now
 		return entry.SmoothedVelocity
+	end
+
+	local function GetAutoShootAimPosition(originPosition, targetPart, targetVelocity)
+		local currentPosition = targetPart.Position
+		local distance = (currentPosition - originPosition).Magnitude
+		local leadTime = math.clamp(distance / 650, AutoShootMinLeadTime, AutoShootMaxLeadTime)
+		local leadVelocity = Vector3.new(targetVelocity.X, math.clamp(targetVelocity.Y, -10, 14), targetVelocity.Z)
+		local leadOffset = leadVelocity * leadTime
+		if leadOffset.Magnitude > 12 then leadOffset = leadOffset.Unit * 12 end
+		local aimPosition = currentPosition + leadOffset
+		if targetPart.Name == "HumanoidRootPart" then
+			aimPosition = aimPosition + Vector3.new(0, 1.25, 0)
+		elseif targetPart.Name == "Head" then
+			aimPosition = aimPosition + Vector3.new(0, -0.2, 0)
+		else
+			aimPosition = aimPosition + Vector3.new(0, 0.25, 0)
+		end
+		return aimPosition
 	end
 
 	local function SetAutoShootEnabled(enabled)
@@ -1618,7 +1636,7 @@ do
 		if not autoShootEnabled then return end
 		if HubState.AutoLockEnabled then ToggleAutoLock() end
 		local shootNow = os.clock()
-		if shootNow - (HubState.LastAutoShootThink or 0) < 0.035 then return end
+		if shootNow - (HubState.LastAutoShootThink or 0) < 0.02 then return end
 		HubState.LastAutoShootThink = shootNow
 		if ThemeObjects.RefreshMM2RolesFromTools and shootNow - (HubState.LastMM2AutoShootRoleScan or 0) >= 0.45 then
 			HubState.LastMM2AutoShootRoleScan = shootNow
@@ -1638,17 +1656,19 @@ do
 			pcall(function() humanoid:EquipTool(gun) end)
 			return
 		end
-		if shotPending or shootNow - lastGunFired < 0.56 then return end
+		if shotPending or shootNow - lastGunFired < 0.42 then return end
 		local localRoot = character:FindFirstChild("HumanoidRootPart")
 		local raycastAttachment = localRoot and localRoot:FindFirstChild("GunRaycastAttachment")
 		local shootRemote = gun:FindFirstChild("Shoot")
 		if not shootRemote or not shootRemote:IsA("RemoteEvent") then return end
 		local shotOrigin = raycastAttachment and raycastAttachment.WorldCFrame or nil
-		if not shotOrigin or not HasClearGunLine(shotOrigin.Position, targetCharacter, targetPart) then return end
+		if not shotOrigin then return end
+		local firstVelocity = GetSmoothedTargetVelocity(HubState.CurrentMurderer, targetPart, shootNow)
+		local firstAimPosition = GetAutoShootAimPosition(shotOrigin.Position, targetPart, firstVelocity)
+		if not HasClearGunLine(shotOrigin.Position, targetCharacter, targetPart, firstAimPosition) then return end
 
 		local confirmedMurderer = HubState.CurrentMurderer
 		local firstPosition = targetPart.Position
-		local firstVelocity = GetSmoothedTargetVelocity(confirmedMurderer, targetPart, shootNow)
 		shotPending = true
 		task.delay(AutoShootConfirmWindow, function()
 			shotPending = false
@@ -1674,20 +1694,10 @@ do
 			local expectedPosition = firstPosition + firstVelocity * AutoShootConfirmWindow
 			local movementError = (currentPosition - expectedPosition).Magnitude
 			local velocityChange = (currentVelocity - firstVelocity).Magnitude
-			if movementError > 9.0 or velocityChange > 95 then return end
-			if not HasClearGunLine(freshOrigin.Position, freshTargetCharacter, freshTargetPart) then return end
+			if movementError > 16.0 or velocityChange > 180 then return end
 
-			local leadVelocity = Vector3.new(currentVelocity.X, math.clamp(currentVelocity.Y, -12, 12), currentVelocity.Z)
-			local distance = (currentPosition - freshOrigin.Position).Magnitude
-			local leadTime = math.clamp(distance / 900, AutoShootMinLeadTime, AutoShootMaxLeadTime)
-			local leadOffset = leadVelocity * leadTime
-			if leadOffset.Magnitude > 7 then leadOffset = leadOffset.Unit * 7 end
-			local aimPosition = currentPosition + leadOffset
-			if freshTargetPart.Name == "HumanoidRootPart" then
-				aimPosition = aimPosition + Vector3.new(0, 1.15, 0)
-			elseif freshTargetPart.Name == "Head" then
-				aimPosition = aimPosition + Vector3.new(0, -0.15, 0)
-			end
+			local aimPosition = GetAutoShootAimPosition(freshOrigin.Position, freshTargetPart, currentVelocity)
+			if not HasClearGunLine(freshOrigin.Position, freshTargetCharacter, freshTargetPart, aimPosition) then return end
 			lastGunFired = os.clock()
 			pcall(function() freshRemote:FireServer(freshOrigin, CFrame.new(aimPosition)) end)
 		end)
