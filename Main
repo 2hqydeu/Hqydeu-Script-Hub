@@ -1026,30 +1026,17 @@ Instance.new("UICorner", HubState.MiniButton).CornerRadius = UDim.new(0, 5)
 
 HubState.MinimizeKeybindLabel = Instance.new("TextLabel")
 HubState.MinimizeKeybindLabel.Name = "MinimizeKeybindLabel"
-HubState.MinimizeKeybindLabel.Size = UDim2.new(0, 70, 0, 18)
-HubState.MinimizeKeybindLabel.Position = UDim2.new(1, -100, 0, 8)
+HubState.MinimizeKeybindLabel.Size = UDim2.new(0, 36, 0, 14)
+HubState.MinimizeKeybindLabel.Position = UDim2.new(1, -66, 0, 10)
 HubState.MinimizeKeybindLabel.BackgroundTransparency = 1
 HubState.MinimizeKeybindLabel.BorderSizePixel = 0
 HubState.MinimizeKeybindLabel.Text = KeybindText(HubState.MinimizeKeybind)
 HubState.MinimizeKeybindLabel.Font = Enum.Font.GothamBold
-HubState.MinimizeKeybindLabel.TextSize = 9
+HubState.MinimizeKeybindLabel.TextSize = 7
 HubState.MinimizeKeybindLabel.TextXAlignment = Enum.TextXAlignment.Right
 HubState.MinimizeKeybindLabel.TextColor3 = AccentColor
 HubState.MinimizeKeybindLabel.Parent = MainFrame
 table.insert(ThemeObjects.Accents, HubState.MinimizeKeybindLabel)
-
-HubState.ToggleHint = Instance.new("TextLabel")
-HubState.ToggleHint.Name = "ToggleHint"
-HubState.ToggleHint.Size = UDim2.new(0, 50, 0, 18)
-HubState.ToggleHint.Position = UDim2.new(1, -82, 0, 8)
-HubState.ToggleHint.BackgroundTransparency = 1
-HubState.ToggleHint.BorderSizePixel = 0
-HubState.ToggleHint.Text = "[L Ctrl]"
-HubState.ToggleHint.Font = Enum.Font.GothamMedium
-HubState.ToggleHint.TextSize = 11
-HubState.ToggleHint.TextXAlignment = Enum.TextXAlignment.Right
-HubState.ToggleHint.Parent = MainFrame
-table.insert(ThemeObjects.Texts, HubState.ToggleHint)
 
 HubState.SettingsBtn = Instance.new("TextButton")
 HubState.SettingsBtn.Size = UDim2.new(0, 18, 0, 18)
