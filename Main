@@ -1218,6 +1218,8 @@ ThemeObjects.ScriptRunner.Loaded = {}
 ThemeObjects.ScriptRunner.InfiniteYieldLoading = false
 ThemeObjects.ScriptRunner.InfiniteYieldLoadToken = 0
 ThemeObjects.ScriptRunner.InfiniteYieldBaseline = nil
+ThemeObjects.ScriptRunner.InfiniteYieldLoadedByHub = false
+ThemeObjects.ScriptRunner.InfiniteYieldGuiTargets = {}
 ThemeObjects.ScriptRunner.InfiniteYieldConnectionSnapshot = nil
 ThemeObjects.ScriptRunner.GetInfiniteYieldSignals = function()
 	local signals = {
@@ -1333,31 +1335,11 @@ ThemeObjects.ScriptRunner.CaptureInfiniteYieldBaseline = function()
 		RootAnchored = root and root.Anchored or nil,
 	}
 end
-ThemeObjects.ScriptRunner.DestroyInfiniteYield = function(options)
-	options = type(options) == "table" and options or {}
-	local baseline = ThemeObjects.ScriptRunner.InfiniteYieldBaseline
-	local lighting = game:GetService("Lighting")
-	ThemeObjects.ScriptRunner.DisconnectInfiniteYieldConnections()
-	pcall(function()
-		if baseline and baseline.Lighting then
-			for property, value in pairs(baseline.Lighting) do
-				lighting[property] = value
-			end
-		end
-	end)
-	pcall(function()
-		if type(getgenv) == "function" then getgenv().IY_LOADED = false end
-		IY_LOADED = false
-	end)
-	local function destroyInfiniteYieldGui(root)
+ThemeObjects.ScriptRunner.FindInfiniteYieldGuiTargets = function()
+	local targets = {}
+	local function scan(root)
 		if not root then return end
-		local targets = {}
 		for _, item in ipairs(root:GetDescendants()) do
-			local itemName = tostring(item.Name)
-			if itemName:sub(-4) == "_ESP" or itemName:sub(-5) == "_CHMS" or itemName:sub(-3) == "_LC"
-				or (item:IsA("BoxHandleAdornment") and itemName:sub(-5) == "_PESP") then
-				item:Destroy()
-			end
 			local isTitle = item:IsA("TextLabel") and item.Name == "Title" and tostring(item.Text):find("Infinite Yield", 1, true)
 			local isCommandBar = item:IsA("TextBox") and item.Name == "Cmdbar" and tostring(item.PlaceholderText):find("Command Bar", 1, true)
 			if isTitle or isCommandBar then
@@ -1372,21 +1354,87 @@ ThemeObjects.ScriptRunner.DestroyInfiniteYield = function(options)
 				targets[top] = true
 			end
 		end
-		for target in pairs(targets) do
-			if target and target.Parent then
-				target:Destroy()
+	end
+	pcall(function() scan(CoreGui) end)
+	pcall(function()
+		if get_hidden_gui or gethui then
+			local hiddenRoot = (get_hidden_gui or gethui)()
+			if hiddenRoot ~= CoreGui then scan(hiddenRoot) end
+		end
+	end)
+	ThemeObjects.ScriptRunner.InfiniteYieldGuiTargets = targets
+	return targets
+end
+ThemeObjects.ScriptRunner.SetInfiniteYieldGuiVisible = function(visible)
+	local targets = ThemeObjects.ScriptRunner.InfiniteYieldGuiTargets
+	if type(targets) ~= "table" or not next(targets) then
+		targets = ThemeObjects.ScriptRunner.FindInfiniteYieldGuiTargets()
+	end
+	local changed = false
+	for target in pairs(targets) do
+		if target and target.Parent then
+			changed = true
+			pcall(function()
+				if target:IsA("ScreenGui") then
+					target.Enabled = visible
+				elseif target:IsA("GuiObject") then
+					target.Visible = visible
+				end
+			end)
+		else
+			targets[target] = nil
+		end
+	end
+	return changed
+end
+ThemeObjects.ScriptRunner.DestroyInfiniteYield = function(options)
+	options = type(options) == "table" and options or {}
+	local baseline = ThemeObjects.ScriptRunner.InfiniteYieldBaseline
+	local lighting = game:GetService("Lighting")
+	if options.Hard then
+		ThemeObjects.ScriptRunner.DisconnectInfiniteYieldConnections()
+	end
+	pcall(function()
+		if baseline and baseline.Lighting then
+			for property, value in pairs(baseline.Lighting) do
+				lighting[property] = value
+			end
+		end
+	end)
+	pcall(function()
+		if options.Hard then
+			if type(getgenv) == "function" then getgenv().IY_LOADED = false end
+			IY_LOADED = false
+		end
+	end)
+	local function cleanInfiniteYieldVisuals(root)
+		if not root then return end
+		for _, item in ipairs(root:GetDescendants()) do
+			local itemName = tostring(item.Name)
+			if itemName:sub(-4) == "_ESP" or itemName:sub(-5) == "_CHMS" or itemName:sub(-3) == "_LC"
+				or (item:IsA("BoxHandleAdornment") and itemName:sub(-5) == "_PESP") then
+				item:Destroy()
 			end
 		end
 	end
-	pcall(function() destroyInfiniteYieldGui(CoreGui) end)
+	pcall(function() cleanInfiniteYieldVisuals(CoreGui) end)
 	pcall(function()
 		if get_hidden_gui or gethui then
 			local hiddenRoot = (get_hidden_gui or gethui)()
 			if hiddenRoot ~= CoreGui then
-				destroyInfiniteYieldGui(hiddenRoot)
+				cleanInfiniteYieldVisuals(hiddenRoot)
 			end
 		end
 	end)
+	if options.Hard then
+		for target in pairs(ThemeObjects.ScriptRunner.FindInfiniteYieldGuiTargets()) do
+			pcall(function()
+				if target and target.Parent then target:Destroy() end
+			end)
+		end
+	else
+		ThemeObjects.ScriptRunner.SetInfiniteYieldGuiVisible(false)
+	end
 	pcall(function()
 		for _, player in ipairs(Players:GetPlayers()) do
 			local character = player.Character
@@ -1456,6 +1504,13 @@ ThemeObjects.ScriptRunner.LoadInfiniteYield = function()
 		ThemeObjects.ScriptRunner.Notify("Infinite Yield is already loading")
 		return
 	end
+	if ThemeObjects.ScriptRunner.InfiniteYieldLoadedByHub and ThemeObjects.ScriptRunner.SetInfiniteYieldGuiVisible(true) then
+		if HubState.InfiniteYieldDestroy then
+			HubState.InfiniteYieldDestroy.Visible = true
+		end
+		ThemeObjects.ScriptRunner.Notify("Infinite Yield restored")
+		return
+	end
 	ThemeObjects.ScriptRunner.InfiniteYieldLoading = true
 	ThemeObjects.ScriptRunner.InfiniteYieldLoadToken = ThemeObjects.ScriptRunner.InfiniteYieldLoadToken + 1
 	local loadToken = ThemeObjects.ScriptRunner.InfiniteYieldLoadToken
@@ -1464,7 +1519,6 @@ ThemeObjects.ScriptRunner.LoadInfiniteYield = function()
 		HubState.InfiniteYieldExecute.AutoButtonColor = false
 		HubState.InfiniteYieldExecute.Text = "Loading"
 	end
-	ThemeObjects.ScriptRunner.DestroyInfiniteYield({Quiet = true})
 	task.delay(0.18, function()
 		if loadToken ~= ThemeObjects.ScriptRunner.InfiniteYieldLoadToken then return end
 		pcall(function()
@@ -1474,6 +1528,10 @@ ThemeObjects.ScriptRunner.LoadInfiniteYield = function()
 		ThemeObjects.ScriptRunner.CaptureInfiniteYieldBaseline()
 		ThemeObjects.ScriptRunner.CaptureInfiniteYieldConnections()
 		ThemeObjects.ScriptRunner.RunSource([[loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))()]], "Infinite Yield")
+		ThemeObjects.ScriptRunner.InfiniteYieldLoadedByHub = true
+		task.defer(function()
+			ThemeObjects.ScriptRunner.FindInfiniteYieldGuiTargets()
+		end)
 		if HubState.InfiniteYieldExecute then
 			HubState.InfiniteYieldExecute.Text = "Execute"
 			HubState.InfiniteYieldExecute.Active = true
