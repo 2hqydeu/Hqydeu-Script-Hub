@@ -1151,15 +1151,8 @@ HubState.GamesPage.ClipsDescendants = true
 HubState.GamesPage.Visible = false
 HubState.GamesPage.Parent = MainFrame
 
-HubState.MM2Page = Instance.new("Frame")
-HubState.MM2Page.Name = "MM2Page"
-HubState.MM2Page.Size = UDim2.new(0, 346, 1, -54)
-HubState.MM2Page.Position = UDim2.new(1.1, 0, 0, 54)
-HubState.MM2Page.BackgroundTransparency = 1
-HubState.MM2Page.BorderSizePixel = 0
-HubState.MM2Page.ClipsDescendants = true
-HubState.MM2Page.Visible = false
-HubState.MM2Page.Parent = MainFrame
+-- MM2 page is loaded on demand from the external MM2 page module.
+
 
 HubState.ScriptsPage = Instance.new("Frame")
 HubState.ScriptsPage.Name = "ScriptsPage"
@@ -1699,11 +1692,43 @@ HubState.Connections.FullBright = RunService.Heartbeat:Connect(function()
 end)
 ThemeObjects.RestoreFullBright = ThemeObjects.ExtrasFeature.Restore
 
+
+local HqydeuRuntime = {
+	HubState = HubState,
+	ThemeObjects = ThemeObjects,
+	MainFrame = MainFrame,
+	ScreenGui = ScreenGui,
+	Player = Player,
+	Players = Players,
+	RunService = RunService,
+	TweenService = TweenService,
+	UserInputService = UserInputService,
+	CoreGui = CoreGui,
+	HttpService = HttpService,
+	SavedKeybinds = SavedKeybinds,
+	GetAccentColor = function() return AccentColor end,
+	GetFrameThemeColor = function() return FrameThemeColor end,
+	InactiveTextColor = InactiveTextColor,
+	KeybindText = KeybindText,
+	LoadKeybind = LoadKeybind,
+	SaveKeybind = SaveKeybind,
+	SavePersistentSettings = SavePersistentSettings,
+	PackColor = PackColor,
+	UnpackColor = UnpackColor,
+	PlayClick = PlayClick,
+	PlaySwoosh = PlaySwoosh,
+	TrackConnection = TrackConnection,
+	UpdateTheme = UpdateTheme,
+	CompactGuiText = CompactGuiText,
+}
+if type(getgenv) == "function" then getgenv().HqydeuLoader_Runtime = HqydeuRuntime end
+shared.HqydeuLoader_Runtime = HqydeuRuntime
+
 -- Games hub
 HubState.GamesTabButton = nil
 HubState.SelectedGame = nil
 
-local function CreateGameLauncherButton(name, text, y, url, label)
+local function CreateGameLauncherButton(name, text, y, url, label, openFunctionName)
 	local button = Instance.new("TextButton")
 	button.Name = name
 	button.Size = UDim2.new(1, -8, 0, 38)
@@ -1729,13 +1754,17 @@ local function CreateGameLauncherButton(name, text, y, url, label)
 
 	button.MouseButton1Click:Connect(function()
 		PlayClick()
+		if ThemeObjects[openFunctionName] then
+			ThemeObjects[openFunctionName]()
+			return
+		end
 		ThemeObjects.ScriptRunner.RunOnceUrl(label:gsub("%s+", ""), url, label)
 	end)
 	return button
 end
 
-HubState.MM2GameButton = CreateGameLauncherButton("MM2GameButton", "MM2", 4, "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/MM2", "MM2")
-HubState.QuietOrDieGameButton = CreateGameLauncherButton("QuietOrDieGameButton", "Quiet or Die", 46, "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/QOD", "Quiet Or Die")
+HubState.MM2GameButton = CreateGameLauncherButton("MM2GameButton", "MM2", 4, "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/MM2", "MM2", "OpenMM2Page")
+HubState.QuietOrDieGameButton = CreateGameLauncherButton("QuietOrDieGameButton", "Quiet or Die", 46, "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/QOD", "Quiet Or Die", "OpenQuietOrDiePage")
 
 HubState.MM2BackButton = Instance.new("TextButton")
 HubState.MM2BackButton.Name = "MM2BackButton"
@@ -1754,6 +1783,29 @@ HubState.MM2BackButton.Parent = HubState.PageHeader
 table.insert(ThemeObjects.Backgrounds, HubState.MM2BackButton)
 table.insert(ThemeObjects.Accents, HubState.MM2BackButton)
 Instance.new("UICorner", HubState.MM2BackButton).CornerRadius = UDim.new(0, 5)
+
+HubState.MM2BackButton.MouseButton1Click:Connect(function()
+	PlayClick()
+	HubState.SelectedGame = nil
+	HubState.PageHeader.Text = "Games"
+	if HubState.GamesTabButton then HubState.GamesTabButton.Text = "Games" end
+	HubState.MM2BackButton.Visible = false
+	if HubState.MM2Page then HubState.MM2Page.Visible = false; HubState.MM2Page.Position = UDim2.new(1.1, 0, 0, 54) end
+	local quietPage = MainFrame:FindFirstChild("QuietOrDiePage")
+	if quietPage then quietPage.Visible = false; quietPage.Position = UDim2.new(1.1, 0, 0, 54) end
+	local quietCoins = HubState.PageHeader:FindFirstChild("QuietOrDieCoinsDisplay")
+	if quietCoins then quietCoins.Visible = false end
+	local quietWins = HubState.PageHeader:FindFirstChild("QuietOrDieWinsDisplay")
+	if quietWins then quietWins.Visible = false end
+	local quietHistory = HubState.PageHeader:FindFirstChild("QuietOrDieHistoryButton")
+	if quietHistory then quietHistory.Visible = false end
+	HubState.GamesPage.Visible = true
+	HubState.GamesPage.Position = UDim2.new(0, 114, 0, 54)
+	ThemeObjects.ActiveTabName = "Games"
+	HubState.ActiveTabIndex = table.find(HubState.TabNames, "Games") or HubState.ActiveTabIndex
+	HubState.ActiveContentPage = HubState.GamesPage
+	UpdateTheme(true)
+end)
 
 HubState.SettingsPage = Instance.new("Frame")
 HubState.SettingsPage.Size = UDim2.new(0, 330, 1, -32)
@@ -1864,7 +1916,7 @@ table.insert(ThemeObjects.Backgrounds, HubState.ESPColorBtn)
 table.insert(ThemeObjects.Texts, HubState.ESPColorBtn)
 Instance.new("UICorner", HubState.ESPColorBtn).CornerRadius = UDim.new(0, 5)
 
-ThemeObjects.DeepESP = {Enabled = false}
+ThemeObjects.DeepESP = ThemeObjects.DeepESP or {Enabled = false}
 ThemeObjects.SetQODESP = function(enabled)
 	ThemeObjects.DeepESP.Enabled = enabled == true
 	if not ThemeObjects.DeepESP.Enabled and ThemeObjects.ClearESPAdornments then ThemeObjects.ClearESPAdornments() end
@@ -1877,6 +1929,7 @@ local function ToggleAutoLock()
 	HubState.AutoLockTitle.TextColor3 = HubState.AutoLockEnabled and AccentColor or InactiveTextColor()
 end
 HubState.AutoLockToggleBtn.MouseButton1Click:Connect(function() PlayClick() ToggleAutoLock() end)
+if HqydeuRuntime then HqydeuRuntime.ToggleAutoLock = ToggleAutoLock end
 
 ThemeObjects.ResolveESPCharacter = function(targetPlayer)
 	if not targetPlayer then return nil end
@@ -3408,7 +3461,7 @@ end)
 TrackConnection("TeleportPlayerAdded", Players.PlayerAdded:Connect(UpdatePlayerList))
 TrackConnection("TeleportPlayerRemoving", Players.PlayerRemoving:Connect(UpdatePlayerList))
 
--- Game-specific MM2 features now live in the external MM2 script.
+-- MM2 feature page is loaded on demand from the external MM2 page module.
 
 -- Movement Page Content
 do
@@ -4203,7 +4256,7 @@ local function ToggleSettings(forceClose)
 	ThemeObjects.CameraPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true)
 	HubState.TeleportPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true)
 	HubState.GamesPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true)
-	HubState.MM2Page:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true)
+	if HubState.MM2Page then HubState.MM2Page:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true) end
 	HubState.ScriptsPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true)
 	local extrasPage = MainFrame:FindFirstChild("ExtrasPage")
 	if extrasPage then extrasPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true) end
@@ -4363,7 +4416,7 @@ ThemeObjects.SwitchTab = function(name)
 	elseif name == "Teleport" then incomingPage = HubState.TeleportPage
 	elseif name == "Scripts" then incomingPage = HubState.ScriptsPage
 	elseif name == "Extras" and extrasPage then incomingPage = extrasPage
-	elseif name == "Games" and openingSelectedGame and HubState.SelectedGame == "MM2" then incomingPage = HubState.MM2Page
+	elseif name == "Games" and openingSelectedGame and HubState.SelectedGame == "MM2" and HubState.MM2Page then incomingPage = HubState.MM2Page
 	elseif name == "Games" and openingSelectedGame and HubState.SelectedGame == "Quiet Or Die" and quietPage then incomingPage = quietPage
 	elseif name == "Games" then incomingPage = HubState.GamesPage end
 
