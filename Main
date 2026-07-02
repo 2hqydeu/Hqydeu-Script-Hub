@@ -1713,6 +1713,8 @@ local HqydeuRuntime = {
 	LoadKeybind = LoadKeybind,
 	SaveKeybind = SaveKeybind,
 	SavePersistentSettings = SavePersistentSettings,
+	GuiSizeValue = GuiSizeValue,
+	GuiScaleFromValue = GuiScaleFromValue,
 	PackColor = PackColor,
 	UnpackColor = UnpackColor,
 	PlayClick = PlayClick,
@@ -1773,7 +1775,7 @@ HubState.MM2BackButton.Position = UDim2.new(1, -42, 0, 0)
 HubState.MM2BackButton.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
 HubState.MM2BackButton.BackgroundTransparency = 0.8
 HubState.MM2BackButton.BorderSizePixel = 0
-HubState.MM2BackButton.Text = "?"
+HubState.MM2BackButton.Text = "<"
 HubState.MM2BackButton.Font = Enum.Font.GothamBold
 HubState.MM2BackButton.TextSize = 13
 HubState.MM2BackButton.TextColor3 = AccentColor
@@ -1917,11 +1919,58 @@ table.insert(ThemeObjects.Texts, HubState.ESPColorBtn)
 Instance.new("UICorner", HubState.ESPColorBtn).CornerRadius = UDim.new(0, 5)
 
 ThemeObjects.DeepESP = ThemeObjects.DeepESP or {Enabled = false}
+ThemeObjects.DeepESP.Row = Instance.new("Frame")
+ThemeObjects.DeepESP.Row.Name = "BodyESPCard"
+ThemeObjects.DeepESP.Row.Size = UDim2.new(1, -8, 0, 38)
+ThemeObjects.DeepESP.Row.Position = UDim2.new(0, 4, 0, 88)
+ThemeObjects.DeepESP.Row.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
+ThemeObjects.DeepESP.Row.BackgroundTransparency = 0.92
+ThemeObjects.DeepESP.Row.BorderSizePixel = 0
+ThemeObjects.DeepESP.Row.Parent = HubState.CombatPage
+table.insert(ThemeObjects.Backgrounds, ThemeObjects.DeepESP.Row)
+Instance.new("UICorner", ThemeObjects.DeepESP.Row).CornerRadius = UDim.new(0, 6)
+
+ThemeObjects.DeepESP.Title = Instance.new("TextLabel")
+ThemeObjects.DeepESP.Title.Size = UDim2.new(0, 90, 0, 20)
+ThemeObjects.DeepESP.Title.Position = UDim2.new(0, 8, 0.5, -10)
+ThemeObjects.DeepESP.Title.BackgroundTransparency = 1
+ThemeObjects.DeepESP.Title.Text = "Body ESP:"
+ThemeObjects.DeepESP.Title.Font = Enum.Font.GothamBold
+ThemeObjects.DeepESP.Title.TextSize = 11
+ThemeObjects.DeepESP.Title.TextXAlignment = Enum.TextXAlignment.Left
+ThemeObjects.DeepESP.Title.Parent = ThemeObjects.DeepESP.Row
+table.insert(ThemeObjects.Texts, ThemeObjects.DeepESP.Title)
+
+ThemeObjects.DeepESP.Toggle = Instance.new("TextButton")
+ThemeObjects.DeepESP.Toggle.Size = UDim2.new(0, 44, 0, 20)
+ThemeObjects.DeepESP.Toggle.Position = UDim2.new(1, -96, 0.5, -10)
+ThemeObjects.DeepESP.Toggle.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+ThemeObjects.DeepESP.Toggle.BackgroundTransparency = 0.8
+ThemeObjects.DeepESP.Toggle.BorderSizePixel = 0
+ThemeObjects.DeepESP.Toggle.Text = "Off"
+ThemeObjects.DeepESP.Toggle.Font = Enum.Font.GothamBold
+ThemeObjects.DeepESP.Toggle.TextSize = 9
+ThemeObjects.DeepESP.Toggle.Parent = ThemeObjects.DeepESP.Row
+table.insert(ThemeObjects.Backgrounds, ThemeObjects.DeepESP.Toggle)
+table.insert(ThemeObjects.Texts, ThemeObjects.DeepESP.Toggle)
+Instance.new("UICorner", ThemeObjects.DeepESP.Toggle).CornerRadius = UDim.new(0, 3)
+
 ThemeObjects.SetQODESP = function(enabled)
+	if enabled and ThemeObjects.DisableOtherESP then ThemeObjects.DisableOtherESP("QOD") end
 	ThemeObjects.DeepESP.Enabled = enabled == true
+	ThemeObjects.DeepESP.Toggle.Text = ThemeObjects.DeepESP.Enabled and "On" or "Off"
+	ThemeObjects.DeepESP.Title.TextColor3 = ThemeObjects.DeepESP.Enabled and AccentColor or InactiveTextColor()
 	if not ThemeObjects.DeepESP.Enabled and ThemeObjects.ClearESPAdornments then ThemeObjects.ClearESPAdornments() end
 	if not ThemeObjects.DeepESP.Enabled and not HubState.ESPEnabled and ThemeObjects.ClearESPLabels then ThemeObjects.ClearESPLabels() end
 end
+
+ThemeObjects.DeepESP.Toggle.MouseButton1Click:Connect(function()
+	PlayClick()
+	ThemeObjects.SetQODESP(not ThemeObjects.DeepESP.Enabled)
+end)
+ThemeObjects.AddFeatureKeybind({Name = "Body ESP", Storage = "QODESP", Parent = ThemeObjects.DeepESP.Row, Toggle = ThemeObjects.DeepESP.Toggle, Get = function() return LoadKeybind("QODESP") end, Set = function(key) SaveKeybind("QODESP", key) end, Action = function()
+	ThemeObjects.SetQODESP(not ThemeObjects.DeepESP.Enabled)
+end})
 
 local function ToggleAutoLock()
 	HubState.AutoLockEnabled = not HubState.AutoLockEnabled
