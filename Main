@@ -673,7 +673,7 @@ ThemeObjects.ApplyRestingButtonStyle = function(obj)
 	if not obj:IsA("TextButton") then return end
 	local bgColor = FrameThemeColor
 	local secBgColor = bgColor:Lerp(Color3.new(0, 0, 0), 0.22)
-	local keepSolid = obj.Name == "DestroyBtn" or obj.Name == "ResetCharacterBtn" or obj.Name == "RejoinBtn"
+	local keepSolid = obj.Name == "DestroyBtn" or obj.Name == "InfiniteYieldDestroy" or obj.Name == "ResetCharacterBtn" or obj.Name == "RejoinBtn"
 		or obj.Name == "ServerHopBtn" or obj.Name == "GuiSizeBtn" or obj.Name == "ClearKeybindsBtn"
 		or obj.Name == "EditKeybindsBtn"
 	local target = secBgColor
@@ -690,7 +690,7 @@ ThemeObjects.ApplyRestingButtonStyle = function(obj)
 	elseif obj.Text == "On" then
 		target = AccentColor
 	end
-	if obj.Name == "DestroyBtn" then target = Color3.fromRGB(255, 35, 35)
+	if obj.Name == "DestroyBtn" or obj.Name == "InfiniteYieldDestroy" then target = Color3.fromRGB(255, 35, 35)
 	elseif obj.Name == "ResetCharacterBtn" then target = Color3.fromRGB(255, 230, 0)
 	elseif obj.Name == "RejoinBtn" then target = Color3.fromRGB(0, 230, 255)
 	elseif obj.Name == "ServerHopBtn" then target = Color3.fromRGB(0, 105, 255)
@@ -848,7 +848,7 @@ local function UpdateTheme(instant)
 			ThemeObjects.NormalizeMainTileWidth(obj)
 			ThemeObjects.AttachHoverSound(obj)
 			if (obj:IsA("TextButton") or obj:IsA("TextBox")) then
-				local keepSolid = obj.Name == "DestroyBtn" or obj.Name == "ResetCharacterBtn" or obj.Name == "RejoinBtn"
+				local keepSolid = obj.Name == "DestroyBtn" or obj.Name == "InfiniteYieldDestroy" or obj.Name == "ResetCharacterBtn" or obj.Name == "RejoinBtn"
 					or obj.Name == "ServerHopBtn" or obj.Name == "GuiSizeBtn" or obj.Name == "ClearKeybindsBtn"
 					or obj.Name == "EditKeybindsBtn"
 				if obj.Name == "MM2GameButton" or obj.Name == "QuietOrDieGameButton" then
@@ -873,7 +873,7 @@ local function UpdateTheme(instant)
 				targetTransparency = obj.Text == "On" and 0 or 0.8
 				obj.BackgroundTransparency = targetTransparency
 			end
-			if obj.Name == "DestroyBtn" then target = Color3.fromRGB(255, 35, 35)
+			if obj.Name == "DestroyBtn" or obj.Name == "InfiniteYieldDestroy" then target = Color3.fromRGB(255, 35, 35)
 			elseif obj.Name == "ResetCharacterBtn" then target = Color3.fromRGB(255, 230, 0)
 			elseif obj.Name == "RejoinBtn" then target = Color3.fromRGB(0, 230, 255)
 			elseif obj.Name == "ServerHopBtn" then target = Color3.fromRGB(0, 105, 255)
@@ -1089,8 +1089,8 @@ task.defer(UpdateTabScrollCanvas)
 
 HubState.PageHeader = Instance.new("TextLabel")
 HubState.PageHeader.Name = "PageHeader"
-HubState.PageHeader.Size = UDim2.new(0, 330, 0, 18)
-HubState.PageHeader.Position = UDim2.new(0, 120, 0, 32)
+HubState.PageHeader.Size = UDim2.new(0, 322, 0, 18)
+HubState.PageHeader.Position = UDim2.new(0, 124, 0, 32)
 HubState.PageHeader.BackgroundTransparency = 1
 HubState.PageHeader.BorderSizePixel = 0
 HubState.PageHeader.Text = "Movement"
@@ -1103,8 +1103,8 @@ table.insert(ThemeObjects.Texts, HubState.PageHeader)
 -- Pages
 HubState.MovementPage = Instance.new("Frame")
 HubState.MovementPage.Name = "MovementPage"
-HubState.MovementPage.Size = UDim2.new(0, 346, 1, -54)
-HubState.MovementPage.Position = UDim2.new(0, 114, 0, 54)
+HubState.MovementPage.Size = UDim2.new(0, 336, 1, -54)
+HubState.MovementPage.Position = UDim2.new(0, 122, 0, 54)
 HubState.MovementPage.BackgroundTransparency = 1
 HubState.MovementPage.BorderSizePixel = 0
 HubState.MovementPage.ClipsDescendants = true
@@ -1113,7 +1113,7 @@ HubState.MovementPage.Parent = MainFrame
 
 HubState.CombatPage = Instance.new("Frame")
 HubState.CombatPage.Name = "CombatPage"
-HubState.CombatPage.Size = UDim2.new(0, 346, 1, -54)
+HubState.CombatPage.Size = UDim2.new(0, 336, 1, -54)
 HubState.CombatPage.Position = UDim2.new(1.1, 0, 0, 54)
 HubState.CombatPage.BackgroundTransparency = 1
 HubState.CombatPage.Visible = false
@@ -1123,7 +1123,7 @@ HubState.CombatPage.Parent = MainFrame
 
 ThemeObjects.CameraPage = Instance.new("Frame")
 ThemeObjects.CameraPage.Name = "CameraPage"
-ThemeObjects.CameraPage.Size = UDim2.new(0, 346, 1, -54)
+ThemeObjects.CameraPage.Size = UDim2.new(0, 336, 1, -54)
 ThemeObjects.CameraPage.Position = UDim2.new(1.1, 0, 0, 54)
 ThemeObjects.CameraPage.BackgroundTransparency = 1
 ThemeObjects.CameraPage.Visible = false
@@ -1133,7 +1133,7 @@ ThemeObjects.CameraPage.Parent = MainFrame
 
 HubState.TeleportPage = Instance.new("Frame")
 HubState.TeleportPage.Name = "TeleportPage"
-HubState.TeleportPage.Size = UDim2.new(0, 346, 1, -54)
+HubState.TeleportPage.Size = UDim2.new(0, 336, 1, -54)
 HubState.TeleportPage.Position = UDim2.new(1.1, 0, 0, 54)
 HubState.TeleportPage.BackgroundTransparency = 1
 HubState.TeleportPage.Visible = false
@@ -1143,7 +1143,7 @@ HubState.TeleportPage.Parent = MainFrame
 
 HubState.GamesPage = Instance.new("Frame")
 HubState.GamesPage.Name = "GamesPage"
-HubState.GamesPage.Size = UDim2.new(0, 346, 1, -54)
+HubState.GamesPage.Size = UDim2.new(0, 336, 1, -54)
 HubState.GamesPage.Position = UDim2.new(1.1, 0, 0, 54)
 HubState.GamesPage.BackgroundTransparency = 1
 HubState.GamesPage.BorderSizePixel = 0
@@ -1156,7 +1156,7 @@ HubState.GamesPage.Parent = MainFrame
 
 HubState.ScriptsPage = Instance.new("Frame")
 HubState.ScriptsPage.Name = "ScriptsPage"
-HubState.ScriptsPage.Size = UDim2.new(0, 346, 1, -54)
+HubState.ScriptsPage.Size = UDim2.new(0, 336, 1, -54)
 HubState.ScriptsPage.Position = UDim2.new(1.1, 0, 0, 54)
 HubState.ScriptsPage.BackgroundTransparency = 1
 HubState.ScriptsPage.BorderSizePixel = 0
@@ -1215,6 +1215,8 @@ ThemeObjects.ScriptRunner.RunUrl = function(url, label)
 end
 
 ThemeObjects.ScriptRunner.Loaded = {}
+ThemeObjects.ScriptRunner.InfiniteYieldLoading = false
+ThemeObjects.ScriptRunner.InfiniteYieldLoadToken = 0
 ThemeObjects.ScriptRunner.InfiniteYieldBaseline = nil
 ThemeObjects.ScriptRunner.CaptureInfiniteYieldBaseline = function()
 	local lighting = game:GetService("Lighting")
@@ -1249,7 +1251,8 @@ ThemeObjects.ScriptRunner.CaptureInfiniteYieldBaseline = function()
 		RootAnchored = root and root.Anchored or nil,
 	}
 end
-ThemeObjects.ScriptRunner.DestroyInfiniteYield = function()
+ThemeObjects.ScriptRunner.DestroyInfiniteYield = function(options)
+	options = type(options) == "table" and options or {}
 	local baseline = ThemeObjects.ScriptRunner.InfiniteYieldBaseline
 	local lighting = game:GetService("Lighting")
 	pcall(function()
@@ -1267,6 +1270,11 @@ ThemeObjects.ScriptRunner.DestroyInfiniteYield = function()
 		if not root then return end
 		local targets = {}
 		for _, item in ipairs(root:GetDescendants()) do
+			local itemName = tostring(item.Name)
+			if itemName:sub(-4) == "_ESP" or itemName:sub(-5) == "_CHMS" or itemName:sub(-3) == "_LC"
+				or (item:IsA("BoxHandleAdornment") and itemName:sub(-5) == "_PESP") then
+				item:Destroy()
+			end
 			local isTitle = item:IsA("TextLabel") and item.Name == "Title" and tostring(item.Text):find("Infinite Yield", 1, true)
 			local isCommandBar = item:IsA("TextBox") and item.Name == "Cmdbar" and tostring(item.PlaceholderText):find("Command Bar", 1, true)
 			if isTitle or isCommandBar then
@@ -1290,20 +1298,21 @@ ThemeObjects.ScriptRunner.DestroyInfiniteYield = function()
 	pcall(function() destroyInfiniteYieldGui(CoreGui) end)
 	pcall(function()
 		if get_hidden_gui or gethui then
-			destroyInfiniteYieldGui((get_hidden_gui or gethui)())
-		end
-	end)
-	pcall(function()
-		for _, object in ipairs(CoreGui:GetDescendants()) do
-			if object.Name:sub(-4) == "_ESP" or object.Name:sub(-5) == "_CHMS" or object.Name:sub(-3) == "_LC" then
-				object:Destroy()
+			local hiddenRoot = (get_hidden_gui or gethui)()
+			if hiddenRoot ~= CoreGui then
+				destroyInfiniteYieldGui(hiddenRoot)
 			end
 		end
 	end)
 	pcall(function()
-		for _, object in ipairs(workspace:GetDescendants()) do
-			if object:IsA("BoxHandleAdornment") and object.Name:sub(-5) == "_PESP" then
-				object:Destroy()
+		for _, player in ipairs(Players:GetPlayers()) do
+			local character = player.Character
+			if character then
+				for _, object in ipairs(character:GetDescendants()) do
+					if object:IsA("BoxHandleAdornment") and object.Name:sub(-5) == "_PESP" then
+						object:Destroy()
+					end
+				end
 			end
 		end
 	end)
@@ -1355,7 +1364,42 @@ ThemeObjects.ScriptRunner.DestroyInfiniteYield = function()
 			end
 		end
 	end)
-	ThemeObjects.ScriptRunner.Notify("Infinite Yield cleanup ran")
+	if not options.Quiet then
+		ThemeObjects.ScriptRunner.Notify("Infinite Yield cleanup ran")
+	end
+end
+ThemeObjects.ScriptRunner.LoadInfiniteYield = function()
+	if ThemeObjects.ScriptRunner.InfiniteYieldLoading then
+		ThemeObjects.ScriptRunner.Notify("Infinite Yield is already loading")
+		return
+	end
+	ThemeObjects.ScriptRunner.InfiniteYieldLoading = true
+	ThemeObjects.ScriptRunner.InfiniteYieldLoadToken = ThemeObjects.ScriptRunner.InfiniteYieldLoadToken + 1
+	local loadToken = ThemeObjects.ScriptRunner.InfiniteYieldLoadToken
+	if HubState.InfiniteYieldExecute then
+		HubState.InfiniteYieldExecute.Active = false
+		HubState.InfiniteYieldExecute.AutoButtonColor = false
+		HubState.InfiniteYieldExecute.Text = "Loading"
+	end
+	ThemeObjects.ScriptRunner.DestroyInfiniteYield({Quiet = true})
+	task.delay(0.18, function()
+		if loadToken ~= ThemeObjects.ScriptRunner.InfiniteYieldLoadToken then return end
+		pcall(function()
+			if type(getgenv) == "function" then getgenv().IY_LOADED = false end
+			IY_LOADED = false
+		end)
+		ThemeObjects.ScriptRunner.CaptureInfiniteYieldBaseline()
+		ThemeObjects.ScriptRunner.RunSource([[loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))()]], "Infinite Yield")
+		if HubState.InfiniteYieldExecute then
+			HubState.InfiniteYieldExecute.Text = "Execute"
+			HubState.InfiniteYieldExecute.Active = true
+			HubState.InfiniteYieldExecute.AutoButtonColor = true
+		end
+		if HubState.InfiniteYieldDestroy then
+			HubState.InfiniteYieldDestroy.Visible = true
+		end
+		ThemeObjects.ScriptRunner.InfiniteYieldLoading = false
+	end)
 end
 ThemeObjects.ScriptRunner.RunOnceUrl = function(key, url, label)
 	key = tostring(key or label or url or "Script")
@@ -1439,7 +1483,7 @@ Instance.new("UICorner", HubState.InfiniteYieldExecute).CornerRadius = UDim.new(
 HubState.InfiniteYieldDestroy = Instance.new("TextButton")
 HubState.InfiniteYieldDestroy.Name = "InfiniteYieldDestroy"
 HubState.InfiniteYieldDestroy.Size = UDim2.new(0, 82, 0, 22)
-HubState.InfiniteYieldDestroy.Position = UDim2.new(1, -90, 0, 8)
+HubState.InfiniteYieldDestroy.Position = UDim2.new(1, -176, 0, 8)
 HubState.InfiniteYieldDestroy.BackgroundColor3 = Color3.fromRGB(255, 35, 35)
 HubState.InfiniteYieldDestroy.BackgroundTransparency = 0
 HubState.InfiniteYieldDestroy.BorderSizePixel = 0
@@ -1454,22 +1498,23 @@ table.insert(ThemeObjects.Texts, HubState.InfiniteYieldDestroy)
 Instance.new("UICorner", HubState.InfiniteYieldDestroy).CornerRadius = UDim.new(0, 4)
 HubState.InfiniteYieldExecute.MouseButton1Click:Connect(function()
 	PlayClick()
-	ThemeObjects.ScriptRunner.CaptureInfiniteYieldBaseline()
-	ThemeObjects.ScriptRunner.RunSource([[loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))()]], "Infinite Yield")
-	HubState.InfiniteYieldExecute.Position = UDim2.new(1, -176, 0, 8)
-	HubState.InfiniteYieldDestroy.Visible = true
+	ThemeObjects.ScriptRunner.LoadInfiniteYield()
 end)
 HubState.InfiniteYieldDestroy.MouseButton1Click:Connect(function()
 	PlayClick()
+	ThemeObjects.ScriptRunner.InfiniteYieldLoadToken = ThemeObjects.ScriptRunner.InfiniteYieldLoadToken + 1
 	ThemeObjects.ScriptRunner.DestroyInfiniteYield()
-	HubState.InfiniteYieldExecute.Position = UDim2.new(1, -90, 0, 8)
+	ThemeObjects.ScriptRunner.InfiniteYieldLoading = false
+	HubState.InfiniteYieldExecute.Text = "Execute"
+	HubState.InfiniteYieldExecute.Active = true
+	HubState.InfiniteYieldExecute.AutoButtonColor = true
 	HubState.InfiniteYieldDestroy.Visible = false
 end)
 
 ThemeObjects.ExtrasFeature = {Enabled = false, Applying = false, Lighting = game:GetService("Lighting")}
 ThemeObjects.ExtrasFeature.Page = Instance.new("Frame")
 ThemeObjects.ExtrasFeature.Page.Name = "ExtrasPage"
-ThemeObjects.ExtrasFeature.Page.Size = UDim2.new(0, 346, 1, -54)
+ThemeObjects.ExtrasFeature.Page.Size = UDim2.new(0, 336, 1, -54)
 ThemeObjects.ExtrasFeature.Page.Position = UDim2.new(1.1, 0, 0, 54)
 ThemeObjects.ExtrasFeature.Page.BackgroundTransparency = 1
 ThemeObjects.ExtrasFeature.Page.BorderSizePixel = 0
@@ -1969,7 +2014,7 @@ HubState.MM2BackButton.MouseButton1Click:Connect(function()
 	local quietHistory = HubState.PageHeader:FindFirstChild("QuietOrDieHistoryButton")
 	if quietHistory then quietHistory.Visible = false end
 	HubState.GamesPage.Visible = true
-	HubState.GamesPage.Position = UDim2.new(0, 114, 0, 54)
+	HubState.GamesPage.Position = UDim2.new(0, 122, 0, 54)
 	ThemeObjects.ActiveTabName = "Games"
 	HubState.ActiveTabIndex = table.find(HubState.TabNames, "Games") or HubState.ActiveTabIndex
 	HubState.ActiveContentPage = HubState.GamesPage
@@ -4466,7 +4511,7 @@ local function ToggleSettings(forceClose)
 	if not forceClose then PlayClick() end
 	local posMove = HubState.settingsOpen and 1.1 or 0 
     local posSet = HubState.settingsOpen and 0 or 1.1
-	local activeX = 114
+	local activeX = 122
 	HubState.MovementPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true)
 	HubState.CombatPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true)
 	ThemeObjects.CameraPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true)
@@ -4545,9 +4590,9 @@ ThemeObjects.SwitchTab = function(name)
 	local previousIndex = HubState.ActiveTabIndex or table.find(HubState.TabNames, ThemeObjects.ActiveTabName) or 1
 	local nextIndex = table.find(HubState.TabNames, name) or previousIndex
 	local direction = nextIndex >= previousIndex and 1 or -1
-	local activeX = 114
+	local activeX = 122
 	local activeY = 54
-	local headerX = 120
+	local headerX = 124
 	local headerY = 32
 	local slideDistance = 18
 	local headerSlideDistance = 18
