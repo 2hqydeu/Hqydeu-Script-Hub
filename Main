@@ -2837,19 +2837,21 @@ local function FlingPlayer(targetPlayer)
 	local originalLinearVelocity = root.AssemblyLinearVelocity
 	local wasFlingEnabled = HubState.FlingEnabled
 	local targetPartStates = {}
+	local targetCollisionStates = {}
 	local targetFlyVelocity = Instance.new("BodyVelocity")
 	targetFlyVelocity.Name = "TargetFlingFlyVelocity"
 	targetFlyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-	targetFlyVelocity.P = 125000
+	targetFlyVelocity.P = 220000
 	targetFlyVelocity.Velocity = Vector3.zero
 	targetFlyVelocity.Parent = root
 	local targetFlyGyro = Instance.new("BodyGyro")
 	targetFlyGyro.Name = "TargetFlingFlyGyro"
-	targetFlyGyro.P = 90000
+	targetFlyGyro.P = 160000
 	targetFlyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
 	targetFlyGyro.CFrame = root.CFrame
 	targetFlyGyro.Parent = root
 	humanoid.AutoRotate = false
+	RestoreAntiFlingCollisions()
 	SetIYFling(true)
 	for _, part in ipairs(character:GetDescendants()) do
 		if part:IsA("BasePart") then
@@ -2863,6 +2865,12 @@ local function FlingPlayer(targetPlayer)
 			part.CustomPhysicalProperties = PhysicalProperties.new(100, 0.3, 0.5)
 		end
 	end
+	for _, part in ipairs(targetCharacter:GetDescendants()) do
+		if part:IsA("BasePart") then
+			targetCollisionStates[part] = part.CanCollide
+			part.CanCollide = true
+		end
+	end
 
 	local function cleanup()
 		if targetFlyVelocity and targetFlyVelocity.Parent then targetFlyVelocity:Destroy() end
@@ -2873,6 +2881,9 @@ local function FlingPlayer(targetPlayer)
 				part.Massless = state.Massless
 				part.CustomPhysicalProperties = state.CustomPhysicalProperties
 			end
+		end
+		for part, canCollide in pairs(targetCollisionStates) do
+			if part and part.Parent then part.CanCollide = canCollide end
 		end
 		if not wasFlingEnabled then SetIYFling(false) end
 		if root and root.Parent then
@@ -2891,32 +2902,39 @@ local function FlingPlayer(targetPlayer)
 			or targetCharacter:FindFirstChild("Torso")
 			or targetCharacter:FindFirstChild("LowerTorso")
 			or targetRoot
-		local hitOffsets = {Vector3.new(0, 0, 0), Vector3.new(0, 1.1, 0), Vector3.new(0, -0.7, 0), Vector3.new(0.35, 0, 0), Vector3.new(-0.35, 0, 0)}
+		local hitOffsets = {
+			Vector3.new(0, 0, -1.15),
+			Vector3.new(0, 0.95, -0.85),
+			Vector3.new(0, -0.65, -0.85),
+			Vector3.new(1.05, 0, 0),
+			Vector3.new(-1.05, 0, 0),
+			Vector3.new(0, 0, 1.05),
+		}
 		local startedAt = os.clock()
 		local step = 0
 		local lastBurst = 0
-		while os.clock() - startedAt < 3.2 and targetRoot.Parent and targetHumanoid.Health > 0 and root.Parent and humanoid.Health > 0 do
+		while os.clock() - startedAt < 5.0 and targetRoot.Parent and targetHumanoid.Health > 0 and root.Parent and humanoid.Health > 0 do
 			step += 1
 			targetContactPart = targetCharacter:FindFirstChild("UpperTorso")
 				or targetCharacter:FindFirstChild("Torso")
 				or targetCharacter:FindFirstChild("LowerTorso")
 				or targetRoot
-			local targetPosition = targetContactPart.Position + (targetRoot.AssemblyLinearVelocity * 0.08)
+			local targetPosition = targetContactPart.Position + (targetRoot.AssemblyLinearVelocity * 0.14)
 			local offset = hitOffsets[((step - 1) % #hitOffsets) + 1]
-			local passPosition = targetPosition + offset
+			local passPosition = (targetRoot.CFrame * CFrame.new(offset)).Position + (targetRoot.AssemblyLinearVelocity * 0.08)
 			root.CFrame = CFrame.new(passPosition, targetPosition) * CFrame.Angles(math.rad(90), 0, 0)
-			root.AssemblyAngularVelocity = Vector3.new(0, 99999, 0)
-			local pushDirection = (targetPosition - root.Position)
+			root.AssemblyAngularVelocity = Vector3.new(99999, 99999, 99999)
+			local pushDirection = (targetRoot.Position - passPosition)
 			if pushDirection.Magnitude < 0.05 then pushDirection = Vector3.new(0, 1, 0) end
-			local pushVelocity = pushDirection.Unit * 520 + targetRoot.AssemblyLinearVelocity
-			if os.clock() - lastBurst > 0.11 then
+			local pushVelocity = pushDirection.Unit * 780 + targetRoot.AssemblyLinearVelocity
+			if os.clock() - lastBurst > 0.09 then
 				lastBurst = os.clock()
-				pushVelocity = pushVelocity + Vector3.new(0, 360, 0)
+				pushVelocity = pushVelocity + Vector3.new(0, 430, 0)
 			end
 			if targetFlyVelocity and targetFlyVelocity.Parent then targetFlyVelocity.Velocity = pushVelocity end
 			if targetFlyGyro and targetFlyGyro.Parent then targetFlyGyro.CFrame = root.CFrame end
 			root.AssemblyLinearVelocity = pushVelocity
-			if os.clock() - startedAt > 0.7 and targetRoot.AssemblyLinearVelocity.Magnitude > 150 then break end
+			if os.clock() - startedAt > 0.9 and targetRoot.AssemblyLinearVelocity.Magnitude > 185 then break end
 			RunService.Heartbeat:Wait()
 		end
 	end)
@@ -4427,6 +4445,70 @@ HubState.Connections.NoclipLoop = RunService.Stepped:Connect(function()
 	end
 end)
 
+ThemeObjects.FreeCam.SelfColor = Color3.fromRGB(34, 139, 34)
+
+function ThemeObjects.FreeCam.ClearSelfESP()
+	if ThemeObjects.FreeCam.SelfHighlight then
+		ThemeObjects.FreeCam.SelfHighlight:Destroy()
+		ThemeObjects.FreeCam.SelfHighlight = nil
+	end
+	if ThemeObjects.FreeCam.SelfLabel then
+		ThemeObjects.FreeCam.SelfLabel:Destroy()
+		ThemeObjects.FreeCam.SelfLabel = nil
+	end
+	ThemeObjects.FreeCam.SelfAdornee = nil
+end
+
+function ThemeObjects.FreeCam.UpdateSelfESP()
+	if not ThemeObjects.FreeCam.Enabled then
+		ThemeObjects.FreeCam.ClearSelfESP()
+		return
+	end
+	local character = Player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local head = character and character:FindFirstChild("Head")
+	local root = character and (character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso"))
+	if not character or not humanoid or humanoid.Health <= 0 or not root then
+		ThemeObjects.FreeCam.ClearSelfESP()
+		return
+	end
+	if ThemeObjects.FreeCam.SelfAdornee ~= character then
+		ThemeObjects.FreeCam.ClearSelfESP()
+		local highlight = Instance.new("Highlight")
+		highlight.Name = "HqydeuFreeCamSelfHighlight"
+		highlight.Adornee = character
+		highlight.FillColor = ThemeObjects.FreeCam.SelfColor
+		highlight.OutlineColor = ThemeObjects.FreeCam.SelfColor
+		highlight.FillTransparency = 0.82
+		highlight.OutlineTransparency = 0
+		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		highlight.Parent = ScreenGui
+		ThemeObjects.FreeCam.SelfHighlight = highlight
+
+		local label = Instance.new("BillboardGui")
+		label.Name = "HqydeuFreeCamSelfLabel"
+		label.Adornee = head or root
+		label.Size = UDim2.new(0, 70, 0, 24)
+		label.StudsOffsetWorldSpace = Vector3.new(0, 2.8, 0)
+		label.AlwaysOnTop = true
+		label.Parent = ScreenGui
+		local text = Instance.new("TextLabel")
+		text.Size = UDim2.new(1, 0, 1, 0)
+		text.BackgroundTransparency = 1
+		text.Text = "You"
+		text.Font = Enum.Font.GothamBold
+		text.TextSize = 12
+		text.TextColor3 = ThemeObjects.FreeCam.SelfColor
+		text.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+		text.TextStrokeTransparency = 0.15
+		text.Parent = label
+		ThemeObjects.FreeCam.SelfLabel = label
+		ThemeObjects.FreeCam.SelfAdornee = character
+	elseif ThemeObjects.FreeCam.SelfLabel then
+		ThemeObjects.FreeCam.SelfLabel.Adornee = head or root
+	end
+end
+
 function ThemeObjects.FreeCam.Enable()
 	if ThemeObjects.FreeCam.Enabled then return end
 	local camera = workspace.CurrentCamera
@@ -4448,6 +4530,7 @@ function ThemeObjects.FreeCam.Enable()
 	if root then root.AssemblyLinearVelocity = Vector3.zero root.AssemblyAngularVelocity = Vector3.zero end
 	ThemeObjects.FreeCam.Toggle.Text = "On"
 	ThemeObjects.FreeCam.Title.TextColor3 = AccentColor
+	ThemeObjects.FreeCam.UpdateSelfESP()
 	game:GetService("ContextActionService"):BindActionAtPriority(
 		"HqydeuFreeCamSink",
 		function() return Enum.ContextActionResult.Sink end,
@@ -4466,6 +4549,7 @@ function ThemeObjects.FreeCam.Disable()
 	-- leave the cursor pinned after Free Cam is turned off.
 	UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 	UserInputService.MouseIconEnabled = true
+	ThemeObjects.FreeCam.ClearSelfESP()
 	local camera = workspace.CurrentCamera
 	if camera then
 		camera.CameraType = ThemeObjects.FreeCam.OriginalType or Enum.CameraType.Custom
@@ -4495,6 +4579,7 @@ HubState.Connections.FreeCam = RunService.RenderStepped:Connect(function(deltaTi
 	if not ThemeObjects.FreeCam.Enabled then return end
 	local camera = workspace.CurrentCamera
 	if not camera then return end
+	ThemeObjects.FreeCam.UpdateSelfESP()
 	ThemeObjects.FreeCam.FocusedTextBox = nil
 	pcall(function() ThemeObjects.FreeCam.FocusedTextBox = UserInputService:GetFocusedTextBox() end)
 	if ThemeObjects.FreeCam.FocusedTextBox then
