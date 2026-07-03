@@ -310,6 +310,24 @@ local function touchSeller(shape, sellerPart)
 	end
 end
 
+local function touchObjectWithCharacter(object)
+	if not object or not object.Parent or type(firetouchinterest) ~= "function" then return false end
+	local touchPart = getObjectPart(object)
+	local character = Player.Character
+	if not touchPart or not character then return false end
+	local touched = false
+	for _, part in ipairs(character:GetDescendants()) do
+		if part:IsA("BasePart") then
+			pcall(function()
+				firetouchinterest(part, touchPart, 0)
+				firetouchinterest(part, touchPart, 1)
+				touched = true
+			end)
+		end
+	end
+	return touched
+end
+
 local function triggerObjectClick(object)
 	if not object or not object.Parent then return false end
 	local interactable = getInteractable(object)
@@ -332,38 +350,60 @@ local function pickUpAndSellShape(shape, sellerObject)
 	local network = getQuantifyNetwork()
 	if not root or not shapePart or not sellerPart or not network then return false end
 
-	local originalCFrame = root.CFrame
-	moveRootNearPart(root, shapePart, 2.6)
-	for _ = 1, 5 do
-		pcall(function() network:FireServer("pickup", shape) end)
-		task.wait(0.04)
-	end
+	local function attemptSell(moveCharacter)
+		local originalCFrame = moveCharacter and root.CFrame or nil
+		if moveCharacter then
+			moveRootNearPart(root, shapePart, 2.6)
+		else
+			touchObjectWithCharacter(shape)
+		end
 
-	moveRootNearPart(root, sellerPart, 2.8)
-	local targetCFrame = sellerPart.CFrame + Vector3.new(0, math.max(2, sellerPart.Size.Y * 0.5 + 1.5), 0)
-	local sold = false
-	for _ = 1, 18 do
+		for _ = 1, 5 do
+			pcall(function() network:FireServer("pickup", shape) end)
+			task.wait(0.04)
+		end
+
+		if moveCharacter then
+			moveRootNearPart(root, sellerPart, 2.8)
+		else
+			touchObjectWithCharacter(sellerObject)
+		end
+
+		local targetCFrame = sellerPart.CFrame + Vector3.new(0, math.max(2, sellerPart.Size.Y * 0.5 + 1.5), 0)
+		local sold = false
+		for _ = 1, 18 do
+			if not shape.Parent or shape:GetAttribute("sold") then
+				sold = true
+				break
+			end
+			pivotObjectTo(shape, targetCFrame)
+			pcall(function() network:FireServer("general", shape) end)
+			pcall(function() network:FireServer("general", shape, targetCFrame) end)
+			touchSeller(shape, sellerPart)
+			task.wait(0.05)
+		end
+		pcall(function() network:FireServer("drop", shape) end)
+		task.wait(0.15)
 		if not shape.Parent or shape:GetAttribute("sold") then
 			sold = true
-			break
 		end
-		pivotObjectTo(shape, targetCFrame)
-		pcall(function() network:FireServer("general", shape) end)
-		pcall(function() network:FireServer("general", shape, targetCFrame) end)
-		touchSeller(shape, sellerPart)
-		task.wait(0.05)
+
+		if originalCFrame and root and root.Parent then
+			root.CFrame = originalCFrame
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.AssemblyAngularVelocity = Vector3.zero
+		end
+		return sold
 	end
-	pcall(function() network:FireServer("drop", shape) end)
-	task.wait(0.15)
+
+	if attemptSell(false) then
+		return true
+	end
 	if not shape.Parent or shape:GetAttribute("sold") then
-		sold = true
+		return true
 	end
-	if root and root.Parent then
-		root.CFrame = originalCFrame
-		root.AssemblyLinearVelocity = Vector3.zero
-		root.AssemblyAngularVelocity = Vector3.zero
-	end
-	return sold
+	setShapesStatus("Retrying close pickup")
+	return attemptSell(true)
 end
 
 local function addShapeCandidate(candidates, seen, object)
