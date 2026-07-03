@@ -2126,6 +2126,7 @@ end
 
 HubState.MM2GameButton = CreateGameLauncherButton("MM2GameButton", "MM2", 4, "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/MM2", "MM2", "OpenMM2Page")
 HubState.QuietOrDieGameButton = CreateGameLauncherButton("QuietOrDieGameButton", "Quiet or Die", 46, "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/QOD", "Quiet Or Die", "OpenQuietOrDiePage")
+HubState.QuantifyGameButton = CreateGameLauncherButton("QuantifyGameButton", "Quantify", 88, "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/Quantify", "Quantify", "OpenQuantifyPage")
 
 HubState.MM2BackButton = Instance.new("TextButton")
 HubState.MM2BackButton.Name = "MM2BackButton"
