@@ -1,1 +1,379 @@
+-- Page-only module for Hqydeu Script Hub. Upload this file to the Quantify raw GitHub target.
+local Runtime = (type(getgenv) == "function" and getgenv().HqydeuLoader_Runtime) or shared.HqydeuLoader_Runtime
+if not Runtime then return warn("Hqydeu page module: main hub runtime was not found") end
+
+local HubState = Runtime.HubState
+local ThemeObjects = Runtime.ThemeObjects
+local MainFrame = Runtime.MainFrame
+local Player = Runtime.Player
+local Players = Runtime.Players or game:GetService("Players")
+local RunService = Runtime.RunService or game:GetService("RunService")
+local TweenService = Runtime.TweenService or game:GetService("TweenService")
+local UserInputService = Runtime.UserInputService or game:GetService("UserInputService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local AccentColor = Runtime.GetAccentColor and Runtime.GetAccentColor() or Color3.fromRGB(0, 210, 255)
+local InactiveTextColor = Runtime.InactiveTextColor or function() return Color3.fromRGB(255, 255, 255) end
+local KeybindText = Runtime.KeybindText or function(keyCode) return keyCode and keyCode.Name or "..." end
+local LoadKeybind = Runtime.LoadKeybind or function() return Enum.KeyCode.Unknown end
+local SaveKeybind = Runtime.SaveKeybind or function() end
+local PlayClick = Runtime.PlayClick or function() end
+local UpdateTheme = Runtime.UpdateTheme or function() end
+local TrackConnection = Runtime.TrackConnection or function(name, connection) HubState.Connections[name] = connection; return connection end
+if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu page module: runtime is incomplete") end
+HubState.Connections = HubState.Connections or {}
+
+local LOBBY_PLACE_ID = 106281373202161
+local MATCH_PLACE_ID = 73648930852061
+
+if HubState.QuantifyPage and HubState.QuantifyPage.Parent then
+	if ThemeObjects.OpenQuantifyPage then ThemeObjects.OpenQuantifyPage() end
+	return
+end
+
+HubState.Quantify = HubState.Quantify or {}
+HubState.Quantify.AutoShapesEnabled = false
+HubState.Quantify.AutoShapesBusy = false
+HubState.Quantify.LastShapeAction = 0
+HubState.Quantify.ShapeKeybind = LoadKeybind("QuantifyAutoShapes")
+
+local quantifyPage = Instance.new("ScrollingFrame")
+quantifyPage.Name = "QuantifyPage"
+quantifyPage.Size = UDim2.new(0, 346, 1, -54)
+quantifyPage.Position = UDim2.new(1.1, 0, 0, 54)
+quantifyPage.BackgroundTransparency = 1
+quantifyPage.BorderSizePixel = 0
+quantifyPage.ClipsDescendants = true
+quantifyPage.ScrollBarThickness = 3
+quantifyPage.ScrollBarImageColor3 = AccentColor
+quantifyPage.ScrollingDirection = Enum.ScrollingDirection.Y
+quantifyPage.ElasticBehavior = Enum.ElasticBehavior.Never
+quantifyPage.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+quantifyPage.CanvasSize = UDim2.new(0, 0, 0, 140)
+quantifyPage.Visible = false
+quantifyPage.Parent = MainFrame
+HubState.QuantifyPage = quantifyPage
+
+local function makeRow(name, y, height)
+	local row = Instance.new("Frame")
+	row.Name = name
+	row.Size = UDim2.new(1, -8, 0, height or 38)
+	row.Position = UDim2.new(0, 4, 0, y)
+	row.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
+	row.BackgroundTransparency = 0.92
+	row.BorderSizePixel = 0
+	row.Parent = quantifyPage
+	table.insert(ThemeObjects.Backgrounds, row)
+	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+	return row
+end
+
+local function makeTitle(row, text)
+	local title = Instance.new("TextLabel")
+	title.Size = UDim2.new(0, 130, 0, 22)
+	title.Position = UDim2.new(0, 8, 0, 7)
+	title.BackgroundTransparency = 1
+	title.Text = text
+	title.Font = Enum.Font.GothamBold
+	title.TextSize = 11
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.Parent = row
+	table.insert(ThemeObjects.Texts, title)
+	return title
+end
+
+local function makeButton(row, text, xOffset)
+	local button = Instance.new("TextButton")
+	button.Size = UDim2.new(0, 44, 0, 20)
+	button.Position = UDim2.new(1, xOffset, 0, 8)
+	button.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	button.BackgroundTransparency = 0.8
+	button.BorderSizePixel = 0
+	button.Text = text
+	button.Font = Enum.Font.GothamBold
+	button.TextSize = 9
+	button.Parent = row
+	table.insert(ThemeObjects.Backgrounds, button)
+	table.insert(ThemeObjects.Texts, button)
+	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 5)
+	return button
+end
+
+local statusRow = makeRow("QuantifyStatusRow", 4, 38)
+local statusTitle = makeTitle(statusRow, "Quantify:")
+local statusText = Instance.new("TextLabel")
+statusText.Size = UDim2.new(1, -132, 0, 22)
+statusText.Position = UDim2.new(0, 118, 0, 7)
+statusText.BackgroundTransparency = 1
+statusText.Text = game.PlaceId == LOBBY_PLACE_ID and "Lobby" or (game.PlaceId == MATCH_PLACE_ID and "Match" or "Unknown")
+statusText.Font = Enum.Font.GothamBold
+statusText.TextSize = 10
+statusText.TextXAlignment = Enum.TextXAlignment.Left
+statusText.TextColor3 = AccentColor
+statusText.Parent = statusRow
+table.insert(ThemeObjects.Accents, statusText)
+
+local shapesRow = makeRow("QuantifyAutoShapesRow", 48, 48)
+local shapesTitle = makeTitle(shapesRow, "Auto Shapes:")
+local shapesToggle = makeButton(shapesRow, "Off", -96)
+local shapesBind = makeButton(shapesRow, KeybindText(HubState.Quantify.ShapeKeybind), -48)
+shapesBind.TextSize = 8
+table.insert(ThemeObjects.Accents, shapesBind)
+
+local shapesStatus = Instance.new("TextLabel")
+shapesStatus.Size = UDim2.new(1, -16, 0, 12)
+shapesStatus.Position = UDim2.new(0, 8, 0, 30)
+shapesStatus.BackgroundTransparency = 1
+shapesStatus.Text = "Waiting"
+shapesStatus.Font = Enum.Font.GothamMedium
+shapesStatus.TextSize = 8
+shapesStatus.TextXAlignment = Enum.TextXAlignment.Left
+shapesStatus.Parent = shapesRow
+table.insert(ThemeObjects.Texts, shapesStatus)
+
+local function setShapesStatus(text)
+	shapesStatus.Text = text
+end
+
+local function getRoot()
+	local character = Player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not humanoid or humanoid.Health <= 0 or not root then return nil end
+	return root
+end
+
+local function getObjectPart(object)
+	if not object then return nil end
+	if object:IsA("BasePart") then return object end
+	if object:IsA("Model") then
+		return object.PrimaryPart or object:FindFirstChildWhichIsA("BasePart", true)
+	end
+	return object:FindFirstChildWhichIsA("BasePart", true)
+end
+
+local function getObjectCFrame(object)
+	local part = getObjectPart(object)
+	if part then return part.CFrame end
+	if object and object:IsA("Model") then return object:GetPivot() end
+	return nil
+end
+
+local function getShapeFolder()
+	return workspace:FindFirstChild("Parts")
+end
+
+local function getSellerObject()
+	local map = workspace:FindFirstChild("Map")
+	local buildingParts = map and map:FindFirstChild("BuildingParts")
+	local seller = buildingParts and buildingParts:FindFirstChild("Seller")
+	return seller and seller:FindFirstChild("Sell")
+end
+
+local function getInteractable(object)
+	if not object then return nil end
+	local clickDetector = object:FindFirstChildWhichIsA("ClickDetector", true)
+	if clickDetector then return clickDetector end
+	local prompt = object:FindFirstChildWhichIsA("ProximityPrompt", true)
+	if prompt then return prompt end
+	return nil
+end
+
+local function cameraClickPart(part)
+	if not part or not workspace.CurrentCamera then return false end
+	local camera = workspace.CurrentCamera
+	local oldType = camera.CameraType
+	local oldCFrame = camera.CFrame
+	local oldFocus = camera.Focus
+	local lookPosition = part.Position
+	camera.CameraType = Enum.CameraType.Scriptable
+	camera.CFrame = CFrame.new(lookPosition + Vector3.new(0, 3, 8), lookPosition)
+	camera.Focus = CFrame.new(lookPosition)
+	RunService.RenderStepped:Wait()
+	local screenPosition, onScreen = camera:WorldToViewportPoint(lookPosition)
+	if onScreen then
+		pcall(function()
+			VirtualInputManager:SendMouseButtonEvent(screenPosition.X, screenPosition.Y, 0, true, game, 0)
+			VirtualInputManager:SendMouseButtonEvent(screenPosition.X, screenPosition.Y, 0, false, game, 0)
+		end)
+	end
+	camera.CameraType = oldType
+	camera.CFrame = oldCFrame
+	camera.Focus = oldFocus
+	return onScreen
+end
+
+local function interactWithObject(object)
+	if not object or not object.Parent then return false end
+	local interactable = getInteractable(object)
+	if interactable and interactable:IsA("ClickDetector") and type(fireclickdetector) == "function" then
+		local ok = pcall(function() fireclickdetector(interactable) end)
+		if ok then return true end
+	end
+	if interactable and interactable:IsA("ProximityPrompt") and type(fireproximityprompt) == "function" then
+		local ok = pcall(function() fireproximityprompt(interactable) end)
+		if ok then return true end
+	end
+
+	local part = getObjectPart(object)
+	local root = getRoot()
+	if part and root then
+		local originalCFrame = root.CFrame
+		root.CFrame = part.CFrame + Vector3.new(0, 2.5, 0)
+		root.AssemblyLinearVelocity = Vector3.zero
+		root.AssemblyAngularVelocity = Vector3.zero
+		task.wait(0.04)
+		local clicked = cameraClickPart(part)
+		task.wait(0.03)
+		if root and root.Parent then
+			root.CFrame = originalCFrame
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.AssemblyAngularVelocity = Vector3.zero
+		end
+		return clicked
+	end
+	return false
+end
+
+local function addShapeCandidate(candidates, seen, object)
+	if not object or seen[object] then return end
+	if not getObjectPart(object) then return end
+	seen[object] = true
+	table.insert(candidates, object)
+end
+
+local function getShapeCandidates()
+	local partsFolder = getShapeFolder()
+	if not partsFolder then return {} end
+	local candidates = {}
+	local seen = {}
+	for _, shapeFolder in ipairs(partsFolder:GetChildren()) do
+		local namedShape = shapeFolder:FindFirstChild(shapeFolder.Name)
+		if namedShape then
+			addShapeCandidate(candidates, seen, namedShape)
+		end
+		if getInteractable(shapeFolder) then
+			addShapeCandidate(candidates, seen, shapeFolder)
+		end
+		for _, child in ipairs(shapeFolder:GetChildren()) do
+			if child ~= namedShape and (getInteractable(child) or child:IsA("BasePart") or child:IsA("Model")) then
+				addShapeCandidate(candidates, seen, child)
+			end
+		end
+	end
+	local root = getRoot()
+	if root then
+		table.sort(candidates, function(a, b)
+			local aCFrame = getObjectCFrame(a)
+			local bCFrame = getObjectCFrame(b)
+			local aDistance = aCFrame and (root.Position - aCFrame.Position).Magnitude or math.huge
+			local bDistance = bCFrame and (root.Position - bCFrame.Position).Magnitude or math.huge
+			return aDistance < bDistance
+		end)
+	end
+	return candidates
+end
+
+local function runAutoShapeStep()
+	if HubState.Quantify.AutoShapesBusy then return end
+	HubState.Quantify.AutoShapesBusy = true
+	local sellerObject = getSellerObject()
+	if not sellerObject or not getObjectPart(sellerObject) then
+		setShapesStatus("Missing Seller/Sell")
+		HubState.Quantify.AutoShapesBusy = false
+		return
+	end
+
+	local candidates = getShapeCandidates()
+	if #candidates == 0 then
+		setShapesStatus("No shapes found")
+		HubState.Quantify.AutoShapesBusy = false
+		return
+	end
+
+	local shape = candidates[1]
+	setShapesStatus("Picking " .. tostring(shape.Name))
+	local picked = interactWithObject(shape)
+	task.wait(0.16)
+	if picked then
+		setShapesStatus("Dropping")
+		interactWithObject(sellerObject)
+		task.wait(0.12)
+	else
+		setShapesStatus("Click failed")
+		task.wait(0.25)
+	end
+	HubState.Quantify.AutoShapesBusy = false
+end
+
+local function setAutoShapes(enabled)
+	HubState.Quantify.AutoShapesEnabled = enabled == true
+	shapesToggle.Text = HubState.Quantify.AutoShapesEnabled and "On" or "Off"
+	shapesTitle.TextColor3 = HubState.Quantify.AutoShapesEnabled and AccentColor or InactiveTextColor()
+	setShapesStatus(HubState.Quantify.AutoShapesEnabled and "Scanning" or "Waiting")
+end
+
+shapesToggle.MouseButton1Click:Connect(function()
+	PlayClick()
+	setAutoShapes(not HubState.Quantify.AutoShapesEnabled)
+end)
+
+if ThemeObjects.AddFeatureKeybind then
+	ThemeObjects.AddFeatureKeybind({
+		Name = "Auto Shapes",
+		Storage = "QuantifyAutoShapes",
+		Button = shapesBind,
+		Get = function() return HubState.Quantify.ShapeKeybind end,
+		Set = function(key)
+			HubState.Quantify.ShapeKeybind = key
+			SaveKeybind("QuantifyAutoShapes", key)
+			if shapesBind then shapesBind.Text = KeybindText(key) end
+		end,
+		Action = function()
+			setAutoShapes(not HubState.Quantify.AutoShapesEnabled)
+		end,
+	})
+else
+	shapesBind.MouseButton1Click:Connect(function()
+		PlayClick()
+		shapesBind.Text = "..."
+		local connection
+		connection = UserInputService.InputBegan:Connect(function(input, processed)
+			if processed then return end
+			if input.UserInputType == Enum.UserInputType.Keyboard then
+				HubState.Quantify.ShapeKeybind = input.KeyCode
+				SaveKeybind("QuantifyAutoShapes", input.KeyCode)
+				shapesBind.Text = KeybindText(input.KeyCode)
+				if connection then connection:Disconnect() end
+			end
+		end)
+	end)
+end
+
+HubState.Connections.QuantifyAutoShapes = RunService.Heartbeat:Connect(function()
+	if not HubState.Quantify.AutoShapesEnabled then return end
+	local now = os.clock()
+	if now - (HubState.Quantify.LastShapeAction or 0) < 0.42 then return end
+	HubState.Quantify.LastShapeAction = now
+	task.spawn(runAutoShapeStep)
+end)
+
+ThemeObjects.OpenQuantifyPage = function()
+	HubState.SelectedGame = "Quantify"
+	if HubState.PageHeader then HubState.PageHeader.Text = "Quantify" end
+	if HubState.GamesTabButton then HubState.GamesTabButton.Text = "Quantify" end
+	if HubState.MM2BackButton then HubState.MM2BackButton.Visible = true end
+	if HubState.GamesPage then HubState.GamesPage.Visible = false; HubState.GamesPage.Position = UDim2.new(1.1, 0, 0, 54) end
+	if HubState.MM2Page then HubState.MM2Page.Visible = false; HubState.MM2Page.Position = UDim2.new(1.1, 0, 0, 54) end
+	local quietPage = MainFrame:FindFirstChild("QuietOrDiePage")
+	if quietPage then quietPage.Visible = false; quietPage.Position = UDim2.new(1.1, 0, 0, 54) end
+	quantifyPage.Visible = true
+	quantifyPage.Position = UDim2.new(0, 114, 0, 54)
+	ThemeObjects.ActiveTabName = "Games"
+	HubState.ActiveTabIndex = table.find(HubState.TabNames, "Games") or HubState.ActiveTabIndex
+	HubState.ActiveContentPage = quantifyPage
+	UpdateTheme(true)
+end
+
+ThemeObjects.OpenQuantifyPage()
+UpdateTheme(true)
 
