@@ -112,8 +112,8 @@ statusText.TextColor3 = AccentColor
 statusText.Parent = statusRow
 table.insert(ThemeObjects.Accents, statusText)
 
-local shapesRow = makeRow("QuantifyAutoShapesRow", 48, 48)
-local shapesTitle = makeTitle(shapesRow, "Auto Shapes:")
+local shapesRow = makeRow("QuantifyAutoPickUpRow", 48, 48)
+local shapesTitle = makeTitle(shapesRow, "Auto Pick Up:")
 local shapesToggle = makeButton(shapesRow, "Off", -96)
 local shapesBind = makeButton(shapesRow, KeybindText(HubState.Quantify.ShapeKeybind), -48)
 shapesBind.TextSize = 8
@@ -319,7 +319,7 @@ end)
 
 if ThemeObjects.AddFeatureKeybind then
 	ThemeObjects.AddFeatureKeybind({
-		Name = "Auto Shapes",
+		Name = "Auto Pick Up",
 		Storage = "QuantifyAutoShapes",
 		Button = shapesBind,
 		Get = function() return HubState.Quantify.ShapeKeybind end,
@@ -376,4 +376,3 @@ end
 
 ThemeObjects.OpenQuantifyPage()
 UpdateTheme(true)
-
