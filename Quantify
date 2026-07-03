@@ -37,6 +37,18 @@ HubState.Quantify.AutoShapesEnabled = false
 HubState.Quantify.AutoShapesBusy = false
 HubState.Quantify.LastShapeAction = 0
 HubState.Quantify.ShapeKeybind = LoadKeybind("QuantifyAutoShapes")
+HubState.Quantify.ShapeModeIndex = HubState.Quantify.ShapeModeIndex or 1
+HubState.Quantify.ShapeFilterIndex = HubState.Quantify.ShapeFilterIndex or 1
+HubState.Quantify.ShapeESPEnabled = HubState.Quantify.ShapeESPEnabled or false
+HubState.Quantify.BuildAssistEnabled = HubState.Quantify.BuildAssistEnabled or false
+HubState.Quantify.LastSellerReturn = HubState.Quantify.LastSellerReturn or nil
+HubState.Quantify.ShapeESPObjects = HubState.Quantify.ShapeESPObjects or {}
+HubState.Quantify.BuildAssistObjects = HubState.Quantify.BuildAssistObjects or {}
+
+local ShapeModes = { "Nearest", "Value" }
+local ShapeFilters = { "Any", "Triangle", "Circle", "Square", "Cube", "Sphere", "Cylinder", "Pyramid", "Pentagon", "Honeycomb", "Tesseract" }
+if not ShapeModes[HubState.Quantify.ShapeModeIndex] then HubState.Quantify.ShapeModeIndex = 1 end
+if not ShapeFilters[HubState.Quantify.ShapeFilterIndex] then HubState.Quantify.ShapeFilterIndex = 1 end
 
 local quantifyPage = Instance.new("ScrollingFrame")
 quantifyPage.Name = "QuantifyPage"
@@ -50,7 +62,7 @@ quantifyPage.ScrollBarImageColor3 = AccentColor
 quantifyPage.ScrollingDirection = Enum.ScrollingDirection.Y
 quantifyPage.ElasticBehavior = Enum.ElasticBehavior.Never
 quantifyPage.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-quantifyPage.CanvasSize = UDim2.new(0, 0, 0, 140)
+quantifyPage.CanvasSize = UDim2.new(0, 0, 0, 320)
 quantifyPage.Visible = false
 quantifyPage.Parent = MainFrame
 HubState.QuantifyPage = quantifyPage
@@ -100,40 +112,56 @@ local function makeButton(row, text, xOffset)
 	return button
 end
 
-local statusRow = makeRow("QuantifyStatusRow", 4, 38)
-local statusTitle = makeTitle(statusRow, "Quantify:")
-local statusText = Instance.new("TextLabel")
-statusText.Size = UDim2.new(1, -132, 0, 22)
-statusText.Position = UDim2.new(0, 118, 0, 7)
-statusText.BackgroundTransparency = 1
-statusText.Text = game.PlaceId == LOBBY_PLACE_ID and "Lobby" or (game.PlaceId == MATCH_PLACE_ID and "Match" or "Unknown")
-statusText.Font = Enum.Font.GothamBold
-statusText.TextSize = 10
-statusText.TextXAlignment = Enum.TextXAlignment.Left
-statusText.TextColor3 = AccentColor
-statusText.Parent = statusRow
-table.insert(ThemeObjects.Accents, statusText)
+local function makeValueLabel(row, text, x, width)
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(0, width or 120, 0, 22)
+	label.Position = UDim2.new(1, x, 0, 7)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 10
+	label.TextXAlignment = Enum.TextXAlignment.Right
+	label.TextColor3 = AccentColor
+	label.Parent = row
+	table.insert(ThemeObjects.Accents, label)
+	return label
+end
 
-local shapesRow = makeRow("QuantifyAutoPickUpRow", 48, 48)
+local shapesRow = makeRow("QuantifyAutoPickUpRow", 4, 38)
 local shapesTitle = makeTitle(shapesRow, "Auto Pick Up:")
 local shapesToggle = makeButton(shapesRow, "Off", -96)
 local shapesBind = makeButton(shapesRow, KeybindText(HubState.Quantify.ShapeKeybind), -48)
 shapesBind.TextSize = 8
 table.insert(ThemeObjects.Accents, shapesBind)
 
-local shapesStatus = Instance.new("TextLabel")
-shapesStatus.Size = UDim2.new(1, -16, 0, 12)
-shapesStatus.Position = UDim2.new(0, 8, 0, 30)
-shapesStatus.BackgroundTransparency = 1
-shapesStatus.Text = "Waiting"
-shapesStatus.Font = Enum.Font.GothamMedium
-shapesStatus.TextSize = 8
-shapesStatus.TextXAlignment = Enum.TextXAlignment.Left
-shapesStatus.Parent = shapesRow
-table.insert(ThemeObjects.Texts, shapesStatus)
+local modeRow = makeRow("QuantifyShapeModeRow", 48, 38)
+local modeTitle = makeTitle(modeRow, "Shape Priority:")
+local modeButton = makeButton(modeRow, ShapeModes[HubState.Quantify.ShapeModeIndex] or "Nearest", -104)
+modeButton.Size = UDim2.new(0, 92, 0, 20)
+
+local filterRow = makeRow("QuantifyShapeFilterRow", 92, 38)
+local filterTitle = makeTitle(filterRow, "Shape Filter:")
+local filterButton = makeButton(filterRow, ShapeFilters[HubState.Quantify.ShapeFilterIndex] or "Any", -104)
+filterButton.Size = UDim2.new(0, 92, 0, 20)
+
+local espRow = makeRow("QuantifyShapeESPRow", 136, 38)
+local espTitle = makeTitle(espRow, "Shape ESP:")
+local espToggle = makeButton(espRow, "Off", -48)
+
+local sellerRow = makeRow("QuantifySellerTeleportRow", 180, 38)
+local sellerTitle = makeTitle(sellerRow, "Seller TP:")
+local sellerGo = makeButton(sellerRow, "Go", -96)
+local sellerBack = makeButton(sellerRow, "Back", -48)
+
+local buildRow = makeRow("QuantifyBuildAssistRow", 224, 38)
+local buildTitle = makeTitle(buildRow, "Build Assist:")
+local buildToggle = makeButton(buildRow, "Off", -48)
+
+local trackerRow = makeRow("QuantifyTrackerRow", 268, 38)
+local trackerTitle = makeTitle(trackerRow, "Cash / Goal:")
+local trackerText = makeValueLabel(trackerRow, "...", -160, 148)
 
 local function setShapesStatus(text)
-	shapesStatus.Text = text
 end
 
 local function getRoot()
@@ -378,6 +406,23 @@ local function addShapeCandidate(candidates, seen, object)
 	table.insert(candidates, object)
 end
 
+local function getShapeName(object)
+	return tostring((object and object:GetAttribute("name")) or (object and object.Name) or "Shape")
+end
+
+local function getShapeValue(object)
+	local value = object and object:GetAttribute("value")
+	if typeof(value) == "number" then return value end
+	return 0
+end
+
+local function shapePassesFilter(object)
+	local filter = ShapeFilters[HubState.Quantify.ShapeFilterIndex] or "Any"
+	if filter == "Any" then return true end
+	local name = string.upper(getShapeName(object))
+	return string.find(name, string.upper(filter), 1, true) ~= nil
+end
+
 local function getShapeCandidates()
 	local partsFolder = getShapeFolder()
 	if not partsFolder then return {} end
@@ -394,6 +439,11 @@ local function getShapeCandidates()
 			end
 		end
 	end
+	for i = #candidates, 1, -1 do
+		if not shapePassesFilter(candidates[i]) then
+			table.remove(candidates, i)
+		end
+	end
 	local root = getRoot()
 	if root then
 		table.sort(candidates, function(a, b)
@@ -401,6 +451,13 @@ local function getShapeCandidates()
 			local bCFrame = getObjectCFrame(b)
 			local aDistance = aCFrame and (root.Position - aCFrame.Position).Magnitude or math.huge
 			local bDistance = bCFrame and (root.Position - bCFrame.Position).Magnitude or math.huge
+			if ShapeModes[HubState.Quantify.ShapeModeIndex] == "Value" then
+				local aValue = getShapeValue(a)
+				local bValue = getShapeValue(b)
+				if aValue ~= bValue then
+					return aValue > bValue
+				end
+			end
 			return aDistance < bDistance
 		end)
 	end
@@ -449,6 +506,235 @@ local function setAutoShapes(enabled)
 	setShapesStatus(HubState.Quantify.AutoShapesEnabled and "Scanning" or "Waiting")
 end
 
+local function formatNumber(value)
+	value = tonumber(value) or 0
+	if math.abs(value) >= 1000000000 then
+		return string.format("%.1fB", value / 1000000000)
+	elseif math.abs(value) >= 1000000 then
+		return string.format("%.1fM", value / 1000000)
+	elseif math.abs(value) >= 1000 then
+		return string.format("%.1fK", value / 1000)
+	end
+	return tostring(math.floor(value))
+end
+
+local function getQuota()
+	local map = workspace:FindFirstChild("Map")
+	if map then
+		for _, attributeName in ipairs({ "Quota", "quota", "Goal", "CashGoal" }) do
+			local value = map:GetAttribute(attributeName)
+			if typeof(value) == "number" then return value end
+		end
+	end
+	local sharedFolder = ReplicatedStorage:FindFirstChild("Shared")
+	local gameModule = sharedFolder and sharedFolder:FindFirstChild("Game")
+	if gameModule and gameModule:IsA("ModuleScript") then
+		local ok, gameData = pcall(require, gameModule)
+		if ok and gameData and gameData.data then
+			local quota = gameData.data.quota
+			if typeof(quota) == "number" then return quota end
+		end
+	end
+	return nil
+end
+
+local function updateTracker()
+	local cash = Player:GetAttribute("Cash")
+	if typeof(cash) ~= "number" then cash = 0 end
+	local quota = getQuota()
+	if quota and quota > 0 then
+		trackerText.Text = formatNumber(cash) .. " / " .. formatNumber(quota)
+		trackerText.TextColor3 = cash >= quota and Color3.fromRGB(70, 255, 145) or AccentColor
+	else
+		trackerText.Text = "$" .. formatNumber(cash)
+		trackerText.TextColor3 = AccentColor
+	end
+end
+
+local function clearAdornments(container)
+	for object, adornments in pairs(container) do
+		if adornments.Highlight then adornments.Highlight:Destroy() end
+		if adornments.Label then adornments.Label:Destroy() end
+		container[object] = nil
+	end
+end
+
+local function makeBillboard(object, part, text, color)
+	local label = Instance.new("BillboardGui")
+	label.Name = "HqydeuQuantifyLabel"
+	label.Size = UDim2.new(0, 120, 0, 26)
+	label.StudsOffset = Vector3.new(0, 2.7, 0)
+	label.AlwaysOnTop = true
+	label.Adornee = part
+	label.Parent = part
+
+	local textLabel = Instance.new("TextLabel")
+	textLabel.Size = UDim2.new(1, 0, 1, 0)
+	textLabel.BackgroundTransparency = 1
+	textLabel.Text = text
+	textLabel.Font = Enum.Font.GothamBold
+	textLabel.TextSize = 10
+	textLabel.TextStrokeTransparency = 0.35
+	textLabel.TextColor3 = color
+	textLabel.Parent = label
+	return label
+end
+
+local function makeHighlight(object, color)
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "HqydeuQuantifyHighlight"
+	highlight.FillColor = color
+	highlight.FillTransparency = 0.82
+	highlight.OutlineColor = color
+	highlight.OutlineTransparency = 0.08
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.Adornee = object
+	highlight.Parent = object
+	return highlight
+end
+
+local function refreshShapeESP()
+	if not HubState.Quantify.ShapeESPEnabled then
+		clearAdornments(HubState.Quantify.ShapeESPObjects)
+		return
+	end
+	local current = {}
+	for _, shape in ipairs(getShapeCandidates()) do
+		current[shape] = true
+		if not HubState.Quantify.ShapeESPObjects[shape] then
+			local part = getObjectPart(shape)
+			if part then
+				local value = getShapeValue(shape)
+				local text = getShapeName(shape)
+				if value > 0 then text = text .. " $" .. formatNumber(value) end
+				HubState.Quantify.ShapeESPObjects[shape] = {
+					Highlight = makeHighlight(shape, AccentColor),
+					Label = makeBillboard(shape, part, text, AccentColor),
+				}
+			end
+		end
+	end
+	for shape, adornments in pairs(HubState.Quantify.ShapeESPObjects) do
+		if not current[shape] or not shape.Parent or shape:GetAttribute("sold") or shape:GetAttribute("destroyed") then
+			if adornments.Highlight then adornments.Highlight:Destroy() end
+			if adornments.Label then adornments.Label:Destroy() end
+			HubState.Quantify.ShapeESPObjects[shape] = nil
+		end
+	end
+end
+
+local function getBuildAssistColor(object)
+	local name = string.lower(object.Name)
+	if string.find(name, "seller", 1, true) then return Color3.fromRGB(70, 255, 145), "Seller" end
+	if string.find(name, "conveyor", 1, true) then return Color3.fromRGB(0, 210, 255), "Conveyor" end
+	if string.find(name, "dropper", 1, true) then return Color3.fromRGB(255, 190, 70), "Dropper" end
+	if string.find(name, "crafter", 1, true) then return Color3.fromRGB(190, 130, 255), "Crafter" end
+	return nil, nil
+end
+
+local function refreshBuildAssist()
+	if not HubState.Quantify.BuildAssistEnabled then
+		clearAdornments(HubState.Quantify.BuildAssistObjects)
+		return
+	end
+	local current = {}
+	local folders = {}
+	local map = workspace:FindFirstChild("Map")
+	if map and map:FindFirstChild("BuildingParts") then table.insert(folders, map.BuildingParts) end
+	if workspace:FindFirstChild("BuildingParts") then table.insert(folders, workspace.BuildingParts) end
+	for _, folder in ipairs(folders) do
+		for _, object in ipairs(folder:GetChildren()) do
+			local color, labelText = getBuildAssistColor(object)
+			local part = color and getObjectPart(object)
+			if part then
+				current[object] = true
+				if not HubState.Quantify.BuildAssistObjects[object] then
+					HubState.Quantify.BuildAssistObjects[object] = {
+						Highlight = makeHighlight(object, color),
+						Label = makeBillboard(object, part, labelText, color),
+					}
+				end
+			end
+		end
+	end
+	for object, adornments in pairs(HubState.Quantify.BuildAssistObjects) do
+		if not current[object] or not object.Parent then
+			if adornments.Highlight then adornments.Highlight:Destroy() end
+			if adornments.Label then adornments.Label:Destroy() end
+			HubState.Quantify.BuildAssistObjects[object] = nil
+		end
+	end
+end
+
+local function setShapeESP(enabled)
+	HubState.Quantify.ShapeESPEnabled = enabled == true
+	espToggle.Text = HubState.Quantify.ShapeESPEnabled and "On" or "Off"
+	espTitle.TextColor3 = HubState.Quantify.ShapeESPEnabled and AccentColor or InactiveTextColor()
+	refreshShapeESP()
+end
+
+local function setBuildAssist(enabled)
+	HubState.Quantify.BuildAssistEnabled = enabled == true
+	buildToggle.Text = HubState.Quantify.BuildAssistEnabled and "On" or "Off"
+	buildTitle.TextColor3 = HubState.Quantify.BuildAssistEnabled and AccentColor or InactiveTextColor()
+	refreshBuildAssist()
+end
+
+local function teleportRootTo(cframe)
+	local root = getRoot()
+	if not root or not cframe then return false end
+	if ThemeObjects.SetRootUpright then
+		ThemeObjects.SetRootUpright(root, root.CFrame, cframe.Position)
+	else
+		root.CFrame = cframe
+	end
+	root.AssemblyLinearVelocity = Vector3.zero
+	root.AssemblyAngularVelocity = Vector3.zero
+	return true
+end
+
+modeButton.MouseButton1Click:Connect(function()
+	PlayClick()
+	HubState.Quantify.ShapeModeIndex = (HubState.Quantify.ShapeModeIndex % #ShapeModes) + 1
+	modeButton.Text = ShapeModes[HubState.Quantify.ShapeModeIndex]
+	refreshShapeESP()
+end)
+
+filterButton.MouseButton1Click:Connect(function()
+	PlayClick()
+	HubState.Quantify.ShapeFilterIndex = (HubState.Quantify.ShapeFilterIndex % #ShapeFilters) + 1
+	filterButton.Text = ShapeFilters[HubState.Quantify.ShapeFilterIndex]
+	refreshShapeESP()
+end)
+
+espToggle.MouseButton1Click:Connect(function()
+	PlayClick()
+	setShapeESP(not HubState.Quantify.ShapeESPEnabled)
+end)
+
+sellerGo.MouseButton1Click:Connect(function()
+	PlayClick()
+	local root = getRoot()
+	local sellerObject = getSellerObject()
+	local sellerPart = getObjectPart(sellerObject)
+	if root and sellerPart then
+		HubState.Quantify.LastSellerReturn = root.CFrame
+		teleportRootTo(sellerPart.CFrame + Vector3.new(0, 4, 0))
+	end
+end)
+
+sellerBack.MouseButton1Click:Connect(function()
+	PlayClick()
+	if HubState.Quantify.LastSellerReturn then
+		teleportRootTo(HubState.Quantify.LastSellerReturn)
+	end
+end)
+
+buildToggle.MouseButton1Click:Connect(function()
+	PlayClick()
+	setBuildAssist(not HubState.Quantify.BuildAssistEnabled)
+end)
+
 shapesToggle.MouseButton1Click:Connect(function()
 	PlayClick()
 	setAutoShapes(not HubState.Quantify.AutoShapesEnabled)
@@ -494,6 +780,21 @@ HubState.Connections.QuantifyAutoShapes = RunService.Heartbeat:Connect(function(
 	task.spawn(runAutoShapeStep)
 end)
 
+HubState.Connections.QuantifyUtilities = RunService.Heartbeat:Connect(function()
+	local now = os.clock()
+	if now - (HubState.Quantify.LastUtilityRefresh or 0) < 0.5 then return end
+	HubState.Quantify.LastUtilityRefresh = now
+	updateTracker()
+	refreshShapeESP()
+	refreshBuildAssist()
+end)
+
+modeButton.Text = ShapeModes[HubState.Quantify.ShapeModeIndex] or "Nearest"
+filterButton.Text = ShapeFilters[HubState.Quantify.ShapeFilterIndex] or "Any"
+setShapeESP(HubState.Quantify.ShapeESPEnabled)
+setBuildAssist(HubState.Quantify.BuildAssistEnabled)
+updateTracker()
+
 ThemeObjects.OpenQuantifyPage = function()
 	HubState.SelectedGame = "Quantify"
 	if HubState.PageHeader then HubState.PageHeader.Text = "Quantify" end
@@ -513,3 +814,7 @@ end
 
 ThemeObjects.OpenQuantifyPage()
 UpdateTheme(true)
+setAutoShapes(HubState.Quantify.AutoShapesEnabled)
+setShapeESP(HubState.Quantify.ShapeESPEnabled)
+setBuildAssist(HubState.Quantify.BuildAssistEnabled)
+updateTracker()
