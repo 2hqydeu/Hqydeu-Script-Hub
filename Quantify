@@ -10,6 +10,8 @@ local Players = Runtime.Players or game:GetService("Players")
 local RunService = Runtime.RunService or game:GetService("RunService")
 local TweenService = Runtime.TweenService or game:GetService("TweenService")
 local UserInputService = Runtime.UserInputService or game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CollectionService = game:GetService("CollectionService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local AccentColor = Runtime.GetAccentColor and Runtime.GetAccentColor() or Color3.fromRGB(0, 210, 255)
 local InactiveTextColor = Runtime.InactiveTextColor or function() return Color3.fromRGB(255, 255, 255) end
@@ -166,7 +168,28 @@ local function getSellerObject()
 	local map = workspace:FindFirstChild("Map")
 	local buildingParts = map and map:FindFirstChild("BuildingParts")
 	local seller = buildingParts and buildingParts:FindFirstChild("Seller")
-	return seller and seller:FindFirstChild("Sell")
+	if seller and seller:FindFirstChild("Sell") then
+		return seller:FindFirstChild("Sell")
+	end
+	local looseParts = workspace:FindFirstChild("BuildingParts")
+	local looseSeller = looseParts and looseParts:FindFirstChild("Seller")
+	return looseSeller and looseSeller:FindFirstChild("Sell")
+end
+
+local function getQuantifyNetwork()
+	local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+	return remotes and remotes:FindFirstChild("Network")
+end
+
+local function isCarryableShape(object)
+	if not object or not object.Parent then return false end
+	if object:GetAttribute("sold") or object:GetAttribute("destroyed") then return false end
+	if object:IsA("Model") then
+		if object:GetAttribute("type") == "part" then return true end
+		local ok, tags = pcall(function() return CollectionService:GetTags(object) end)
+		if ok and table.find(tags, "carryable") then return true end
+	end
+	return false
 end
 
 local function getInteractable(object)
@@ -234,9 +257,123 @@ local function interactWithObject(object)
 	return false
 end
 
+local function moveRootNearPart(root, part, height)
+	if not root or not root.Parent or not part then return false end
+	root.CFrame = part.CFrame + Vector3.new(0, height or 2.5, 0)
+	root.AssemblyLinearVelocity = Vector3.zero
+	root.AssemblyAngularVelocity = Vector3.zero
+	return true
+end
+
+local function pivotObjectTo(object, cframe)
+	if not object or not object.Parent or not cframe then return false end
+	if object:IsA("Model") then
+		if not object.PrimaryPart then
+			local part = object:FindFirstChildWhichIsA("BasePart", true)
+			if part then
+				pcall(function() object.PrimaryPart = part end)
+			end
+		end
+		local ok = pcall(function() object:PivotTo(cframe) end)
+		if ok then return true end
+	end
+	local part = getObjectPart(object)
+	if part then
+		local ok = pcall(function()
+			part.CFrame = cframe
+			part.AssemblyLinearVelocity = Vector3.zero
+			part.AssemblyAngularVelocity = Vector3.zero
+		end)
+		return ok
+	end
+	return false
+end
+
+local function touchSeller(shape, sellerPart)
+	if not shape or not sellerPart or type(firetouchinterest) ~= "function" then return end
+	local parts = {}
+	if shape:IsA("BasePart") then
+		table.insert(parts, shape)
+	else
+		for _, part in ipairs(shape:GetDescendants()) do
+			if part:IsA("BasePart") then
+				table.insert(parts, part)
+			end
+		end
+	end
+	for _, part in ipairs(parts) do
+		pcall(function()
+			firetouchinterest(part, sellerPart, 0)
+			task.wait()
+			firetouchinterest(part, sellerPart, 1)
+		end)
+	end
+end
+
+local function triggerObjectClick(object)
+	if not object or not object.Parent then return false end
+	local interactable = getInteractable(object)
+	if interactable and interactable:IsA("ClickDetector") and type(fireclickdetector) == "function" then
+		local ok = pcall(function() fireclickdetector(interactable) end)
+		if ok then return true end
+	end
+	if interactable and interactable:IsA("ProximityPrompt") and type(fireproximityprompt) == "function" then
+		local ok = pcall(function() fireproximityprompt(interactable) end)
+		if ok then return true end
+	end
+	local part = getObjectPart(object)
+	return part and cameraClickPart(part) or false
+end
+
+local function pickUpAndSellShape(shape, sellerObject)
+	local root = getRoot()
+	local shapePart = getObjectPart(shape)
+	local sellerPart = getObjectPart(sellerObject)
+	local network = getQuantifyNetwork()
+	if not root or not shapePart or not sellerPart or not network then return false end
+
+	local originalCFrame = root.CFrame
+	moveRootNearPart(root, shapePart, 2.6)
+	for _ = 1, 5 do
+		pcall(function() network:FireServer("pickup", shape) end)
+		task.wait(0.04)
+	end
+
+	moveRootNearPart(root, sellerPart, 2.8)
+	local targetCFrame = sellerPart.CFrame + Vector3.new(0, math.max(2, sellerPart.Size.Y * 0.5 + 1.5), 0)
+	local sold = false
+	for _ = 1, 18 do
+		if not shape.Parent or shape:GetAttribute("sold") then
+			sold = true
+			break
+		end
+		pivotObjectTo(shape, targetCFrame)
+		pcall(function() network:FireServer("general", shape) end)
+		pcall(function() network:FireServer("general", shape, targetCFrame) end)
+		touchSeller(shape, sellerPart)
+		task.wait(0.05)
+	end
+	pcall(function() network:FireServer("drop", shape) end)
+	task.wait(0.15)
+	if not shape.Parent or shape:GetAttribute("sold") then
+		sold = true
+	end
+	if root and root.Parent then
+		root.CFrame = originalCFrame
+		root.AssemblyLinearVelocity = Vector3.zero
+		root.AssemblyAngularVelocity = Vector3.zero
+	end
+	return sold
+end
+
 local function addShapeCandidate(candidates, seen, object)
 	if not object or seen[object] then return end
+	if object:IsA("BasePart") and object.Parent and object.Parent:IsA("Model") then
+		object = object.Parent
+	end
+	if seen[object] then return end
 	if not getObjectPart(object) then return end
+	if not isCarryableShape(object) then return end
 	seen[object] = true
 	table.insert(candidates, object)
 end
@@ -251,11 +388,8 @@ local function getShapeCandidates()
 		if namedShape then
 			addShapeCandidate(candidates, seen, namedShape)
 		end
-		if getInteractable(shapeFolder) then
-			addShapeCandidate(candidates, seen, shapeFolder)
-		end
 		for _, child in ipairs(shapeFolder:GetChildren()) do
-			if child ~= namedShape and (getInteractable(child) or child:IsA("BasePart") or child:IsA("Model")) then
+			if child ~= namedShape and (child:IsA("Model") or child:IsA("BasePart")) then
 				addShapeCandidate(candidates, seen, child)
 			end
 		end
@@ -282,6 +416,11 @@ local function runAutoShapeStep()
 		HubState.Quantify.AutoShapesBusy = false
 		return
 	end
+	if not getQuantifyNetwork() then
+		setShapesStatus("Missing Network remote")
+		HubState.Quantify.AutoShapesBusy = false
+		return
+	end
 
 	local candidates = getShapeCandidates()
 	if #candidates == 0 then
@@ -292,14 +431,12 @@ local function runAutoShapeStep()
 
 	local shape = candidates[1]
 	setShapesStatus("Picking " .. tostring(shape.Name))
-	local picked = interactWithObject(shape)
-	task.wait(0.16)
-	if picked then
-		setShapesStatus("Dropping")
-		interactWithObject(sellerObject)
+	local sold = pickUpAndSellShape(shape, sellerObject)
+	if sold then
+		setShapesStatus("Sold " .. tostring(shape.Name))
 		task.wait(0.12)
 	else
-		setShapesStatus("Click failed")
+		setShapesStatus("Sell failed")
 		task.wait(0.25)
 	end
 	HubState.Quantify.AutoShapesBusy = false
