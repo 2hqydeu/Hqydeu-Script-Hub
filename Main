@@ -2155,6 +2155,8 @@ HubState.MM2BackButton.MouseButton1Click:Connect(function()
 	if HubState.MM2Page then HubState.MM2Page.Visible = false; HubState.MM2Page.Position = UDim2.new(1.1, 0, 0, 54) end
 	local quietPage = MainFrame:FindFirstChild("QuietOrDiePage")
 	if quietPage then quietPage.Visible = false; quietPage.Position = UDim2.new(1.1, 0, 0, 54) end
+	local quantifyPage = MainFrame:FindFirstChild("QuantifyPage")
+	if quantifyPage then quantifyPage.Visible = false; quantifyPage.Position = UDim2.new(1.1, 0, 0, 54) end
 	local quietCoins = HubState.PageHeader:FindFirstChild("QuietOrDieCoinsDisplay")
 	if quietCoins then quietCoins.Visible = false end
 	local quietWins = HubState.PageHeader:FindFirstChild("QuietOrDieWinsDisplay")
@@ -4870,6 +4872,8 @@ local function ToggleSettings(forceClose)
 	if extrasPage then extrasPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true) end
 	local quietPage = MainFrame:FindFirstChild("QuietOrDiePage")
 	if quietPage then quietPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true) end
+	local quantifyPage = MainFrame:FindFirstChild("QuantifyPage")
+	if quantifyPage then quantifyPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true) end
 	HubState.TabScroll.Visible = not HubState.minimized
 	if not HubState.settingsOpen then
 		ThemeObjects.CloseTransientPopups()
@@ -4948,6 +4952,7 @@ ThemeObjects.SwitchTab = function(name)
 	local headerTweenInfo = TweenInfo.new(0.11, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 	local openingSelectedGame = name == "Games" and HubState.SelectedGame ~= nil
 	local quietPage = MainFrame:FindFirstChild("QuietOrDiePage")
+	local quantifyPage = MainFrame:FindFirstChild("QuantifyPage")
 	local extrasPage = MainFrame:FindFirstChild("ExtrasPage")
 	local incomingPage = HubState.MovementPage
 	ThemeObjects.TabTransitionId += 1
@@ -5006,6 +5011,7 @@ ThemeObjects.SwitchTab = function(name)
 	elseif name == "Extras" and extrasPage then incomingPage = extrasPage
 	elseif name == "Games" and openingSelectedGame and HubState.SelectedGame == "MM2" and HubState.MM2Page then incomingPage = HubState.MM2Page
 	elseif name == "Games" and openingSelectedGame and HubState.SelectedGame == "Quiet Or Die" and quietPage then incomingPage = quietPage
+	elseif name == "Games" and openingSelectedGame and HubState.SelectedGame == "Quantify" and quantifyPage then incomingPage = quantifyPage
 	elseif name == "Games" then incomingPage = HubState.GamesPage end
 
 	if name == "Games" and openingSelectedGame and HubState.SelectedGame == "MM2" then
@@ -5024,7 +5030,7 @@ ThemeObjects.SwitchTab = function(name)
 		if historyPanel then historyPanel.Visible = false end
 	end
 
-	local pages = {HubState.MovementPage, HubState.CombatPage, ThemeObjects.CameraPage, HubState.TeleportPage, HubState.GamesPage, HubState.MM2Page, HubState.ScriptsPage, extrasPage, quietPage}
+	local pages = {HubState.MovementPage, HubState.CombatPage, ThemeObjects.CameraPage, HubState.TeleportPage, HubState.GamesPage, HubState.MM2Page, HubState.ScriptsPage, extrasPage, quietPage, quantifyPage}
 	local outgoingPage = HubState.ActiveContentPage
 	for _, page in ipairs(pages) do
 		if page and page ~= incomingPage and page ~= outgoingPage then
