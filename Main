@@ -5050,18 +5050,27 @@ ThemeObjects.SwitchTab = function(name)
 		outgoingPage.Visible = true
 		outgoingPage.Position = UDim2.new(0, activeX, 0, activeY)
 		TweenService:Create(outgoingPage, slideTweenInfo, {Position = UDim2.new(0, activeX, 0, activeY - (slideDistance * direction))}):Play()
-		task.delay(slideTime + 0.02, function()
-			if ThemeObjects.TabTransitionId == transitionId and outgoingPage and outgoingPage.Parent and outgoingPage ~= HubState.ActiveContentPage then
+		incomingPage.Visible = false
+		incomingPage.Position = UDim2.new(0, activeX, 0, activeY + (slideDistance * direction))
+		task.delay(slideTime * 0.48, function()
+			if ThemeObjects.TabTransitionId == transitionId and outgoingPage and outgoingPage.Parent then
 				outgoingPage.Visible = false
 				outgoingPage.Position = UDim2.new(1.1, 0, 0, activeY)
 			end
+			if ThemeObjects.TabTransitionId == transitionId and incomingPage and incomingPage.Parent then
+				incomingPage.Visible = true
+				incomingPage.Position = UDim2.new(0, activeX, 0, activeY + (slideDistance * direction))
+				TweenService:Create(incomingPage, slideTweenInfo, {Position = UDim2.new(0, activeX, 0, activeY)}):Play()
+			end
 		end)
+	else
+		incomingPage.Visible = true
+		incomingPage.Position = UDim2.new(0, activeX, 0, activeY + (slideDistance * direction))
+		TweenService:Create(incomingPage, slideTweenInfo, {Position = UDim2.new(0, activeX, 0, activeY)}):Play()
 	end
-	incomingPage.Position = UDim2.new(0, activeX, 0, activeY + (slideDistance * direction))
-	TweenService:Create(incomingPage, slideTweenInfo, {Position = UDim2.new(0, activeX, 0, activeY)}):Play()
 	HubState.ActiveContentPage = incomingPage
 	ThemeObjects.RefreshStateTexts(true)
-	task.delay(slideTime + 0.03, function()
+	task.delay((slideTime * 1.55) + 0.03, function()
 		if ThemeObjects.TabTransitionId == transitionId then
 			incomingPage.Position = UDim2.new(0, activeX, 0, activeY)
 			UpdateTheme(true)
@@ -5555,7 +5564,7 @@ Instance.new("UICorner", ThemeFrameBtn).CornerRadius = UDim.new(0, 5)
 
 local PickerFrame = Instance.new("Frame")
 PickerFrame.Name = "AccentPickerDock"
-PickerFrame.Size = UDim2.new(0, 130, 0, 190)
+PickerFrame.Size = UDim2.new(0, 130, 0, 216)
 PickerFrame.AnchorPoint = Vector2.new(1, 0)
 PickerFrame.BackgroundColor3 = FrameThemeColor
 PickerFrame.BackgroundTransparency = 0.04
@@ -5585,7 +5594,7 @@ TrackConnection("PickerDockSize", MainFrame:GetPropertyChangedSignal("AbsoluteSi
 ThemeObjects.UpdatePickerDockPosition()
 
 ResetThemeBtn.Parent = PickerFrame
-ResetThemeBtn.Position = UDim2.new(0, 8, 0, 112)
+ResetThemeBtn.Position = UDim2.new(0, 8, 0, 126)
 ResetThemeBtn.Size = UDim2.new(0, 114, 0, 20)
 ResetThemeBtn.ZIndex = 81
 
@@ -5669,10 +5678,27 @@ HueMarker.BackgroundColor3 = Color3.new(1, 1, 1)
 HueMarker.BorderSizePixel = 0
 HueMarker.Parent = HueInput
 
+local ThemePickerBackBtn = Instance.new("TextButton")
+ThemePickerBackBtn.Name = "ThemePickerBackBtn"
+ThemePickerBackBtn.Size = UDim2.new(0, 114, 0, 20)
+ThemePickerBackBtn.Position = UDim2.new(0, 8, 0, 100)
+ThemePickerBackBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+ThemePickerBackBtn.BackgroundTransparency = 0.8
+ThemePickerBackBtn.BorderSizePixel = 0
+ThemePickerBackBtn.Text = "Back"
+ThemePickerBackBtn.Font = Enum.Font.GothamBold
+ThemePickerBackBtn.TextSize = 8
+ThemePickerBackBtn.ZIndex = 81
+ThemePickerBackBtn.Visible = false
+ThemePickerBackBtn.Parent = PickerFrame
+table.insert(ThemeObjects.Backgrounds, ThemePickerBackBtn)
+table.insert(ThemeObjects.Texts, ThemePickerBackBtn)
+Instance.new("UICorner", ThemePickerBackBtn).CornerRadius = UDim.new(0, 5)
+
 local SaveCurrentColorBtn = Instance.new("TextButton")
 SaveCurrentColorBtn.Name = "SaveCurrentColorBtn"
 SaveCurrentColorBtn.Size = UDim2.new(0, 114, 0, 20)
-SaveCurrentColorBtn.Position = UDim2.new(0, 8, 0, 138)
+SaveCurrentColorBtn.Position = UDim2.new(0, 8, 0, 152)
 SaveCurrentColorBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 SaveCurrentColorBtn.BackgroundTransparency = 0.8
 SaveCurrentColorBtn.BorderSizePixel = 0
@@ -5690,7 +5716,7 @@ for index = 1, 5 do
 	local swatch = Instance.new("TextButton")
 	swatch.Name = "SavedColorSlot" .. index
 	swatch.Size = UDim2.new(0, 18, 0, 18)
-	swatch.Position = UDim2.new(0, 8 + ((index - 1) * 24), 0, 164)
+	swatch.Position = UDim2.new(0, 8 + ((index - 1) * 24), 0, 188)
 	swatch.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	swatch.BackgroundTransparency = 0.15
 	swatch.BorderSizePixel = 0
@@ -5948,6 +5974,7 @@ EditKeybindsBtn.MouseButton1Click:Connect(function()
 	if ThemeObjects.GuiSizeDock then ThemeObjects.GuiSizeDock.Visible = false end
 	if ThemeObjects.ThemeDock then ThemeObjects.ThemeDock.Visible = false end
 	ResetThemeBtn.Visible = false
+	if ThemePickerBackBtn then ThemePickerBackBtn.Visible = false end
 	if SaveCurrentColorBtn then SaveCurrentColorBtn.Visible = false end
 	ConfirmClearFrame.Visible = false
 	KeybindEditorFrame.Visible = not KeybindEditorFrame.Visible
@@ -6057,10 +6084,24 @@ local function OpenColorPicker(target)
 	PickerFrame.Visible = true
 	ResetThemeBtn.Visible = PickerTarget == "Accent" or PickerTarget == "Frame"
 	ResetThemeBtn.Text = PickerTarget == "Frame" and "Reset Frame" or "Reset Accent"
+	ThemePickerBackBtn.Visible = PickerTarget == "Accent" or PickerTarget == "Frame"
 	SaveCurrentColorBtn.Visible = true
 	RefreshPickerMarkers()
 	RefreshSavedColorButtons()
 end
+
+ThemePickerBackBtn.MouseButton1Click:Connect(function()
+	PlayClick()
+	PickerFrame.Visible = false
+	ResetThemeBtn.Visible = false
+	ThemePickerBackBtn.Visible = false
+	if SaveCurrentColorBtn then SaveCurrentColorBtn.Visible = false end
+	ConfirmClearFrame.Visible = false
+	ThemeFrame.Visible = true
+	if ThemeObjects.UpdateThemeDockPosition then
+		ThemeObjects.UpdateThemeDockPosition()
+	end
+end)
 
 SaveCurrentColorBtn.MouseButton1Click:Connect(function()
 	PlayClick()
@@ -6131,6 +6172,7 @@ AccentColorBtn.MouseButton1Click:Connect(function()
 	GuiSizeFrame.Visible = false
 	PickerFrame.Visible = false
 	ResetThemeBtn.Visible = false
+	ThemePickerBackBtn.Visible = false
 	if SaveCurrentColorBtn then SaveCurrentColorBtn.Visible = false end
 	ConfirmClearFrame.Visible = false
 	if KeybindEditorFrame then KeybindEditorFrame.Visible = false end
@@ -6158,6 +6200,7 @@ if HubState.ESPColorBtn then
 		if KeybindEditorFrame then KeybindEditorFrame.Visible = false end
 		if PickerFrame.Visible and PickerTarget == "ESP" then
 			PickerFrame.Visible = false
+			ThemePickerBackBtn.Visible = false
 			SaveCurrentColorBtn.Visible = false
 		else
 			OpenColorPicker("ESP")
@@ -6171,6 +6214,7 @@ GuiSizeBtn.MouseButton1Click:Connect(function()
 	PickerFrame.Visible = false
 	ThemeFrame.Visible = false
 	ResetThemeBtn.Visible = false
+	ThemePickerBackBtn.Visible = false
 	if SaveCurrentColorBtn then SaveCurrentColorBtn.Visible = false end
 	ConfirmClearFrame.Visible = false
 	if KeybindEditorFrame then KeybindEditorFrame.Visible = false end
@@ -6198,6 +6242,7 @@ ClearKeybindsBtn.MouseButton1Click:Connect(function()
 	GuiSizeFrame.Visible = false
 	ThemeFrame.Visible = false
 	ResetThemeBtn.Visible = false
+	ThemePickerBackBtn.Visible = false
 	if SaveCurrentColorBtn then SaveCurrentColorBtn.Visible = false end
 	if KeybindEditorFrame then KeybindEditorFrame.Visible = false end
 	ConfirmClearFrame.Visible = true
