@@ -4881,9 +4881,44 @@ HubState.SettingsBtn.MouseButton1Click:Connect(function()
 	ToggleSettings()
 end)
 
+local function GetViewportSize()
+	local camera = workspace.CurrentCamera
+	if camera then return camera.ViewportSize end
+	return Vector2.new(1920, 1080)
+end
+
+local function GetSnappedMinimizedPosition(sizeOverride)
+	local viewport = GetViewportSize()
+	local visualSize = sizeOverride or MainFrame.AbsoluteSize
+	local margin = 8
+	local currentSize = MainFrame.AbsoluteSize
+	local center = MainFrame.AbsolutePosition + Vector2.new(currentSize.X / 2, currentSize.Y / 2)
+	local leftX = margin + (visualSize.X / 2)
+	local rightX = viewport.X - margin - (visualSize.X / 2)
+	local targetX = center.X <= (viewport.X / 2) and leftX or math.max(leftX, rightX)
+	local minY = margin + (visualSize.Y / 2)
+	local maxY = viewport.Y - margin - (visualSize.Y / 2)
+	local targetY = maxY >= minY and math.clamp(center.Y, minY, maxY) or (viewport.Y / 2)
+	return UDim2.new(0, targetX, 0, targetY)
+end
+
+local function SnapMinimizedToNearestSide(animate)
+	if not HubState.minimized then return end
+	local targetPosition = GetSnappedMinimizedPosition()
+	if animate then
+		TweenService:Create(MainFrame, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Position = targetPosition}):Play()
+	else
+		MainFrame.Position = targetPosition
+	end
+end
+
 local function ToggleGUI()
+	local wasMinimized = HubState.minimized
 	HubState.minimized = not HubState.minimized
 	PlayMinimizeSound(HubState.minimized)
+	if HubState.minimized and not wasMinimized then
+		HubState.PreMinimizePosition = MainFrame.Position
+	end
 	if HubState.minimized and HubState.settingsOpen then ToggleSettings(true) end
 	if HubState.minimized and ThemeObjects.CloseTransientPopups then ThemeObjects.CloseTransientPopups() end
 	HubState.TabScroll.Visible = not HubState.minimized
@@ -4902,7 +4937,10 @@ local function ToggleGUI()
 		end)
 	end
 	local targetSize = HubState.minimized and UDim2.new(0, 170, 0, 34) or UDim2.new(0, 460, 0, 300)
-	TweenService:Create(MainFrame, TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = targetSize}):Play()
+	local scale = MainScaleObject and MainScaleObject.Scale or 1
+	local minimizedVisualSize = Vector2.new(170 * scale, 34 * scale)
+	local targetPosition = HubState.minimized and GetSnappedMinimizedPosition(minimizedVisualSize) or (HubState.PreMinimizePosition or UDim2.new(0.5, 0, 0.5, 0))
+	TweenService:Create(MainFrame, TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = targetSize, Position = targetPosition}):Play()
 	HubState.MiniButton.Text = HubState.minimized and "+" or "-"
 end
 HubState.MiniButton.MouseButton1Click:Connect(ToggleGUI)
@@ -4940,43 +4978,17 @@ ThemeObjects.SwitchTab = function(name)
 	local activeY = 54
 	local headerX = 124
 	local headerY = 32
-	local slideDistance = 10
-	local headerSlideDistance = 8
-	local slideTime = 0.11
-	local slideTweenInfo = TweenInfo.new(slideTime, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-	local headerTweenInfo = TweenInfo.new(0.11, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+	local slideDistance = 6
+	local headerSlideDistance = 4
+	local slideTime = 0.14
+	local slideTweenInfo = TweenInfo.new(slideTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local headerTweenInfo = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 	local openingSelectedGame = name == "Games" and HubState.SelectedGame ~= nil
 	local quietPage = MainFrame:FindFirstChild("QuietOrDiePage")
 	local extrasPage = MainFrame:FindFirstChild("ExtrasPage")
 	local incomingPage = HubState.MovementPage
 	ThemeObjects.TabTransitionId += 1
 	local transitionId = ThemeObjects.TabTransitionId
-	local function setPageContentTransparency(page, value)
-		return
-	end
-	local function restorePageContentTransparency(page)
-		if not page or not page.Parent then return end
-		for _, object in ipairs(page:GetDescendants()) do
-			if object:IsA("TextLabel") or object:IsA("TextButton") or object:IsA("TextBox") then
-				object.TextTransparency = 0
-			elseif object:IsA("ImageLabel") or object:IsA("ImageButton") then
-				object.ImageTransparency = 0
-			elseif object:IsA("UIStroke") then
-				local baseTransparency = object:GetAttribute("TransitionBaseStrokeTransparency")
-				if baseTransparency ~= nil then
-					object.Transparency = baseTransparency
-					object:SetAttribute("TransitionBaseStrokeTransparency", nil)
-				end
-			end
-			if object:IsA("GuiObject") then
-				local baseTransparency = object:GetAttribute("TransitionBaseBackgroundTransparency")
-				if baseTransparency ~= nil then
-					object.BackgroundTransparency = baseTransparency
-					object:SetAttribute("TransitionBaseBackgroundTransparency", nil)
-				end
-			end
-		end
-	end
 
 	ThemeObjects.ActiveTabName = name
 	HubState.ActiveTabIndex = nextIndex
@@ -5023,11 +5035,10 @@ ThemeObjects.SwitchTab = function(name)
 		if historyPanel then historyPanel.Visible = false end
 	end
 
-	local pages = {HubState.MovementPage, HubState.CombatPage, ThemeObjects.CameraPage, HubState.TeleportPage, HubState.GamesPage, HubState.MM2Page, HubState.ScriptsPage, extrasPage, quietPage, quantifyPage}
+	local pages = {HubState.MovementPage, HubState.CombatPage, ThemeObjects.CameraPage, HubState.TeleportPage, HubState.GamesPage, HubState.MM2Page, HubState.ScriptsPage, extrasPage, quietPage}
 	local outgoingPage = HubState.ActiveContentPage
 	for _, page in ipairs(pages) do
-		if page and page ~= incomingPage and page ~= outgoingPage then
-			restorePageContentTransparency(page)
+		if page and page ~= incomingPage then
 			page.Visible = false
 			page.Position = UDim2.new(1.1, 0, 0, activeY)
 		end
@@ -5035,42 +5046,16 @@ ThemeObjects.SwitchTab = function(name)
 
 	incomingPage.Visible = true
 	if outgoingPage and outgoingPage ~= incomingPage and outgoingPage.Parent then
-		restorePageContentTransparency(incomingPage)
-		restorePageContentTransparency(outgoingPage)
-		setPageContentTransparency(incomingPage, 1)
-		incomingPage.Position = UDim2.new(0, activeX, 0, activeY + (slideDistance * direction))
-		outgoingPage.Visible = true
-		outgoingPage.Position = UDim2.new(0, activeX, 0, activeY)
-		setPageContentTransparency(outgoingPage, 0.85)
-		task.delay(0.035, function()
-			if ThemeObjects.TabTransitionId == transitionId and outgoingPage and outgoingPage.Parent and outgoingPage ~= HubState.ActiveContentPage then
-				outgoingPage.Visible = false
-				outgoingPage.Position = UDim2.new(1.1, 0, 0, activeY)
-				restorePageContentTransparency(outgoingPage)
-			end
-		end)
-		task.spawn(function()
-			local startedAt = os.clock()
-			while ThemeObjects.TabTransitionId == transitionId and os.clock() - startedAt < slideTime do
-				local alpha = math.clamp((os.clock() - startedAt) / slideTime, 0, 1)
-				setPageContentTransparency(incomingPage, 1 - alpha)
-				RunService.RenderStepped:Wait()
-			end
-			if ThemeObjects.TabTransitionId == transitionId then
-				setPageContentTransparency(incomingPage, 0)
-			end
-		end)
-		local incomingTween = TweenService:Create(incomingPage, slideTweenInfo, {Position = UDim2.new(0, activeX, 0, activeY)})
-		incomingTween:Play()
-	else
-		restorePageContentTransparency(incomingPage)
-		incomingPage.Position = UDim2.new(0, activeX, 0, activeY)
+		outgoingPage.Visible = false
+		outgoingPage.Position = UDim2.new(1.1, 0, 0, activeY)
 	end
+	incomingPage.Position = UDim2.new(0, activeX, 0, activeY + (slideDistance * direction))
+	TweenService:Create(incomingPage, slideTweenInfo, {Position = UDim2.new(0, activeX, 0, activeY)}):Play()
 	HubState.ActiveContentPage = incomingPage
 	ThemeObjects.RefreshStateTexts(true)
-	task.delay(slideTime + 0.04, function()
+	task.delay(slideTime + 0.03, function()
 		if ThemeObjects.TabTransitionId == transitionId then
-			restorePageContentTransparency(incomingPage)
+			incomingPage.Position = UDim2.new(0, activeX, 0, activeY)
 			UpdateTheme(true)
 		end
 	end)
@@ -6230,8 +6215,26 @@ UpdateTheme()
 HubState.dragging = nil
 HubState.dragStart = nil
 HubState.startPos = nil
-TrackConnection("MainFrameDragStart", MainFrame.InputBegan:Connect(function(input) if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then HubState.dragging = true HubState.dragStart = input.Position HubState.startPos = MainFrame.Position input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then HubState.dragging = false end end) end end))
-TrackConnection("MainFrameDragMove", UserInputService.InputChanged:Connect(function(input) if HubState.dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then local delta = input.Position - HubState.dragStart MainFrame.Position = UDim2.new(HubState.startPos.X.Scale, HubState.startPos.X.Offset + delta.X, HubState.startPos.Y.Scale, HubState.startPos.Y.Offset + delta.Y) end end))
+TrackConnection("MainFrameDragStart", MainFrame.InputBegan:Connect(function(input)
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+	HubState.dragging = true
+	HubState.dragStart = input.Position
+	HubState.startPos = MainFrame.Position
+	input.Changed:Connect(function()
+		if input.UserInputState ~= Enum.UserInputState.End then return end
+		HubState.dragging = false
+		if HubState.minimized then
+			SnapMinimizedToNearestSide(true)
+		else
+			HubState.PreMinimizePosition = MainFrame.Position
+		end
+	end)
+end))
+TrackConnection("MainFrameDragMove", UserInputService.InputChanged:Connect(function(input)
+	if not HubState.dragging or (input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch) then return end
+	local delta = input.Position - HubState.dragStart
+	MainFrame.Position = UDim2.new(HubState.startPos.X.Scale, HubState.startPos.X.Offset + delta.X, HubState.startPos.Y.Scale, HubState.startPos.Y.Offset + delta.Y)
+end))
 
 -- FLY-IN TITLE SEQUENCE
 task.spawn(function()
