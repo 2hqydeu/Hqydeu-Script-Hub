@@ -85,11 +85,11 @@ end
 
 local DefaultFrameColor = Color3.fromRGB(28, 28, 38)
 local DefaultAccentColor = Color3.fromRGB(0, 210, 255)
-local FrameThemeColor = DefaultFrameColor
+local FrameThemeColor = LoadColor("ThemeFrame", DefaultFrameColor)
 local AccentColor = LoadColor("ThemeAccent", DefaultAccentColor)
 
 local function SaveThemeColors()
-	SavedKeybinds.ThemeFrame = nil
+	SavedKeybinds.ThemeFrame = PackColor(FrameThemeColor)
 	SavedKeybinds.ThemeAccent = PackColor(AccentColor)
 	SavePersistentSettings()
 end
@@ -4842,6 +4842,7 @@ HubState.minimized = false
 ThemeObjects.CloseTransientPopups = function()
 	if ThemeObjects.PickerDock then ThemeObjects.PickerDock.Visible = false end
 	if ThemeObjects.GuiSizeDock then ThemeObjects.GuiSizeDock.Visible = false end
+	if ThemeObjects.ThemeDock then ThemeObjects.ThemeDock.Visible = false end
 	if ThemeObjects.KeybindEditorFrame then ThemeObjects.KeybindEditorFrame.Visible = false end
 	if ThemeObjects.ConfirmClearFrame then ThemeObjects.ConfirmClearFrame.Visible = false end
 	if ThemeObjects.KeybindEditorConnection then
@@ -4973,16 +4974,16 @@ ThemeObjects.SwitchTab = function(name)
 	if ThemeObjects.CloseTransientPopups then ThemeObjects.CloseTransientPopups() end
 	local previousIndex = HubState.ActiveTabIndex or table.find(HubState.TabNames, ThemeObjects.ActiveTabName) or 1
 	local nextIndex = table.find(HubState.TabNames, name) or previousIndex
-	local direction = nextIndex >= previousIndex and 1 or -1
+	local direction = nextIndex < previousIndex and 1 or -1
 	local activeX = 122
 	local activeY = 54
 	local headerX = 124
 	local headerY = 32
-	local slideDistance = 6
-	local headerSlideDistance = 4
-	local slideTime = 0.14
-	local slideTweenInfo = TweenInfo.new(slideTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-	local headerTweenInfo = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local slideDistance = 28
+	local headerSlideDistance = 8
+	local slideTime = 0.18
+	local slideTweenInfo = TweenInfo.new(slideTime, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+	local headerTweenInfo = TweenInfo.new(0.16, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 	local openingSelectedGame = name == "Games" and HubState.SelectedGame ~= nil
 	local quietPage = MainFrame:FindFirstChild("QuietOrDiePage")
 	local extrasPage = MainFrame:FindFirstChild("ExtrasPage")
@@ -5038,7 +5039,7 @@ ThemeObjects.SwitchTab = function(name)
 	local pages = {HubState.MovementPage, HubState.CombatPage, ThemeObjects.CameraPage, HubState.TeleportPage, HubState.GamesPage, HubState.MM2Page, HubState.ScriptsPage, extrasPage, quietPage}
 	local outgoingPage = HubState.ActiveContentPage
 	for _, page in ipairs(pages) do
-		if page and page ~= incomingPage then
+		if page and page ~= incomingPage and page ~= outgoingPage then
 			page.Visible = false
 			page.Position = UDim2.new(1.1, 0, 0, activeY)
 		end
@@ -5046,8 +5047,15 @@ ThemeObjects.SwitchTab = function(name)
 
 	incomingPage.Visible = true
 	if outgoingPage and outgoingPage ~= incomingPage and outgoingPage.Parent then
-		outgoingPage.Visible = false
-		outgoingPage.Position = UDim2.new(1.1, 0, 0, activeY)
+		outgoingPage.Visible = true
+		outgoingPage.Position = UDim2.new(0, activeX, 0, activeY)
+		TweenService:Create(outgoingPage, slideTweenInfo, {Position = UDim2.new(0, activeX, 0, activeY - (slideDistance * direction))}):Play()
+		task.delay(slideTime + 0.02, function()
+			if ThemeObjects.TabTransitionId == transitionId and outgoingPage and outgoingPage.Parent and outgoingPage ~= HubState.ActiveContentPage then
+				outgoingPage.Visible = false
+				outgoingPage.Position = UDim2.new(1.1, 0, 0, activeY)
+			end
+		end)
 	end
 	incomingPage.Position = UDim2.new(0, activeX, 0, activeY + (slideDistance * direction))
 	TweenService:Create(incomingPage, slideTweenInfo, {Position = UDim2.new(0, activeX, 0, activeY)}):Play()
@@ -5136,7 +5144,7 @@ AccentColorBtn.Position = UDim2.new(0, 10, 0, 74)
 AccentColorBtn.BackgroundColor3 = Color3.fromRGB(210, 18, 18)
 AccentColorBtn.BackgroundTransparency = 0
 AccentColorBtn.BorderSizePixel = 0
-AccentColorBtn.Text = "Accent Color"
+AccentColorBtn.Text = "Theme"
 AccentColorBtn.Font = Enum.Font.GothamBold
 AccentColorBtn.TextSize = 10
 AccentColorBtn.Parent = HubState.SettingsPage
@@ -5148,7 +5156,7 @@ ResetThemeBtn.Position = UDim2.new(0, 10, 0, 116)
 ResetThemeBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 ResetThemeBtn.BackgroundTransparency = 0.8
 ResetThemeBtn.BorderSizePixel = 0
-ResetThemeBtn.Text = "Reset Accent"
+ResetThemeBtn.Text = "Reset Color"
 ResetThemeBtn.Font = Enum.Font.GothamBold
 ResetThemeBtn.Visible = false
 ResetThemeBtn.Parent = HubState.SettingsPage
@@ -5453,13 +5461,14 @@ local function ApplyGuiSize(value)
 	GuiSizeValue = math.clamp(value, 20, 100)
 	GuiSizeValueLabel.Text = tostring(GuiSizeValue)
 	local targetScale = GuiScaleFromValue(GuiSizeValue)
-	for _, scaleObject in ipairs({MainScaleObject, HubState.TargetScaleObject, ThemeObjects.PlayerTP.Scale, SplashScaleObject, ThemeObjects.PickerDockScale, ThemeObjects.GuiSizeDockScale, ThemeObjects.KeybindEditorScale, ThemeObjects.ExtrasFeature.CopyScale, ThemeObjects.MM2RoleDetailsScale}) do
+	for _, scaleObject in ipairs({MainScaleObject, HubState.TargetScaleObject, ThemeObjects.PlayerTP.Scale, SplashScaleObject, ThemeObjects.PickerDockScale, ThemeObjects.GuiSizeDockScale, ThemeObjects.ThemeDockScale, ThemeObjects.KeybindEditorScale, ThemeObjects.ExtrasFeature.CopyScale, ThemeObjects.MM2RoleDetailsScale}) do
 		if scaleObject and scaleObject.Parent then
 			TweenService:Create(scaleObject, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Scale = targetScale}):Play()
 		end
 	end
 	if ThemeObjects.UpdatePickerDockPosition then ThemeObjects.UpdatePickerDockPosition() end
 	if ThemeObjects.UpdateGuiSizeDockPosition then ThemeObjects.UpdateGuiSizeDockPosition() end
+	if ThemeObjects.UpdateThemeDockPosition then ThemeObjects.UpdateThemeDockPosition() end
 	if ThemeObjects.UpdateKeybindEditorDockPosition then ThemeObjects.UpdateKeybindEditorDockPosition() end
 	if ThemeObjects.ExtrasFeature.UpdateDockPosition then ThemeObjects.ExtrasFeature.UpdateDockPosition() end
 	if ThemeObjects.UpdateMM2RoleDetailsPosition then ThemeObjects.UpdateMM2RoleDetailsPosition() end
@@ -5470,6 +5479,79 @@ end
 GuiSizeMinusBtn.MouseButton1Click:Connect(function() PlayClick() ApplyGuiSize(GuiSizeValue - 5) end)
 GuiSizePlusBtn.MouseButton1Click:Connect(function() PlayClick() ApplyGuiSize(GuiSizeValue + 5) end)
 GuiSizeResetBtn.MouseButton1Click:Connect(function() PlayClick() ApplyGuiSize(50) end)
+
+local ThemeFrame = Instance.new("Frame")
+ThemeFrame.Name = "ThemeDock"
+ThemeFrame.Size = UDim2.new(0, 130, 0, 94)
+ThemeFrame.AnchorPoint = Vector2.new(1, 0)
+ThemeFrame.BackgroundColor3 = FrameThemeColor
+ThemeFrame.BackgroundTransparency = 0.04
+ThemeFrame.BorderSizePixel = 0
+ThemeFrame.ZIndex = 80
+ThemeFrame.Visible = false
+ThemeFrame.Parent = ScreenGui
+ThemeObjects.ThemeDock = ThemeFrame
+table.insert(ThemeObjects.Backgrounds, ThemeFrame)
+Instance.new("UICorner", ThemeFrame).CornerRadius = UDim.new(0, 9)
+local ThemeDockStroke = Instance.new("UIStroke")
+ThemeDockStroke.Color = AccentColor
+ThemeDockStroke.Thickness = 1.5
+ThemeDockStroke.Transparency = 0
+ThemeDockStroke.Parent = ThemeFrame
+table.insert(ThemeObjects.Accents, ThemeDockStroke)
+local ThemeDockScale = Instance.new("UIScale", ThemeFrame)
+ThemeDockScale.Scale = GuiScaleFromValue(GuiSizeValue)
+ThemeObjects.ThemeDockScale = ThemeDockScale
+
+ThemeObjects.UpdateThemeDockPosition = function()
+	local scale = GuiScaleFromValue(GuiSizeValue)
+	ThemeFrame.Position = UDim2.fromOffset(MainFrame.AbsolutePosition.X - (7 * scale), MainFrame.AbsolutePosition.Y + (36 * scale))
+end
+TrackConnection("ThemeDockPosition", MainFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(ThemeObjects.UpdateThemeDockPosition))
+TrackConnection("ThemeDockSize", MainFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(ThemeObjects.UpdateThemeDockPosition))
+ThemeObjects.UpdateThemeDockPosition()
+
+local ThemeDockTitle = Instance.new("TextLabel")
+ThemeDockTitle.Size = UDim2.new(0, 114, 0, 16)
+ThemeDockTitle.Position = UDim2.new(0, 8, 0, 7)
+ThemeDockTitle.BackgroundTransparency = 1
+ThemeDockTitle.Text = "Theme"
+ThemeDockTitle.Font = Enum.Font.GothamBold
+ThemeDockTitle.TextSize = 10
+ThemeDockTitle.TextXAlignment = Enum.TextXAlignment.Left
+ThemeDockTitle.ZIndex = 81
+ThemeDockTitle.Parent = ThemeFrame
+table.insert(ThemeObjects.Texts, ThemeDockTitle)
+
+local ThemeAccentBtn = Instance.new("TextButton")
+ThemeAccentBtn.Name = "ThemeAccentBtn"
+ThemeAccentBtn.Size = UDim2.new(0, 114, 0, 22)
+ThemeAccentBtn.Position = UDim2.new(0, 8, 0, 28)
+ThemeAccentBtn.BackgroundColor3 = AccentColor
+ThemeAccentBtn.BackgroundTransparency = 0
+ThemeAccentBtn.BorderSizePixel = 0
+ThemeAccentBtn.Text = "Accent"
+ThemeAccentBtn.Font = Enum.Font.GothamBold
+ThemeAccentBtn.TextSize = 9
+ThemeAccentBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ThemeAccentBtn.ZIndex = 81
+ThemeAccentBtn.Parent = ThemeFrame
+Instance.new("UICorner", ThemeAccentBtn).CornerRadius = UDim.new(0, 5)
+
+local ThemeFrameBtn = Instance.new("TextButton")
+ThemeFrameBtn.Name = "ThemeFrameBtn"
+ThemeFrameBtn.Size = UDim2.new(0, 114, 0, 22)
+ThemeFrameBtn.Position = UDim2.new(0, 8, 0, 56)
+ThemeFrameBtn.BackgroundColor3 = FrameThemeColor
+ThemeFrameBtn.BackgroundTransparency = 0
+ThemeFrameBtn.BorderSizePixel = 0
+ThemeFrameBtn.Text = "Frame"
+ThemeFrameBtn.Font = Enum.Font.GothamBold
+ThemeFrameBtn.TextSize = 9
+ThemeFrameBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ThemeFrameBtn.ZIndex = 81
+ThemeFrameBtn.Parent = ThemeFrame
+Instance.new("UICorner", ThemeFrameBtn).CornerRadius = UDim.new(0, 5)
 
 local PickerFrame = Instance.new("Frame")
 PickerFrame.Name = "AccentPickerDock"
@@ -5864,6 +5946,7 @@ EditKeybindsBtn.MouseButton1Click:Connect(function()
 	PlayClick()
 	if ThemeObjects.PickerDock then ThemeObjects.PickerDock.Visible = false end
 	if ThemeObjects.GuiSizeDock then ThemeObjects.GuiSizeDock.Visible = false end
+	if ThemeObjects.ThemeDock then ThemeObjects.ThemeDock.Visible = false end
 	ResetThemeBtn.Visible = false
 	if SaveCurrentColorBtn then SaveCurrentColorBtn.Visible = false end
 	ConfirmClearFrame.Visible = false
@@ -5895,6 +5978,14 @@ local DraggingHue = false
 local function RefreshThemePreviews()
 	AccentColorBtn.BackgroundColor3 = AccentColor
 	AccentColorBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	if ThemeAccentBtn then
+		ThemeAccentBtn.BackgroundColor3 = AccentColor
+		ThemeAccentBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	end
+	if ThemeFrameBtn then
+		ThemeFrameBtn.BackgroundColor3 = FrameThemeColor
+		ThemeFrameBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	end
 	if HubState.ESPColorBtn then
 		HubState.ESPColorBtn.BackgroundColor3 = HubState.ESPColor
 		HubState.ESPColorBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -5908,11 +5999,15 @@ local function RefreshPickerMarkers()
 end
 
 local function PickerPaletteKey()
-	return PickerTarget == "ESP" and "PlayerESPSavedColors" or "AccentSavedColors"
+	if PickerTarget == "ESP" then return "PlayerESPSavedColors" end
+	if PickerTarget == "Frame" then return "FrameSavedColors" end
+	return "AccentSavedColors"
 end
 
 local function PickerCurrentColor()
-	return PickerTarget == "ESP" and HubState.ESPColor or AccentColor
+	if PickerTarget == "ESP" then return HubState.ESPColor end
+	if PickerTarget == "Frame" then return FrameThemeColor end
+	return AccentColor
 end
 
 local function SaveESPColor()
@@ -5934,21 +6029,24 @@ local function ApplyPickerColor()
 	if PickerTarget == "ESP" then
 		HubState.ESPColor = selectedColor
 		SaveESPColor()
+	elseif PickerTarget == "Frame" then
+		FrameThemeColor = selectedColor
 	else
 		AccentColor = selectedColor
 	end
 	RefreshThemePreviews()
 	RefreshPickerMarkers()
 	UpdateTheme(true)
-	if PickerTarget == "Accent" and (not ThemeObjects.LastPickerSave or os.clock() - ThemeObjects.LastPickerSave > 0.15) then
+	if (PickerTarget == "Accent" or PickerTarget == "Frame") and (not ThemeObjects.LastPickerSave or os.clock() - ThemeObjects.LastPickerSave > 0.15) then
 		ThemeObjects.LastPickerSave = os.clock()
 		SaveThemeColors()
 	end
 end
 
 local function OpenColorPicker(target)
-	PickerTarget = target == "ESP" and "ESP" or "Accent"
+	PickerTarget = target == "ESP" and "ESP" or (target == "Frame" and "Frame" or "Accent")
 	GuiSizeFrame.Visible = false
+	if ThemeFrame then ThemeFrame.Visible = false end
 	if KeybindEditorFrame then KeybindEditorFrame.Visible = false end
 	if ThemeObjects.ExtrasFeature.CopyFrame and ThemeObjects.ExtrasFeature.CopyFrame.Visible then
 		ThemeObjects.ExtrasFeature.EndSelection(true)
@@ -5957,7 +6055,8 @@ local function OpenColorPicker(target)
 	PickerH, PickerS, PickerV = Color3.toHSV(selectedColor)
 	ConfirmClearFrame.Visible = false
 	PickerFrame.Visible = true
-	ResetThemeBtn.Visible = PickerTarget == "Accent"
+	ResetThemeBtn.Visible = PickerTarget == "Accent" or PickerTarget == "Frame"
+	ResetThemeBtn.Text = PickerTarget == "Frame" and "Reset Frame" or "Reset Accent"
 	SaveCurrentColorBtn.Visible = true
 	RefreshPickerMarkers()
 	RefreshSavedColorButtons()
@@ -6020,7 +6119,7 @@ TrackConnection("PickerInputChanged", UserInputService.InputChanged:Connect(func
 end))
 TrackConnection("PickerInputEnded", UserInputService.InputEnded:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		if DraggingSV or DraggingHue then SaveThemeColors() end
+		if (DraggingSV or DraggingHue) and (PickerTarget == "Accent" or PickerTarget == "Frame") then SaveThemeColors() end
 		DraggingSV = false
 		DraggingHue = false
 	end
@@ -6028,21 +6127,34 @@ end))
 
 AccentColorBtn.MouseButton1Click:Connect(function()
 	PlayClick()
+	local willOpen = not ThemeFrame.Visible
 	GuiSizeFrame.Visible = false
+	PickerFrame.Visible = false
+	ResetThemeBtn.Visible = false
+	if SaveCurrentColorBtn then SaveCurrentColorBtn.Visible = false end
+	ConfirmClearFrame.Visible = false
 	if KeybindEditorFrame then KeybindEditorFrame.Visible = false end
-	if PickerFrame.Visible and PickerTarget == "Accent" then
-		PickerFrame.Visible = false
-		ResetThemeBtn.Visible = false
-		SaveCurrentColorBtn.Visible = false
-	else
-		OpenColorPicker("Accent")
+	ThemeFrame.Visible = willOpen
+	if willOpen and ThemeObjects.UpdateThemeDockPosition then
+		ThemeObjects.UpdateThemeDockPosition()
 	end
+end)
+
+ThemeAccentBtn.MouseButton1Click:Connect(function()
+	PlayClick()
+	OpenColorPicker("Accent")
+end)
+
+ThemeFrameBtn.MouseButton1Click:Connect(function()
+	PlayClick()
+	OpenColorPicker("Frame")
 end)
 
 if HubState.ESPColorBtn then
 	HubState.ESPColorBtn.MouseButton1Click:Connect(function()
 		PlayClick()
 		GuiSizeFrame.Visible = false
+		if ThemeFrame then ThemeFrame.Visible = false end
 		if KeybindEditorFrame then KeybindEditorFrame.Visible = false end
 		if PickerFrame.Visible and PickerTarget == "ESP" then
 			PickerFrame.Visible = false
@@ -6057,6 +6169,7 @@ GuiSizeBtn.MouseButton1Click:Connect(function()
 	PlayClick()
 	local willOpen = not GuiSizeFrame.Visible
 	PickerFrame.Visible = false
+	ThemeFrame.Visible = false
 	ResetThemeBtn.Visible = false
 	if SaveCurrentColorBtn then SaveCurrentColorBtn.Visible = false end
 	ConfirmClearFrame.Visible = false
@@ -6068,7 +6181,11 @@ GuiSizeBtn.MouseButton1Click:Connect(function()
 end)
 ResetThemeBtn.MouseButton1Click:Connect(function()
 	PlayClick()
-	AccentColor = DefaultAccentColor
+	if PickerTarget == "Frame" then
+		FrameThemeColor = DefaultFrameColor
+	else
+		AccentColor = DefaultAccentColor
+	end
 	SaveThemeColors()
 	RefreshThemePreviews()
 	UpdateTheme()
@@ -6079,6 +6196,7 @@ ClearKeybindsBtn.MouseButton1Click:Connect(function()
 	PlayClick()
 	PickerFrame.Visible = false
 	GuiSizeFrame.Visible = false
+	ThemeFrame.Visible = false
 	ResetThemeBtn.Visible = false
 	if SaveCurrentColorBtn then SaveCurrentColorBtn.Visible = false end
 	if KeybindEditorFrame then KeybindEditorFrame.Visible = false end
