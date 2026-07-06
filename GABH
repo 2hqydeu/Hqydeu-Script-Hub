@@ -13,6 +13,7 @@ local FrameThemeColor = Runtime.GetFrameThemeColor and Runtime.GetFrameThemeColo
 local InactiveTextColor = Runtime.InactiveTextColor or function() return Color3.fromRGB(255, 255, 255) end
 local LoadKeybind = Runtime.LoadKeybind or function() return Enum.KeyCode.Unknown end
 local SaveKeybind = Runtime.SaveKeybind or function() end
+local KeybindText = Runtime.KeybindText or function(keyCode) return keyCode == Enum.KeyCode.Unknown and "..." or keyCode.Name end
 local SavePersistentSettings = Runtime.SavePersistentSettings or function() end
 local GuiSizeValue = Runtime.GuiSizeValue or 50
 local GuiScaleFromValue = Runtime.GuiScaleFromValue or function() return 1 end
@@ -23,7 +24,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "GABH-SellBees-v10"
+local ModuleVersion = "GABH-SellBees-v11"
 local existingPage = MainFrame:FindFirstChild("GrowABeehivePage")
 local existingDock = ScreenGui and ScreenGui:FindFirstChild("GrowABeehiveFilterDock")
 local existingHistory = ScreenGui and ScreenGui:FindFirstChild("GrowABeehiveHistoryPanel")
@@ -181,6 +182,7 @@ end
 local dataClientCache = nil
 local seasonMathCache = nil
 local beeConfigCache = nil
+local rarityConfigCache = nil
 
 local function SafeRequire(pathParts)
 	local current = game
@@ -221,6 +223,12 @@ local function GetBeeConfig()
 	return beeConfigCache ~= false and beeConfigCache or nil
 end
 
+local function GetRarityConfig()
+	if rarityConfigCache ~= nil then return rarityConfigCache end
+	rarityConfigCache = SafeRequire({"ReplicatedStorage", "Configs", "RarityConfig"}) or false
+	return rarityConfigCache ~= false and rarityConfigCache or nil
+end
+
 local function GetBeeInfo(beeIdOrName)
 	local beeConfig = GetBeeConfig()
 	if not beeConfig or not beeIdOrName then return nil end
@@ -230,6 +238,20 @@ local function GetBeeInfo(beeIdOrName)
 	end
 	for _, info in ipairs(beeConfig.Roster or {}) do
 		if info.Id == beeIdOrName or info.Name == beeIdOrName then
+			return info
+		end
+	end
+end
+
+local function GetRarityInfo(rarity)
+	local rarityConfig = GetRarityConfig()
+	if not rarityConfig or not rarity then return nil end
+	if type(rarityConfig.Get) == "function" then
+		local ok, info = pcall(rarityConfig.Get, rarity)
+		if ok and info then return info end
+	end
+	for _, info in pairs(rarityConfig.Roster or rarityConfig.List or rarityConfig) do
+		if type(info) == "table" and info.Name == rarity then
 			return info
 		end
 	end
@@ -276,13 +298,21 @@ end
 
 local function BeeOdds(info)
 	if type(info) ~= "table" then return nil end
-	return tonumber(info.OddsOneInX or info.OneIn or info.ChanceOneIn or info.RollChance or info.Odds or info.Chance)
+	local direct = tonumber(info.OddsOneInX or info.OneIn or info.ChanceOneIn or info.RollChance or info.Odds or info.Chance or info.BaseOneInX)
+	if direct then return direct end
+	local rarityInfo = GetRarityInfo(info.Rarity)
+	local base = rarityInfo and tonumber(rarityInfo.BaseOneInX)
+	local subWeight = tonumber(info.SubWeight)
+	if base and subWeight and subWeight > 0 then
+		return math.max(1, math.floor(base * (100 / subWeight) + 0.5))
+	end
+	return base
 end
 
 local function BeeScore(info)
 	if type(info) ~= "table" then return 0 end
 	local odds = BeeOdds(info)
-	if odds then return odds end
+	if odds then return (odds * 100) + (tonumber(info.SubRank) or 0) end
 	return (RarityRank[info.Rarity] or 0) * 1000
 end
 
@@ -298,6 +328,7 @@ end
 
 local function GetBestOwnedBeeText()
 	local bestInfo, bestMutation, bestScore = nil, nil, -1
+	local uuidMutations = {}
 	local function consider(beeId, mutation)
 		local info = GetBeeInfo(beeId)
 		local score = BeeScore(info)
@@ -305,6 +336,33 @@ local function GetBestOwnedBeeText()
 			bestInfo = info
 			bestMutation = mutation
 			bestScore = score
+		end
+	end
+	local function beeIdFromRecord(bee, fallback)
+		if type(bee) ~= "table" then return bee or fallback end
+		return bee.BeeId or bee.BeeID or bee.Bee or bee.Id or bee.id or bee.Name or bee.name or bee.BeeName or bee.ItemId or bee.Type or fallback
+	end
+	local function mutationFromRecord(bee, uuid)
+		if type(bee) ~= "table" then return nil end
+		return bee.Mutation or bee.mutation or (uuid and uuidMutations[uuid])
+	end
+	local function scanRecords(records, depth)
+		if type(records) ~= "table" then return end
+		depth = depth or 0
+		for key, bee in pairs(records) do
+			if type(bee) == "table" then
+				local uuid = bee.UUID or bee.Uuid or bee.uuid or bee.BeeUUID or bee.BeeUuid
+				if uuid and bee.Mutation then uuidMutations[uuid] = bee.Mutation end
+				local beeId = beeIdFromRecord(bee, key)
+				if beeId then
+					consider(beeId, mutationFromRecord(bee, uuid))
+				end
+				if depth < 2 and (not beeId or bee.BeeId == nil) then
+					scanRecords(bee, depth + 1)
+				end
+			else
+				consider(bee, nil)
+			end
 		end
 	end
 
@@ -316,15 +374,14 @@ local function GetBestOwnedBeeText()
 			end
 			return nil
 		end)
-		if ok and type(owned) == "table" then
-			for key, bee in pairs(owned) do
-				if type(bee) == "table" then
-					consider(bee.BeeId or bee.Bee or bee.Id or bee.id or bee.Name or key, bee.Mutation or bee.mutation)
-				else
-					consider(bee, nil)
-				end
+		if ok then scanRecords(owned) end
+		local okHives, hives = pcall(function()
+			if type(dataClient.get) == "function" then
+				return dataClient:get("Hives")
 			end
-		end
+			return nil
+		end)
+		if okHives then scanRecords(hives) end
 	end
 
 	local player = game:GetService("Players").LocalPlayer
@@ -350,6 +407,27 @@ local function FindSeasonTextFallback()
 		return state.LastSeasonText
 	end
 	state.LastSeasonTextScan = now
+	local function resolve(root, path)
+		local current = root
+		for _, name in ipairs(path) do
+			current = current and current:FindFirstChild(name)
+			if not current then return nil end
+		end
+		return current
+	end
+	for _, label in ipairs({
+		resolve(workspace:FindFirstChild("CountdownScreen"), {"Screen", "SurfaceGui", "Board", "NameLabel"}),
+		resolve(workspace:FindFirstChild("NatureEvent"), {"EventScreen", "SeasonScreen", "SurfaceGui", "Board", "NameLabel"}),
+		resolve(workspace:FindFirstChild("EventScreen"), {"SeasonScreen", "SurfaceGui", "Board", "NameLabel"}),
+	}) do
+		if label and (label:IsA("TextLabel") or label:IsA("TextButton") or label:IsA("TextBox")) then
+			local text = tostring(label.Text or ""):gsub("%[NOW%]%s*", "")
+			if text ~= "" then
+				state.LastSeasonText = text
+				return text
+			end
+		end
+	end
 	local localPlayer = game:GetService("Players").LocalPlayer
 	local roots = {}
 	local playerGui = localPlayer and localPlayer:FindFirstChildOfClass("PlayerGui")
@@ -627,6 +705,29 @@ beeSellPanelTitle.TextXAlignment = Enum.TextXAlignment.Center
 beeSellPanelTitle.ZIndex = 25
 beeSellPanelTitle.Parent = beeSellPanel
 AddText(beeSellPanelTitle)
+
+local beeSellKeybindButton = Instance.new("TextButton")
+beeSellKeybindButton.Name = "GrowABeehiveSellBeesKeybind"
+beeSellKeybindButton.Size = UDim2.new(0, 34, 0, 18)
+beeSellKeybindButton.Position = UDim2.new(0, 8, 0, 5)
+beeSellKeybindButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+beeSellKeybindButton.BackgroundTransparency = 0.35
+beeSellKeybindButton.BorderSizePixel = 0
+beeSellKeybindButton.Text = KeybindText(LoadKeybind("GABHSellBeesMenu"))
+beeSellKeybindButton.Font = Enum.Font.GothamBold
+beeSellKeybindButton.TextSize = 8
+beeSellKeybindButton.TextColor3 = AccentColor
+beeSellKeybindButton.ZIndex = 26
+beeSellKeybindButton.Parent = beeSellPanel
+AddBackground(beeSellKeybindButton)
+table.insert(ThemeObjects.Accents, beeSellKeybindButton)
+Instance.new("UICorner", beeSellKeybindButton).CornerRadius = UDim.new(0, 5)
+local beeSellKeybindStroke = Instance.new("UIStroke")
+beeSellKeybindStroke.Name = "ControlOutline"
+beeSellKeybindStroke.Color = Color3.fromRGB(0, 0, 0)
+beeSellKeybindStroke.Thickness = 1
+beeSellKeybindStroke.Transparency = 0
+beeSellKeybindStroke.Parent = beeSellKeybindButton
 
 local beeSellCloseButton = Instance.new("TextButton")
 beeSellCloseButton.Name = "GrowABeehiveSellBeesClose"
@@ -1438,10 +1539,40 @@ table.insert(ThemeObjects.StateTexts, {Object = buyTitle, IsEnabled = function()
 table.insert(ThemeObjects.StateTexts, {Object = sellTitle, IsEnabled = function() return state.AutoSell end})
 table.insert(ThemeObjects.StateTexts, {Object = equipTitle, IsEnabled = function() return state.AutoEquip end})
 table.insert(ThemeObjects.StateTexts, {Object = beeSellTitle, IsEnabled = function() return state.SellBeesOpen end})
+local function KeybindStoragePart(value)
+	return tostring(value):gsub("%W+", "")
+end
 ThemeObjects.AddFeatureKeybind({Name = "Auto Roll", Storage = "GABHAutoRoll", Parent = rollRow, Toggle = rollToggle, Get = function() return LoadKeybind("GABHAutoRoll") end, Set = function(key) SaveKeybind("GABHAutoRoll", key) end, Action = ToggleRoll})
 ThemeObjects.AddFeatureKeybind({Name = "Auto Buy", Storage = "GABHAutoBuy", Parent = buyRow, Toggle = buyToggle, Get = function() return LoadKeybind("GABHAutoBuy") end, Set = function(key) SaveKeybind("GABHAutoBuy", key) end, Action = ToggleBuy})
 ThemeObjects.AddFeatureKeybind({Name = "Auto Sell", Storage = "GABHAutoSell", Parent = sellRow, Toggle = sellToggle, Get = function() return LoadKeybind("GABHAutoSell") end, Set = function(key) SaveKeybind("GABHAutoSell", key) end, Action = ToggleSell})
 ThemeObjects.AddFeatureKeybind({Name = "Auto Equip Best", Storage = "GABHAutoEquip", Parent = equipRow, Toggle = equipToggle, Get = function() return LoadKeybind("GABHAutoEquip") end, Set = function(key) SaveKeybind("GABHAutoEquip", key) end, Action = ToggleEquip})
+ThemeObjects.AddFeatureKeybind({Name = "Sell Bees Menu", Storage = "GABHSellBeesMenu", Button = beeSellKeybindButton, Get = function() return LoadKeybind("GABHSellBeesMenu") end, Set = function(key) SaveKeybind("GABHSellBeesMenu", key); beeSellKeybindButton.Text = KeybindText(key) end, Action = ToggleBeeSellPanel})
+ThemeObjects.AddFeatureKeybind({Name = "Buy Filters Menu", Storage = "GABHBuyFiltersMenu", Get = function() return LoadKeybind("GABHBuyFiltersMenu") end, Set = function(key) SaveKeybind("GABHBuyFiltersMenu", key) end, Action = function()
+	state.FiltersOpen = not state.FiltersOpen
+	if state.FiltersOpen then
+		state.SellBeesOpen = false
+		state.HistoryOpen = false
+	end
+	RefreshButtons()
+	UpdateTheme(true)
+end})
+ThemeObjects.AddFeatureKeybind({Name = "Recent Purchases", Storage = "GABHRecentPurchases", Get = function() return LoadKeybind("GABHRecentPurchases") end, Set = function(key) SaveKeybind("GABHRecentPurchases", key) end, Action = function()
+	state.HistoryOpen = not state.HistoryOpen
+	if state.HistoryOpen then
+		state.FiltersOpen = false
+		state.SellBeesOpen = false
+		RefreshHistoryPanel()
+	end
+	RefreshButtons()
+	UpdateTheme(true)
+end})
+for _, entry in ipairs(beeSellButtons) do
+	local kind, value = entry.Kind, entry.Value
+	local storage = "GABHSell" .. KeybindStoragePart(kind) .. KeybindStoragePart(value)
+	ThemeObjects.AddFeatureKeybind({Name = "Sell " .. value .. " Bees", Storage = storage, Get = function() return LoadKeybind(storage) end, Set = function(key) SaveKeybind(storage, key) end, Action = function()
+		task.spawn(TrashMatchingBeeTools, kind, value)
+	end})
+end
 
 task.spawn(function()
 	while growPage.Parent do
