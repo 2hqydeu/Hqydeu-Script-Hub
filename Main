@@ -661,6 +661,11 @@ ThemeObjects.RefreshToggleButton = function(obj)
 	obj.TextColor3 = Color3.fromRGB(255, 255, 255)
 end
 
+local function IsGameLauncherButton(obj)
+	local name = obj and obj.Name or ""
+	return name == "MM2GameButton" or name == "QuietOrDieGameButton" or name == "GrowABeehiveGameButton"
+end
+
 ThemeObjects.ApplyHoveredButtonStyle = function(obj)
 	if not obj:IsA("TextButton") then return end
 	local hoverColor = obj.BackgroundColor3:Lerp(AccentColor, obj.Text == "On" and 0.24 or 0.12)
@@ -678,7 +683,7 @@ ThemeObjects.ApplyRestingButtonStyle = function(obj)
 		or obj.Name == "EditKeybindsBtn"
 	local target = secBgColor
 	local targetTransparency = (keepSolid or obj.Text == "On") and 0 or 0.8
-	if obj.Name == "MM2GameButton" or obj.Name == "QuietOrDieGameButton" then
+	if IsGameLauncherButton(obj) then
 		target = Color3.fromRGB(65, 65, 67)
 		targetTransparency = 0.92
 	elseif obj.Name == "ESPColorBtn" then
@@ -788,7 +793,7 @@ ThemeObjects.NormalizeMainTileWidth = function(obj)
 	if parentName == "PlayerScroll" or parentName == "TargetScroll" or parentName == "WaypointScroll"
 		or parentName == "WaypointList" or parentName == "WaypointsList" then return end
 	local isFeatureTile = obj:IsA("Frame") and (name:find("Row", 1, true) or name:find("Card", 1, true))
-	local isGameTile = obj:IsA("TextButton") and (name == "MM2GameButton" or name == "QuietOrDieGameButton")
+	local isGameTile = obj:IsA("TextButton") and IsGameLauncherButton(obj)
 	if not isFeatureTile and not isGameTile then return end
 	local size = obj.Size
 	local position = obj.Position
@@ -804,7 +809,7 @@ local function CompactGuiText(root)
 		ThemeObjects.StyleTextOutline(obj)
 		ThemeObjects.StyleControlOutline(obj)
 		local isMainContent = obj:IsDescendantOf(MainFrame)
-		if isMainContent and obj:IsA("TextButton") and (obj.Name == "MM2GameButton" or obj.Name == "QuietOrDieGameButton") then
+		if isMainContent and obj:IsA("TextButton") and IsGameLauncherButton(obj) then
 			obj.Font = Enum.Font.GothamBold
 			obj.TextSize = 11
 			obj.TextWrapped = false
@@ -851,7 +856,7 @@ local function UpdateTheme(instant)
 				local keepSolid = obj.Name == "DestroyBtn" or obj.Name == "InfiniteYieldDestroy" or obj.Name == "ResetCharacterBtn" or obj.Name == "RejoinBtn"
 					or obj.Name == "ServerHopBtn" or obj.Name == "GuiSizeBtn" or obj.Name == "ClearKeybindsBtn"
 					or obj.Name == "EditKeybindsBtn"
-				if obj.Name == "MM2GameButton" or obj.Name == "QuietOrDieGameButton" then
+				if IsGameLauncherButton(obj) then
 					obj.BackgroundTransparency = 0.92
 				elseif obj.Name == "ESPColorBtn" then
 					obj.BackgroundTransparency = 0
@@ -865,7 +870,7 @@ local function UpdateTheme(instant)
 			local targetTransparency = obj.BackgroundTransparency
 			if obj.Name == "PlayerTPFrame" or obj.Name == "MM2RoleDetailsPanel" then target = Color3.fromRGB(14, 18, 26)
 			end
-			if obj.Name == "MM2GameButton" or obj.Name == "QuietOrDieGameButton" then target = Color3.fromRGB(65, 65, 67) end
+			if IsGameLauncherButton(obj) then target = Color3.fromRGB(65, 65, 67) end
 			if obj.Name == "ESPColorBtn" then target = HubState.ESPColor end
 			if obj.Name:find("SavedColorSlot", 1, true) then target = obj.BackgroundColor3 end
 			if obj:IsA("TextButton") and (obj.Text == "On" or obj.Text == "Off") then
@@ -2126,6 +2131,7 @@ end
 
 HubState.MM2GameButton = CreateGameLauncherButton("MM2GameButton", "MM2", 4, "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/MM2", "MM2", "OpenMM2Page")
 HubState.QuietOrDieGameButton = CreateGameLauncherButton("QuietOrDieGameButton", "Quiet or Die", 46, "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/QOD", "Quiet Or Die", "OpenQuietOrDiePage")
+HubState.GrowABeehiveGameButton = CreateGameLauncherButton("GrowABeehiveGameButton", "Grow a Beehive", 88, "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/GABH", "Grow A Beehive", "OpenGrowABeehivePage")
 
 HubState.MM2BackButton = Instance.new("TextButton")
 HubState.MM2BackButton.Name = "MM2BackButton"
@@ -2154,6 +2160,8 @@ HubState.MM2BackButton.MouseButton1Click:Connect(function()
 	if HubState.MM2Page then HubState.MM2Page.Visible = false; HubState.MM2Page.Position = UDim2.new(1.1, 0, 0, 54) end
 	local quietPage = MainFrame:FindFirstChild("QuietOrDiePage")
 	if quietPage then quietPage.Visible = false; quietPage.Position = UDim2.new(1.1, 0, 0, 54) end
+	local growPage = MainFrame:FindFirstChild("GrowABeehivePage")
+	if growPage then growPage.Visible = false; growPage.Position = UDim2.new(1.1, 0, 0, 54) end
 	local quietCoins = HubState.PageHeader:FindFirstChild("QuietOrDieCoinsDisplay")
 	if quietCoins then quietCoins.Visible = false end
 	local quietWins = HubState.PageHeader:FindFirstChild("QuietOrDieWinsDisplay")
@@ -4986,6 +4994,7 @@ ThemeObjects.SwitchTab = function(name)
 	local headerTweenInfo = TweenInfo.new(0.16, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 	local openingSelectedGame = name == "Games" and HubState.SelectedGame ~= nil
 	local quietPage = MainFrame:FindFirstChild("QuietOrDiePage")
+	local growPage = MainFrame:FindFirstChild("GrowABeehivePage")
 	local extrasPage = MainFrame:FindFirstChild("ExtrasPage")
 	local incomingPage = HubState.MovementPage
 	ThemeObjects.TabTransitionId += 1
@@ -5018,6 +5027,7 @@ ThemeObjects.SwitchTab = function(name)
 	elseif name == "Extras" and extrasPage then incomingPage = extrasPage
 	elseif name == "Games" and openingSelectedGame and HubState.SelectedGame == "MM2" and HubState.MM2Page then incomingPage = HubState.MM2Page
 	elseif name == "Games" and openingSelectedGame and HubState.SelectedGame == "Quiet Or Die" and quietPage then incomingPage = quietPage
+	elseif name == "Games" and openingSelectedGame and HubState.SelectedGame == "Grow a Beehive" and growPage then incomingPage = growPage
 	elseif name == "Games" then incomingPage = HubState.GamesPage end
 
 	if name == "Games" and openingSelectedGame and HubState.SelectedGame == "MM2" then
@@ -5036,7 +5046,7 @@ ThemeObjects.SwitchTab = function(name)
 		if historyPanel then historyPanel.Visible = false end
 	end
 
-	local pages = {HubState.MovementPage, HubState.CombatPage, ThemeObjects.CameraPage, HubState.TeleportPage, HubState.GamesPage, HubState.MM2Page, HubState.ScriptsPage, extrasPage, quietPage}
+	local pages = {HubState.MovementPage, HubState.CombatPage, ThemeObjects.CameraPage, HubState.TeleportPage, HubState.GamesPage, HubState.MM2Page, HubState.ScriptsPage, extrasPage, quietPage, growPage}
 	local outgoingPage = HubState.ActiveContentPage
 	for _, page in ipairs(pages) do
 		if page and page ~= incomingPage and page ~= outgoingPage then
