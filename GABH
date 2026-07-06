@@ -10,7 +10,6 @@ local RunService = Runtime.RunService or game:GetService("RunService")
 local SavedKeybinds = Runtime.SavedKeybinds or {}
 local AccentColor = Runtime.GetAccentColor and Runtime.GetAccentColor() or Color3.fromRGB(0, 210, 255)
 local InactiveTextColor = Runtime.InactiveTextColor or function() return Color3.fromRGB(255, 255, 255) end
-local KeybindText = Runtime.KeybindText or function(keyCode) return keyCode and keyCode.Name or "..." end
 local LoadKeybind = Runtime.LoadKeybind or function() return Enum.KeyCode.Unknown end
 local SaveKeybind = Runtime.SaveKeybind or function() end
 local SavePersistentSettings = Runtime.SavePersistentSettings or function() end
@@ -20,25 +19,71 @@ local UpdateTheme = Runtime.UpdateTheme or function() end
 if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu page module: runtime is incomplete") end
 HubState.Connections = HubState.Connections or {}
 
-if MainFrame:FindFirstChild("GrowABeehivePage") and ThemeObjects.OpenGrowABeehivePage then
+local ModuleVersion = "GABH-Filters-v2"
+local existingPage = MainFrame:FindFirstChild("GrowABeehivePage")
+if existingPage and existingPage:GetAttribute("ModuleVersion") == ModuleVersion and ThemeObjects.OpenGrowABeehivePage then
 	ThemeObjects.OpenGrowABeehivePage()
 	return
 end
+if existingPage then
+	existingPage:Destroy()
+end
+if HubState.Connections.GrowABeehiveHeartbeat then
+	HubState.Connections.GrowABeehiveHeartbeat:Disconnect()
+	HubState.Connections.GrowABeehiveHeartbeat = nil
+end
 
 local RarityOptions = {"Common", "Uncommon", "Rare", "Epic", "Legendary", "Secret", "Prismatic", "Divine", "Exotic", "Transcended"}
-local RarityRank = {}
-for i, rarity in ipairs(RarityOptions) do
-	RarityRank[rarity] = i
-end
-local MutationOptions = {"Any", "None", "Bloom", "Hacker", "Firework"}
-local LeaveoutOptions = {"Off", "Bloom", "Hacker", "Firework"}
-local RollDelays = {1.2, 1.5, 2, 2.5}
+local MutationOptions = {"None", "Bloom", "Hacker", "Firework"}
+local RollDelays = {1.5, 2, 2.5, 3}
 local SellDelays = {1.5, 2, 3, 5}
+
+local function CopyBoolTable(saved, defaults)
+	local result = {}
+	for _, name in ipairs(defaults) do
+		result[name] = type(saved) == "table" and saved[name] == true or false
+	end
+	return result
+end
+
+local defaultRarities = {}
+for _, rarity in ipairs(RarityOptions) do
+	defaultRarities[rarity] = rarity ~= "Common" and rarity ~= "Uncommon"
+end
+local defaultMutations = {}
+for _, mutation in ipairs(MutationOptions) do
+	defaultMutations[mutation] = true
+end
 
 local function ClampIndex(value, list, fallback)
 	value = tonumber(value)
 	if not value or value < 1 or value > #list then return fallback end
 	return math.floor(value)
+end
+
+local function LoadSelection(saved, names, defaults)
+	local result = {}
+	local anySaved = type(saved) == "table"
+	for _, name in ipairs(names) do
+		if anySaved then
+			result[name] = saved[name] == true
+		else
+			result[name] = defaults[name] == true
+		end
+	end
+	return result
+end
+
+local function EnsureSelection(current, names, defaults)
+	if type(current) ~= "table" then
+		return LoadSelection(nil, names, defaults)
+	end
+	for _, name in ipairs(names) do
+		if current[name] == nil then
+			current[name] = defaults[name] == true
+		end
+	end
+	return current
 end
 
 local state = HubState.GrowABeehiveState or {
@@ -49,13 +94,16 @@ local state = HubState.GrowABeehiveState or {
 	BuyBusy = false,
 	SellBusy = false,
 	LastPromptBuy = 0,
-	MinRarityIndex = ClampIndex(SavedKeybinds.GABHMinRarityIndex, RarityOptions, 3),
-	MutationIndex = ClampIndex(SavedKeybinds.GABHMutationIndex, MutationOptions, 1),
-	LeaveoutIndex = ClampIndex(SavedKeybinds.GABHLeaveoutIndex, LeaveoutOptions, 1),
+	LastRollAt = 0,
+	FiltersOpen = false,
+	SelectedRarities = LoadSelection(SavedKeybinds.GABHSelectedRarities, RarityOptions, defaultRarities),
+	SelectedMutations = LoadSelection(SavedKeybinds.GABHSelectedMutations, MutationOptions, defaultMutations),
 	RollDelayIndex = ClampIndex(SavedKeybinds.GABHRollDelayIndex, RollDelays, 2),
 	SellDelayIndex = ClampIndex(SavedKeybinds.GABHSellDelayIndex, SellDelays, 2),
 }
 HubState.GrowABeehiveState = state
+state.SelectedRarities = EnsureSelection(state.SelectedRarities, RarityOptions, defaultRarities)
+state.SelectedMutations = EnsureSelection(state.SelectedMutations, MutationOptions, defaultMutations)
 
 local growPage = Instance.new("ScrollingFrame")
 growPage.Name = "GrowABeehivePage"
@@ -69,14 +117,14 @@ growPage.ScrollBarImageColor3 = AccentColor
 growPage.ScrollingDirection = Enum.ScrollingDirection.Y
 growPage.ElasticBehavior = Enum.ElasticBehavior.Never
 growPage.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-growPage.CanvasSize = UDim2.new(0, 0, 0, 208)
+growPage.CanvasSize = UDim2.new(0, 0, 0, 360)
 growPage.Visible = false
+growPage:SetAttribute("ModuleVersion", ModuleVersion)
 growPage.Parent = MainFrame
 
 local function SaveOptions()
-	SavedKeybinds.GABHMinRarityIndex = state.MinRarityIndex
-	SavedKeybinds.GABHMutationIndex = state.MutationIndex
-	SavedKeybinds.GABHLeaveoutIndex = state.LeaveoutIndex
+	SavedKeybinds.GABHSelectedRarities = state.SelectedRarities
+	SavedKeybinds.GABHSelectedMutations = state.SelectedMutations
 	SavedKeybinds.GABHRollDelayIndex = state.RollDelayIndex
 	SavedKeybinds.GABHSellDelayIndex = state.SellDelayIndex
 	SavePersistentSettings()
@@ -95,8 +143,8 @@ end
 local function CreateRow(name, y, height)
 	local row = Instance.new("Frame")
 	row.Name = name
-	row.Size = UDim2.new(1, -8, 0, height)
-	row.Position = UDim2.new(0, 4, 0, y)
+	row.Size = UDim2.new(1, -24, 0, height)
+	row.Position = UDim2.new(0, 12, 0, y)
 	row.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 	row.BackgroundTransparency = 0.92
 	row.BorderSizePixel = 0
@@ -139,22 +187,20 @@ end
 
 local rollRow = CreateRow("GrowABeehiveRollRow", 4, 38)
 local rollTitle = CreateTitle(rollRow, "Auto Roll:")
-local rollDelayButton = CreateButton(rollRow, "GrowABeehiveRollDelay", "1.5s", -100, 8, 46)
-local rollToggle = CreateButton(rollRow, "GrowABeehiveRollToggle", "Off", -48, 8, 40)
+local rollDelayButton = CreateButton(rollRow, "GrowABeehiveRollDelay", "2s", -152, 8, 46)
+local rollToggle = CreateButton(rollRow, "GrowABeehiveRollToggle", "Off", -98, 8, 44)
 
-local buyRow = CreateRow("GrowABeehiveBuyRow", 50, 68)
+local buyRow = CreateRow("GrowABeehiveBuyRow", 50, 38)
 local buyTitle = CreateTitle(buyRow, "Auto Buy:")
-local rarityButton = CreateButton(buyRow, "GrowABeehiveRarity", "Min: Rare", -140, 8, 84)
-local buyToggle = CreateButton(buyRow, "GrowABeehiveBuyToggle", "Off", -48, 8, 40)
-local mutationButton = CreateButton(buyRow, "GrowABeehiveMutation", "Mut: Any", -188, 39, 86)
-local leaveoutButton = CreateButton(buyRow, "GrowABeehiveLeaveout", "Skip: Off", -96, 39, 88)
+local editFiltersButton = CreateButton(buyRow, "GrowABeehiveEditFilters", "Edit", -152, 8, 46)
+local buyToggle = CreateButton(buyRow, "GrowABeehiveBuyToggle", "Off", -98, 8, 44)
 
-local sellRow = CreateRow("GrowABeehiveSellRow", 126, 38)
+local sellRow = CreateRow("GrowABeehiveSellRow", 96, 38)
 local sellTitle = CreateTitle(sellRow, "Auto Sell:")
-local sellDelayButton = CreateButton(sellRow, "GrowABeehiveSellDelay", "2s", -100, 8, 46)
-local sellToggle = CreateButton(sellRow, "GrowABeehiveSellToggle", "Off", -48, 8, 40)
+local sellDelayButton = CreateButton(sellRow, "GrowABeehiveSellDelay", "2s", -152, 8, 46)
+local sellToggle = CreateButton(sellRow, "GrowABeehiveSellToggle", "Off", -98, 8, 44)
 
-local statusRow = CreateRow("GrowABeehiveStatusRow", 172, 30)
+local statusRow = CreateRow("GrowABeehiveStatusRow", 142, 30)
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Size = UDim2.new(1, -24, 1, 0)
 statusLabel.Position = UDim2.new(0, 12, 0, 0)
@@ -166,22 +212,122 @@ statusLabel.TextXAlignment = Enum.TextXAlignment.Left
 statusLabel.Parent = statusRow
 AddText(statusLabel)
 
-local function RefreshButtons()
-	rollToggle.Text = state.AutoRoll and "On" or "Off"
-	buyToggle.Text = state.AutoBuy and "On" or "Off"
-	sellToggle.Text = state.AutoSell and "On" or "Off"
-	rarityButton.Text = "Min: " .. RarityOptions[state.MinRarityIndex]
-	mutationButton.Text = "Mut: " .. MutationOptions[state.MutationIndex]
-	leaveoutButton.Text = "Skip: " .. LeaveoutOptions[state.LeaveoutIndex]
-	rollDelayButton.Text = tostring(RollDelays[state.RollDelayIndex]) .. "s"
-	sellDelayButton.Text = tostring(SellDelays[state.SellDelayIndex]) .. "s"
-	rollTitle.TextColor3 = state.AutoRoll and AccentColor or InactiveTextColor()
-	buyTitle.TextColor3 = state.AutoBuy and AccentColor or InactiveTextColor()
-	sellTitle.TextColor3 = state.AutoSell and AccentColor or InactiveTextColor()
+local filterFrame = CreateRow("GrowABeehiveFilterFrame", 180, 168)
+filterFrame.Visible = false
+
+local filterHeader = Instance.new("TextLabel")
+filterHeader.Size = UDim2.new(1, -24, 0, 22)
+filterHeader.Position = UDim2.new(0, 12, 0, 4)
+filterHeader.BackgroundTransparency = 1
+filterHeader.Text = "Buy Filters"
+filterHeader.Font = Enum.Font.GothamBold
+filterHeader.TextSize = 11
+filterHeader.TextXAlignment = Enum.TextXAlignment.Left
+filterHeader.Parent = filterFrame
+AddText(filterHeader)
+
+local filterScroll = Instance.new("ScrollingFrame")
+filterScroll.Name = "GrowABeehiveFilterScroll"
+filterScroll.Size = UDim2.new(1, -18, 1, -32)
+filterScroll.Position = UDim2.new(0, 9, 0, 28)
+filterScroll.BackgroundTransparency = 1
+filterScroll.BorderSizePixel = 0
+filterScroll.ScrollBarThickness = 3
+filterScroll.ScrollBarImageColor3 = AccentColor
+filterScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+filterScroll.ElasticBehavior = Enum.ElasticBehavior.Never
+filterScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+filterScroll.Parent = filterFrame
+
+local filterButtons = {}
+local RefreshButtons
+
+local function CreateFilterLabel(text, y)
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -8, 0, 18)
+	label.Position = UDim2.new(0, 4, 0, y)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 10
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = filterScroll
+	AddText(label)
+	return label
 end
+
+local function CreateFilterButton(kind, value, x, y)
+	local button = Instance.new("TextButton")
+	button.Name = "GrowABeehiveFilter" .. kind .. value:gsub("%s+", "")
+	button.Size = UDim2.new(0, 142, 0, 22)
+	button.Position = UDim2.new(0, x, 0, y)
+	button.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	button.BackgroundTransparency = 0.8
+	button.BorderSizePixel = 0
+	button.Font = Enum.Font.GothamBold
+	button.TextSize = 8
+	button.Parent = filterScroll
+	AddText(button)
+	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 5)
+	local stroke = Instance.new("UIStroke")
+	stroke.Name = "ControlOutline"
+	stroke.Color = Color3.fromRGB(0, 0, 0)
+	stroke.Thickness = 1
+	stroke.Transparency = 0.18
+	stroke.Parent = button
+	table.insert(filterButtons, {Button = button, Kind = kind, Value = value})
+	button.MouseButton1Click:Connect(function()
+		PlayClick()
+		if kind == "Rarity" then
+			state.SelectedRarities[value] = not state.SelectedRarities[value]
+		else
+			state.SelectedMutations[value] = not state.SelectedMutations[value]
+		end
+		SaveOptions()
+		RefreshButtons()
+		UpdateTheme(true)
+	end)
+	return button
+end
+
+CreateFilterLabel("Rarities", 0)
+local y = 22
+for i, rarity in ipairs(RarityOptions) do
+	local column = (i - 1) % 2
+	local row = math.floor((i - 1) / 2)
+	CreateFilterButton("Rarity", rarity, 4 + column * 150, y + row * 26)
+end
+y = y + math.ceil(#RarityOptions / 2) * 26 + 8
+CreateFilterLabel("Mutations", y)
+y += 22
+for i, mutation in ipairs(MutationOptions) do
+	local column = (i - 1) % 2
+	local row = math.floor((i - 1) / 2)
+	CreateFilterButton("Mutation", mutation, 4 + column * 150, y + row * 26)
+end
+filterScroll.CanvasSize = UDim2.new(0, 0, 0, y + math.ceil(#MutationOptions / 2) * 26 + 8)
 
 local function SetStatus(text)
 	statusLabel.Text = tostring(text or "Ready")
+end
+
+RefreshButtons = function()
+	rollToggle.Text = state.AutoRoll and "On" or "Off"
+	buyToggle.Text = state.AutoBuy and "On" or "Off"
+	sellToggle.Text = state.AutoSell and "On" or "Off"
+	rollDelayButton.Text = tostring(RollDelays[state.RollDelayIndex]) .. "s"
+	sellDelayButton.Text = tostring(SellDelays[state.SellDelayIndex]) .. "s"
+	filterFrame.Visible = state.FiltersOpen
+	editFiltersButton.Text = state.FiltersOpen and "Close" or "Edit"
+	rollTitle.TextColor3 = state.AutoRoll and AccentColor or InactiveTextColor()
+	buyTitle.TextColor3 = state.AutoBuy and AccentColor or InactiveTextColor()
+	sellTitle.TextColor3 = state.AutoSell and AccentColor or InactiveTextColor()
+	for _, entry in ipairs(filterButtons) do
+		local selected = entry.Kind == "Rarity" and state.SelectedRarities[entry.Value] or state.SelectedMutations[entry.Value]
+		entry.Button.Text = (selected and "[x] " or "[ ] ") .. entry.Value
+		entry.Button.BackgroundColor3 = selected and AccentColor or Color3.fromRGB(45, 45, 45)
+		entry.Button.BackgroundTransparency = selected and 0 or 0.8
+	end
 end
 
 local packetsCache = nil
@@ -218,25 +364,16 @@ local function FirePacket(name, payload)
 	return packetOk, response
 end
 
+local function IsSelectedMutation(mutation)
+	local name = mutation
+	if name == nil or name == "" then name = "None" end
+	return state.SelectedMutations[name] == true
+end
+
 local function ResultMatches(result)
 	if type(result) ~= "table" then return false end
 	local rarity = result.Rarity or "Common"
-	local mutation = result.Mutation
-	local selectedMutation = MutationOptions[state.MutationIndex]
-	local leaveout = LeaveoutOptions[state.LeaveoutIndex]
-	if (RarityRank[rarity] or 1) < (RarityRank[RarityOptions[state.MinRarityIndex]] or 1) then
-		return false
-	end
-	if leaveout ~= "Off" and mutation == leaveout then
-		return false
-	end
-	if selectedMutation == "Any" then
-		return true
-	end
-	if selectedMutation == "None" then
-		return mutation == nil or mutation == ""
-	end
-	return mutation == selectedMutation
+	return state.SelectedRarities[rarity] == true and IsSelectedMutation(result.Mutation)
 end
 
 local function SortedResults(results)
@@ -283,20 +420,24 @@ end
 local function PromptMatches(prompt)
 	local parent = prompt.Parent
 	local rarity = FindText(parent, "Rarity") or "Common"
-	if (RarityRank[rarity] or 1) < (RarityRank[RarityOptions[state.MinRarityIndex]] or 1) then
-		return false
-	end
 	local mutation = FindText(parent, "Mutation")
-	local selectedMutation = MutationOptions[state.MutationIndex]
-	local leaveout = LeaveoutOptions[state.LeaveoutIndex]
-	if leaveout ~= "Off" and mutation == leaveout then return false end
-	if selectedMutation == "Any" then return true end
-	if selectedMutation == "None" then return mutation == nil or mutation == "" end
-	return mutation == selectedMutation
+	return state.SelectedRarities[rarity] == true and IsSelectedMutation(mutation)
+end
+
+local function FindRollPrompt()
+	for _, obj in ipairs(workspace:GetDescendants()) do
+		if obj:IsA("ProximityPrompt") then
+			local action = string.lower(obj.ActionText or "")
+			local objectText = string.lower(obj.ObjectText or "")
+			if action:find("roll", 1, true) and (objectText:find("roll", 1, true) or objectText:find("bee", 1, true)) then
+				return obj
+			end
+		end
+	end
 end
 
 local function TryExistingBuyPrompts()
-	if os.clock() - state.LastPromptBuy < 0.7 or state.BuyBusy then return end
+	if os.clock() - state.LastPromptBuy < 0.35 or state.BuyBusy then return end
 	state.LastPromptBuy = os.clock()
 	if type(fireproximityprompt) ~= "function" then return end
 	for _, obj in ipairs(workspace:GetDescendants()) do
@@ -306,7 +447,7 @@ local function TryExistingBuyPrompts()
 				state.BuyBusy = true
 				fireproximityprompt(obj)
 				state.BuyBusy = false
-				SetStatus("Used buy prompt")
+				SetStatus("Bought from slot")
 				return
 			end
 		end
@@ -316,6 +457,18 @@ end
 local function DoRoll()
 	if state.RollBusy then return end
 	state.RollBusy = true
+	state.LastRollAt = os.clock()
+	if type(fireproximityprompt) == "function" then
+		local prompt = FindRollPrompt()
+		if prompt then
+			SetStatus("Rolling...")
+			fireproximityprompt(prompt)
+			task.wait(1.65)
+			if state.AutoBuy then TryExistingBuyPrompts() end
+			state.RollBusy = false
+			return
+		end
+	end
 	SetStatus("Rolling...")
 	local ok, response = FirePacket("RequestRoll")
 	if ok and response and response.Results then
@@ -377,23 +530,11 @@ sellToggle.MouseButton1Click:Connect(function()
 	PlayClick()
 	ToggleSell()
 end)
-rarityButton.MouseButton1Click:Connect(function()
+editFiltersButton.MouseButton1Click:Connect(function()
 	PlayClick()
-	state.MinRarityIndex = (state.MinRarityIndex % #RarityOptions) + 1
+	state.FiltersOpen = not state.FiltersOpen
 	RefreshButtons()
-	SaveOptions()
-end)
-mutationButton.MouseButton1Click:Connect(function()
-	PlayClick()
-	state.MutationIndex = (state.MutationIndex % #MutationOptions) + 1
-	RefreshButtons()
-	SaveOptions()
-end)
-leaveoutButton.MouseButton1Click:Connect(function()
-	PlayClick()
-	state.LeaveoutIndex = (state.LeaveoutIndex % #LeaveoutOptions) + 1
-	RefreshButtons()
-	SaveOptions()
+	UpdateTheme(true)
 end)
 rollDelayButton.MouseButton1Click:Connect(function()
 	PlayClick()
@@ -416,7 +557,7 @@ ThemeObjects.AddFeatureKeybind({Name = "Auto Buy", Storage = "GABHAutoBuy", Pare
 ThemeObjects.AddFeatureKeybind({Name = "Auto Sell", Storage = "GABHAutoSell", Parent = sellRow, Toggle = sellToggle, Get = function() return LoadKeybind("GABHAutoSell") end, Set = function(key) SaveKeybind("GABHAutoSell", key) end, Action = ToggleSell})
 
 TrackConnection("GrowABeehiveHeartbeat", RunService.Heartbeat:Connect(function()
-	if state.AutoBuy and not state.AutoRoll then
+	if state.AutoBuy then
 		TryExistingBuyPrompts()
 	end
 end))
@@ -470,4 +611,3 @@ end
 RefreshButtons()
 ThemeObjects.OpenGrowABeehivePage()
 UpdateTheme(true)
-
