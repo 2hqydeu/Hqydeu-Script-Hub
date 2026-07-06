@@ -2162,15 +2162,13 @@ HubState.MM2BackButton.MouseButton1Click:Connect(function()
 	if quietPage then quietPage.Visible = false; quietPage.Position = UDim2.new(1.1, 0, 0, 54) end
 	local growPage = MainFrame:FindFirstChild("GrowABeehivePage")
 	if growPage then growPage.Visible = false; growPage.Position = UDim2.new(1.1, 0, 0, 54) end
-	local growMoney = HubState.PageHeader:FindFirstChild("GrowABeehiveMoneyDisplay")
-	if growMoney then growMoney.Visible = false end
 	local growSeason = HubState.PageHeader:FindFirstChild("GrowABeehiveSeasonDisplay")
 	if growSeason then growSeason.Visible = false end
 	local growHistory = HubState.PageHeader:FindFirstChild("GrowABeehiveHistoryButton")
 	if growHistory then growHistory.Visible = false end
 	local growFilterDock = ScreenGui:FindFirstChild("GrowABeehiveFilterDock")
 	if growFilterDock then growFilterDock.Visible = false end
-	local growHistoryPanel = ScreenGui:FindFirstChild("GrowABeehiveHistoryPanel")
+	local growHistoryPanel = ScreenGui:FindFirstChild("GrowABeehiveHistoryPanel", true)
 	if growHistoryPanel then growHistoryPanel.Visible = false end
 	local quietCoins = HubState.PageHeader:FindFirstChild("QuietOrDieCoinsDisplay")
 	if quietCoins then quietCoins.Visible = false end
@@ -5058,8 +5056,6 @@ ThemeObjects.SwitchTab = function(name)
 		if historyPanel then historyPanel.Visible = false end
 	end
 	local growActive = openingSelectedGame and HubState.SelectedGame == "Grow a Beehive"
-	local growMoney = HubState.PageHeader:FindFirstChild("GrowABeehiveMoneyDisplay")
-	if growMoney then growMoney.Visible = growActive end
 	local growSeason = HubState.PageHeader:FindFirstChild("GrowABeehiveSeasonDisplay")
 	if growSeason then growSeason.Visible = growActive end
 	local growHistory = HubState.PageHeader:FindFirstChild("GrowABeehiveHistoryButton")
@@ -5067,7 +5063,7 @@ ThemeObjects.SwitchTab = function(name)
 	if not growActive then
 		local growFilterDock = ScreenGui:FindFirstChild("GrowABeehiveFilterDock")
 		if growFilterDock then growFilterDock.Visible = false end
-		local growHistoryPanel = ScreenGui:FindFirstChild("GrowABeehiveHistoryPanel")
+		local growHistoryPanel = ScreenGui:FindFirstChild("GrowABeehiveHistoryPanel", true)
 		if growHistoryPanel then growHistoryPanel.Visible = false end
 	end
 
