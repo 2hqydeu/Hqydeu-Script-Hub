@@ -24,7 +24,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "GABH-SeasonSubmit-v12"
+local ModuleVersion = "GABH-SeasonSubmit-v13"
 local existingPage = MainFrame:FindFirstChild("GrowABeehivePage")
 local existingDock = ScreenGui and ScreenGui:FindFirstChild("GrowABeehiveFilterDock")
 local existingHistory = ScreenGui and ScreenGui:FindFirstChild("GrowABeehiveHistoryPanel")
@@ -186,6 +186,20 @@ end
 
 local function AddBackground(obj)
 	table.insert(ThemeObjects.Backgrounds, obj)
+	return obj
+end
+
+local function AddControlOutline(obj)
+	if ThemeObjects.StyleControlOutline then
+		ThemeObjects.StyleControlOutline(obj)
+	elseif obj and not obj:FindFirstChild("ControlOutline") then
+		local outline = Instance.new("UIStroke")
+		outline.Name = "ControlOutline"
+		outline.Color = Color3.fromRGB(0, 0, 0)
+		outline.Thickness = 1
+		outline.Transparency = 0
+		outline.Parent = obj
+	end
 	return obj
 end
 
@@ -382,20 +396,15 @@ local function GetBestOwnedBeeText()
 
 	local dataClient = GetDataClient()
 	if dataClient then
-		local ok, owned = pcall(function()
-			if type(dataClient.get) == "function" then
-				return dataClient:get("OwnedBees")
-			end
-			return nil
-		end)
-		if ok then scanRecords(owned) end
-		local okHives, hives = pcall(function()
-			if type(dataClient.get) == "function" then
-				return dataClient:get("Hives")
-			end
-			return nil
-		end)
-		if okHives then scanRecords(hives) end
+		for _, dataKey in ipairs({"OwnedBees", "Hives", "Bees", "Inventory"}) do
+			local ok, records = pcall(function()
+				if type(dataClient.get) == "function" then
+					return dataClient:get(dataKey)
+				end
+				return nil
+			end)
+			if ok then scanRecords(records) end
+		end
 	end
 
 	local player = game:GetService("Players").LocalPlayer
@@ -464,7 +473,7 @@ local function GetOwnedSeasonCounts()
 
 	local dataClient = GetDataClient()
 	if dataClient then
-		for _, dataKey in ipairs({"OwnedBees", "Hives"}) do
+		for _, dataKey in ipairs({"OwnedBees", "Hives", "Bees", "Inventory"}) do
 			local ok, records = pcall(function()
 				if type(dataClient.get) == "function" then
 					return dataClient:get(dataKey)
@@ -520,7 +529,7 @@ local function FindSeasonTextFallback()
 		resolve(workspace:FindFirstChild("EventScreen"), {"SeasonScreen", "SurfaceGui", "Board", "NameLabel"}),
 	}) do
 		if label and (label:IsA("TextLabel") or label:IsA("TextButton") or label:IsA("TextBox")) then
-			local text = tostring(label.Text or ""):gsub("%[NOW%]%s*", "")
+			local text = tostring(label.Text or ""):gsub("%[NOW%]%s*", ""):gsub("NEXT%s+SEASON", "SEASON")
 			if text ~= "" then
 				state.LastSeasonText = text
 				return text
@@ -538,7 +547,7 @@ local function FindSeasonTextFallback()
 				local text = tostring(obj.Text or "")
 				local upper = string.upper(text)
 				if upper:find("NEXT SEASON", 1, true) or upper:match("^%s*(SUMMER|SPRING|WINTER|AUTUMN)%s*:") then
-					state.LastSeasonText = text:gsub("%[NOW%]%s*", "")
+					state.LastSeasonText = text:gsub("%[NOW%]%s*", ""):gsub("NEXT%s+SEASON", "SEASON")
 					return state.LastSeasonText
 				end
 			end
@@ -590,6 +599,7 @@ local function CreateButton(parent, name, text, xOffset, width)
 	AddBackground(button)
 	AddText(button)
 	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 5)
+	AddControlOutline(button)
 	return button
 end
 
@@ -610,6 +620,7 @@ local function CreateInput(parent, name, text, xOffset, width)
 	AddBackground(box)
 	AddText(box)
 	Instance.new("UICorner", box).CornerRadius = UDim.new(0, 5)
+	AddControlOutline(box)
 	return box
 end
 
@@ -654,8 +665,8 @@ local submitRow = CreateRow("GrowABeehiveSubmitRow", 234)
 local submitTitle = CreateTitle(submitRow, "Submit Bees:")
 local submitStatusDisplay = Instance.new("TextLabel")
 submitStatusDisplay.Name = "GrowABeehiveSubmitStatus"
-submitStatusDisplay.Size = UDim2.new(0, 70, 0, 18)
-submitStatusDisplay.Position = UDim2.new(1, -202, 0, 10)
+submitStatusDisplay.Size = UDim2.new(0, 56, 0, 18)
+submitStatusDisplay.Position = UDim2.new(1, -216, 0, 10)
 submitStatusDisplay.BackgroundTransparency = 1
 submitStatusDisplay.Text = state.LastSubmitStatus
 submitStatusDisplay.Font = Enum.Font.GothamBold
@@ -664,7 +675,7 @@ submitStatusDisplay.TextXAlignment = Enum.TextXAlignment.Right
 submitStatusDisplay.TextTruncate = Enum.TextTruncate.AtEnd
 submitStatusDisplay.Parent = submitRow
 AddText(submitStatusDisplay)
-local submitInfoButton = CreateButton(submitRow, "GrowABeehiveSubmitInfoButton", "i", -126, 22)
+local submitInfoButton = CreateButton(submitRow, "GrowABeehiveSubmitInfoButton", "i", -150, 22)
 submitInfoButton.TextSize = 7
 Instance.new("UICorner", submitInfoButton).CornerRadius = UDim.new(1, 0)
 local submitToggle = CreateButton(submitRow, "GrowABeehiveSubmitToggle", "Off", -98, 44)
@@ -689,7 +700,7 @@ seasonDisplay.Name = "GrowABeehiveSeasonDisplay"
 seasonDisplay.Size = UDim2.new(0, 120, 0, 9)
 seasonDisplay.Position = UDim2.new(0.5, -60, 0, 11)
 seasonDisplay.BackgroundTransparency = 1
-seasonDisplay.Text = "NEXT SEASON: ..."
+seasonDisplay.Text = "SEASON: ..."
 seasonDisplay.Font = Enum.Font.GothamBold
 seasonDisplay.TextSize = 8
 seasonDisplay.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -868,8 +879,8 @@ for index, season in ipairs(SeasonOptions) do
 	submitInfoLines[season] = line
 end
 
-local function UpdateSubmitInfoPanel()
-	local counts = GetOwnedSeasonCounts()
+local function UpdateSubmitInfoPanel(counts)
+	counts = counts or GetOwnedSeasonCounts()
 	for _, season in ipairs(SeasonOptions) do
 		local owned = counts[season] or 0
 		local line = submitInfoLines[season]
@@ -877,6 +888,16 @@ local function UpdateSubmitInfoPanel()
 			line.Text = ("%s: %d/1"):format(season, owned)
 			line.TextColor3 = owned >= 1 and Green or Red
 		end
+	end
+	return counts
+end
+
+local function RefreshSubmitReadyStatus(counts)
+	if state.SubmitBusy or state.AutoSubmitSeasonal then return counts end
+	counts = counts or GetOwnedSeasonCounts()
+	state.LastSubmitStatus = HasSeasonSubmitSet(counts) and "Ready" or "Need bees"
+	if submitStatusDisplay then
+		submitStatusDisplay.Text = state.LastSubmitStatus
 	end
 	return counts
 end
@@ -1223,12 +1244,12 @@ local function RefreshHeaderDisplays(force)
 		else
 			local okStart, nextStart = pcall(seasonMath.NextSeasonStart, now)
 			if okStart and nextStart then
-				seasonText = ("NEXT SEASON: %s"):format(FormatClock(nextStart - now))
+						seasonText = ("SEASON: %s"):format(FormatClock(nextStart - now))
 			end
 			seasonDisplay.TextColor3 = Color3.fromRGB(255, 255, 255)
 		end
 	end
-	seasonDisplay.Text = seasonText or FindSeasonTextFallback() or "NEXT SEASON: N/A"
+	seasonDisplay.Text = seasonText or FindSeasonTextFallback() or "SEASON: N/A"
 end
 
 local function RefreshHistoryPanel()
@@ -1304,12 +1325,13 @@ RefreshButtons = function()
 	submitToggle.Text = state.AutoSubmitSeasonal and "On" or "Off"
 	editFiltersButton.Text = state.FiltersOpen and "Close" or "Edit"
 	rollStatusDisplay.Text = state.LastRollSummary or ("Rolls: " .. tostring(state.RollCount or 0))
+	local submitCounts = RefreshSubmitReadyStatus()
 	submitStatusDisplay.Text = state.LastSubmitStatus or "Ready"
 	filterDock.Visible = state.FiltersOpen and IsGrowPageActive()
 	historyPanel.Visible = state.HistoryOpen and IsGrowPageActive()
 	beeSellPanel.Visible = state.SellBeesOpen and IsGrowPageActive()
 	submitInfoPanel.Visible = state.SubmitInfoOpen and IsGrowPageActive()
-	if submitInfoPanel.Visible then UpdateSubmitInfoPanel() end
+	if submitInfoPanel.Visible then UpdateSubmitInfoPanel(submitCounts) end
 	sellInput.Text = FormatSeconds(state.SellDelaySeconds)
 	rollTitle.TextColor3 = state.AutoRoll and AccentColor or InactiveTextColor()
 	buyTitle.TextColor3 = state.AutoBuy and AccentColor or InactiveTextColor()
@@ -2050,7 +2072,15 @@ ThemeObjects.AddFeatureKeybind({Name = "Auto Buy", Storage = "GABHAutoBuy", Pare
 ThemeObjects.AddFeatureKeybind({Name = "Auto Sell", Storage = "GABHAutoSell", Parent = sellRow, Toggle = sellToggle, Get = function() return LoadKeybind("GABHAutoSell") end, Set = function(key) SaveKeybind("GABHAutoSell", key) end, Action = ToggleSell})
 ThemeObjects.AddFeatureKeybind({Name = "Auto Equip Best", Storage = "GABHAutoEquip", Parent = equipRow, Toggle = equipToggle, Get = function() return LoadKeybind("GABHAutoEquip") end, Set = function(key) SaveKeybind("GABHAutoEquip", key) end, Action = ToggleEquip})
 ThemeObjects.AddFeatureKeybind({Name = "Submit Seasonal Bees", Storage = "GABHSubmitSeasonal", Parent = submitRow, Toggle = submitToggle, Get = function() return LoadKeybind("GABHSubmitSeasonal") end, Set = function(key) SaveKeybind("GABHSubmitSeasonal", key) end, Action = ToggleSubmitSeasonal})
-ThemeObjects.AddFeatureKeybind({Name = "Sell Bees Menu", Storage = "GABHSellBeesMenu", Button = beeSellKeybindButton, Get = function() return LoadKeybind("GABHSellBeesMenu") end, Set = function(key) SaveKeybind("GABHSellBeesMenu", key); beeSellKeybindButton.Text = KeybindText(key) end, Action = ToggleBeeSellPanel})
+local sellBeesKeybindEntry = {Name = "Sell Bees Menu", Storage = "GABHSellBeesMenu", Parent = beeSellRow, Toggle = beeSellButton, Get = function() return LoadKeybind("GABHSellBeesMenu") end, Set = function(key) SaveKeybind("GABHSellBeesMenu", key); beeSellKeybindButton.Text = KeybindText(key) end, Action = ToggleBeeSellPanel}
+ThemeObjects.AddFeatureKeybind(sellBeesKeybindEntry)
+beeSellKeybindButton.MouseButton1Click:Connect(function()
+	PlayClick()
+	if ThemeObjects.BeginFeatureKeybind then
+		ThemeObjects.BeginFeatureKeybind(sellBeesKeybindEntry, beeSellKeybindButton)
+	end
+end)
+if ThemeObjects.AttachKeybindClearPrompt then ThemeObjects.AttachKeybindClearPrompt(sellBeesKeybindEntry, beeSellKeybindButton) end
 ThemeObjects.AddFeatureKeybind({Name = "Buy Filters Menu", Storage = "GABHBuyFiltersMenu", Get = function() return LoadKeybind("GABHBuyFiltersMenu") end, Set = function(key) SaveKeybind("GABHBuyFiltersMenu", key) end, Action = function()
 	state.FiltersOpen = not state.FiltersOpen
 	if state.FiltersOpen then
@@ -2139,6 +2169,10 @@ task.spawn(function()
 			task.wait(0.35)
 		else
 			RefreshHeaderDisplays(false)
+			if submitInfoPanel.Visible or (not state.SubmitBusy and not state.AutoSubmitSeasonal) then
+				local counts = RefreshSubmitReadyStatus()
+				if submitInfoPanel.Visible then UpdateSubmitInfoPanel(counts) end
+			end
 			task.wait(0.5)
 		end
 	end
@@ -2165,6 +2199,7 @@ ThemeObjects.OpenGrowABeehivePage = function()
 	if quietHistory then quietHistory.Visible = false end
 	growPage.Visible = true
 	growPage.Position = UDim2.new(0, 122, 0, 54)
+	state.LastSeasonTextScan = 0
 	RefreshHeaderDisplays(true)
 	if state.SubmitInfoOpen then UpdateSubmitInfoPanel() end
 	ThemeObjects.ActiveTabName = "Games"
