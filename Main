@@ -2162,6 +2162,16 @@ HubState.MM2BackButton.MouseButton1Click:Connect(function()
 	if quietPage then quietPage.Visible = false; quietPage.Position = UDim2.new(1.1, 0, 0, 54) end
 	local growPage = MainFrame:FindFirstChild("GrowABeehivePage")
 	if growPage then growPage.Visible = false; growPage.Position = UDim2.new(1.1, 0, 0, 54) end
+	local growMoney = HubState.PageHeader:FindFirstChild("GrowABeehiveMoneyDisplay")
+	if growMoney then growMoney.Visible = false end
+	local growSeason = HubState.PageHeader:FindFirstChild("GrowABeehiveSeasonDisplay")
+	if growSeason then growSeason.Visible = false end
+	local growHistory = HubState.PageHeader:FindFirstChild("GrowABeehiveHistoryButton")
+	if growHistory then growHistory.Visible = false end
+	local growFilterDock = ScreenGui:FindFirstChild("GrowABeehiveFilterDock")
+	if growFilterDock then growFilterDock.Visible = false end
+	local growHistoryPanel = ScreenGui:FindFirstChild("GrowABeehiveHistoryPanel")
+	if growHistoryPanel then growHistoryPanel.Visible = false end
 	local quietCoins = HubState.PageHeader:FindFirstChild("QuietOrDieCoinsDisplay")
 	if quietCoins then quietCoins.Visible = false end
 	local quietWins = HubState.PageHeader:FindFirstChild("QuietOrDieWinsDisplay")
@@ -4878,6 +4888,8 @@ local function ToggleSettings(forceClose)
 	if extrasPage then extrasPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true) end
 	local quietPage = MainFrame:FindFirstChild("QuietOrDiePage")
 	if quietPage then quietPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true) end
+	local growPage = MainFrame:FindFirstChild("GrowABeehivePage")
+	if growPage then growPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true) end
 	HubState.TabScroll.Visible = not HubState.minimized
 	if not HubState.settingsOpen then
 		ThemeObjects.CloseTransientPopups()
@@ -5044,6 +5056,19 @@ ThemeObjects.SwitchTab = function(name)
 	if quietPage and not (openingSelectedGame and HubState.SelectedGame == "Quiet Or Die") then
 		local historyPanel = quietPage:FindFirstChild("QuietOrDieHistoryPanel")
 		if historyPanel then historyPanel.Visible = false end
+	end
+	local growActive = openingSelectedGame and HubState.SelectedGame == "Grow a Beehive"
+	local growMoney = HubState.PageHeader:FindFirstChild("GrowABeehiveMoneyDisplay")
+	if growMoney then growMoney.Visible = growActive end
+	local growSeason = HubState.PageHeader:FindFirstChild("GrowABeehiveSeasonDisplay")
+	if growSeason then growSeason.Visible = growActive end
+	local growHistory = HubState.PageHeader:FindFirstChild("GrowABeehiveHistoryButton")
+	if growHistory then growHistory.Visible = growActive end
+	if not growActive then
+		local growFilterDock = ScreenGui:FindFirstChild("GrowABeehiveFilterDock")
+		if growFilterDock then growFilterDock.Visible = false end
+		local growHistoryPanel = ScreenGui:FindFirstChild("GrowABeehiveHistoryPanel")
+		if growHistoryPanel then growHistoryPanel.Visible = false end
 	end
 
 	local pages = {HubState.MovementPage, HubState.CombatPage, ThemeObjects.CameraPage, HubState.TeleportPage, HubState.GamesPage, HubState.MM2Page, HubState.ScriptsPage, extrasPage, quietPage, growPage}
