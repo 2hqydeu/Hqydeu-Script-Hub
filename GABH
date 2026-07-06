@@ -23,7 +23,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "GABH-SeasonHud-v6"
+local ModuleVersion = "GABH-SeasonHud-v7"
 local existingPage = MainFrame:FindFirstChild("GrowABeehivePage")
 local existingDock = ScreenGui and ScreenGui:FindFirstChild("GrowABeehiveFilterDock")
 local existingHistory = ScreenGui and ScreenGui:FindFirstChild("GrowABeehiveHistoryPanel")
@@ -196,7 +196,9 @@ local function GetDataClient()
 end
 
 local function GetSeasonMath()
-	if seasonMathCache ~= nil then return seasonMathCache end
+	if seasonMathCache ~= nil and seasonMathCache ~= false then return seasonMathCache end
+	if seasonMathCache == false and os.clock() - (state.LastSeasonMathRequire or 0) < 3 then return nil end
+	state.LastSeasonMathRequire = os.clock()
 	seasonMathCache = SafeRequire({"ReplicatedStorage", "Modules", "SeasonMath"}) or false
 	return seasonMathCache ~= false and seasonMathCache or nil
 end
@@ -247,6 +249,33 @@ local function FormatClock(seconds)
 		return ("%d:%02d:%02d"):format(hours, minutes, secs)
 	end
 	return ("%02d:%02d"):format(minutes, secs)
+end
+
+local function FindSeasonTextFallback()
+	local now = os.clock()
+	if now - (state.LastSeasonTextScan or 0) < 1 then
+		return state.LastSeasonText
+	end
+	state.LastSeasonTextScan = now
+	local localPlayer = game:GetService("Players").LocalPlayer
+	local roots = {}
+	local playerGui = localPlayer and localPlayer:FindFirstChildOfClass("PlayerGui")
+	if playerGui then table.insert(roots, playerGui) end
+	table.insert(roots, workspace)
+	for _, root in ipairs(roots) do
+		for _, obj in ipairs(root:GetDescendants()) do
+			if (obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox")) and (not ScreenGui or not obj:IsDescendantOf(ScreenGui)) then
+				local text = tostring(obj.Text or "")
+				local upper = string.upper(text)
+				if upper:find("NEXT SEASON", 1, true) or upper:match("^%s*(SUMMER|SPRING|WINTER|AUTUMN)%s*:") then
+					state.LastSeasonText = text:gsub("%[NOW%]%s*", "")
+					return state.LastSeasonText
+				end
+			end
+		end
+	end
+	state.LastSeasonText = nil
+	return nil
 end
 
 local function CreateRow(name, y)
@@ -332,44 +361,31 @@ local equipRow = CreateRow("GrowABeehiveEquipRow", 142)
 local equipTitle = CreateTitle(equipRow, "Auto Equip Best:")
 local equipToggle = CreateButton(equipRow, "GrowABeehiveEquipToggle", "Off", -98, 44)
 
-local moneyDisplay = Instance.new("TextLabel")
-moneyDisplay.Name = "GrowABeehiveMoneyDisplay"
-moneyDisplay.Size = UDim2.new(0, 92, 0, 22)
-moneyDisplay.Position = UDim2.new(1, -194, 0, -3)
-moneyDisplay.BackgroundTransparency = 1
-moneyDisplay.Text = "Money: ..."
-moneyDisplay.Font = Enum.Font.GothamBold
-moneyDisplay.TextSize = 8
-moneyDisplay.TextColor3 = AccentColor
-moneyDisplay.TextXAlignment = Enum.TextXAlignment.Right
-moneyDisplay.Visible = false
-moneyDisplay.Parent = HubState.PageHeader
-AddText(moneyDisplay)
-
 local seasonDisplay = Instance.new("TextLabel")
 seasonDisplay.Name = "GrowABeehiveSeasonDisplay"
-seasonDisplay.Size = UDim2.new(0, 92, 0, 22)
-seasonDisplay.Position = UDim2.new(1, -98, 0, -3)
+seasonDisplay.Size = UDim2.new(0, 120, 0, 9)
+seasonDisplay.Position = UDim2.new(0.5, -58, 0, 10)
 seasonDisplay.BackgroundTransparency = 1
-seasonDisplay.Text = "Season: ..."
+seasonDisplay.Text = "NEXT SEASON: ..."
 seasonDisplay.Font = Enum.Font.GothamBold
 seasonDisplay.TextSize = 8
 seasonDisplay.TextColor3 = Color3.fromRGB(255, 255, 255)
-seasonDisplay.TextXAlignment = Enum.TextXAlignment.Right
+seasonDisplay.TextXAlignment = Enum.TextXAlignment.Center
+seasonDisplay.TextTruncate = Enum.TextTruncate.AtEnd
 seasonDisplay.Visible = false
 seasonDisplay.Parent = HubState.PageHeader
 AddText(seasonDisplay)
 
 local historyButton = Instance.new("TextButton")
 historyButton.Name = "GrowABeehiveHistoryButton"
-historyButton.Size = UDim2.new(0, 18, 0, 18)
-historyButton.Position = UDim2.new(1, -216, 0, 0)
+historyButton.Size = UDim2.new(0, 10, 0, 10)
+historyButton.Position = UDim2.new(0, 110, 0, 4)
 historyButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 historyButton.BackgroundTransparency = 0.8
 historyButton.BorderSizePixel = 0
 historyButton.Text = "i"
 historyButton.Font = Enum.Font.GothamBold
-historyButton.TextSize = 10
+historyButton.TextSize = 7
 historyButton.TextColor3 = AccentColor
 historyButton.Visible = false
 historyButton.Parent = HubState.PageHeader
@@ -379,37 +395,56 @@ Instance.new("UICorner", historyButton).CornerRadius = UDim.new(1, 0)
 
 local historyPanel = Instance.new("Frame")
 historyPanel.Name = "GrowABeehiveHistoryPanel"
-historyPanel.Size = UDim2.new(0, 172, 0, 142)
-historyPanel.BackgroundColor3 = FrameThemeColor
-historyPanel.BackgroundTransparency = 0.04
+historyPanel.Size = UDim2.new(0, 256, 0, 130)
+historyPanel.Position = UDim2.new(0.5, -128, 0, 4)
+historyPanel.BackgroundColor3 = Color3.fromRGB(48, 48, 52)
+historyPanel.BackgroundTransparency = 0
 historyPanel.BorderSizePixel = 0
-historyPanel.ZIndex = 83
+historyPanel.ZIndex = 20
 historyPanel.Visible = false
-historyPanel.Parent = ScreenGui or MainFrame
+historyPanel.Parent = growPage
+AddBackground(historyPanel)
 Instance.new("UICorner", historyPanel).CornerRadius = UDim.new(0, 9)
 local historyStroke = Instance.new("UIStroke")
-historyStroke.Name = "ControlOutline"
 historyStroke.Color = AccentColor
-historyStroke.Thickness = 1
-historyStroke.Transparency = 0.15
+historyStroke.Thickness = 1.5
+historyStroke.Transparency = 0.08
 historyStroke.Parent = historyPanel
+table.insert(ThemeObjects.Accents, historyStroke)
+local historyGradient = Instance.new("UIGradient")
+historyGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(42, 42, 48)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(24, 24, 30))
+})
+historyGradient.Rotation = 35
+historyGradient.Parent = historyPanel
 
 local historyTitle = Instance.new("TextLabel")
-historyTitle.Size = UDim2.new(1, -18, 0, 22)
-historyTitle.Position = UDim2.new(0, 9, 0, 6)
+historyTitle.Size = UDim2.new(1, -16, 0, 14)
+historyTitle.Position = UDim2.new(0, 8, 0, 6)
 historyTitle.BackgroundTransparency = 1
-historyTitle.Text = "Recent Buys"
+historyTitle.Text = "Recent Purchases"
 historyTitle.Font = Enum.Font.GothamBold
 historyTitle.TextSize = 10
-historyTitle.TextXAlignment = Enum.TextXAlignment.Left
-historyTitle.ZIndex = 84
+historyTitle.TextXAlignment = Enum.TextXAlignment.Center
+historyTitle.ZIndex = 21
 historyTitle.Parent = historyPanel
 AddText(historyTitle)
 
+local historyDivider = Instance.new("Frame")
+historyDivider.Size = UDim2.new(0.72, 0, 0, 1)
+historyDivider.AnchorPoint = Vector2.new(0.5, 0)
+historyDivider.Position = UDim2.new(0.5, 0, 0, 25)
+historyDivider.BackgroundColor3 = Color3.fromRGB(235, 235, 235)
+historyDivider.BackgroundTransparency = 0.92
+historyDivider.BorderSizePixel = 0
+historyDivider.ZIndex = 21
+historyDivider.Parent = historyPanel
+
 local historyScroll = Instance.new("ScrollingFrame")
 historyScroll.Name = "GrowABeehiveHistoryScroll"
-historyScroll.Size = UDim2.new(1, -18, 1, -34)
-historyScroll.Position = UDim2.new(0, 9, 0, 28)
+historyScroll.Size = UDim2.new(1, -16, 1, -36)
+historyScroll.Position = UDim2.new(0, 8, 0, 30)
 historyScroll.BackgroundTransparency = 1
 historyScroll.BorderSizePixel = 0
 historyScroll.ScrollBarThickness = 3
@@ -417,12 +452,11 @@ historyScroll.ScrollBarImageColor3 = AccentColor
 historyScroll.ScrollingDirection = Enum.ScrollingDirection.Y
 historyScroll.ElasticBehavior = Enum.ElasticBehavior.Never
 historyScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-historyScroll.ZIndex = 84
+historyScroll.ZIndex = 21
 historyScroll.Parent = historyPanel
 
 local function UpdateHistoryPanelPosition()
-	local scale = GuiScaleFromValue(GuiSizeValue)
-	historyPanel.Position = UDim2.fromOffset(MainFrame.AbsolutePosition.X + MainFrame.AbsoluteSize.X + (7 * scale), MainFrame.AbsolutePosition.Y + (294 * scale))
+	historyPanel.Position = UDim2.new(0.5, -128, 0, 4)
 end
 TrackConnection("GrowABeehiveHistoryPanelPosition", MainFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(UpdateHistoryPanelPosition))
 TrackConnection("GrowABeehiveHistoryPanelSize", MainFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdateHistoryPanelPosition))
@@ -432,7 +466,7 @@ local filterDock = Instance.new("Frame")
 filterDock.Name = "GrowABeehiveFilterDock"
 filterDock.Size = UDim2.new(0, 184, 0, 236)
 filterDock.BackgroundColor3 = FrameThemeColor
-filterDock.BackgroundTransparency = 0.04
+filterDock.BackgroundTransparency = 1
 filterDock.BorderSizePixel = 0
 filterDock.ZIndex = 80
 filterDock.Visible = false
@@ -442,7 +476,7 @@ local filterDockStroke = Instance.new("UIStroke")
 filterDockStroke.Name = "ControlOutline"
 filterDockStroke.Color = AccentColor
 filterDockStroke.Thickness = 1
-filterDockStroke.Transparency = 0.15
+filterDockStroke.Transparency = 1
 filterDockStroke.Parent = filterDock
 local filterDockScale = Instance.new("UIScale")
 filterDockScale.Scale = GuiScaleFromValue(GuiSizeValue)
@@ -465,13 +499,14 @@ filterHeader.Font = Enum.Font.GothamBold
 filterHeader.TextSize = 11
 filterHeader.TextXAlignment = Enum.TextXAlignment.Left
 filterHeader.ZIndex = 81
+filterHeader.Visible = false
 filterHeader.Parent = filterDock
 AddText(filterHeader)
 
 local filterScroll = Instance.new("ScrollingFrame")
 filterScroll.Name = "GrowABeehiveFilterScroll"
-filterScroll.Size = UDim2.new(1, -18, 1, -40)
-filterScroll.Position = UDim2.new(0, 9, 0, 34)
+filterScroll.Size = UDim2.new(1, -18, 1, -8)
+filterScroll.Position = UDim2.new(0, 9, 0, 4)
 filterScroll.BackgroundTransparency = 1
 filterScroll.BorderSizePixel = 0
 filterScroll.ScrollBarThickness = 3
@@ -495,6 +530,7 @@ local function CreateFilterLabel(text, y)
 	label.TextSize = 10
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.ZIndex = 82
+	label.Visible = false
 	label.Parent = filterScroll
 	AddText(label)
 end
@@ -536,29 +572,27 @@ local function CreateFilterButton(kind, value, x, y)
 end
 
 CreateFilterLabel("Rarities", 0)
-local y = 22
+local y = 0
 for i, rarity in ipairs(RarityOptions) do
 	local column = (i - 1) % 2
 	local row = math.floor((i - 1) / 2)
 	CreateFilterButton("Rarity", rarity, 4 + column * 84, y + row * 26)
 end
-y = y + math.ceil(#RarityOptions / 2) * 26 + 8
+y = y + math.ceil(#RarityOptions / 2) * 26 + 6
 CreateFilterLabel("Mutations", y)
-y += 22
 for i, mutation in ipairs(MutationOptions) do
 	local column = (i - 1) % 2
 	local row = math.floor((i - 1) / 2)
 	CreateFilterButton("Mutation", mutation, 4 + column * 84, y + row * 26)
 end
-y = y + math.ceil(#MutationOptions / 2) * 26 + 8
+y = y + math.ceil(#MutationOptions / 2) * 26 + 6
 CreateFilterLabel("Season Bees", y)
-y += 22
 for i, season in ipairs(SeasonOptions) do
 	local column = (i - 1) % 2
 	local row = math.floor((i - 1) / 2)
 	CreateFilterButton("Season", season, 4 + column * 84, y + row * 26)
 end
-filterScroll.CanvasSize = UDim2.new(0, 0, 0, y + math.ceil(#SeasonOptions / 2) * 26 + 8)
+filterScroll.CanvasSize = UDim2.new(0, 0, 0, y + math.ceil(#SeasonOptions / 2) * 26 + 6)
 
 local function SetStatus(_)
 end
@@ -580,35 +614,33 @@ local function RefreshHistoryPanel()
 		empty.Position = UDim2.new(0, 0, 0, 0)
 		empty.BackgroundTransparency = 1
 		empty.Text = "No buys yet"
-		empty.Font = Enum.Font.GothamBold
-		empty.TextSize = 9
+		empty.Font = Enum.Font.GothamMedium
+		empty.TextSize = 8
 		empty.TextColor3 = Color3.fromRGB(210, 210, 215)
-		empty.TextXAlignment = Enum.TextXAlignment.Left
+		empty.TextXAlignment = Enum.TextXAlignment.Center
 		empty.ZIndex = 85
 		empty.Parent = historyScroll
 		historyScroll.CanvasSize = UDim2.new(0, 0, 0, 24)
 		return
 	end
-	for _, entry in ipairs(state.PurchaseHistory) do
+	for index, entry in ipairs(state.PurchaseHistory) do
 		if type(entry) ~= "table" then
 			entry = {Name = tostring(entry), Rarity = "?", Mutation = "None"}
 		end
 		local line = Instance.new("TextLabel")
-		line.Size = UDim2.new(1, -4, 0, 28)
+		line.Size = UDim2.new(1, -4, 0, 18)
 		line.Position = UDim2.new(0, 0, 0, yPos)
-		line.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-		line.BackgroundTransparency = 0.55
+		line.BackgroundTransparency = 1
 		line.BorderSizePixel = 0
-		line.Font = Enum.Font.GothamBold
+		line.Font = Enum.Font.GothamMedium
 		line.TextSize = 8
 		line.TextColor3 = Color3.fromRGB(255, 255, 255)
-		line.TextXAlignment = Enum.TextXAlignment.Left
+		line.TextXAlignment = Enum.TextXAlignment.Center
 		line.TextWrapped = true
-		line.Text = ("%s | %s | %s"):format(entry.Name or "Bee", entry.Rarity or "?", entry.Mutation or "None")
+		line.Text = ("%d.  %s  |  %s  |  %s"):format(index, entry.Name or "Bee", entry.Rarity or "?", entry.Mutation or "None")
 		line.ZIndex = 85
 		line.Parent = historyScroll
-		Instance.new("UICorner", line).CornerRadius = UDim.new(0, 5)
-		yPos += 32
+		yPos += 20
 	end
 	historyScroll.CanvasSize = UDim2.new(0, 0, 0, math.max(24, yPos))
 end
@@ -993,7 +1025,6 @@ end)
 task.spawn(function()
 	while growPage.Parent do
 		local active = IsGrowPageActive()
-		moneyDisplay.Visible = active
 		seasonDisplay.Visible = active
 		historyButton.Visible = active
 		if not active then
@@ -1001,37 +1032,28 @@ task.spawn(function()
 			historyPanel.Visible = false
 			task.wait(0.35)
 		else
-			local cash = nil
-			local dataClient = GetDataClient()
-			if dataClient and type(dataClient.get) == "function" then
-				local ok, value = pcall(function()
-					return dataClient:get("Cash")
-				end)
-				if ok then cash = value end
-			end
-			moneyDisplay.Text = "Money: " .. FormatCompactNumber(cash or 0)
-
 			local seasonMath = GetSeasonMath()
 			local okTime, now = pcall(function()
 				return workspace:GetServerTimeNow()
 			end)
 			now = okTime and now or os.time()
+			local seasonText = nil
 			if seasonMath then
 				local okActive, activeSeason = pcall(seasonMath.IsActive, now)
 				if okActive and activeSeason then
 					local okName, seasonName = pcall(seasonMath.SeasonAt, now)
 					local okRemaining, remaining = pcall(seasonMath.ActiveRemaining, now)
-					seasonDisplay.Text = ("%s: %s"):format((okName and seasonName or "Season"), FormatClock(okRemaining and remaining or 0))
+					seasonText = ("%s: %s"):format(string.upper(okName and seasonName or "SEASON"), FormatClock(okRemaining and remaining or 0))
 					seasonDisplay.TextColor3 = AccentColor
 				else
-					local okName, nextName = pcall(seasonMath.NextSeasonName, now)
 					local okStart, nextStart = pcall(seasonMath.NextSeasonStart, now)
-					seasonDisplay.Text = ("Next: %s %s"):format(okName and nextName or "Season", FormatClock((okStart and nextStart or now) - now))
+					if okStart and nextStart then
+						seasonText = ("NEXT SEASON: %s"):format(FormatClock(nextStart - now))
+					end
 					seasonDisplay.TextColor3 = Color3.fromRGB(255, 255, 255)
 				end
-			else
-				seasonDisplay.Text = "Next: ..."
 			end
+			seasonDisplay.Text = seasonText or FindSeasonTextFallback() or "NEXT SEASON: N/A"
 			task.wait(0.5)
 		end
 	end
