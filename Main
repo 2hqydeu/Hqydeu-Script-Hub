@@ -287,6 +287,17 @@ local HubState = {}
 ThemeObjects.FeatureKeybindEntries = {}
 ThemeObjects.AddFeatureKeybind = function(entry)
 	if type(entry) ~= "table" or type(entry.Name) ~= "string" or type(entry.Get) ~= "function" or type(entry.Set) ~= "function" then return end
+	if entry.Storage then
+		for index = #ThemeObjects.FeatureKeybindEntries, 1, -1 do
+			if ThemeObjects.FeatureKeybindEntries[index].Storage == entry.Storage then
+				local oldEntry = ThemeObjects.FeatureKeybindEntries[index]
+				if oldEntry.InlineButton and oldEntry.InlineButton.Parent then
+					oldEntry.InlineButton:Destroy()
+				end
+				table.remove(ThemeObjects.FeatureKeybindEntries, index)
+			end
+		end
+	end
 	table.insert(ThemeObjects.FeatureKeybindEntries, entry)
 	if entry.Parent and entry.Toggle and ThemeObjects.AttachFeatureKeybindButton then
 		ThemeObjects.AttachFeatureKeybindButton(entry, entry.Parent, entry.Toggle)
@@ -6294,6 +6305,13 @@ OptimizeBtn.MouseButton1Click:Connect(function()
 	end
 	ThemeObjects.ScriptRunner.RunUrl("https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/Optimize", "Optimize")
 end)
+ThemeObjects.AddFeatureKeybind({Name = "Optimize Menu", Storage = "OptimizeMenu", Get = function() return LoadKeybind("OptimizeMenu") end, Set = function(key) SaveKeybind("OptimizeMenu", key) end, Action = function()
+	if ThemeObjects.OpenOptimizeDock then
+		ThemeObjects.OpenOptimizeDock()
+	else
+		ThemeObjects.ScriptRunner.RunUrl("https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/Optimize", "Optimize")
+	end
+end})
 ResetThemeBtn.MouseButton1Click:Connect(function()
 	PlayClick()
 	if PickerTarget == "Frame" then
