@@ -24,7 +24,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "GABH-SellBees-v11"
+local ModuleVersion = "GABH-HeaderDisplays-v12"
 local existingPage = MainFrame:FindFirstChild("GrowABeehivePage")
 local existingDock = ScreenGui and ScreenGui:FindFirstChild("GrowABeehiveFilterDock")
 local existingHistory = ScreenGui and ScreenGui:FindFirstChild("GrowABeehiveHistoryPanel")
@@ -199,7 +199,9 @@ local function SafeRequire(pathParts)
 end
 
 local function GetDataClient()
-	if dataClientCache ~= nil then return dataClientCache end
+	if dataClientCache ~= nil and dataClientCache ~= false then return dataClientCache end
+	if dataClientCache == false and os.clock() - (state.LastDataClientRequire or 0) < 3 then return nil end
+	state.LastDataClientRequire = os.clock()
 	local packages = game:GetService("ReplicatedStorage"):FindFirstChild("Packages")
 	local dataService = packages and packages:FindFirstChild("DataService")
 	local ok, result = pcall(function()
@@ -218,13 +220,17 @@ local function GetSeasonMath()
 end
 
 local function GetBeeConfig()
-	if beeConfigCache ~= nil then return beeConfigCache end
+	if beeConfigCache ~= nil and beeConfigCache ~= false then return beeConfigCache end
+	if beeConfigCache == false and os.clock() - (state.LastBeeConfigRequire or 0) < 3 then return nil end
+	state.LastBeeConfigRequire = os.clock()
 	beeConfigCache = SafeRequire({"ReplicatedStorage", "Configs", "BeeConfig"}) or false
 	return beeConfigCache ~= false and beeConfigCache or nil
 end
 
 local function GetRarityConfig()
-	if rarityConfigCache ~= nil then return rarityConfigCache end
+	if rarityConfigCache ~= nil and rarityConfigCache ~= false then return rarityConfigCache end
+	if rarityConfigCache == false and os.clock() - (state.LastRarityConfigRequire or 0) < 3 then return nil end
+	state.LastRarityConfigRequire = os.clock()
 	rarityConfigCache = SafeRequire({"ReplicatedStorage", "Configs", "RarityConfig"}) or false
 	return rarityConfigCache ~= false and rarityConfigCache or nil
 end
@@ -326,6 +332,14 @@ local function ChanceText(info)
 	return odds and ("1/" .. FormatWholeNumber(odds)) or "1/?"
 end
 
+local function NormalizeSeasonText(text)
+	text = tostring(text or ""):gsub("%[NOW%]%s*", "")
+	text = text:gsub("NEXT%s+SEASON", "SEASON")
+	text = text:gsub("Next%s+Season", "SEASON")
+	text = text:gsub("next%s+season", "SEASON")
+	return text
+end
+
 local function GetBestOwnedBeeText()
 	local bestInfo, bestMutation, bestScore = nil, nil, -1
 	local uuidMutations = {}
@@ -340,7 +354,7 @@ local function GetBestOwnedBeeText()
 	end
 	local function beeIdFromRecord(bee, fallback)
 		if type(bee) ~= "table" then return bee or fallback end
-		return bee.BeeId or bee.BeeID or bee.Bee or bee.Id or bee.id or bee.Name or bee.name or bee.BeeName or bee.ItemId or bee.Type or fallback
+		return bee.BeeId or bee.BeeID or bee.Bee or bee.Id or bee.id or bee.Name or bee.name or bee.BeeName or bee.ItemId or bee.ItemID or bee.Type or bee.TypeId or bee.TypeID or fallback
 	end
 	local function mutationFromRecord(bee, uuid)
 		if type(bee) ~= "table" then return nil end
@@ -368,20 +382,15 @@ local function GetBestOwnedBeeText()
 
 	local dataClient = GetDataClient()
 	if dataClient then
-		local ok, owned = pcall(function()
-			if type(dataClient.get) == "function" then
-				return dataClient:get("OwnedBees")
-			end
-			return nil
-		end)
-		if ok then scanRecords(owned) end
-		local okHives, hives = pcall(function()
-			if type(dataClient.get) == "function" then
-				return dataClient:get("Hives")
-			end
-			return nil
-		end)
-		if okHives then scanRecords(hives) end
+		for _, dataKey in ipairs({"OwnedBees", "Hives", "Bees", "Inventory", "Items"}) do
+			local ok, records = pcall(function()
+				if type(dataClient.get) == "function" then
+					return dataClient:get(dataKey)
+				end
+				return nil
+			end)
+			if ok then scanRecords(records) end
+		end
 	end
 
 	local player = game:GetService("Players").LocalPlayer
@@ -421,7 +430,7 @@ local function FindSeasonTextFallback()
 		resolve(workspace:FindFirstChild("EventScreen"), {"SeasonScreen", "SurfaceGui", "Board", "NameLabel"}),
 	}) do
 		if label and (label:IsA("TextLabel") or label:IsA("TextButton") or label:IsA("TextBox")) then
-			local text = tostring(label.Text or ""):gsub("%[NOW%]%s*", "")
+			local text = NormalizeSeasonText(label.Text)
 			if text ~= "" then
 				state.LastSeasonText = text
 				return text
@@ -439,7 +448,7 @@ local function FindSeasonTextFallback()
 				local text = tostring(obj.Text or "")
 				local upper = string.upper(text)
 				if upper:find("NEXT SEASON", 1, true) or upper:match("^%s*(SUMMER|SPRING|WINTER|AUTUMN)%s*:") then
-					state.LastSeasonText = text:gsub("%[NOW%]%s*", "")
+					state.LastSeasonText = NormalizeSeasonText(text)
 					return state.LastSeasonText
 				end
 			end
@@ -571,7 +580,7 @@ seasonDisplay.Name = "GrowABeehiveSeasonDisplay"
 seasonDisplay.Size = UDim2.new(0, 120, 0, 9)
 seasonDisplay.Position = UDim2.new(0.5, -60, 0, 11)
 seasonDisplay.BackgroundTransparency = 1
-seasonDisplay.Text = "NEXT SEASON: ..."
+seasonDisplay.Text = "SEASON: ..."
 seasonDisplay.Font = Enum.Font.GothamBold
 seasonDisplay.TextSize = 8
 seasonDisplay.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -977,6 +986,41 @@ end
 
 local function IsGrowPageActive()
 	return HubState.SelectedGame == "Grow a Beehive" and growPage.Parent ~= nil and growPage.Visible == true
+end
+
+local function RefreshHeaderDisplays(force)
+	rarestDisplay.Visible = true
+	seasonDisplay.Visible = true
+	local okTime, now = pcall(function()
+		return workspace:GetServerTimeNow()
+	end)
+	now = okTime and now or os.time()
+
+	if force or now - (state.LastRarestBeeUpdate or 0) >= 1 then
+		state.LastRarestBeeUpdate = now
+		rarestDisplay.TextColor3 = AccentColor
+		rarestDisplay.Text = GetBestOwnedBeeText()
+	end
+
+	local seasonText = nil
+	local seasonMath = GetSeasonMath()
+	if seasonMath then
+		local okActive, activeSeason = pcall(seasonMath.IsActive, now)
+		if okActive and activeSeason then
+			local okName, seasonName = pcall(seasonMath.SeasonAt, now)
+			local okRemaining, remaining = pcall(seasonMath.ActiveRemaining, now)
+			seasonText = ("%s: %s"):format(string.upper(okName and seasonName or "SEASON"), FormatClock(okRemaining and remaining or 0))
+			seasonDisplay.TextColor3 = AccentColor
+		else
+			local okStart, nextStart = pcall(seasonMath.NextSeasonStart, now)
+			if okStart and nextStart then
+				seasonText = ("SEASON: %s"):format(FormatClock(nextStart - now))
+			end
+			seasonDisplay.TextColor3 = Color3.fromRGB(255, 255, 255)
+		end
+	end
+
+	seasonDisplay.Text = seasonText or FindSeasonTextFallback() or "SEASON: N/A"
 end
 
 local function RefreshHistoryPanel()
@@ -1631,33 +1675,7 @@ task.spawn(function()
 			beeSellPanel.Visible = false
 			task.wait(0.35)
 		else
-			local seasonMath = GetSeasonMath()
-			local okTime, now = pcall(function()
-				return workspace:GetServerTimeNow()
-			end)
-			now = okTime and now or os.time()
-			if now - (state.LastRarestBeeUpdate or 0) >= 1 then
-				state.LastRarestBeeUpdate = now
-				rarestDisplay.TextColor3 = AccentColor
-				rarestDisplay.Text = GetBestOwnedBeeText()
-			end
-			local seasonText = nil
-			if seasonMath then
-				local okActive, activeSeason = pcall(seasonMath.IsActive, now)
-				if okActive and activeSeason then
-					local okName, seasonName = pcall(seasonMath.SeasonAt, now)
-					local okRemaining, remaining = pcall(seasonMath.ActiveRemaining, now)
-					seasonText = ("%s: %s"):format(string.upper(okName and seasonName or "SEASON"), FormatClock(okRemaining and remaining or 0))
-					seasonDisplay.TextColor3 = AccentColor
-				else
-					local okStart, nextStart = pcall(seasonMath.NextSeasonStart, now)
-					if okStart and nextStart then
-						seasonText = ("NEXT SEASON: %s"):format(FormatClock(nextStart - now))
-					end
-					seasonDisplay.TextColor3 = Color3.fromRGB(255, 255, 255)
-				end
-			end
-			seasonDisplay.Text = seasonText or FindSeasonTextFallback() or "NEXT SEASON: N/A"
+			RefreshHeaderDisplays(false)
 			task.wait(0.5)
 		end
 	end
@@ -1684,6 +1702,8 @@ ThemeObjects.OpenGrowABeehivePage = function()
 	if quietHistory then quietHistory.Visible = false end
 	growPage.Visible = true
 	growPage.Position = UDim2.new(0, 122, 0, 54)
+	state.LastSeasonTextScan = 0
+	RefreshHeaderDisplays(true)
 	ThemeObjects.ActiveTabName = "Games"
 	HubState.ActiveTabIndex = table.find(HubState.TabNames, "Games") or HubState.ActiveTabIndex
 	HubState.ActiveContentPage = growPage
