@@ -1,1 +1,473 @@
+-- Page-only module for Hqydeu Script Hub. Upload this file to its raw GitHub target.
+local Runtime = (type(getgenv) == "function" and getgenv().HqydeuLoader_Runtime) or shared.HqydeuLoader_Runtime
+if not Runtime then return warn("Hqydeu page module: main hub runtime was not found") end
+
+local HubState = Runtime.HubState
+local ThemeObjects = Runtime.ThemeObjects
+local MainFrame = Runtime.MainFrame
+local Player = Runtime.Player
+local RunService = Runtime.RunService or game:GetService("RunService")
+local SavedKeybinds = Runtime.SavedKeybinds or {}
+local AccentColor = Runtime.GetAccentColor and Runtime.GetAccentColor() or Color3.fromRGB(0, 210, 255)
+local InactiveTextColor = Runtime.InactiveTextColor or function() return Color3.fromRGB(255, 255, 255) end
+local KeybindText = Runtime.KeybindText or function(keyCode) return keyCode and keyCode.Name or "..." end
+local LoadKeybind = Runtime.LoadKeybind or function() return Enum.KeyCode.Unknown end
+local SaveKeybind = Runtime.SaveKeybind or function() end
+local SavePersistentSettings = Runtime.SavePersistentSettings or function() end
+local PlayClick = Runtime.PlayClick or function() end
+local TrackConnection = Runtime.TrackConnection or function(name, connection) HubState.Connections[name] = connection; return connection end
+local UpdateTheme = Runtime.UpdateTheme or function() end
+if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu page module: runtime is incomplete") end
+HubState.Connections = HubState.Connections or {}
+
+if MainFrame:FindFirstChild("GrowABeehivePage") and ThemeObjects.OpenGrowABeehivePage then
+	ThemeObjects.OpenGrowABeehivePage()
+	return
+end
+
+local RarityOptions = {"Common", "Uncommon", "Rare", "Epic", "Legendary", "Secret", "Prismatic", "Divine", "Exotic", "Transcended"}
+local RarityRank = {}
+for i, rarity in ipairs(RarityOptions) do
+	RarityRank[rarity] = i
+end
+local MutationOptions = {"Any", "None", "Bloom", "Hacker", "Firework"}
+local LeaveoutOptions = {"Off", "Bloom", "Hacker", "Firework"}
+local RollDelays = {1.2, 1.5, 2, 2.5}
+local SellDelays = {1.5, 2, 3, 5}
+
+local function ClampIndex(value, list, fallback)
+	value = tonumber(value)
+	if not value or value < 1 or value > #list then return fallback end
+	return math.floor(value)
+end
+
+local state = HubState.GrowABeehiveState or {
+	AutoRoll = false,
+	AutoBuy = false,
+	AutoSell = false,
+	RollBusy = false,
+	BuyBusy = false,
+	SellBusy = false,
+	LastPromptBuy = 0,
+	MinRarityIndex = ClampIndex(SavedKeybinds.GABHMinRarityIndex, RarityOptions, 3),
+	MutationIndex = ClampIndex(SavedKeybinds.GABHMutationIndex, MutationOptions, 1),
+	LeaveoutIndex = ClampIndex(SavedKeybinds.GABHLeaveoutIndex, LeaveoutOptions, 1),
+	RollDelayIndex = ClampIndex(SavedKeybinds.GABHRollDelayIndex, RollDelays, 2),
+	SellDelayIndex = ClampIndex(SavedKeybinds.GABHSellDelayIndex, SellDelays, 2),
+}
+HubState.GrowABeehiveState = state
+
+local growPage = Instance.new("ScrollingFrame")
+growPage.Name = "GrowABeehivePage"
+growPage.Size = UDim2.new(0, 346, 1, -54)
+growPage.Position = UDim2.new(1.1, 0, 0, 54)
+growPage.BackgroundTransparency = 1
+growPage.BorderSizePixel = 0
+growPage.ClipsDescendants = true
+growPage.ScrollBarThickness = 3
+growPage.ScrollBarImageColor3 = AccentColor
+growPage.ScrollingDirection = Enum.ScrollingDirection.Y
+growPage.ElasticBehavior = Enum.ElasticBehavior.Never
+growPage.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+growPage.CanvasSize = UDim2.new(0, 0, 0, 208)
+growPage.Visible = false
+growPage.Parent = MainFrame
+
+local function SaveOptions()
+	SavedKeybinds.GABHMinRarityIndex = state.MinRarityIndex
+	SavedKeybinds.GABHMutationIndex = state.MutationIndex
+	SavedKeybinds.GABHLeaveoutIndex = state.LeaveoutIndex
+	SavedKeybinds.GABHRollDelayIndex = state.RollDelayIndex
+	SavedKeybinds.GABHSellDelayIndex = state.SellDelayIndex
+	SavePersistentSettings()
+end
+
+local function AddText(obj)
+	table.insert(ThemeObjects.Texts, obj)
+	return obj
+end
+
+local function AddBackground(obj)
+	table.insert(ThemeObjects.Backgrounds, obj)
+	return obj
+end
+
+local function CreateRow(name, y, height)
+	local row = Instance.new("Frame")
+	row.Name = name
+	row.Size = UDim2.new(1, -8, 0, height)
+	row.Position = UDim2.new(0, 4, 0, y)
+	row.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
+	row.BackgroundTransparency = 0.92
+	row.BorderSizePixel = 0
+	row.Parent = growPage
+	AddBackground(row)
+	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+	return row
+end
+
+local function CreateTitle(parent, text)
+	local title = Instance.new("TextLabel")
+	title.Size = UDim2.new(0, 120, 0, 24)
+	title.Position = UDim2.new(0, 12, 0, 7)
+	title.BackgroundTransparency = 1
+	title.Text = text
+	title.Font = Enum.Font.GothamBold
+	title.TextSize = 11
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.Parent = parent
+	return AddText(title)
+end
+
+local function CreateButton(parent, name, text, xOffset, yOffset, width)
+	local button = Instance.new("TextButton")
+	button.Name = name
+	button.Size = UDim2.new(0, width, 0, 22)
+	button.Position = UDim2.new(1, xOffset, 0, yOffset)
+	button.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	button.BackgroundTransparency = 0.8
+	button.BorderSizePixel = 0
+	button.Text = text
+	button.Font = Enum.Font.GothamBold
+	button.TextSize = 9
+	button.Parent = parent
+	AddBackground(button)
+	AddText(button)
+	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 5)
+	return button
+end
+
+local rollRow = CreateRow("GrowABeehiveRollRow", 4, 38)
+local rollTitle = CreateTitle(rollRow, "Auto Roll:")
+local rollDelayButton = CreateButton(rollRow, "GrowABeehiveRollDelay", "1.5s", -100, 8, 46)
+local rollToggle = CreateButton(rollRow, "GrowABeehiveRollToggle", "Off", -48, 8, 40)
+
+local buyRow = CreateRow("GrowABeehiveBuyRow", 50, 68)
+local buyTitle = CreateTitle(buyRow, "Auto Buy:")
+local rarityButton = CreateButton(buyRow, "GrowABeehiveRarity", "Min: Rare", -140, 8, 84)
+local buyToggle = CreateButton(buyRow, "GrowABeehiveBuyToggle", "Off", -48, 8, 40)
+local mutationButton = CreateButton(buyRow, "GrowABeehiveMutation", "Mut: Any", -188, 39, 86)
+local leaveoutButton = CreateButton(buyRow, "GrowABeehiveLeaveout", "Skip: Off", -96, 39, 88)
+
+local sellRow = CreateRow("GrowABeehiveSellRow", 126, 38)
+local sellTitle = CreateTitle(sellRow, "Auto Sell:")
+local sellDelayButton = CreateButton(sellRow, "GrowABeehiveSellDelay", "2s", -100, 8, 46)
+local sellToggle = CreateButton(sellRow, "GrowABeehiveSellToggle", "Off", -48, 8, 40)
+
+local statusRow = CreateRow("GrowABeehiveStatusRow", 172, 30)
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size = UDim2.new(1, -24, 1, 0)
+statusLabel.Position = UDim2.new(0, 12, 0, 0)
+statusLabel.BackgroundTransparency = 1
+statusLabel.Text = "Ready"
+statusLabel.Font = Enum.Font.GothamBold
+statusLabel.TextSize = 10
+statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+statusLabel.Parent = statusRow
+AddText(statusLabel)
+
+local function RefreshButtons()
+	rollToggle.Text = state.AutoRoll and "On" or "Off"
+	buyToggle.Text = state.AutoBuy and "On" or "Off"
+	sellToggle.Text = state.AutoSell and "On" or "Off"
+	rarityButton.Text = "Min: " .. RarityOptions[state.MinRarityIndex]
+	mutationButton.Text = "Mut: " .. MutationOptions[state.MutationIndex]
+	leaveoutButton.Text = "Skip: " .. LeaveoutOptions[state.LeaveoutIndex]
+	rollDelayButton.Text = tostring(RollDelays[state.RollDelayIndex]) .. "s"
+	sellDelayButton.Text = tostring(SellDelays[state.SellDelayIndex]) .. "s"
+	rollTitle.TextColor3 = state.AutoRoll and AccentColor or InactiveTextColor()
+	buyTitle.TextColor3 = state.AutoBuy and AccentColor or InactiveTextColor()
+	sellTitle.TextColor3 = state.AutoSell and AccentColor or InactiveTextColor()
+end
+
+local function SetStatus(text)
+	statusLabel.Text = tostring(text or "Ready")
+end
+
+local packetsCache = nil
+local function GetPackets()
+	if packetsCache then return packetsCache end
+	local replicatedStorage = game:GetService("ReplicatedStorage")
+	local packages = replicatedStorage:FindFirstChild("Packages")
+	local packetsModule = packages and packages:FindFirstChild("Packets")
+	if not packetsModule then
+		return nil, "Packets not found"
+	end
+	local ok, result = pcall(require, packetsModule)
+	if not ok then
+		return nil, tostring(result)
+	end
+	packetsCache = result
+	return packetsCache
+end
+
+local function FirePacket(name, payload)
+	local packets, reason = GetPackets()
+	if not packets or not packets[name] then
+		return false, {Reason = reason or (name .. " packet missing")}
+	end
+	local callOk, packetOk, response = pcall(function()
+		if payload == nil then
+			return packets[name]:Fire()
+		end
+		return packets[name]:Fire(payload)
+	end)
+	if not callOk then
+		return false, {Reason = tostring(packetOk)}
+	end
+	return packetOk, response
+end
+
+local function ResultMatches(result)
+	if type(result) ~= "table" then return false end
+	local rarity = result.Rarity or "Common"
+	local mutation = result.Mutation
+	local selectedMutation = MutationOptions[state.MutationIndex]
+	local leaveout = LeaveoutOptions[state.LeaveoutIndex]
+	if (RarityRank[rarity] or 1) < (RarityRank[RarityOptions[state.MinRarityIndex]] or 1) then
+		return false
+	end
+	if leaveout ~= "Off" and mutation == leaveout then
+		return false
+	end
+	if selectedMutation == "Any" then
+		return true
+	end
+	if selectedMutation == "None" then
+		return mutation == nil or mutation == ""
+	end
+	return mutation == selectedMutation
+end
+
+local function SortedResults(results)
+	local sorted = {}
+	for _, result in pairs(type(results) == "table" and results or {}) do
+		table.insert(sorted, result)
+	end
+	table.sort(sorted, function(a, b)
+		return (tonumber(a.Podium) or 255) < (tonumber(b.Podium) or 255)
+	end)
+	return sorted
+end
+
+local function AutoBuyResults(results)
+	if state.BuyBusy then return 0 end
+	state.BuyBusy = true
+	local bought = 0
+	for _, result in ipairs(SortedResults(results)) do
+		if ResultMatches(result) and result.Podium then
+			local ok, response = FirePacket("BuyBee", {Podium = result.Podium})
+			if ok then
+				bought += 1
+				SetStatus(("Bought %s"):format(result.Rarity or "bee"))
+				task.wait(0.12)
+			elseif response and response.Reason then
+				SetStatus(response.Reason)
+			end
+		end
+	end
+	state.BuyBusy = false
+	return bought
+end
+
+local function FindText(root, name)
+	if not root then return nil end
+	for _, obj in ipairs(root:GetDescendants()) do
+		if obj:IsA("TextLabel") and obj.Name == name then
+			return obj.Text
+		end
+	end
+	return nil
+end
+
+local function PromptMatches(prompt)
+	local parent = prompt.Parent
+	local rarity = FindText(parent, "Rarity") or "Common"
+	if (RarityRank[rarity] or 1) < (RarityRank[RarityOptions[state.MinRarityIndex]] or 1) then
+		return false
+	end
+	local mutation = FindText(parent, "Mutation")
+	local selectedMutation = MutationOptions[state.MutationIndex]
+	local leaveout = LeaveoutOptions[state.LeaveoutIndex]
+	if leaveout ~= "Off" and mutation == leaveout then return false end
+	if selectedMutation == "Any" then return true end
+	if selectedMutation == "None" then return mutation == nil or mutation == "" end
+	return mutation == selectedMutation
+end
+
+local function TryExistingBuyPrompts()
+	if os.clock() - state.LastPromptBuy < 0.7 or state.BuyBusy then return end
+	state.LastPromptBuy = os.clock()
+	if type(fireproximityprompt) ~= "function" then return end
+	for _, obj in ipairs(workspace:GetDescendants()) do
+		if obj:IsA("ProximityPrompt") then
+			local action = string.lower(obj.ActionText or "")
+			if (action:find("buy", 1, true) or action:find("claim", 1, true)) and PromptMatches(obj) then
+				state.BuyBusy = true
+				fireproximityprompt(obj)
+				state.BuyBusy = false
+				SetStatus("Used buy prompt")
+				return
+			end
+		end
+	end
+end
+
+local function DoRoll()
+	if state.RollBusy then return end
+	state.RollBusy = true
+	SetStatus("Rolling...")
+	local ok, response = FirePacket("RequestRoll")
+	if ok and response and response.Results then
+		local count = #SortedResults(response.Results)
+		SetStatus(("Rolled %d"):format(count))
+		if state.AutoBuy then
+			local bought = AutoBuyResults(response.Results)
+			if bought == 0 then SetStatus("Roll skipped") end
+		end
+	elseif response and response.Reason then
+		SetStatus(response.Reason)
+	else
+		SetStatus("Roll failed")
+	end
+	state.RollBusy = false
+end
+
+local function DoSell()
+	if state.SellBusy then return end
+	state.SellBusy = true
+	FirePacket("GrabHoney")
+	task.wait(0.12)
+	local ok, response = FirePacket("SellHoney")
+	if ok and response and (response.Amount or 0) > 0 then
+		SetStatus(("Sold honey: %s"):format(tostring(response.Amount)))
+	elseif response and response.Reason then
+		SetStatus(response.Reason)
+	end
+	state.SellBusy = false
+end
+
+local function ToggleRoll()
+	state.AutoRoll = not state.AutoRoll
+	RefreshButtons()
+	UpdateTheme(true)
+end
+
+local function ToggleBuy()
+	state.AutoBuy = not state.AutoBuy
+	RefreshButtons()
+	UpdateTheme(true)
+end
+
+local function ToggleSell()
+	state.AutoSell = not state.AutoSell
+	RefreshButtons()
+	UpdateTheme(true)
+end
+
+rollToggle.MouseButton1Click:Connect(function()
+	PlayClick()
+	ToggleRoll()
+end)
+buyToggle.MouseButton1Click:Connect(function()
+	PlayClick()
+	ToggleBuy()
+end)
+sellToggle.MouseButton1Click:Connect(function()
+	PlayClick()
+	ToggleSell()
+end)
+rarityButton.MouseButton1Click:Connect(function()
+	PlayClick()
+	state.MinRarityIndex = (state.MinRarityIndex % #RarityOptions) + 1
+	RefreshButtons()
+	SaveOptions()
+end)
+mutationButton.MouseButton1Click:Connect(function()
+	PlayClick()
+	state.MutationIndex = (state.MutationIndex % #MutationOptions) + 1
+	RefreshButtons()
+	SaveOptions()
+end)
+leaveoutButton.MouseButton1Click:Connect(function()
+	PlayClick()
+	state.LeaveoutIndex = (state.LeaveoutIndex % #LeaveoutOptions) + 1
+	RefreshButtons()
+	SaveOptions()
+end)
+rollDelayButton.MouseButton1Click:Connect(function()
+	PlayClick()
+	state.RollDelayIndex = (state.RollDelayIndex % #RollDelays) + 1
+	RefreshButtons()
+	SaveOptions()
+end)
+sellDelayButton.MouseButton1Click:Connect(function()
+	PlayClick()
+	state.SellDelayIndex = (state.SellDelayIndex % #SellDelays) + 1
+	RefreshButtons()
+	SaveOptions()
+end)
+
+table.insert(ThemeObjects.StateTexts, {Object = rollTitle, IsEnabled = function() return state.AutoRoll end})
+table.insert(ThemeObjects.StateTexts, {Object = buyTitle, IsEnabled = function() return state.AutoBuy end})
+table.insert(ThemeObjects.StateTexts, {Object = sellTitle, IsEnabled = function() return state.AutoSell end})
+ThemeObjects.AddFeatureKeybind({Name = "Auto Roll", Storage = "GABHAutoRoll", Parent = rollRow, Toggle = rollToggle, Get = function() return LoadKeybind("GABHAutoRoll") end, Set = function(key) SaveKeybind("GABHAutoRoll", key) end, Action = ToggleRoll})
+ThemeObjects.AddFeatureKeybind({Name = "Auto Buy", Storage = "GABHAutoBuy", Parent = buyRow, Toggle = buyToggle, Get = function() return LoadKeybind("GABHAutoBuy") end, Set = function(key) SaveKeybind("GABHAutoBuy", key) end, Action = ToggleBuy})
+ThemeObjects.AddFeatureKeybind({Name = "Auto Sell", Storage = "GABHAutoSell", Parent = sellRow, Toggle = sellToggle, Get = function() return LoadKeybind("GABHAutoSell") end, Set = function(key) SaveKeybind("GABHAutoSell", key) end, Action = ToggleSell})
+
+TrackConnection("GrowABeehiveHeartbeat", RunService.Heartbeat:Connect(function()
+	if state.AutoBuy and not state.AutoRoll then
+		TryExistingBuyPrompts()
+	end
+end))
+
+task.spawn(function()
+	while growPage.Parent do
+		if state.AutoRoll then
+			DoRoll()
+			task.wait(RollDelays[state.RollDelayIndex])
+		else
+			task.wait(0.2)
+		end
+	end
+end)
+
+task.spawn(function()
+	while growPage.Parent do
+		if state.AutoSell then
+			DoSell()
+			task.wait(SellDelays[state.SellDelayIndex])
+		else
+			task.wait(0.35)
+		end
+	end
+end)
+
+ThemeObjects.OpenGrowABeehivePage = function()
+	HubState.SelectedGame = "Grow a Beehive"
+	if HubState.PageHeader then HubState.PageHeader.Text = "Grow a Beehive" end
+	if HubState.GamesTabButton then HubState.GamesTabButton.Text = "Grow a Beehive" end
+	if HubState.MM2BackButton then HubState.MM2BackButton.Visible = true end
+	if HubState.GamesPage then HubState.GamesPage.Visible = false; HubState.GamesPage.Position = UDim2.new(1.1, 0, 0, 54) end
+	if HubState.MM2Page then HubState.MM2Page.Visible = false; HubState.MM2Page.Position = UDim2.new(1.1, 0, 0, 54) end
+	local quietPage = MainFrame:FindFirstChild("QuietOrDiePage")
+	if quietPage then quietPage.Visible = false; quietPage.Position = UDim2.new(1.1, 0, 0, 54) end
+	local quietCoins = HubState.PageHeader and HubState.PageHeader:FindFirstChild("QuietOrDieCoinsDisplay")
+	if quietCoins then quietCoins.Visible = false end
+	local quietWins = HubState.PageHeader and HubState.PageHeader:FindFirstChild("QuietOrDieWinsDisplay")
+	if quietWins then quietWins.Visible = false end
+	local quietHistory = HubState.PageHeader and HubState.PageHeader:FindFirstChild("QuietOrDieHistoryButton")
+	if quietHistory then quietHistory.Visible = false end
+	growPage.Visible = true
+	growPage.Position = UDim2.new(0, 122, 0, 54)
+	ThemeObjects.ActiveTabName = "Games"
+	HubState.ActiveTabIndex = table.find(HubState.TabNames, "Games") or HubState.ActiveTabIndex
+	HubState.ActiveContentPage = growPage
+	RefreshButtons()
+	UpdateTheme(true)
+end
+
+RefreshButtons()
+ThemeObjects.OpenGrowABeehivePage()
+UpdateTheme(true)
 
