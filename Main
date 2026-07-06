@@ -2164,6 +2164,8 @@ HubState.MM2BackButton.MouseButton1Click:Connect(function()
 	if growPage then growPage.Visible = false; growPage.Position = UDim2.new(1.1, 0, 0, 54) end
 	local growSeason = HubState.PageHeader:FindFirstChild("GrowABeehiveSeasonDisplay")
 	if growSeason then growSeason.Visible = false end
+	local growRarest = HubState.PageHeader:FindFirstChild("GrowABeehiveRarestDisplay")
+	if growRarest then growRarest.Visible = false end
 	local growHistory = HubState.PageHeader:FindFirstChild("GrowABeehiveHistoryButton")
 	if growHistory then growHistory.Visible = false end
 	local growFilterDock = ScreenGui:FindFirstChild("GrowABeehiveFilterDock")
@@ -5060,6 +5062,8 @@ ThemeObjects.SwitchTab = function(name)
 	local growActive = openingSelectedGame and HubState.SelectedGame == "Grow a Beehive"
 	local growSeason = HubState.PageHeader:FindFirstChild("GrowABeehiveSeasonDisplay")
 	if growSeason then growSeason.Visible = growActive end
+	local growRarest = HubState.PageHeader:FindFirstChild("GrowABeehiveRarestDisplay")
+	if growRarest then growRarest.Visible = growActive end
 	local growHistory = HubState.PageHeader:FindFirstChild("GrowABeehiveHistoryButton")
 	if growHistory then growHistory.Visible = growActive end
 	if not growActive then
