@@ -24,7 +24,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "GABH-HeaderDisplays-v12"
+local ModuleVersion = "GABH-SeasonTimer-v13"
 local existingPage = MainFrame:FindFirstChild("GrowABeehivePage")
 local existingDock = ScreenGui and ScreenGui:FindFirstChild("GrowABeehiveFilterDock")
 local existingHistory = ScreenGui and ScreenGui:FindFirstChild("GrowABeehiveHistoryPanel")
@@ -176,6 +176,17 @@ end
 
 local function AddBackground(obj)
 	table.insert(ThemeObjects.Backgrounds, obj)
+	return obj
+end
+
+local function EnsureControlOutline(obj)
+	if not obj or obj:FindFirstChild("ControlOutline") then return obj end
+	local outline = Instance.new("UIStroke")
+	outline.Name = "ControlOutline"
+	outline.Color = Color3.fromRGB(0, 0, 0)
+	outline.Thickness = 1
+	outline.Transparency = 0
+	outline.Parent = obj
 	return obj
 end
 
@@ -337,82 +348,67 @@ local function NormalizeSeasonText(text)
 	text = text:gsub("NEXT%s+SEASON", "SEASON")
 	text = text:gsub("Next%s+Season", "SEASON")
 	text = text:gsub("next%s+season", "SEASON")
+	text = text:gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+	local upper = string.upper(text)
+	local clock = text:match("%d+:%d%d:%d%d") or text:match("%d+:%d%d")
+	if clock then
+		for _, season in ipairs(SeasonOptions) do
+			if upper:find(string.upper(season), 1, true) then
+				return ("%s: %s"):format(string.upper(season), clock)
+			end
+		end
+		if upper:find("SEASON", 1, true) then
+			return "SEASON: " .. clock
+		end
+	end
 	return text
 end
 
-local function GetBestOwnedBeeText()
-	local bestInfo, bestMutation, bestScore = nil, nil, -1
-	local uuidMutations = {}
-	local function consider(beeId, mutation)
-		local info = GetBeeInfo(beeId)
-		local score = BeeScore(info)
-		if info and score > bestScore then
-			bestInfo = info
-			bestMutation = mutation
-			bestScore = score
+local function ExtractSeasonName(text)
+	local upper = string.upper(tostring(text or ""))
+	for _, season in ipairs(SeasonOptions) do
+		if upper:find(string.upper(season), 1, true) then
+			return string.upper(season)
 		end
 	end
-	local function beeIdFromRecord(bee, fallback)
-		if type(bee) ~= "table" then return bee or fallback end
-		return bee.BeeId or bee.BeeID or bee.Bee or bee.Id or bee.id or bee.Name or bee.name or bee.BeeName or bee.ItemId or bee.ItemID or bee.Type or bee.TypeId or bee.TypeID or fallback
-	end
-	local function mutationFromRecord(bee, uuid)
-		if type(bee) ~= "table" then return nil end
-		return bee.Mutation or bee.mutation or (uuid and uuidMutations[uuid])
-	end
-	local function scanRecords(records, depth)
-		if type(records) ~= "table" then return end
-		depth = depth or 0
-		for key, bee in pairs(records) do
-			if type(bee) == "table" then
-				local uuid = bee.UUID or bee.Uuid or bee.uuid or bee.BeeUUID or bee.BeeUuid
-				if uuid and bee.Mutation then uuidMutations[uuid] = bee.Mutation end
-				local beeId = beeIdFromRecord(bee, key)
-				if beeId then
-					consider(beeId, mutationFromRecord(bee, uuid))
-				end
-				if depth < 2 and (not beeId or bee.BeeId == nil) then
-					scanRecords(bee, depth + 1)
-				end
-			else
-				consider(bee, nil)
-			end
-		end
-	end
-
-	local dataClient = GetDataClient()
-	if dataClient then
-		for _, dataKey in ipairs({"OwnedBees", "Hives", "Bees", "Inventory", "Items"}) do
-			local ok, records = pcall(function()
-				if type(dataClient.get) == "function" then
-					return dataClient:get(dataKey)
-				end
-				return nil
-			end)
-			if ok then scanRecords(records) end
-		end
-	end
-
-	local player = game:GetService("Players").LocalPlayer
-	local character = player and player.Character
-	local backpack = player and player:FindFirstChildOfClass("Backpack")
-	for _, container in ipairs({character, backpack}) do
-		if container then
-			for _, child in ipairs(container:GetChildren()) do
-				if child:IsA("Tool") and child:GetAttribute("Kind") == "Bee" then
-					consider(child:GetAttribute("Id") or child.Name, child:GetAttribute("Mutation"))
-				end
-			end
-		end
-	end
-
-	if not bestInfo then return "Best: N/A" end
-	return ("Best: %s%s %s"):format(bestInfo.Name or bestInfo.Id or "Bee", MutationText(bestMutation), ChanceText(bestInfo))
+	return nil
 end
 
-local function FindSeasonTextFallback()
+local function LooksLikeSeasonTimer(text)
+	local upper = string.upper(tostring(text or ""))
+	return (upper:find("SEASON", 1, true) or ExtractSeasonName(upper)) and upper:match("%d+:%d%d")
+end
+
+local function ReadSeasonTextFromLabel(label)
+	if not label or not (label:IsA("TextLabel") or label:IsA("TextButton") or label:IsA("TextBox")) then return nil end
+	local text = NormalizeSeasonText(label.Text)
+	if LooksLikeSeasonTimer(text) then return text end
+	local parent = label.Parent
+	if parent then
+		local pieces = {}
+		for _, child in ipairs(parent:GetDescendants()) do
+			if child:IsA("TextLabel") or child:IsA("TextButton") or child:IsA("TextBox") then
+				local childText = tostring(child.Text or "")
+				if childText ~= "" then table.insert(pieces, childText) end
+			end
+		end
+		text = NormalizeSeasonText(table.concat(pieces, " "))
+		if LooksLikeSeasonTimer(text) then return text end
+	end
+	return nil
+end
+
+local function FindSeasonTextFallback(force)
 	local now = os.clock()
-	if now - (state.LastSeasonTextScan or 0) < 1 then
+	local cachedLabel = state.SeasonTextLabel
+	if cachedLabel and cachedLabel.Parent and (cachedLabel:IsA("TextLabel") or cachedLabel:IsA("TextButton") or cachedLabel:IsA("TextBox")) then
+		local text = ReadSeasonTextFromLabel(cachedLabel)
+		if text then
+			state.LastSeasonText = text
+			return text
+		end
+	end
+	if not force and now - (state.LastSeasonTextScan or 0) < 0.25 then
 		return state.LastSeasonText
 	end
 	state.LastSeasonTextScan = now
@@ -430,8 +426,9 @@ local function FindSeasonTextFallback()
 		resolve(workspace:FindFirstChild("EventScreen"), {"SeasonScreen", "SurfaceGui", "Board", "NameLabel"}),
 	}) do
 		if label and (label:IsA("TextLabel") or label:IsA("TextButton") or label:IsA("TextBox")) then
-			local text = NormalizeSeasonText(label.Text)
-			if text ~= "" then
+			local text = ReadSeasonTextFromLabel(label)
+			if text then
+				state.SeasonTextLabel = label
 				state.LastSeasonText = text
 				return text
 			end
@@ -445,15 +442,16 @@ local function FindSeasonTextFallback()
 	for _, root in ipairs(roots) do
 		for _, obj in ipairs(root:GetDescendants()) do
 			if (obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox")) and (not ScreenGui or not obj:IsDescendantOf(ScreenGui)) then
-				local text = tostring(obj.Text or "")
-				local upper = string.upper(text)
-				if upper:find("NEXT SEASON", 1, true) or upper:match("^%s*(SUMMER|SPRING|WINTER|AUTUMN)%s*:") then
-					state.LastSeasonText = NormalizeSeasonText(text)
+				local normalized = ReadSeasonTextFromLabel(obj)
+				if normalized then
+					state.SeasonTextLabel = obj
+					state.LastSeasonText = normalized
 					return state.LastSeasonText
 				end
 			end
 		end
 	end
+	state.SeasonTextLabel = nil
 	state.LastSeasonText = nil
 	return nil
 end
@@ -500,6 +498,7 @@ local function CreateButton(parent, name, text, xOffset, width)
 	AddBackground(button)
 	AddText(button)
 	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 5)
+	EnsureControlOutline(button)
 	return button
 end
 
@@ -520,6 +519,7 @@ local function CreateInput(parent, name, text, xOffset, width)
 	AddBackground(box)
 	AddText(box)
 	Instance.new("UICorner", box).CornerRadius = UDim.new(0, 5)
+	EnsureControlOutline(box)
 	return box
 end
 
@@ -560,29 +560,14 @@ local beeSellRow = CreateRow("GrowABeehiveBeeSellRow", 188)
 local beeSellTitle = CreateTitle(beeSellRow, "Sell Bees:")
 local beeSellButton = CreateButton(beeSellRow, "GrowABeehiveBeeSellButton", "Open", -98, 44)
 
-local rarestDisplay = Instance.new("TextLabel")
-rarestDisplay.Name = "GrowABeehiveRarestDisplay"
-rarestDisplay.Size = UDim2.new(0, 190, 0, 9)
-rarestDisplay.Position = UDim2.new(0.5, -95, 0, 1)
-rarestDisplay.BackgroundTransparency = 1
-rarestDisplay.Text = "Best: ..."
-rarestDisplay.Font = Enum.Font.GothamBold
-rarestDisplay.TextSize = 7
-rarestDisplay.TextColor3 = AccentColor
-rarestDisplay.TextXAlignment = Enum.TextXAlignment.Center
-rarestDisplay.TextTruncate = Enum.TextTruncate.AtEnd
-rarestDisplay.Visible = false
-rarestDisplay.Parent = HubState.PageHeader
-AddText(rarestDisplay)
-
 local seasonDisplay = Instance.new("TextLabel")
 seasonDisplay.Name = "GrowABeehiveSeasonDisplay"
-seasonDisplay.Size = UDim2.new(0, 120, 0, 9)
-seasonDisplay.Position = UDim2.new(0.5, -60, 0, 11)
+seasonDisplay.Size = UDim2.new(0, 190, 0, 12)
+seasonDisplay.Position = UDim2.new(0.5, -95, 0, 4)
 seasonDisplay.BackgroundTransparency = 1
 seasonDisplay.Text = "SEASON: ..."
 seasonDisplay.Font = Enum.Font.GothamBold
-seasonDisplay.TextSize = 8
+seasonDisplay.TextSize = 9
 seasonDisplay.TextColor3 = Color3.fromRGB(255, 255, 255)
 seasonDisplay.TextXAlignment = Enum.TextXAlignment.Center
 seasonDisplay.TextTruncate = Enum.TextTruncate.AtEnd
@@ -985,24 +970,23 @@ local function SetStatus(_)
 end
 
 local function IsGrowPageActive()
-	return HubState.SelectedGame == "Grow a Beehive" and growPage.Parent ~= nil and growPage.Visible == true
+	return ThemeObjects.ActiveTabName == "Games" and HubState.SelectedGame == "Grow a Beehive" and growPage.Parent ~= nil and growPage.Visible == true
 end
 
 local function RefreshHeaderDisplays(force)
-	rarestDisplay.Visible = true
 	seasonDisplay.Visible = true
 	local okTime, now = pcall(function()
 		return workspace:GetServerTimeNow()
 	end)
 	now = okTime and now or os.time()
 
-	if force or now - (state.LastRarestBeeUpdate or 0) >= 1 then
-		state.LastRarestBeeUpdate = now
-		rarestDisplay.TextColor3 = AccentColor
-		rarestDisplay.Text = GetBestOwnedBeeText()
+	local seasonText = FindSeasonTextFallback(force)
+	if seasonText then
+		seasonDisplay.TextColor3 = ExtractSeasonName(seasonText) and AccentColor or Color3.fromRGB(255, 255, 255)
+		seasonDisplay.Text = seasonText
+		return
 	end
 
-	local seasonText = nil
 	local seasonMath = GetSeasonMath()
 	if seasonMath then
 		local okActive, activeSeason = pcall(seasonMath.IsActive, now)
@@ -1020,7 +1004,7 @@ local function RefreshHeaderDisplays(force)
 		end
 	end
 
-	seasonDisplay.Text = seasonText or FindSeasonTextFallback() or "SEASON: N/A"
+	seasonDisplay.Text = seasonText or "SEASON: N/A"
 end
 
 local function RefreshHistoryPanel()
@@ -1590,7 +1574,16 @@ ThemeObjects.AddFeatureKeybind({Name = "Auto Roll", Storage = "GABHAutoRoll", Pa
 ThemeObjects.AddFeatureKeybind({Name = "Auto Buy", Storage = "GABHAutoBuy", Parent = buyRow, Toggle = buyToggle, Get = function() return LoadKeybind("GABHAutoBuy") end, Set = function(key) SaveKeybind("GABHAutoBuy", key) end, Action = ToggleBuy})
 ThemeObjects.AddFeatureKeybind({Name = "Auto Sell", Storage = "GABHAutoSell", Parent = sellRow, Toggle = sellToggle, Get = function() return LoadKeybind("GABHAutoSell") end, Set = function(key) SaveKeybind("GABHAutoSell", key) end, Action = ToggleSell})
 ThemeObjects.AddFeatureKeybind({Name = "Auto Equip Best", Storage = "GABHAutoEquip", Parent = equipRow, Toggle = equipToggle, Get = function() return LoadKeybind("GABHAutoEquip") end, Set = function(key) SaveKeybind("GABHAutoEquip", key) end, Action = ToggleEquip})
-ThemeObjects.AddFeatureKeybind({Name = "Sell Bees Menu", Storage = "GABHSellBeesMenu", Button = beeSellKeybindButton, Get = function() return LoadKeybind("GABHSellBeesMenu") end, Set = function(key) SaveKeybind("GABHSellBeesMenu", key); beeSellKeybindButton.Text = KeybindText(key) end, Action = ToggleBeeSellPanel})
+local sellBeesKeybindEntry = {Name = "Sell Bees Menu", Storage = "GABHSellBeesMenu", Parent = beeSellRow, Toggle = beeSellButton, Get = function() return LoadKeybind("GABHSellBeesMenu") end, Set = function(key) SaveKeybind("GABHSellBeesMenu", key); beeSellKeybindButton.Text = KeybindText(key) end, Action = ToggleBeeSellPanel}
+ThemeObjects.AddFeatureKeybind(sellBeesKeybindEntry)
+beeSellKeybindButton.MouseButton1Click:Connect(function()
+	PlayClick()
+	if ThemeObjects.BeginFeatureKeybind then
+		ThemeObjects.BeginFeatureKeybind(sellBeesKeybindEntry, beeSellKeybindButton)
+	end
+end)
+if ThemeObjects.AttachKeybindClearPrompt then ThemeObjects.AttachKeybindClearPrompt(sellBeesKeybindEntry, beeSellKeybindButton) end
+EnsureControlOutline(beeSellKeybindButton)
 ThemeObjects.AddFeatureKeybind({Name = "Buy Filters Menu", Storage = "GABHBuyFiltersMenu", Get = function() return LoadKeybind("GABHBuyFiltersMenu") end, Set = function(key) SaveKeybind("GABHBuyFiltersMenu", key) end, Action = function()
 	state.FiltersOpen = not state.FiltersOpen
 	if state.FiltersOpen then
@@ -1616,6 +1609,16 @@ for _, entry in ipairs(beeSellButtons) do
 	ThemeObjects.AddFeatureKeybind({Name = "Sell " .. value .. " Bees", Storage = storage, Get = function() return LoadKeybind(storage) end, Set = function(key) SaveKeybind(storage, key) end, Action = function()
 		task.spawn(TrashMatchingBeeTools, kind, value)
 	end})
+end
+
+for _, obj in ipairs(growPage:GetDescendants()) do
+	if obj:IsA("TextButton") and (obj.Name == "FeatureKeybindButton" or obj.Name:find("Toggle") or obj.Name:find("Button") or obj.Name:find("Edit")) then
+		if ThemeObjects.EnsureKeybindOutline and obj.Name == "FeatureKeybindButton" then
+			ThemeObjects.EnsureKeybindOutline(obj)
+		else
+			EnsureControlOutline(obj)
+		end
+	end
 end
 
 task.spawn(function()
@@ -1665,11 +1668,11 @@ end)
 task.spawn(function()
 	while growPage.Parent do
 		local active = IsGrowPageActive()
-		rarestDisplay.Visible = active
 		seasonDisplay.Visible = active
 		historyButton.Visible = active
 		if not active then
-			rarestDisplay.Visible = false
+			seasonDisplay.Visible = false
+			historyButton.Visible = false
 			filterDock.Visible = false
 			historyPanel.Visible = false
 			beeSellPanel.Visible = false
@@ -1690,6 +1693,19 @@ ThemeObjects.OpenGrowABeehivePage = function()
 	if HubState.PageHeader then HubState.PageHeader.Text = "Grow a Beehive" end
 	if HubState.GamesTabButton then HubState.GamesTabButton.Text = "Grow a Beehive" end
 	if HubState.MM2BackButton then HubState.MM2BackButton.Visible = true end
+	for _, page in ipairs({
+		HubState.MovementPage,
+		HubState.CombatPage,
+		ThemeObjects.CameraPage,
+		HubState.TeleportPage,
+		HubState.ScriptsPage,
+		MainFrame:FindFirstChild("ExtrasPage"),
+	}) do
+		if page then
+			page.Visible = false
+			page.Position = UDim2.new(1.1, 0, 0, 54)
+		end
+	end
 	if HubState.GamesPage then HubState.GamesPage.Visible = false; HubState.GamesPage.Position = UDim2.new(1.1, 0, 0, 54) end
 	if HubState.MM2Page then HubState.MM2Page.Visible = false; HubState.MM2Page.Position = UDim2.new(1.1, 0, 0, 54) end
 	local quietPage = MainFrame:FindFirstChild("QuietOrDiePage")
