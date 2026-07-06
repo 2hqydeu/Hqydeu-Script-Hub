@@ -2170,6 +2170,8 @@ HubState.MM2BackButton.MouseButton1Click:Connect(function()
 	if growFilterDock then growFilterDock.Visible = false end
 	local growHistoryPanel = ScreenGui:FindFirstChild("GrowABeehiveHistoryPanel", true)
 	if growHistoryPanel then growHistoryPanel.Visible = false end
+	local growSellBeesPanel = ScreenGui:FindFirstChild("GrowABeehiveSellBeesPanel", true)
+	if growSellBeesPanel then growSellBeesPanel.Visible = false end
 	local quietCoins = HubState.PageHeader:FindFirstChild("QuietOrDieCoinsDisplay")
 	if quietCoins then quietCoins.Visible = false end
 	local quietWins = HubState.PageHeader:FindFirstChild("QuietOrDieWinsDisplay")
@@ -5065,6 +5067,8 @@ ThemeObjects.SwitchTab = function(name)
 		if growFilterDock then growFilterDock.Visible = false end
 		local growHistoryPanel = ScreenGui:FindFirstChild("GrowABeehiveHistoryPanel", true)
 		if growHistoryPanel then growHistoryPanel.Visible = false end
+		local growSellBeesPanel = ScreenGui:FindFirstChild("GrowABeehiveSellBeesPanel", true)
+		if growSellBeesPanel then growSellBeesPanel.Visible = false end
 	end
 
 	local pages = {HubState.MovementPage, HubState.CombatPage, ThemeObjects.CameraPage, HubState.TeleportPage, HubState.GamesPage, HubState.MM2Page, HubState.ScriptsPage, extrasPage, quietPage, growPage}
