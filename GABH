@@ -23,10 +23,11 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "GABH-SellBees-v8"
+local ModuleVersion = "GABH-SellBees-v9"
 local existingPage = MainFrame:FindFirstChild("GrowABeehivePage")
 local existingDock = ScreenGui and ScreenGui:FindFirstChild("GrowABeehiveFilterDock")
 local existingHistory = ScreenGui and ScreenGui:FindFirstChild("GrowABeehiveHistoryPanel")
+local existingBeeSell = ScreenGui and ScreenGui:FindFirstChild("GrowABeehiveSellBeesPanel")
 if existingPage and existingPage:GetAttribute("ModuleVersion") == ModuleVersion and ThemeObjects.OpenGrowABeehivePage then
 	ThemeObjects.OpenGrowABeehivePage()
 	return
@@ -40,7 +41,8 @@ end
 if existingPage then existingPage:Destroy() end
 if existingDock then existingDock:Destroy() end
 if existingHistory then existingHistory:Destroy() end
-for _, connectionName in ipairs({"GrowABeehiveFilterDockPosition", "GrowABeehiveFilterDockSize", "GrowABeehiveHistoryPanelPosition", "GrowABeehiveHistoryPanelSize"}) do
+if existingBeeSell then existingBeeSell:Destroy() end
+for _, connectionName in ipairs({"GrowABeehiveFilterDockPosition", "GrowABeehiveFilterDockSize", "GrowABeehiveHistoryPanelPosition", "GrowABeehiveHistoryPanelSize", "GrowABeehiveSellBeesPanelPosition", "GrowABeehiveSellBeesPanelSize"}) do
 	if HubState.Connections[connectionName] then
 		HubState.Connections[connectionName]:Disconnect()
 		HubState.Connections[connectionName] = nil
@@ -465,7 +467,7 @@ beeSellPanel.BackgroundTransparency = 0
 beeSellPanel.BorderSizePixel = 0
 beeSellPanel.ZIndex = 24
 beeSellPanel.Visible = false
-beeSellPanel.Parent = growPage
+beeSellPanel.Parent = ScreenGui or MainFrame
 AddBackground(beeSellPanel)
 Instance.new("UICorner", beeSellPanel).CornerRadius = UDim.new(0, 9)
 local beeSellStroke = Instance.new("UIStroke")
@@ -493,6 +495,22 @@ beeSellPanelTitle.TextXAlignment = Enum.TextXAlignment.Center
 beeSellPanelTitle.ZIndex = 25
 beeSellPanelTitle.Parent = beeSellPanel
 AddText(beeSellPanelTitle)
+
+local beeSellCloseButton = Instance.new("TextButton")
+beeSellCloseButton.Name = "GrowABeehiveSellBeesClose"
+beeSellCloseButton.Size = UDim2.new(0, 18, 0, 18)
+beeSellCloseButton.Position = UDim2.new(1, -24, 0, 5)
+beeSellCloseButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+beeSellCloseButton.BackgroundTransparency = 0.35
+beeSellCloseButton.BorderSizePixel = 0
+beeSellCloseButton.Text = "x"
+beeSellCloseButton.Font = Enum.Font.GothamBold
+beeSellCloseButton.TextSize = 9
+beeSellCloseButton.ZIndex = 26
+beeSellCloseButton.Parent = beeSellPanel
+AddBackground(beeSellCloseButton)
+AddText(beeSellCloseButton)
+Instance.new("UICorner", beeSellCloseButton).CornerRadius = UDim.new(0, 5)
 
 local beeSellStatus = Instance.new("TextLabel")
 beeSellStatus.Size = UDim2.new(1, -16, 0, 12)
@@ -556,6 +574,14 @@ for i, season in ipairs(SeasonOptions) do
 	local row = math.floor((i - 1) / 2)
 	CreateBeeSellButton("Season", season, 48 + column * 82, sellY + row * 23)
 end
+
+local function UpdateBeeSellPanelPosition()
+	local scale = GuiScaleFromValue(GuiSizeValue)
+	beeSellPanel.Position = UDim2.fromOffset(MainFrame.AbsolutePosition.X - ((256 + 7) * scale), MainFrame.AbsolutePosition.Y + (54 * scale))
+end
+TrackConnection("GrowABeehiveSellBeesPanelPosition", MainFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(UpdateBeeSellPanelPosition))
+TrackConnection("GrowABeehiveSellBeesPanelSize", MainFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdateBeeSellPanelPosition))
+UpdateBeeSellPanelPosition()
 
 local filterDock = Instance.new("Frame")
 filterDock.Name = "GrowABeehiveFilterDock"
@@ -784,6 +810,7 @@ RefreshButtons = function()
 		entry.Button.BackgroundTransparency = 0
 	end
 	UpdateFilterDockPosition()
+	UpdateBeeSellPanelPosition()
 end
 
 local previousCloseTransientPopups = ThemeObjects.CloseTransientPopups
@@ -896,33 +923,10 @@ local function FindMatchingBeeTool(kind, value)
 	end
 end
 
-local function RemoveMatchingHiveBees(kind, value)
-	local dataClient = GetDataClient()
-	if not dataClient or type(dataClient.get) ~= "function" then return 0 end
-	local ok, hives = pcall(function()
-		return dataClient:get("Hives")
-	end)
-	if not ok or type(hives) ~= "table" then return 0 end
-	local removed = 0
-	for key, hive in pairs(hives) do
-		if type(hive) == "table" and hive.BeeUUID and BeeMetaMatches(hive.BeeId, nil, kind, value) then
-			local floor, index = ParseHiveKey(key)
-			if floor and index then
-				local packetOk = FirePacket("RemoveBee", {Floor = floor, HiveIndex = index})
-				if packetOk then
-					removed += 1
-					task.wait(0.12)
-				end
-			end
-		end
-	end
-	return removed
-end
-
 local function TrashMatchingBeeTools(kind, value)
 	if state.BeeTrashBusy then return end
 	state.BeeTrashBusy = true
-	beeSellStatus.Text = "Checking bees..."
+	beeSellStatus.Text = "Checking inventory..."
 	local player = game:GetService("Players").LocalPlayer
 	local character = player and player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -931,16 +935,22 @@ local function TrashMatchingBeeTools(kind, value)
 		state.BeeTrashBusy = false
 		return
 	end
-	RemoveMatchingHiveBees(kind, value)
-	task.wait(0.2)
 	local trashed = 0
 	for _ = 1, 75 do
 		local tool = FindMatchingBeeTool(kind, value)
 		if not tool then break end
+		local toolUuid = tool:GetAttribute("UUID")
 		beeSellStatus.Text = "Trashing " .. tostring(tool.Name)
 		if tool.Parent ~= character then
 			humanoid:EquipTool(tool)
-			task.wait(0.08)
+			local equipStart = os.clock()
+			repeat
+				task.wait(0.04)
+			until tool.Parent == character or os.clock() - equipStart > 1
+		end
+		if tool.Parent ~= character then
+			beeSellStatus.Text = "Could not equip bee"
+			break
 		end
 		local ok = FireTrashBee()
 		if ok then
@@ -948,7 +958,7 @@ local function TrashMatchingBeeTools(kind, value)
 			local started = os.clock()
 			repeat
 				task.wait(0.05)
-			until not tool.Parent or not BeeToolMatches(tool, kind, value) or os.clock() - started > 0.75
+			until not tool.Parent or tool:GetAttribute("UUID") ~= toolUuid or os.clock() - started > 1.25
 		else
 			break
 		end
@@ -1189,6 +1199,12 @@ end)
 beeSellButton.MouseButton1Click:Connect(function()
 	PlayClick()
 	ToggleBeeSellPanel()
+end)
+beeSellCloseButton.MouseButton1Click:Connect(function()
+	PlayClick()
+	state.SellBeesOpen = false
+	RefreshButtons()
+	UpdateTheme(true)
 end)
 editFiltersButton.MouseButton1Click:Connect(function()
 	PlayClick()
