@@ -10,6 +10,8 @@ local Player = Runtime.Player or game:GetService("Players").LocalPlayer
 local PlayClick = Runtime.PlayClick or function() end
 local TrackConnection = Runtime.TrackConnection or function(name, connection) HubState.Connections[name] = connection; return connection end
 local UpdateTheme = Runtime.UpdateTheme or function() end
+local LoadKeybind = Runtime.LoadKeybind or function() return Enum.KeyCode.Unknown end
+local SaveKeybind = Runtime.SaveKeybind or function() end
 local GuiScaleFromValue = Runtime.GuiScaleFromValue or function() return 1 end
 local GuiSizeValue = Runtime.GuiSizeValue or 50
 local GetAccentColor = Runtime.GetAccentColor or function() return Color3.fromRGB(0, 210, 255) end
@@ -17,7 +19,7 @@ local GetFrameThemeColor = Runtime.GetFrameThemeColor or function() return Color
 if not HubState or not ThemeObjects or not MainFrame or not ScreenGui then return warn("Hqydeu optimize module: runtime is incomplete") end
 HubState.Connections = HubState.Connections or {}
 
-local ModuleVersion = "OptimizeDock-v1"
+local ModuleVersion = "OptimizeDock-v2"
 local existingDock = ScreenGui:FindFirstChild("OptimizeDock")
 if existingDock and existingDock:GetAttribute("ModuleVersion") == ModuleVersion and ThemeObjects.OpenOptimizeDock then
 	ThemeObjects.OpenOptimizeDock()
@@ -152,6 +154,12 @@ ThemeObjects.Optimizer.States = ThemeObjects.Optimizer.States or {
 }
 ThemeObjects.Optimizer.Originals = setmetatable({}, {__mode = "k"})
 ThemeObjects.Optimizer.Buttons = {}
+ThemeObjects.Optimizer.ApplyToken = (ThemeObjects.Optimizer.ApplyToken or 0) + 1
+
+local function NextOptimizeToken()
+	ThemeObjects.Optimizer.ApplyToken = (ThemeObjects.Optimizer.ApplyToken or 0) + 1
+	return ThemeObjects.Optimizer.ApplyToken
+end
 
 local function OptimizerRemember(object, property)
 	if not object then return end
@@ -248,27 +256,58 @@ local function OptimizerAnyEnabled()
 	return false
 end
 
-local function OptimizerRestoreAll()
-	for object, properties in pairs(ThemeObjects.Optimizer.Originals) do
-		for property, value in pairs(properties) do
-			pcall(function()
-				object[property] = value
-			end)
+local function OptimizerRestoreAllAsync(token, done)
+	task.spawn(function()
+		local processed = 0
+		for object, properties in pairs(ThemeObjects.Optimizer.Originals) do
+			if token ~= ThemeObjects.Optimizer.ApplyToken then return end
+			for property, value in pairs(properties) do
+				pcall(function()
+					object[property] = value
+				end)
+				processed += 1
+				if processed % 120 == 0 then
+					task.wait()
+				end
+			end
 		end
-	end
-	ThemeObjects.Optimizer.Originals = setmetatable({}, {__mode = "k"})
+		if token ~= ThemeObjects.Optimizer.ApplyToken then return end
+		ThemeObjects.Optimizer.Originals = setmetatable({}, {__mode = "k"})
+		if done then done() end
+	end)
 end
 
-local function OptimizerApplyActive()
+local function OptimizerApplyActiveAsync(token)
 	if not OptimizerAnyEnabled() then
 		OptimizeStatus.Text = "Ready"
 		return
 	end
 	OptimizerApplyLighting()
-	for _, object in ipairs(game:GetDescendants()) do
-		OptimizerApplyObject(object)
-	end
-	OptimizeStatus.Text = "Applied"
+	OptimizeStatus.Text = "Applying..."
+	task.spawn(function()
+		local processed = 0
+		local localPlayer = game:GetService("Players").LocalPlayer
+		local playerGui = localPlayer and localPlayer:FindFirstChildOfClass("PlayerGui")
+		local roots = {workspace, game:GetService("Lighting"), playerGui}
+		for _, root in ipairs(roots) do
+			if token ~= ThemeObjects.Optimizer.ApplyToken then return end
+			if root then
+				OptimizerApplyObject(root)
+				for _, object in ipairs(root:GetDescendants()) do
+					if token ~= ThemeObjects.Optimizer.ApplyToken then return end
+					OptimizerApplyObject(object)
+					processed += 1
+					if processed % 140 == 0 then
+						OptimizeStatus.Text = "Applying " .. tostring(processed)
+						task.wait()
+					end
+				end
+			end
+		end
+		if token == ThemeObjects.Optimizer.ApplyToken then
+			OptimizeStatus.Text = "Applied"
+		end
+	end)
 end
 
 local function RefreshOptimizeButtons()
@@ -292,8 +331,15 @@ end
 
 local function SetOptimizerFeature(kind, enabled)
 	ThemeObjects.Optimizer.States[kind] = enabled
-	OptimizerRestoreAll()
-	OptimizerApplyActive()
+	local token = NextOptimizeToken()
+	if enabled then
+		OptimizerApplyActiveAsync(token)
+	else
+		OptimizeStatus.Text = "Restoring..."
+		OptimizerRestoreAllAsync(token, function()
+			OptimizerApplyActiveAsync(token)
+		end)
+	end
 	RefreshOptimizeButtons()
 	UpdateTheme(true)
 end
@@ -302,8 +348,11 @@ local function RestoreOptimizer()
 	for kind in pairs(ThemeObjects.Optimizer.States) do
 		ThemeObjects.Optimizer.States[kind] = false
 	end
-	OptimizerRestoreAll()
-	OptimizeStatus.Text = "Restored"
+	local token = NextOptimizeToken()
+	OptimizeStatus.Text = "Restoring..."
+	OptimizerRestoreAllAsync(token, function()
+		OptimizeStatus.Text = "Restored"
+	end)
 	RefreshOptimizeButtons()
 	UpdateTheme(true)
 end
@@ -312,8 +361,8 @@ local function ApplyFpsBoost()
 	for kind in pairs(ThemeObjects.Optimizer.States) do
 		ThemeObjects.Optimizer.States[kind] = true
 	end
-	OptimizerRestoreAll()
-	OptimizerApplyActive()
+	local token = NextOptimizeToken()
+	OptimizerApplyActiveAsync(token)
 	RefreshOptimizeButtons()
 	UpdateTheme(true)
 end
@@ -335,6 +384,12 @@ local function CreateOptimizeOption(kind, label, y)
 	button.Parent = OptimizeScroll
 	AddText(button)
 	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 5)
+	local stroke = Instance.new("UIStroke")
+	stroke.Name = "ControlOutline"
+	stroke.Color = Color3.fromRGB(0, 0, 0)
+	stroke.Thickness = 1
+	stroke.Transparency = 0.18
+	stroke.Parent = button
 	table.insert(ThemeObjects.Optimizer.Buttons, {Button = button, Kind = kind, Label = label})
 	return button
 end
@@ -372,6 +427,17 @@ restoreButton.MouseButton1Click:Connect(function()
 	PlayClick()
 	RestoreOptimizer()
 end)
+if ThemeObjects.AddFeatureKeybind then
+	ThemeObjects.AddFeatureKeybind({Name = "Optimize FPS Boost", Storage = "OptimizeFPSBoost", Get = function() return LoadKeybind("OptimizeFPSBoost") end, Set = function(key) SaveKeybind("OptimizeFPSBoost", key) end, Action = ApplyFpsBoost})
+	ThemeObjects.AddFeatureKeybind({Name = "Optimize Restore", Storage = "OptimizeRestore", Get = function() return LoadKeybind("OptimizeRestore") end, Set = function(key) SaveKeybind("OptimizeRestore", key) end, Action = RestoreOptimizer})
+	for _, option in ipairs(optimizeOptions) do
+		local kind, label = option[1], option[2]
+		local storage = "Optimize" .. kind
+		ThemeObjects.AddFeatureKeybind({Name = "Optimize " .. label, Storage = storage, Get = function() return LoadKeybind(storage) end, Set = function(key) SaveKeybind(storage, key) end, Action = function()
+			SetOptimizerFeature(kind, not ThemeObjects.Optimizer.States[kind])
+		end})
+	end
+end
 OptimizeCloseBtn.MouseButton1Click:Connect(function()
 	PlayClick()
 	OptimizeFrame.Visible = false
@@ -404,4 +470,3 @@ end
 
 RefreshOptimizeButtons()
 ThemeObjects.OpenOptimizeDock()
-
