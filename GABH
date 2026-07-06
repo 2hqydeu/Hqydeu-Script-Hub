@@ -23,7 +23,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "GABH-SellBees-v9"
+local ModuleVersion = "GABH-SellBees-v10"
 local existingPage = MainFrame:FindFirstChild("GrowABeehivePage")
 local existingDock = ScreenGui and ScreenGui:FindFirstChild("GrowABeehiveFilterDock")
 local existingHistory = ScreenGui and ScreenGui:FindFirstChild("GrowABeehiveHistoryPanel")
@@ -33,7 +33,7 @@ if existingPage and existingPage:GetAttribute("ModuleVersion") == ModuleVersion 
 	return
 end
 if HubState.PageHeader then
-	for _, childName in ipairs({"GrowABeehiveMoneyDisplay", "GrowABeehiveSeasonDisplay", "GrowABeehiveHistoryButton"}) do
+	for _, childName in ipairs({"GrowABeehiveMoneyDisplay", "GrowABeehiveRarestDisplay", "GrowABeehiveSeasonDisplay", "GrowABeehiveHistoryButton"}) do
 		local child = HubState.PageHeader:FindFirstChild(childName)
 		if child then child:Destroy() end
 	end
@@ -54,6 +54,10 @@ local MutationOptions = {"None", "Bloom", "Hacker", "Firework"}
 local SeasonOptions = {"Summer", "Spring", "Winter", "Autumn"}
 local Green = Color3.fromRGB(38, 190, 92)
 local Red = Color3.fromRGB(220, 42, 58)
+local RarityRank = {}
+for index, rarity in ipairs(RarityOptions) do
+	RarityRank[rarity] = index
+end
 
 local defaultRarities = {}
 for _, rarity in ipairs(RarityOptions) do
@@ -117,6 +121,8 @@ local state = HubState.GrowABeehiveState or {
 	SellBeesOpen = false,
 	LastPromptRefresh = 0,
 	LastBuyAttempt = 0,
+	RollCount = 0,
+	LastRollSummary = "Rolls: 0",
 	PromptCache = {Roll = nil, Buy = {}},
 	HistoryOpen = false,
 	PurchaseHistory = type(SavedKeybinds.GABHPurchaseHistory) == "table" and SavedKeybinds.GABHPurchaseHistory or {},
@@ -133,6 +139,8 @@ state.SelectedSeasons = EnsureSelection(state.SelectedSeasons, SeasonOptions, de
 state.SellDelaySeconds = ClampSeconds(state.SellDelaySeconds or SavedKeybinds.GABHSellDelaySeconds, 2)
 state.PromptCache = state.PromptCache or {Roll = nil, Buy = {}}
 state.PurchaseHistory = type(state.PurchaseHistory) == "table" and state.PurchaseHistory or {}
+state.RollCount = tonumber(state.RollCount) or 0
+state.LastRollSummary = state.LastRollSummary or ("Rolls: " .. tostring(state.RollCount))
 
 local growPage = Instance.new("ScrollingFrame")
 growPage.Name = "GrowABeehivePage"
@@ -244,6 +252,17 @@ local function FormatCompactNumber(value)
 	return "$" .. tostring(math.floor(value))
 end
 
+local function FormatWholeNumber(value)
+	value = tonumber(value) or 0
+	local formatted = tostring(math.floor(value + 0.5))
+	while true do
+		local nextFormatted, count = formatted:gsub("^(-?%d+)(%d%d%d)", "%1,%2")
+		formatted = nextFormatted
+		if count == 0 then break end
+	end
+	return formatted
+end
+
 local function FormatClock(seconds)
 	seconds = math.max(0, math.floor(tonumber(seconds) or 0))
 	local hours = math.floor(seconds / 3600)
@@ -253,6 +272,76 @@ local function FormatClock(seconds)
 		return ("%d:%02d:%02d"):format(hours, minutes, secs)
 	end
 	return ("%02d:%02d"):format(minutes, secs)
+end
+
+local function BeeOdds(info)
+	if type(info) ~= "table" then return nil end
+	return tonumber(info.OddsOneInX or info.OneIn or info.ChanceOneIn or info.RollChance or info.Odds or info.Chance)
+end
+
+local function BeeScore(info)
+	if type(info) ~= "table" then return 0 end
+	local odds = BeeOdds(info)
+	if odds then return odds end
+	return (RarityRank[info.Rarity] or 0) * 1000
+end
+
+local function MutationText(mutation)
+	if mutation == nil or mutation == "" or mutation == "None" then return "" end
+	return " [" .. tostring(mutation) .. "]"
+end
+
+local function ChanceText(info)
+	local odds = BeeOdds(info)
+	return odds and ("1/" .. FormatWholeNumber(odds)) or "1/?"
+end
+
+local function GetBestOwnedBeeText()
+	local bestInfo, bestMutation, bestScore = nil, nil, -1
+	local function consider(beeId, mutation)
+		local info = GetBeeInfo(beeId)
+		local score = BeeScore(info)
+		if info and score > bestScore then
+			bestInfo = info
+			bestMutation = mutation
+			bestScore = score
+		end
+	end
+
+	local dataClient = GetDataClient()
+	if dataClient then
+		local ok, owned = pcall(function()
+			if type(dataClient.get) == "function" then
+				return dataClient:get("OwnedBees")
+			end
+			return nil
+		end)
+		if ok and type(owned) == "table" then
+			for key, bee in pairs(owned) do
+				if type(bee) == "table" then
+					consider(bee.BeeId or bee.Bee or bee.Id or bee.id or bee.Name or key, bee.Mutation or bee.mutation)
+				else
+					consider(bee, nil)
+				end
+			end
+		end
+	end
+
+	local player = game:GetService("Players").LocalPlayer
+	local character = player and player.Character
+	local backpack = player and player:FindFirstChildOfClass("Backpack")
+	for _, container in ipairs({character, backpack}) do
+		if container then
+			for _, child in ipairs(container:GetChildren()) do
+				if child:IsA("Tool") and child:GetAttribute("Kind") == "Bee" then
+					consider(child:GetAttribute("Id") or child.Name, child:GetAttribute("Mutation"))
+				end
+			end
+		end
+	end
+
+	if not bestInfo then return "Best: N/A" end
+	return ("Best: %s%s %s"):format(bestInfo.Name or bestInfo.Id or "Bee", MutationText(bestMutation), ChanceText(bestInfo))
 end
 
 local function FindSeasonTextFallback()
@@ -349,6 +438,18 @@ end
 
 local rollRow = CreateRow("GrowABeehiveRollRow", 4)
 local rollTitle = CreateTitle(rollRow, "Auto Roll:")
+local rollStatusDisplay = Instance.new("TextLabel")
+rollStatusDisplay.Name = "GrowABeehiveRollStatus"
+rollStatusDisplay.Size = UDim2.new(0, 104, 0, 18)
+rollStatusDisplay.Position = UDim2.new(1, -210, 0, 10)
+rollStatusDisplay.BackgroundTransparency = 1
+rollStatusDisplay.Text = state.LastRollSummary
+rollStatusDisplay.Font = Enum.Font.GothamBold
+rollStatusDisplay.TextSize = 8
+rollStatusDisplay.TextXAlignment = Enum.TextXAlignment.Right
+rollStatusDisplay.TextTruncate = Enum.TextTruncate.AtEnd
+rollStatusDisplay.Parent = rollRow
+AddText(rollStatusDisplay)
 local rollToggle = CreateButton(rollRow, "GrowABeehiveRollToggle", "Off", -98, 44)
 
 local buyRow = CreateRow("GrowABeehiveBuyRow", 50)
@@ -372,10 +473,25 @@ local beeSellRow = CreateRow("GrowABeehiveBeeSellRow", 188)
 local beeSellTitle = CreateTitle(beeSellRow, "Sell Bees:")
 local beeSellButton = CreateButton(beeSellRow, "GrowABeehiveBeeSellButton", "Open", -98, 44)
 
+local rarestDisplay = Instance.new("TextLabel")
+rarestDisplay.Name = "GrowABeehiveRarestDisplay"
+rarestDisplay.Size = UDim2.new(0, 190, 0, 9)
+rarestDisplay.Position = UDim2.new(0.5, -95, 0, 1)
+rarestDisplay.BackgroundTransparency = 1
+rarestDisplay.Text = "Best: ..."
+rarestDisplay.Font = Enum.Font.GothamBold
+rarestDisplay.TextSize = 7
+rarestDisplay.TextColor3 = AccentColor
+rarestDisplay.TextXAlignment = Enum.TextXAlignment.Center
+rarestDisplay.TextTruncate = Enum.TextTruncate.AtEnd
+rarestDisplay.Visible = false
+rarestDisplay.Parent = HubState.PageHeader
+AddText(rarestDisplay)
+
 local seasonDisplay = Instance.new("TextLabel")
 seasonDisplay.Name = "GrowABeehiveSeasonDisplay"
 seasonDisplay.Size = UDim2.new(0, 120, 0, 9)
-seasonDisplay.Position = UDim2.new(0.5, -58, 0, 10)
+seasonDisplay.Position = UDim2.new(0.5, -60, 0, 11)
 seasonDisplay.BackgroundTransparency = 1
 seasonDisplay.Text = "NEXT SEASON: ..."
 seasonDisplay.Font = Enum.Font.GothamBold
@@ -416,7 +532,7 @@ historyGradient.Rotation = 35
 historyGradient.Parent = historyPanel
 
 local historyTitle = Instance.new("TextLabel")
-historyTitle.Size = UDim2.new(1, -16, 0, 14)
+historyTitle.Size = UDim2.new(1, -40, 0, 14)
 historyTitle.Position = UDim2.new(0, 8, 0, 6)
 historyTitle.BackgroundTransparency = 1
 historyTitle.Text = "Recent Purchases"
@@ -426,6 +542,22 @@ historyTitle.TextXAlignment = Enum.TextXAlignment.Center
 historyTitle.ZIndex = 21
 historyTitle.Parent = historyPanel
 AddText(historyTitle)
+
+local historyCloseButton = Instance.new("TextButton")
+historyCloseButton.Name = "GrowABeehiveHistoryClose"
+historyCloseButton.Size = UDim2.new(0, 18, 0, 18)
+historyCloseButton.Position = UDim2.new(1, -24, 0, 5)
+historyCloseButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+historyCloseButton.BackgroundTransparency = 0.35
+historyCloseButton.BorderSizePixel = 0
+historyCloseButton.Text = "x"
+historyCloseButton.Font = Enum.Font.GothamBold
+historyCloseButton.TextSize = 9
+historyCloseButton.ZIndex = 22
+historyCloseButton.Parent = historyPanel
+AddBackground(historyCloseButton)
+AddText(historyCloseButton)
+Instance.new("UICorner", historyCloseButton).CornerRadius = UDim.new(0, 5)
 
 local historyDivider = Instance.new("Frame")
 historyDivider.Size = UDim2.new(0.72, 0, 0, 1)
@@ -585,49 +717,72 @@ UpdateBeeSellPanelPosition()
 
 local filterDock = Instance.new("Frame")
 filterDock.Name = "GrowABeehiveFilterDock"
-filterDock.Size = UDim2.new(0, 184, 0, 236)
-filterDock.BackgroundColor3 = FrameThemeColor
-filterDock.BackgroundTransparency = 1
+filterDock.Size = UDim2.new(0, 256, 0, 220)
+filterDock.BackgroundColor3 = Color3.fromRGB(48, 48, 52)
+filterDock.BackgroundTransparency = 0
 filterDock.BorderSizePixel = 0
 filterDock.ZIndex = 80
 filterDock.Visible = false
 filterDock.Parent = ScreenGui or MainFrame
+AddBackground(filterDock)
 Instance.new("UICorner", filterDock).CornerRadius = UDim.new(0, 9)
 local filterDockStroke = Instance.new("UIStroke")
-filterDockStroke.Name = "ControlOutline"
 filterDockStroke.Color = AccentColor
-filterDockStroke.Thickness = 1
-filterDockStroke.Transparency = 1
+filterDockStroke.Thickness = 1.5
+filterDockStroke.Transparency = 0.08
 filterDockStroke.Parent = filterDock
+table.insert(ThemeObjects.Accents, filterDockStroke)
+local filterDockGradient = Instance.new("UIGradient")
+filterDockGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(42, 42, 48)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(24, 24, 30))
+})
+filterDockGradient.Rotation = 35
+filterDockGradient.Parent = filterDock
 local filterDockScale = Instance.new("UIScale")
 filterDockScale.Scale = GuiScaleFromValue(GuiSizeValue)
 filterDockScale.Parent = filterDock
 
 local function UpdateFilterDockPosition()
 	local scale = filterDockScale.Scale
-	filterDock.Position = UDim2.fromOffset(MainFrame.AbsolutePosition.X - ((184 + 7) * scale), MainFrame.AbsolutePosition.Y + (54 * scale))
+	filterDock.Position = UDim2.fromOffset(MainFrame.AbsolutePosition.X - ((256 + 7) * scale), MainFrame.AbsolutePosition.Y + (54 * scale))
 end
 TrackConnection("GrowABeehiveFilterDockPosition", MainFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(UpdateFilterDockPosition))
 TrackConnection("GrowABeehiveFilterDockSize", MainFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdateFilterDockPosition))
 UpdateFilterDockPosition()
 
 local filterHeader = Instance.new("TextLabel")
-filterHeader.Size = UDim2.new(1, -18, 0, 24)
-filterHeader.Position = UDim2.new(0, 9, 0, 7)
+filterHeader.Size = UDim2.new(1, -40, 0, 14)
+filterHeader.Position = UDim2.new(0, 8, 0, 6)
 filterHeader.BackgroundTransparency = 1
 filterHeader.Text = "Buy Filters"
 filterHeader.Font = Enum.Font.GothamBold
-filterHeader.TextSize = 11
-filterHeader.TextXAlignment = Enum.TextXAlignment.Left
+filterHeader.TextSize = 10
+filterHeader.TextXAlignment = Enum.TextXAlignment.Center
 filterHeader.ZIndex = 81
-filterHeader.Visible = false
 filterHeader.Parent = filterDock
 AddText(filterHeader)
 
+local filterCloseButton = Instance.new("TextButton")
+filterCloseButton.Name = "GrowABeehiveFilterClose"
+filterCloseButton.Size = UDim2.new(0, 18, 0, 18)
+filterCloseButton.Position = UDim2.new(1, -24, 0, 5)
+filterCloseButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+filterCloseButton.BackgroundTransparency = 0.35
+filterCloseButton.BorderSizePixel = 0
+filterCloseButton.Text = "x"
+filterCloseButton.Font = Enum.Font.GothamBold
+filterCloseButton.TextSize = 9
+filterCloseButton.ZIndex = 82
+filterCloseButton.Parent = filterDock
+AddBackground(filterCloseButton)
+AddText(filterCloseButton)
+Instance.new("UICorner", filterCloseButton).CornerRadius = UDim.new(0, 5)
+
 local filterScroll = Instance.new("ScrollingFrame")
 filterScroll.Name = "GrowABeehiveFilterScroll"
-filterScroll.Size = UDim2.new(1, -18, 1, -8)
-filterScroll.Position = UDim2.new(0, 9, 0, 4)
+filterScroll.Size = UDim2.new(1, -16, 1, -36)
+filterScroll.Position = UDim2.new(0, 8, 0, 30)
 filterScroll.BackgroundTransparency = 1
 filterScroll.BorderSizePixel = 0
 filterScroll.ScrollBarThickness = 3
@@ -643,12 +798,12 @@ local RefreshButtons
 
 local function CreateFilterLabel(text, y)
 	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, -8, 0, 18)
-	label.Position = UDim2.new(0, 4, 0, y)
+	label.Size = UDim2.new(1, -4, 0, 14)
+	label.Position = UDim2.new(0, 0, 0, y)
 	label.BackgroundTransparency = 1
 	label.Text = text
 	label.Font = Enum.Font.GothamBold
-	label.TextSize = 10
+	label.TextSize = 8
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.ZIndex = 82
 	label.Parent = filterScroll
@@ -658,7 +813,7 @@ end
 local function CreateFilterButton(kind, value, x, y)
 	local button = Instance.new("TextButton")
 	button.Name = "GrowABeehiveFilter" .. kind .. value:gsub("%s+", "")
-	button.Size = UDim2.new(0, 78, 0, 22)
+	button.Size = UDim2.new(0, 76, 0, 20)
 	button.Position = UDim2.new(0, x, 0, y)
 	button.BackgroundColor3 = Red
 	button.BackgroundTransparency = 0
@@ -692,29 +847,29 @@ local function CreateFilterButton(kind, value, x, y)
 end
 
 CreateFilterLabel("Bees", 0)
-local y = 18
+local y = 16
 for i, rarity in ipairs(RarityOptions) do
-	local column = (i - 1) % 2
-	local row = math.floor((i - 1) / 2)
-	CreateFilterButton("Rarity", rarity, 4 + column * 84, y + row * 26)
+	local column = (i - 1) % 3
+	local row = math.floor((i - 1) / 3)
+	CreateFilterButton("Rarity", rarity, column * 82, y + row * 23)
 end
-y = y + math.ceil(#RarityOptions / 2) * 26 + 6
+y = y + math.ceil(#RarityOptions / 3) * 23 + 6
 CreateFilterLabel("Mutations", y)
-y += 18
+y += 16
 for i, mutation in ipairs(MutationOptions) do
-	local column = (i - 1) % 2
-	local row = math.floor((i - 1) / 2)
-	CreateFilterButton("Mutation", mutation, 4 + column * 84, y + row * 26)
+	local column = (i - 1) % 3
+	local row = math.floor((i - 1) / 3)
+	CreateFilterButton("Mutation", mutation, column * 82, y + row * 23)
 end
-y = y + math.ceil(#MutationOptions / 2) * 26 + 6
+y = y + math.ceil(#MutationOptions / 3) * 23 + 6
 CreateFilterLabel("Seasonal", y)
-y += 18
+y += 16
 for i, season in ipairs(SeasonOptions) do
-	local column = (i - 1) % 2
-	local row = math.floor((i - 1) / 2)
-	CreateFilterButton("Season", season, 4 + column * 84, y + row * 26)
+	local column = (i - 1) % 3
+	local row = math.floor((i - 1) / 3)
+	CreateFilterButton("Season", season, column * 82, y + row * 23)
 end
-filterScroll.CanvasSize = UDim2.new(0, 0, 0, y + math.ceil(#SeasonOptions / 2) * 26 + 6)
+filterScroll.CanvasSize = UDim2.new(0, 0, 0, y + math.ceil(#SeasonOptions / 3) * 23 + 6)
 
 local function SetStatus(_)
 end
@@ -794,6 +949,7 @@ RefreshButtons = function()
 	equipToggle.Text = state.AutoEquip and "On" or "Off"
 	beeSellButton.Text = state.SellBeesOpen and "Close" or "Open"
 	editFiltersButton.Text = state.FiltersOpen and "Close" or "Edit"
+	rollStatusDisplay.Text = state.LastRollSummary or ("Rolls: " .. tostring(state.RollCount or 0))
 	filterDock.Visible = state.FiltersOpen and IsGrowPageActive()
 	historyPanel.Visible = state.HistoryOpen and IsGrowPageActive()
 	beeSellPanel.Visible = state.SellBeesOpen and IsGrowPageActive()
@@ -884,7 +1040,7 @@ local function BeeMetaMatches(beeId, mutation, kind, value)
 	local info = GetBeeInfo(beeId)
 	if not info then return false end
 	if kind == "Rarity" then
-		return info.Rarity == value
+		return info.Rarity == value and (info.RollEvent == nil or info.RollEvent == "")
 	end
 	if kind == "Season" then
 		return info.RollEvent == value
@@ -996,6 +1152,30 @@ local function SortedResults(results)
 		return (tonumber(a.Podium) or 255) < (tonumber(b.Podium) or 255)
 	end)
 	return sorted
+end
+
+local function UpdateRollSummary(summary)
+	state.RollCount = (tonumber(state.RollCount) or 0) + 1
+	state.LastRollSummary = ("Rolls: %d"):format(state.RollCount)
+	if summary and summary ~= "" then
+		state.LastRollSummary = state.LastRollSummary .. " | " .. summary
+	end
+	rollStatusDisplay.Text = state.LastRollSummary
+end
+
+local function BestRollSummary(results)
+	local bestResult, bestInfo, bestScore = nil, nil, -1
+	for _, result in ipairs(SortedResults(results)) do
+		local info = GetBeeInfo(result.BeeId or result.Name or result.Bee)
+		local score = BeeScore(info)
+		if info and score > bestScore then
+			bestResult = result
+			bestInfo = info
+			bestScore = score
+		end
+	end
+	if not bestInfo then return nil end
+	return (bestInfo.Name or bestResult.Name or "Bee") .. MutationText(bestResult and bestResult.Mutation)
 end
 
 local function RefreshPromptCache(force)
@@ -1111,6 +1291,7 @@ local function DoRoll()
 	local ok, response = FirePacket("RequestRoll")
 	if ok then
 		task.wait(0.35)
+		UpdateRollSummary(response and response.Results and BestRollSummary(response.Results) or "packet")
 		if response and response.Results and state.AutoBuy then
 			AutoBuyResults(response.Results)
 		elseif state.AutoBuy then
@@ -1125,6 +1306,7 @@ local function DoRoll()
 		if prompt and prompt.Parent then
 			fireproximityprompt(prompt)
 			task.wait(1.75)
+			UpdateRollSummary("prompt")
 			if state.AutoBuy then TryExistingBuyPrompts(3, 0.2) end
 			if state.AutoEquip then DoEquipBest() end
 			state.RollBusy = false
@@ -1206,6 +1388,12 @@ beeSellCloseButton.MouseButton1Click:Connect(function()
 	RefreshButtons()
 	UpdateTheme(true)
 end)
+filterCloseButton.MouseButton1Click:Connect(function()
+	PlayClick()
+	state.FiltersOpen = false
+	RefreshButtons()
+	UpdateTheme(true)
+end)
 editFiltersButton.MouseButton1Click:Connect(function()
 	PlayClick()
 	state.FiltersOpen = not state.FiltersOpen
@@ -1224,6 +1412,12 @@ historyButton.MouseButton1Click:Connect(function()
 		state.SellBeesOpen = false
 	end
 	if state.HistoryOpen then RefreshHistoryPanel() end
+	RefreshButtons()
+	UpdateTheme(true)
+end)
+historyCloseButton.MouseButton1Click:Connect(function()
+	PlayClick()
+	state.HistoryOpen = false
 	RefreshButtons()
 	UpdateTheme(true)
 end)
@@ -1296,9 +1490,11 @@ end)
 task.spawn(function()
 	while growPage.Parent do
 		local active = IsGrowPageActive()
+		rarestDisplay.Visible = active
 		seasonDisplay.Visible = active
 		historyButton.Visible = active
 		if not active then
+			rarestDisplay.Visible = false
 			filterDock.Visible = false
 			historyPanel.Visible = false
 			beeSellPanel.Visible = false
@@ -1309,6 +1505,11 @@ task.spawn(function()
 				return workspace:GetServerTimeNow()
 			end)
 			now = okTime and now or os.time()
+			if now - (state.LastRarestBeeUpdate or 0) >= 1 then
+				state.LastRarestBeeUpdate = now
+				rarestDisplay.TextColor3 = AccentColor
+				rarestDisplay.Text = GetBestOwnedBeeText()
+			end
 			local seasonText = nil
 			if seasonMath then
 				local okActive, activeSeason = pcall(seasonMath.IsActive, now)
