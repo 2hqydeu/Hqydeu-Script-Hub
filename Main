@@ -680,7 +680,7 @@ ThemeObjects.ApplyRestingButtonStyle = function(obj)
 	local secBgColor = bgColor:Lerp(Color3.new(0, 0, 0), 0.22)
 	local keepSolid = obj.Name == "DestroyBtn" or obj.Name == "InfiniteYieldDestroy" or obj.Name == "ResetCharacterBtn" or obj.Name == "RejoinBtn"
 		or obj.Name == "ServerHopBtn" or obj.Name == "GuiSizeBtn" or obj.Name == "ClearKeybindsBtn"
-		or obj.Name == "EditKeybindsBtn"
+		or obj.Name == "EditKeybindsBtn" or obj.Name == "OptimizeBtn"
 	local target = secBgColor
 	local targetTransparency = (keepSolid or obj.Text == "On") and 0 or 0.8
 	if IsGameLauncherButton(obj) then
@@ -701,7 +701,8 @@ ThemeObjects.ApplyRestingButtonStyle = function(obj)
 	elseif obj.Name == "ServerHopBtn" then target = Color3.fromRGB(0, 105, 255)
 	elseif obj.Name == "GuiSizeBtn" then target = Color3.fromRGB(70, 255, 70)
 	elseif obj.Name == "ClearKeybindsBtn" then target = Color3.fromRGB(195, 35, 255)
-	elseif obj.Name == "EditKeybindsBtn" then target = Color3.fromRGB(255, 130, 35) end
+	elseif obj.Name == "EditKeybindsBtn" then target = Color3.fromRGB(255, 130, 35)
+	elseif obj.Name == "OptimizeBtn" then target = Color3.fromRGB(40, 215, 135) end
 	obj.BackgroundColor3 = target
 	obj.BackgroundTransparency = targetTransparency
 end
@@ -855,7 +856,7 @@ local function UpdateTheme(instant)
 			if (obj:IsA("TextButton") or obj:IsA("TextBox")) then
 				local keepSolid = obj.Name == "DestroyBtn" or obj.Name == "InfiniteYieldDestroy" or obj.Name == "ResetCharacterBtn" or obj.Name == "RejoinBtn"
 					or obj.Name == "ServerHopBtn" or obj.Name == "GuiSizeBtn" or obj.Name == "ClearKeybindsBtn"
-					or obj.Name == "EditKeybindsBtn"
+					or obj.Name == "EditKeybindsBtn" or obj.Name == "OptimizeBtn"
 				if IsGameLauncherButton(obj) then
 					obj.BackgroundTransparency = 0.92
 				elseif obj.Name == "ESPColorBtn" then
@@ -884,7 +885,8 @@ local function UpdateTheme(instant)
 			elseif obj.Name == "ServerHopBtn" then target = Color3.fromRGB(0, 105, 255)
 			elseif obj.Name == "GuiSizeBtn" then target = Color3.fromRGB(70, 255, 70)
 			elseif obj.Name == "ClearKeybindsBtn" then target = Color3.fromRGB(195, 35, 255)
-			elseif obj.Name == "EditKeybindsBtn" then target = Color3.fromRGB(255, 130, 35) end
+			elseif obj.Name == "EditKeybindsBtn" then target = Color3.fromRGB(255, 130, 35)
+			elseif obj.Name == "OptimizeBtn" then target = Color3.fromRGB(40, 215, 135) end
 			if obj:IsA("TextButton") and obj:GetAttribute("ButtonHovered") then
 				target = target:Lerp(AccentColor, obj.Text == "On" and 0.24 or 0.12)
 				obj.BackgroundTransparency = math.max(0, targetTransparency - (obj.Text == "On" and 0.32 or 0.12))
@@ -4863,6 +4865,7 @@ ThemeObjects.CloseTransientPopups = function()
 	if ThemeObjects.PickerDock then ThemeObjects.PickerDock.Visible = false end
 	if ThemeObjects.GuiSizeDock then ThemeObjects.GuiSizeDock.Visible = false end
 	if ThemeObjects.ThemeDock then ThemeObjects.ThemeDock.Visible = false end
+	if ThemeObjects.OptimizeDock then ThemeObjects.OptimizeDock.Visible = false end
 	if ThemeObjects.KeybindEditorFrame then ThemeObjects.KeybindEditorFrame.Visible = false end
 	if ThemeObjects.ConfirmClearFrame then ThemeObjects.ConfirmClearFrame.Visible = false end
 	if ThemeObjects.KeybindEditorConnection then
@@ -5229,7 +5232,7 @@ Instance.new("UICorner", ClearKeybindsBtn).CornerRadius = UDim.new(0, 5)
 
 local ResetCharacterBtn = Instance.new("TextButton")
 ResetCharacterBtn.Name = "ResetCharacterBtn"
-ResetCharacterBtn.Size = UDim2.new(0, 310, 0, 24)
+ResetCharacterBtn.Size = UDim2.new(0, 150, 0, 24)
 ResetCharacterBtn.Position = UDim2.new(0, 10, 0, 42)
 ResetCharacterBtn.BackgroundColor3 = Color3.fromRGB(255, 230, 0)
 ResetCharacterBtn.BackgroundTransparency = 0
@@ -5240,6 +5243,21 @@ ResetCharacterBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 ResetCharacterBtn.Parent = HubState.SettingsPage
 table.insert(ThemeObjects.Backgrounds, ResetCharacterBtn)
 Instance.new("UICorner", ResetCharacterBtn).CornerRadius = UDim.new(0, 6)
+
+local OptimizeBtn = Instance.new("TextButton")
+OptimizeBtn.Name = "OptimizeBtn"
+OptimizeBtn.Size = UDim2.new(0, 150, 0, 24)
+OptimizeBtn.Position = UDim2.new(0, 170, 0, 42)
+OptimizeBtn.BackgroundColor3 = Color3.fromRGB(40, 215, 135)
+OptimizeBtn.BackgroundTransparency = 0
+OptimizeBtn.BorderSizePixel = 0
+OptimizeBtn.Text = "Optimize"
+OptimizeBtn.Font = Enum.Font.GothamBold
+OptimizeBtn.TextSize = 10
+OptimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+OptimizeBtn.Parent = HubState.SettingsPage
+table.insert(ThemeObjects.Backgrounds, OptimizeBtn)
+Instance.new("UICorner", OptimizeBtn).CornerRadius = UDim.new(0, 5)
 
 local EditKeybindsBtn = Instance.new("TextButton")
 EditKeybindsBtn.Name = "EditKeybindsBtn"
@@ -5509,7 +5527,7 @@ local function ApplyGuiSize(value)
 	GuiSizeValue = math.clamp(value, 20, 100)
 	GuiSizeValueLabel.Text = tostring(GuiSizeValue)
 	local targetScale = GuiScaleFromValue(GuiSizeValue)
-	for _, scaleObject in ipairs({MainScaleObject, HubState.TargetScaleObject, ThemeObjects.PlayerTP.Scale, SplashScaleObject, ThemeObjects.PickerDockScale, ThemeObjects.GuiSizeDockScale, ThemeObjects.ThemeDockScale, ThemeObjects.KeybindEditorScale, ThemeObjects.ExtrasFeature.CopyScale, ThemeObjects.MM2RoleDetailsScale}) do
+	for _, scaleObject in ipairs({MainScaleObject, HubState.TargetScaleObject, ThemeObjects.PlayerTP.Scale, SplashScaleObject, ThemeObjects.PickerDockScale, ThemeObjects.GuiSizeDockScale, ThemeObjects.ThemeDockScale, ThemeObjects.OptimizeDockScale, ThemeObjects.KeybindEditorScale, ThemeObjects.ExtrasFeature.CopyScale, ThemeObjects.MM2RoleDetailsScale}) do
 		if scaleObject and scaleObject.Parent then
 			TweenService:Create(scaleObject, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Scale = targetScale}):Play()
 		end
@@ -5517,6 +5535,7 @@ local function ApplyGuiSize(value)
 	if ThemeObjects.UpdatePickerDockPosition then ThemeObjects.UpdatePickerDockPosition() end
 	if ThemeObjects.UpdateGuiSizeDockPosition then ThemeObjects.UpdateGuiSizeDockPosition() end
 	if ThemeObjects.UpdateThemeDockPosition then ThemeObjects.UpdateThemeDockPosition() end
+	if ThemeObjects.UpdateOptimizeDockPosition then ThemeObjects.UpdateOptimizeDockPosition() end
 	if ThemeObjects.UpdateKeybindEditorDockPosition then ThemeObjects.UpdateKeybindEditorDockPosition() end
 	if ThemeObjects.ExtrasFeature.UpdateDockPosition then ThemeObjects.ExtrasFeature.UpdateDockPosition() end
 	if ThemeObjects.UpdateMM2RoleDetailsPosition then ThemeObjects.UpdateMM2RoleDetailsPosition() end
@@ -6012,6 +6031,7 @@ EditKeybindsBtn.MouseButton1Click:Connect(function()
 	if ThemeObjects.PickerDock then ThemeObjects.PickerDock.Visible = false end
 	if ThemeObjects.GuiSizeDock then ThemeObjects.GuiSizeDock.Visible = false end
 	if ThemeObjects.ThemeDock then ThemeObjects.ThemeDock.Visible = false end
+	if ThemeObjects.OptimizeDock then ThemeObjects.OptimizeDock.Visible = false end
 	ResetThemeBtn.Visible = false
 	if ThemePickerBackBtn then ThemePickerBackBtn.Visible = false end
 	if SaveCurrentColorBtn then SaveCurrentColorBtn.Visible = false end
@@ -6113,6 +6133,7 @@ local function OpenColorPicker(target)
 	PickerTarget = target == "ESP" and "ESP" or (target == "Frame" and "Frame" or "Accent")
 	GuiSizeFrame.Visible = false
 	if ThemeFrame then ThemeFrame.Visible = false end
+	if ThemeObjects.OptimizeDock then ThemeObjects.OptimizeDock.Visible = false end
 	if KeybindEditorFrame then KeybindEditorFrame.Visible = false end
 	if ThemeObjects.ExtrasFeature.CopyFrame and ThemeObjects.ExtrasFeature.CopyFrame.Visible then
 		ThemeObjects.ExtrasFeature.EndSelection(true)
@@ -6209,6 +6230,7 @@ AccentColorBtn.MouseButton1Click:Connect(function()
 	PlayClick()
 	local willOpen = not ThemeFrame.Visible
 	GuiSizeFrame.Visible = false
+	if ThemeObjects.OptimizeDock then ThemeObjects.OptimizeDock.Visible = false end
 	PickerFrame.Visible = false
 	ResetThemeBtn.Visible = false
 	ThemePickerBackBtn.Visible = false
@@ -6236,6 +6258,7 @@ if HubState.ESPColorBtn then
 		PlayClick()
 		GuiSizeFrame.Visible = false
 		if ThemeFrame then ThemeFrame.Visible = false end
+		if ThemeObjects.OptimizeDock then ThemeObjects.OptimizeDock.Visible = false end
 		if KeybindEditorFrame then KeybindEditorFrame.Visible = false end
 		if PickerFrame.Visible and PickerTarget == "ESP" then
 			PickerFrame.Visible = false
@@ -6252,6 +6275,7 @@ GuiSizeBtn.MouseButton1Click:Connect(function()
 	local willOpen = not GuiSizeFrame.Visible
 	PickerFrame.Visible = false
 	ThemeFrame.Visible = false
+	if ThemeObjects.OptimizeDock then ThemeObjects.OptimizeDock.Visible = false end
 	ResetThemeBtn.Visible = false
 	ThemePickerBackBtn.Visible = false
 	if SaveCurrentColorBtn then SaveCurrentColorBtn.Visible = false end
@@ -6261,6 +6285,14 @@ GuiSizeBtn.MouseButton1Click:Connect(function()
 	if willOpen and ThemeObjects.UpdateGuiSizeDockPosition then
 		ThemeObjects.UpdateGuiSizeDockPosition()
 	end
+end)
+OptimizeBtn.MouseButton1Click:Connect(function()
+	PlayClick()
+	if ThemeObjects.OpenOptimizeDock then
+		ThemeObjects.OpenOptimizeDock()
+		return
+	end
+	ThemeObjects.ScriptRunner.RunUrl("https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/Optimize", "Optimize")
 end)
 ResetThemeBtn.MouseButton1Click:Connect(function()
 	PlayClick()
@@ -6280,6 +6312,7 @@ ClearKeybindsBtn.MouseButton1Click:Connect(function()
 	PickerFrame.Visible = false
 	GuiSizeFrame.Visible = false
 	ThemeFrame.Visible = false
+	if ThemeObjects.OptimizeDock then ThemeObjects.OptimizeDock.Visible = false end
 	ResetThemeBtn.Visible = false
 	ThemePickerBackBtn.Visible = false
 	if SaveCurrentColorBtn then SaveCurrentColorBtn.Visible = false end
@@ -6358,6 +6391,7 @@ HubState.Connections.SettingsFooter = RunService.Heartbeat:Connect(function()
 end)
 
 local function Cleanup()
+	if ThemeObjects.RestoreOptimizer then ThemeObjects.RestoreOptimizer() end
 	if ThemeObjects.FreeCam and ThemeObjects.FreeCam.Enabled then ThemeObjects.FreeCam.Disable() end
 	SetIYFling(false)
 	if ThemeObjects.ClearESPAdornments then ThemeObjects.ClearESPAdornments() end
