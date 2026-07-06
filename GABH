@@ -24,7 +24,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "GABH-SeasonTimer-v13"
+local ModuleVersion = "GABH-SeasonTimer-v14"
 local existingPage = MainFrame:FindFirstChild("GrowABeehivePage")
 local existingDock = ScreenGui and ScreenGui:FindFirstChild("GrowABeehiveFilterDock")
 local existingHistory = ScreenGui and ScreenGui:FindFirstChild("GrowABeehiveHistoryPanel")
@@ -180,13 +180,24 @@ local function AddBackground(obj)
 end
 
 local function EnsureControlOutline(obj)
-	if not obj or obj:FindFirstChild("ControlOutline") then return obj end
-	local outline = Instance.new("UIStroke")
-	outline.Name = "ControlOutline"
-	outline.Color = Color3.fromRGB(0, 0, 0)
-	outline.Thickness = 1
-	outline.Transparency = 0
-	outline.Parent = obj
+	if not obj then return obj end
+	local outline = obj:FindFirstChild("ControlOutline")
+	if not outline then
+		outline = Instance.new("UIStroke")
+		outline.Name = "ControlOutline"
+		outline.Parent = obj
+	end
+	if outline:IsA("UIStroke") then
+		outline.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		outline.Color = Color3.fromRGB(0, 0, 0)
+		outline.Thickness = 1.25
+		outline.Transparency = 0
+	end
+	if obj:IsA("TextButton") or obj:IsA("TextBox") then
+		obj.BorderSizePixel = 0
+		obj.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+		obj.BackgroundTransparency = 0.8
+	end
 	return obj
 end
 
@@ -1611,15 +1622,19 @@ for _, entry in ipairs(beeSellButtons) do
 	end})
 end
 
-for _, obj in ipairs(growPage:GetDescendants()) do
-	if obj:IsA("TextButton") and (obj.Name == "FeatureKeybindButton" or obj.Name:find("Toggle") or obj.Name:find("Button") or obj.Name:find("Edit")) then
-		if ThemeObjects.EnsureKeybindOutline and obj.Name == "FeatureKeybindButton" then
-			ThemeObjects.EnsureKeybindOutline(obj)
-		else
+local function RefreshGrowControlOutlines()
+	for _, obj in ipairs(growPage:GetDescendants()) do
+		if obj:IsA("TextButton") and (obj.Name == "FeatureKeybindButton" or obj.Name:find("Toggle") or obj.Name:find("Button") or obj.Name:find("Edit")) then
+			EnsureControlOutline(obj)
+			if obj.Name == "FeatureKeybindButton" then
+				obj.TextColor3 = AccentColor
+			end
+		elseif obj:IsA("TextBox") then
 			EnsureControlOutline(obj)
 		end
 	end
 end
+RefreshGrowControlOutlines()
 
 task.spawn(function()
 	while growPage.Parent do
@@ -1725,8 +1740,10 @@ ThemeObjects.OpenGrowABeehivePage = function()
 	HubState.ActiveContentPage = growPage
 	RefreshButtons()
 	UpdateTheme(true)
+	RefreshGrowControlOutlines()
 end
 
 RefreshButtons()
 ThemeObjects.OpenGrowABeehivePage()
 UpdateTheme(true)
+RefreshGrowControlOutlines()
