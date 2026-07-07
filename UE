@@ -1,7 +1,16 @@
 -- Page-only module for Hqydeu Script Hub. Upload this file to its raw GitHub target.
 local Runtime = (type(getgenv) == "function" and getgenv().HqydeuLoader_Runtime) or shared.HqydeuLoader_Runtime
 if not Runtime then return warn("Hqydeu page module: main hub runtime was not found") end
-if Runtime.ActivateGameKeybindScope then Runtime.ActivateGameKeybindScope("Undead Expedition") end
+
+local function IsCurrentGamePage()
+	if game.PlaceId == 140246069119909 then return true end
+	local replicatedStorage = game:GetService("ReplicatedStorage")
+	local items = replicatedStorage:FindFirstChild("Items")
+	local tools = items and items:FindFirstChild("Tools")
+	return workspace:FindFirstChild("Structures") ~= nil
+		and workspace:FindFirstChild("Enemies") ~= nil
+		and tools ~= nil
+end
 
 local HubState = Runtime.HubState
 local ThemeObjects = Runtime.ThemeObjects
@@ -28,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v14"
+local ModuleVersion = "UE-Utility-v15"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -108,13 +117,14 @@ if type(ThemeObjects.FeatureKeybindEntries) == "table" then
 end
 
 local BASE_POSITION = Vector3.new(130, 53, -397)
-local BOX_TYPES = {"Wooden", "Rusty", "Silver", "Golden", "Ancient", "Hunter Trap"}
+local BOX_TYPES = {"Rusty", "Wooden", "Silver", "Golden", "Ancient", "Grounder", "Hunter Trap"}
 local BOX_TYPE_COLORS = {
 	Wooden = Color3.fromRGB(178, 119, 62),
 	Rusty = Color3.fromRGB(202, 84, 46),
 	Silver = Color3.fromRGB(188, 215, 235),
 	Golden = Color3.fromRGB(255, 194, 54),
 	Ancient = Color3.fromRGB(172, 107, 255),
+	Grounder = Color3.fromRGB(95, 215, 120),
 	["Hunter Trap"] = Color3.fromRGB(255, 72, 72),
 }
 local MAX_BOX_OBJECTS = 40
@@ -369,7 +379,7 @@ filterScroll.ScrollBarThickness = 3
 filterScroll.ScrollBarImageColor3 = AccentColor
 filterScroll.ScrollingDirection = Enum.ScrollingDirection.Y
 filterScroll.ElasticBehavior = Enum.ElasticBehavior.Never
-filterScroll.CanvasSize = UDim2.new(0, 0, 0, 66)
+filterScroll.CanvasSize = UDim2.new(0, 0, 0, 92)
 filterScroll.ZIndex = 81
 filterScroll.Parent = filterDock
 
@@ -577,20 +587,25 @@ local function HasHunterTrapText(value)
 	return lower:find("hunter", 1, true) ~= nil and lower:find("trap", 1, true) ~= nil
 end
 
-local function BoxType(box)
-	local lower = string.lower(tostring(box and box.Name or ""))
+local function BoxTypeFromName(name)
+	local lower = string.lower(tostring(name or ""))
 	if HasHunterTrapText(lower) then return "Hunter Trap" end
 	for _, boxType in ipairs(BOX_TYPES) do
 		if lower:find(string.lower(boxType), 1, true) then return boxType end
 	end
+	return nil
+end
+
+local function BoxType(box)
+	local nameType = BoxTypeFromName(box and box.Name)
+	if nameType then return nameType end
 	for _, child in ipairs(box:GetDescendants()) do
 		if child:IsA("StringValue") or child:IsA("TextLabel") or child:IsA("TextButton") then
 			local value = child:IsA("StringValue") and tostring(child.Value or "") or tostring(child.Text or "")
 			local valueLower = string.lower(value)
 			if HasHunterTrapText(valueLower) then return "Hunter Trap" end
-			for _, boxType in ipairs(BOX_TYPES) do
-				if valueLower:find(string.lower(boxType), 1, true) then return boxType end
-			end
+			local textType = BoxTypeFromName(valueLower)
+			if textType then return textType end
 		end
 	end
 	return nil
@@ -627,10 +642,18 @@ local function CollectLootBoxes()
 		end
 	end
 	for _, structure in ipairs(folder:GetChildren()) do
+		if BoxTypeFromName(structure.Name) then
+			addCandidate(structure)
+		end
 		local lootFolder = structure:FindFirstChild("Loot")
 		if lootFolder then
 			for _, box in ipairs(lootFolder:GetChildren()) do
 				addCandidate(box)
+			end
+		end
+		for _, child in ipairs(structure:GetChildren()) do
+			if child.Name ~= "Loot" and BoxTypeFromName(child.Name) then
+				addCandidate(child)
 			end
 		end
 		if state.SelectedBoxTypes["Hunter Trap"] ~= false then
@@ -701,6 +724,33 @@ local function CreateBoxESP(box)
 	return {Holder = holder, Highlight = highlight, Billboard = billboard, Label = label}
 end
 
+local function UpdateBoxEntryVisual(entry, box, root, playerRoot)
+	if not entry or not box or not root then return end
+	entry.Billboard.Adornee = root
+	entry.Highlight.Adornee = box
+	local boxColor = BoxColor(box)
+	entry.Highlight.FillColor = boxColor
+	entry.Highlight.OutlineColor = boxColor
+	entry.Label.TextColor3 = boxColor
+	local distance = playerRoot and math.floor((root.Position - playerRoot.Position).Magnitude) or 0
+	local displayType = BoxType(box) or "Loot"
+	local displayName = displayType == "Hunter Trap" and displayType or (displayType .. " Box")
+	entry.Label.Text = ("%s [%d Studs]"):format(displayName, distance)
+end
+
+local function RefreshBoxDistances()
+	if not state.BoxESP then return end
+	local playerRoot = PlayerRoot()
+	for box, entry in pairs(state.BoxObjects) do
+		local root = BoxRoot(box)
+		if root and entry and entry.Holder and entry.Holder.Parent then
+			UpdateBoxEntryVisual(entry, box, root, playerRoot)
+		else
+			RemoveBoxESP(box)
+		end
+	end
+end
+
 local function UpdateBoxESP()
 	if not state.BoxESP then
 		state.LastBoxCount = 0
@@ -732,16 +782,7 @@ local function UpdateBoxESP()
 				state.BoxObjects[box] = entry
 			end
 			if entry then
-				entry.Billboard.Adornee = root
-				entry.Highlight.Adornee = box
-				local boxColor = BoxColor(box)
-				entry.Highlight.FillColor = boxColor
-				entry.Highlight.OutlineColor = boxColor
-				entry.Label.TextColor3 = boxColor
-				local distance = playerRoot and math.floor((root.Position - playerRoot.Position).Magnitude) or 0
-				local displayType = BoxType(box) or "Loot"
-				local displayName = displayType == "Hunter Trap" and displayType or (displayType .. " Box")
-				entry.Label.Text = ("%s [%d studs]"):format(displayName, distance)
+				UpdateBoxEntryVisual(entry, box, root, playerRoot)
 			end
 		end
 	end
@@ -998,6 +1039,9 @@ TrackConnection("UndeadExpeditionLightingHeartbeat", RunService.Heartbeat:Connec
 		ApplyNoDarkness()
 	end
 	WatchStructures()
+	if state.BoxESP then
+		RefreshBoxDistances()
+	end
 	if state.BoxESP and now - (state.LastBoxScan or 0) >= BOX_SCAN_INTERVAL then
 		state.LastBoxScan = now
 		UpdateBoxESP()
@@ -1019,6 +1063,7 @@ end)
 
 ThemeObjects.OpenUndeadExpeditionPage = function()
 	HubState.SelectedGame = "Undead Expedition"
+	if IsCurrentGamePage() and Runtime.ActivateGameKeybindScope then Runtime.ActivateGameKeybindScope("Undead Expedition") end
 	HubState.settingsOpen = false
 	if ThemeObjects.CloseTransientPopups then ThemeObjects.CloseTransientPopups() end
 	if HubState.SettingsPage then HubState.SettingsPage.Position = UDim2.new(1.1, 80, 0, 32) end
