@@ -17,14 +17,18 @@ local SaveKeybind = Runtime.SaveKeybind or function() end
 local PlayClick = Runtime.PlayClick or function() end
 local TrackConnection = Runtime.TrackConnection or function(name, connection) HubState.Connections[name] = connection; return connection end
 local UpdateTheme = Runtime.UpdateTheme or function() end
+local GuiScaleFromValue = Runtime.GuiScaleFromValue or function(value) return (tonumber(value) or 50) / 50 end
+local GuiSizeValue = Runtime.GuiSizeValue or 50
+local FrameThemeColor = Runtime.GetFrameThemeColor and Runtime.GetFrameThemeColor() or Color3.fromRGB(28, 28, 38)
 if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu page module: runtime is incomplete") end
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v9"
+local ModuleVersion = "UE-Utility-v10"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
+local existingMarkerFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionStructureMarkers")
 if existingPage and existingPage:GetAttribute("ModuleVersion") == ModuleVersion and ThemeObjects.OpenUndeadExpeditionPage then
 	ThemeObjects.OpenUndeadExpeditionPage()
 	return
@@ -32,6 +36,7 @@ end
 if existingPage then existingPage:Destroy() end
 if existingEspFolder then existingEspFolder:Destroy() end
 if existingFilterDock then existingFilterDock:Destroy() end
+if existingMarkerFolder then existingMarkerFolder:Destroy() end
 
 for _, connectionName in ipairs({
 	"UndeadExpeditionESPHeartbeat",
@@ -41,6 +46,7 @@ for _, connectionName in ipairs({
 	"UndeadExpeditionFilterDockSize",
 	"UndeadExpeditionStructureAdded",
 	"UndeadExpeditionLightingHeartbeat",
+	"UndeadExpeditionBoxHeartbeat",
 }) do
 	if HubState.Connections[connectionName] then
 		HubState.Connections[connectionName]:Disconnect()
@@ -53,11 +59,14 @@ HubState.UndeadExpeditionState = state
 state.EnemyESP = false
 state.LootESP = false
 state.EnemyFiltersOpen = false
-state.LootFiltersOpen = false
+state.LootFiltersOpen = state.LootFiltersOpen == true
+state.BoxESP = state.BoxESP == true
 state.NoDarkness = state.NoDarkness == true
 state.LastStructureName = state.LastStructureName or nil
 state.LastStructureCount = tonumber(state.LastStructureCount) or 0
-state.LastStructureMessage = state.LastStructureMessage or "Waiting for structure..."
+state.LastStructureMessage = state.LastStructureMessage or "STRUCTURE: N/A"
+state.SelectedBoxTypes = type(state.SelectedBoxTypes) == "table" and state.SelectedBoxTypes or {}
+state.BoxObjects = {}
 
 local function DisconnectTableConnections(connections)
 	if type(connections) ~= "table" then return end
@@ -78,11 +87,12 @@ state.LootCandidateConnections = {}
 state.ContainerWatchers = {}
 state.ESPObjects = {}
 state.LootObjects = {}
+state.BoxObjects = {}
 
 if type(ThemeObjects.FeatureKeybindEntries) == "table" then
 	for index = #ThemeObjects.FeatureKeybindEntries, 1, -1 do
 		local entry = ThemeObjects.FeatureKeybindEntries[index]
-		if entry and (entry.Storage == "UEEnemyESP" or entry.Storage == "UELootESP" or entry.Storage == "UENoDarkness" or entry.Storage == "UEBaseTP") then
+		if entry and (entry.Storage == "UEEnemyESP" or entry.Storage == "UELootESP" or entry.Storage == "UEBoxESP" or entry.Storage == "UEBoxFilters" or entry.Storage == "UENoDarkness" or entry.Storage == "UEBaseTP") then
 			table.remove(ThemeObjects.FeatureKeybindEntries, index)
 		end
 	end
@@ -90,6 +100,12 @@ if type(ThemeObjects.FeatureKeybindEntries) == "table" then
 end
 
 local BASE_POSITION = Vector3.new(130, 53, -397)
+local BOX_TYPES = {"Wooden", "Rusty", "Silver", "Golden", "Ancient"}
+local MAX_BOX_OBJECTS = 40
+local BOX_SCAN_INTERVAL = 0.75
+for _, boxType in ipairs(BOX_TYPES) do
+	if state.SelectedBoxTypes[boxType] == nil then state.SelectedBoxTypes[boxType] = true end
+end
 
 local uePage = Instance.new("ScrollingFrame")
 uePage.Name = "UndeadExpeditionPage"
@@ -109,6 +125,14 @@ uePage.CanvasSize = UDim2.new(0, 0, 0, 160)
 uePage.Visible = false
 uePage:SetAttribute("ModuleVersion", ModuleVersion)
 uePage.Parent = MainFrame
+
+local markerFolder = Instance.new("Folder")
+markerFolder.Name = "UndeadExpeditionStructureMarkers"
+markerFolder.Parent = ScreenGui or uePage
+
+local boxEspFolder = Instance.new("Folder")
+boxEspFolder.Name = "UndeadExpeditionESP"
+boxEspFolder.Parent = ScreenGui or uePage
 
 local function AddText(obj)
 	table.insert(ThemeObjects.Texts, obj)
@@ -186,21 +210,59 @@ local function CreateButton(parent, name, text, xOffset, width)
 	return button
 end
 
-local structureRow = CreateRow("UndeadExpeditionStructureRow", 4)
-local structureTitle = CreateTitle(structureRow, "Structure:")
+local structureDisplay
+if HubState.PageHeader then
+	structureDisplay = HubState.PageHeader:FindFirstChild("UndeadExpeditionStructureDisplay")
+	if not structureDisplay then
+		structureDisplay = Instance.new("TextLabel")
+		structureDisplay.Name = "UndeadExpeditionStructureDisplay"
+		structureDisplay.Size = UDim2.new(0, 190, 0, 12)
+		structureDisplay.Position = UDim2.new(0.5, -95, 0, 4)
+		structureDisplay.BackgroundTransparency = 1
+		structureDisplay.Text = "STRUCTURE: N/A"
+		structureDisplay.Font = Enum.Font.GothamBold
+		structureDisplay.TextSize = 9
+		structureDisplay.TextColor3 = Color3.fromRGB(255, 255, 255)
+		structureDisplay.TextXAlignment = Enum.TextXAlignment.Center
+		structureDisplay.TextTruncate = Enum.TextTruncate.AtEnd
+		structureDisplay.Visible = false
+		structureDisplay.Parent = HubState.PageHeader
+		AddText(structureDisplay)
+	end
+end
+
 local structureStatus = Instance.new("TextLabel")
-structureStatus.Name = "UndeadExpeditionStructureStatus"
-structureStatus.Size = UDim2.new(1, -122, 0, 24)
-structureStatus.Position = UDim2.new(0, 110, 0, 7)
+structureStatus.Name = "UndeadExpeditionHiddenStructureStatus"
+structureStatus.Size = UDim2.new(0, 0, 0, 0)
+structureStatus.Position = UDim2.new(0, 0, 0, 0)
 structureStatus.BackgroundTransparency = 1
 structureStatus.ZIndex = 4
 structureStatus.Text = state.LastStructureMessage
 structureStatus.Font = Enum.Font.GothamBold
 structureStatus.TextSize = 10
-structureStatus.TextXAlignment = Enum.TextXAlignment.Left
+structureStatus.TextXAlignment = Enum.TextXAlignment.Center
 structureStatus.TextTruncate = Enum.TextTruncate.AtEnd
-structureStatus.Parent = structureRow
+structureStatus.Visible = false
+structureStatus.Parent = uePage
 AddText(structureStatus)
+
+local boxRow = CreateRow("UndeadExpeditionBoxESPRow", 4)
+local boxTitle = CreateTitle(boxRow, "Box ESP:")
+local boxStatus = Instance.new("TextLabel")
+boxStatus.Name = "UndeadExpeditionBoxESPStatus"
+boxStatus.Size = UDim2.new(0, 50, 0, 18)
+boxStatus.Position = UDim2.new(1, -210, 0, 10)
+boxStatus.BackgroundTransparency = 1
+boxStatus.ZIndex = 4
+boxStatus.Text = "0/0"
+boxStatus.Font = Enum.Font.GothamBold
+boxStatus.TextSize = 8
+boxStatus.TextXAlignment = Enum.TextXAlignment.Right
+boxStatus.TextTruncate = Enum.TextTruncate.AtEnd
+boxStatus.Parent = boxRow
+AddText(boxStatus)
+local boxFiltersButton = CreateButton(boxRow, "UndeadExpeditionBoxFilters", "Edit", -152, 46)
+local boxToggle = CreateButton(boxRow, "UndeadExpeditionBoxESPToggle", "Off", -98, 44)
 
 local darknessRow = CreateRow("UndeadExpeditionNoDarknessRow", 50)
 local darknessTitle = CreateTitle(darknessRow, "No Darkness:")
@@ -209,6 +271,141 @@ local darknessToggle = CreateButton(darknessRow, "UndeadExpeditionNoDarknessTogg
 local baseRow = CreateRow("UndeadExpeditionBaseTPRow", 96)
 local baseTitle = CreateTitle(baseRow, "Base TP:")
 local baseButton = CreateButton(baseRow, "UndeadExpeditionBaseTPButton", "TP", -98, 44)
+
+local filterDock = Instance.new("Frame")
+filterDock.Name = "UndeadExpeditionFilterDock"
+filterDock.Size = UDim2.new(0, 256, 0, 122)
+filterDock.BackgroundColor3 = FrameThemeColor
+filterDock.BackgroundTransparency = 0
+filterDock.BorderSizePixel = 0
+filterDock.ZIndex = 80
+filterDock.Visible = false
+filterDock.Parent = ScreenGui or MainFrame
+AddBackground(filterDock)
+Instance.new("UICorner", filterDock).CornerRadius = UDim.new(0, 9)
+local filterDockStroke = Instance.new("UIStroke")
+filterDockStroke.Color = AccentColor
+filterDockStroke.Thickness = 1.5
+filterDockStroke.Transparency = 0.08
+filterDockStroke.Parent = filterDock
+if ThemeObjects.Accents then table.insert(ThemeObjects.Accents, filterDockStroke) end
+local filterDockGradient = Instance.new("UIGradient")
+filterDockGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, FrameThemeColor:Lerp(Color3.fromRGB(255, 255, 255), 0.04)),
+	ColorSequenceKeypoint.new(1, FrameThemeColor:Lerp(Color3.fromRGB(0, 0, 0), 0.14)),
+})
+filterDockGradient.Rotation = 35
+filterDockGradient.Parent = filterDock
+local filterDockScale = Instance.new("UIScale")
+filterDockScale.Scale = GuiScaleFromValue(GuiSizeValue)
+filterDockScale.Parent = filterDock
+
+local function UpdateFilterDockPosition()
+	local scale = filterDockScale.Scale
+	filterDock.Position = UDim2.fromOffset(MainFrame.AbsolutePosition.X - ((256 + 7) * scale), MainFrame.AbsolutePosition.Y + (54 * scale))
+end
+TrackConnection("UndeadExpeditionFilterDockPosition", MainFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(UpdateFilterDockPosition))
+TrackConnection("UndeadExpeditionFilterDockSize", MainFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdateFilterDockPosition))
+UpdateFilterDockPosition()
+
+local filterHeader = Instance.new("TextLabel")
+filterHeader.Size = UDim2.new(1, -40, 0, 14)
+filterHeader.Position = UDim2.new(0, 8, 0, 6)
+filterHeader.BackgroundTransparency = 1
+filterHeader.Text = "Box Filters"
+filterHeader.Font = Enum.Font.GothamBold
+filterHeader.TextSize = 10
+filterHeader.TextXAlignment = Enum.TextXAlignment.Center
+filterHeader.ZIndex = 81
+filterHeader.Parent = filterDock
+AddText(filterHeader)
+
+local filterCloseButton = Instance.new("TextButton")
+filterCloseButton.Name = "UndeadExpeditionFilterClose"
+filterCloseButton.Size = UDim2.new(0, 18, 0, 18)
+filterCloseButton.Position = UDim2.new(1, -24, 0, 5)
+filterCloseButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+filterCloseButton.BackgroundTransparency = 0.35
+filterCloseButton.BorderSizePixel = 0
+filterCloseButton.Text = "x"
+filterCloseButton.Font = Enum.Font.GothamBold
+filterCloseButton.TextSize = 9
+filterCloseButton.ZIndex = 82
+filterCloseButton.Parent = filterDock
+AddBackground(filterCloseButton)
+AddText(filterCloseButton)
+Instance.new("UICorner", filterCloseButton).CornerRadius = UDim.new(0, 5)
+EnsureControlOutline(filterCloseButton)
+
+local filterScroll = Instance.new("ScrollingFrame")
+filterScroll.Name = "UndeadExpeditionFilterScroll"
+filterScroll.Size = UDim2.new(1, -16, 1, -36)
+filterScroll.Position = UDim2.new(0, 8, 0, 30)
+filterScroll.BackgroundTransparency = 1
+filterScroll.BorderSizePixel = 0
+filterScroll.ScrollBarThickness = 3
+filterScroll.ScrollBarImageColor3 = AccentColor
+filterScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+filterScroll.ElasticBehavior = Enum.ElasticBehavior.Never
+filterScroll.CanvasSize = UDim2.new(0, 0, 0, 66)
+filterScroll.ZIndex = 81
+filterScroll.Parent = filterDock
+
+local Green = Color3.fromRGB(38, 190, 92)
+local Red = Color3.fromRGB(220, 42, 58)
+local filterButtons = {}
+local RefreshButtons
+
+local function IsUEPageActive()
+	return ThemeObjects.ActiveTabName == "Games" and HubState.SelectedGame == "Undead Expedition" and uePage.Parent ~= nil and uePage.Visible == true
+end
+
+local function CreateFilterLabel(text, y)
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -4, 0, 14)
+	label.Position = UDim2.new(0, 0, 0, y)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 8
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.ZIndex = 82
+	label.Parent = filterScroll
+	AddText(label)
+end
+
+local function CreateFilterButton(value, x, y)
+	local button = Instance.new("TextButton")
+	button.Name = "UndeadExpeditionBoxFilter" .. tostring(value):gsub("%W+", "")
+	button.Size = UDim2.new(0, 76, 0, 20)
+	button.Position = UDim2.new(0, x, 0, y)
+	button.BackgroundColor3 = Green
+	button.BackgroundTransparency = 0
+	button.BorderSizePixel = 0
+	button.Font = Enum.Font.GothamBold
+	button.TextSize = 7
+	button.TextColor3 = Color3.fromRGB(255, 255, 255)
+	button.TextTruncate = Enum.TextTruncate.AtEnd
+	button.ZIndex = 82
+	button.Parent = filterScroll
+	AddText(button)
+	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 5)
+	EnsureControlOutline(button)
+	table.insert(filterButtons, {Button = button, Value = value})
+	button.MouseButton1Click:Connect(function()
+		PlayClick()
+		state.SelectedBoxTypes[value] = not (state.SelectedBoxTypes[value] ~= false)
+		RefreshButtons()
+		UpdateTheme(true)
+	end)
+end
+
+CreateFilterLabel("Boxes", 0)
+for index, boxType in ipairs(BOX_TYPES) do
+	local column = (index - 1) % 3
+	local row = math.floor((index - 1) / 3)
+	CreateFilterButton(boxType, column * 82, 16 + row * 23)
+end
 
 local function SafeGet(instance, property)
 	local ok, value = pcall(function()
@@ -243,6 +440,42 @@ local function StructureDisplayName(structure)
 	return CleanStructureName(structure.Name)
 end
 
+local function StructureRoot(structure)
+	if not structure then return nil end
+	if structure:IsA("BasePart") then return structure end
+	if structure:IsA("Model") then return structure.PrimaryPart or structure:FindFirstChildWhichIsA("BasePart", true) end
+	return structure:FindFirstChildWhichIsA("BasePart", true)
+end
+
+local function ShowStructureMarker(structure)
+	local root = StructureRoot(structure)
+	if not root then return end
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "StructureSpawnMarker"
+	billboard.Adornee = root
+	billboard.Size = UDim2.new(0, 54, 0, 54)
+	billboard.StudsOffset = Vector3.new(0, 8, 0)
+	billboard.AlwaysOnTop = true
+	billboard.LightInfluence = 0
+	billboard.MaxDistance = 2000
+	billboard.Parent = markerFolder
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.BackgroundTransparency = 1
+	label.Text = "!"
+	label.Font = Enum.Font.GothamBlack
+	label.TextSize = 34
+	label.TextColor3 = AccentColor
+	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	label.TextStrokeTransparency = 0.12
+	label.Parent = billboard
+
+	task.delay(7.5, function()
+		if billboard and billboard.Parent then billboard:Destroy() end
+	end)
+end
+
 local function SetStructureMessage(name)
 	name = CleanStructureName(name)
 	if state.LastStructureName == name then
@@ -252,8 +485,12 @@ local function SetStructureMessage(name)
 		state.LastStructureCount = 1
 	end
 	local suffix = state.LastStructureCount > 1 and (" x" .. tostring(state.LastStructureCount)) or ""
-	state.LastStructureMessage = ("%s Has Spawned%s"):format(name, suffix)
+	state.LastStructureMessage = ("STRUCTURE: %s Has Spawned%s"):format(name, suffix)
 	structureStatus.Text = state.LastStructureMessage
+	if structureDisplay then
+		structureDisplay.Text = state.LastStructureMessage
+		structureDisplay.TextColor3 = AccentColor
+	end
 end
 
 local function StructuresFolder()
@@ -272,7 +509,161 @@ local function WatchStructures()
 	state.StructuresFolder = folder
 	TrackConnection("UndeadExpeditionStructureAdded", folder.ChildAdded:Connect(function(child)
 		SetStructureMessage(StructureDisplayName(child))
+		ShowStructureMarker(child)
+		state.LastBoxScan = 0
 	end))
+end
+
+local function PlayerRoot()
+	local character = Player and Player.Character
+	return character and character:FindFirstChild("HumanoidRootPart")
+end
+
+local function BoxRoot(box)
+	if not box then return nil end
+	if box:IsA("BasePart") then return box end
+	if box:IsA("Model") then return box.PrimaryPart or box:FindFirstChildWhichIsA("BasePart", true) end
+	return box:FindFirstChildWhichIsA("BasePart", true)
+end
+
+local function BoxType(box)
+	local lower = string.lower(tostring(box and box.Name or ""))
+	for _, boxType in ipairs(BOX_TYPES) do
+		if lower:find(string.lower(boxType), 1, true) then return boxType end
+	end
+	for _, child in ipairs(box:GetDescendants()) do
+		if child:IsA("StringValue") or child:IsA("TextLabel") or child:IsA("TextButton") then
+			local value = child:IsA("StringValue") and tostring(child.Value or "") or tostring(child.Text or "")
+			local valueLower = string.lower(value)
+			for _, boxType in ipairs(BOX_TYPES) do
+				if valueLower:find(string.lower(boxType), 1, true) then return boxType end
+			end
+		end
+	end
+	return nil
+end
+
+local function IsBoxAllowed(box)
+	local boxType = BoxType(box)
+	return boxType ~= nil and state.SelectedBoxTypes[boxType] ~= false
+end
+
+local function CollectLootBoxes()
+	local folder = StructuresFolder()
+	local boxes = {}
+	if not folder then return boxes end
+	for _, structure in ipairs(folder:GetChildren()) do
+		local lootFolder = structure:FindFirstChild("Loot")
+		if lootFolder then
+			for _, box in ipairs(lootFolder:GetChildren()) do
+				if BoxRoot(box) and IsBoxAllowed(box) then
+					table.insert(boxes, box)
+				end
+			end
+		end
+	end
+	return boxes
+end
+
+local function RemoveBoxESP(box)
+	local entry = state.BoxObjects[box]
+	if entry and entry.Holder then entry.Holder:Destroy() end
+	state.BoxObjects[box] = nil
+end
+
+local function ClearBoxESP()
+	for box in pairs(state.BoxObjects) do
+		RemoveBoxESP(box)
+	end
+	if boxEspFolder then boxEspFolder:ClearAllChildren() end
+end
+
+local function CreateBoxESP(box)
+	local root = BoxRoot(box)
+	if not root then return nil end
+	local holder = Instance.new("Folder")
+	holder.Name = "BoxESP_" .. tostring(box.Name)
+	holder.Parent = boxEspFolder
+
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "BoxHighlight"
+	highlight.Adornee = box
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.FillColor = AccentColor
+	highlight.OutlineColor = AccentColor
+	highlight.FillTransparency = 0.86
+	highlight.OutlineTransparency = 0.08
+	highlight.Parent = holder
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "BoxBillboard"
+	billboard.Adornee = root
+	billboard.Size = UDim2.new(0, 126, 0, 24)
+	billboard.StudsOffset = Vector3.new(0, 2.8, 0)
+	billboard.AlwaysOnTop = true
+	billboard.LightInfluence = 0
+	billboard.MaxDistance = 1200
+	billboard.Parent = holder
+
+	local label = Instance.new("TextLabel")
+	label.Name = "BoxLabel"
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.BackgroundTransparency = 1
+	label.Text = BoxType(box) or "Box"
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 10
+	label.TextColor3 = AccentColor
+	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	label.TextStrokeTransparency = 0.18
+	label.TextWrapped = true
+	label.Parent = billboard
+
+	return {Holder = holder, Highlight = highlight, Billboard = billboard, Label = label}
+end
+
+local function UpdateBoxESP()
+	if not state.BoxESP then
+		state.LastBoxCount = 0
+		state.LastBoxShownCount = 0
+		ClearBoxESP()
+		return
+	end
+	local playerRoot = PlayerRoot()
+	local boxes = CollectLootBoxes()
+	table.sort(boxes, function(a, b)
+		local rootA = BoxRoot(a)
+		local rootB = BoxRoot(b)
+		local distA = playerRoot and rootA and (rootA.Position - playerRoot.Position).Magnitude or 0
+		local distB = playerRoot and rootB and (rootB.Position - playerRoot.Position).Magnitude or 0
+		return distA < distB
+	end)
+
+	local seen = {}
+	local shown = 0
+	for _, box in ipairs(boxes) do
+		if shown >= MAX_BOX_OBJECTS then break end
+		local root = BoxRoot(box)
+		if root then
+			seen[box] = true
+			shown += 1
+			local entry = state.BoxObjects[box]
+			if not entry or not entry.Holder or not entry.Holder.Parent then
+				entry = CreateBoxESP(box)
+				state.BoxObjects[box] = entry
+			end
+			if entry then
+				entry.Billboard.Adornee = root
+				entry.Highlight.Adornee = box
+				local distance = playerRoot and math.floor((root.Position - playerRoot.Position).Magnitude) or 0
+				entry.Label.Text = ("%s Box  [%dm]"):format(BoxType(box) or "Loot", distance)
+			end
+		end
+	end
+	for box in pairs(state.BoxObjects) do
+		if not seen[box] then RemoveBoxESP(box) end
+	end
+	state.LastBoxCount = #boxes
+	state.LastBoxShownCount = shown
 end
 
 local lightingEffectProperties = {
@@ -389,12 +780,29 @@ local function TeleportToBase()
 	root.CFrame = CFrame.new(BASE_POSITION)
 end
 
-local function RefreshButtons()
+RefreshButtons = function()
+	if structureDisplay then
+		structureDisplay.Text = state.LastStructureMessage or "STRUCTURE: N/A"
+		structureDisplay.TextColor3 = state.LastStructureName and AccentColor or Color3.fromRGB(255, 255, 255)
+	end
 	structureStatus.Text = state.LastStructureMessage or "Waiting for structure..."
+	boxToggle.Text = state.BoxESP and "On" or "Off"
+	boxFiltersButton.Text = state.LootFiltersOpen and "Close" or "Edit"
+	local boxFound = state.LastBoxCount or 0
+	local boxShown = state.LastBoxShownCount or 0
+	boxStatus.Text = state.BoxESP and ("%d/%d"):format(boxShown, boxFound) or "0/0"
 	darknessToggle.Text = state.NoDarkness and "On" or "Off"
-	structureTitle.TextColor3 = AccentColor
+	boxTitle.TextColor3 = state.BoxESP and AccentColor or InactiveTextColor()
 	darknessTitle.TextColor3 = state.NoDarkness and AccentColor or InactiveTextColor()
 	baseTitle.TextColor3 = InactiveTextColor()
+	filterDock.Visible = state.LootFiltersOpen and IsUEPageActive()
+	for _, entry in ipairs(filterButtons) do
+		local selected = state.SelectedBoxTypes[entry.Value] ~= false
+		entry.Button.Text = (selected and "ESP " or "NO ") .. entry.Value
+		entry.Button.BackgroundColor3 = selected and Green or Red
+		entry.Button.BackgroundTransparency = 0
+	end
+	UpdateFilterDockPosition()
 	for _, obj in ipairs(uePage:GetDescendants()) do
 		if obj:IsA("TextButton") then
 			obj.ZIndex = 4
@@ -406,10 +814,54 @@ local function RefreshButtons()
 	end
 end
 
+local function ToggleBoxESP()
+	state.BoxESP = not state.BoxESP
+	if state.BoxESP then
+		state.LastBoxScan = 0
+		UpdateBoxESP()
+	else
+		ClearBoxESP()
+	end
+	RefreshButtons()
+	UpdateTheme(true)
+end
+
+local function ToggleBoxFilters()
+	state.LootFiltersOpen = not state.LootFiltersOpen
+	RefreshButtons()
+	UpdateTheme(true)
+end
+
 local function ToggleNoDarkness()
 	SetNoDarkness(not state.NoDarkness)
 	RefreshButtons()
 	UpdateTheme(true)
+end
+
+boxToggle.MouseButton1Click:Connect(function()
+	PlayClick()
+	ToggleBoxESP()
+end)
+
+boxFiltersButton.MouseButton1Click:Connect(function()
+	PlayClick()
+	ToggleBoxFilters()
+end)
+
+filterCloseButton.MouseButton1Click:Connect(function()
+	PlayClick()
+	state.LootFiltersOpen = false
+	RefreshButtons()
+	UpdateTheme(true)
+end)
+
+local previousCloseTransientPopups = ThemeObjects.CloseTransientPopups
+ThemeObjects.CloseTransientPopups = function(...)
+	state.LootFiltersOpen = false
+	if filterDock then filterDock.Visible = false end
+	if previousCloseTransientPopups then
+		return previousCloseTransientPopups(...)
+	end
 end
 
 darknessToggle.MouseButton1Click:Connect(function()
@@ -422,8 +874,10 @@ baseButton.MouseButton1Click:Connect(function()
 	TeleportToBase()
 end)
 
-table.insert(ThemeObjects.StateTexts, {Object = structureTitle, IsEnabled = function() return true end})
+table.insert(ThemeObjects.StateTexts, {Object = boxTitle, IsEnabled = function() return state.BoxESP end})
 table.insert(ThemeObjects.StateTexts, {Object = darknessTitle, IsEnabled = function() return state.NoDarkness end})
+ThemeObjects.AddFeatureKeybind({Name = "Box ESP", Storage = "UEBoxESP", Parent = boxRow, Toggle = boxToggle, Get = function() return LoadKeybind("UEBoxESP") end, Set = function(key) SaveKeybind("UEBoxESP", key) end, Action = ToggleBoxESP})
+ThemeObjects.AddFeatureKeybind({Name = "Box Filters", Storage = "UEBoxFilters", Get = function() return LoadKeybind("UEBoxFilters") end, Set = function(key) SaveKeybind("UEBoxFilters", key) end, Action = ToggleBoxFilters})
 ThemeObjects.AddFeatureKeybind({Name = "No Darkness", Storage = "UENoDarkness", Parent = darknessRow, Toggle = darknessToggle, Get = function() return LoadKeybind("UENoDarkness") end, Set = function(key) SaveKeybind("UENoDarkness", key) end, Action = ToggleNoDarkness})
 ThemeObjects.AddFeatureKeybind({Name = "Base TP", Storage = "UEBaseTP", Parent = baseRow, Toggle = baseButton, Get = function() return LoadKeybind("UEBaseTP") end, Set = function(key) SaveKeybind("UEBaseTP", key) end, Action = TeleportToBase})
 
@@ -435,12 +889,30 @@ end))
 
 TrackConnection("UndeadExpeditionLightingHeartbeat", RunService.Heartbeat:Connect(function()
 	if not uePage.Parent then return end
-	if state.NoDarkness and os.clock() - (state.LastLightingApply or 0) >= 1.5 then
-		state.LastLightingApply = os.clock()
+	local now = os.clock()
+	if state.NoDarkness and now - (state.LastLightingApply or 0) >= 1.5 then
+		state.LastLightingApply = now
 		ApplyNoDarkness()
 	end
 	WatchStructures()
+	if state.BoxESP and now - (state.LastBoxScan or 0) >= BOX_SCAN_INTERVAL then
+		state.LastBoxScan = now
+		UpdateBoxESP()
+		RefreshButtons()
+	end
 end))
+
+task.spawn(function()
+	while uePage.Parent do
+		local active = IsUEPageActive()
+		if structureDisplay then structureDisplay.Visible = active end
+		if not active then
+			state.LootFiltersOpen = false
+			filterDock.Visible = false
+		end
+		task.wait(active and 0.5 or 0.35)
+	end
+end)
 
 ThemeObjects.OpenUndeadExpeditionPage = function()
 	HubState.SelectedGame = "Undead Expedition"
@@ -477,6 +949,7 @@ ThemeObjects.OpenUndeadExpeditionPage = function()
 	if growSeason then growSeason.Visible = false end
 	local growHistory = HubState.PageHeader and HubState.PageHeader:FindFirstChild("GrowABeehiveHistoryButton")
 	if growHistory then growHistory.Visible = false end
+	if structureDisplay then structureDisplay.Visible = true end
 	uePage.Visible = true
 	uePage.Position = UDim2.new(0, 122, 0, 54)
 	ThemeObjects.ActiveTabName = "Games"
