@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v16"
+local ModuleVersion = "UE-Utility-v17"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -129,6 +129,7 @@ local BOX_TYPE_COLORS = {
 }
 local MAX_BOX_OBJECTS = 40
 local BOX_SCAN_INTERVAL = 0.75
+local BOX_GROUP_DISTANCE = 7
 for _, boxType in ipairs(BOX_TYPES) do
 	if state.SelectedBoxTypes[boxType] == nil then state.SelectedBoxTypes[boxType] = true end
 end
@@ -639,6 +640,11 @@ local function BoxHighlightTarget(box, root)
 	return box
 end
 
+local function BoxDisplayName(box)
+	local displayType = BoxType(box) or "Loot"
+	return displayType == "Hunter Trap" and displayType or (displayType .. " Box")
+end
+
 local function IsBoxAllowed(box)
 	local boxType = BoxType(box)
 	return boxType ~= nil and state.SelectedBoxTypes[boxType] ~= false
@@ -748,29 +754,67 @@ local function CreateBoxESP(box)
 	return {Holder = holder, Highlight = highlight, Billboard = billboard, Label = label}
 end
 
-local function UpdateBoxEntryVisual(entry, box, root, playerRoot)
+local function UpdateBoxEntryVisual(entry, box, root, playerRoot, groupCount)
 	if not entry or not box or not root then return end
 	entry.Billboard.Adornee = root
+	entry.Billboard.Enabled = true
 	entry.Highlight.Adornee = BoxHighlightTarget(box, root)
 	local boxColor = BoxColor(box)
 	entry.Highlight.FillColor = boxColor
 	entry.Highlight.OutlineColor = boxColor
 	entry.Label.TextColor3 = boxColor
 	local distance = playerRoot and math.floor((root.Position - playerRoot.Position).Magnitude) or 0
-	local displayType = BoxType(box) or "Loot"
-	local displayName = displayType == "Hunter Trap" and displayType or (displayType .. " Box")
-	entry.Label.Text = ("%s [%d Studs]"):format(displayName, distance)
+	local stackText = groupCount and groupCount > 1 and (" x" .. tostring(groupCount)) or ""
+	entry.Label.Text = ("%s%s [%d Studs]"):format(BoxDisplayName(box), stackText, distance)
+end
+
+local function HideBoxEntryLabel(entry, box, root)
+	if not entry or not box or not root then return end
+	entry.Billboard.Adornee = root
+	entry.Billboard.Enabled = false
+	entry.Highlight.Adornee = BoxHighlightTarget(box, root)
+	local boxColor = BoxColor(box)
+	entry.Highlight.FillColor = boxColor
+	entry.Highlight.OutlineColor = boxColor
+	entry.Label.TextColor3 = boxColor
 end
 
 local function RefreshBoxDistances()
 	if not state.BoxESP then return end
 	local playerRoot = PlayerRoot()
+	local groups = {}
 	for box, entry in pairs(state.BoxObjects) do
 		local root = BoxRoot(box)
 		if root and entry and entry.Holder and entry.Holder.Parent then
-			UpdateBoxEntryVisual(entry, box, root, playerRoot)
+			local boxType = BoxType(box) or "Loot"
+			local distance = playerRoot and (root.Position - playerRoot.Position).Magnitude or 0
+			local selectedGroup
+			for _, group in ipairs(groups) do
+				if group.Type == boxType and (root.Position - group.Position).Magnitude <= BOX_GROUP_DISTANCE then
+					selectedGroup = group
+					break
+				end
+			end
+			if not selectedGroup then
+				selectedGroup = {Type = boxType, Position = root.Position, Members = {}}
+				table.insert(groups, selectedGroup)
+			end
+			table.insert(selectedGroup.Members, {Box = box, Entry = entry, Root = root, Distance = distance})
 		else
 			RemoveBoxESP(box)
+		end
+	end
+	for _, group in ipairs(groups) do
+		table.sort(group.Members, function(a, b)
+			return a.Distance < b.Distance
+		end)
+		local groupCount = #group.Members
+		for index, member in ipairs(group.Members) do
+			if index == 1 then
+				UpdateBoxEntryVisual(member.Entry, member.Box, member.Root, playerRoot, groupCount)
+			else
+				HideBoxEntryLabel(member.Entry, member.Box, member.Root)
+			end
 		end
 	end
 end
@@ -805,9 +849,6 @@ local function UpdateBoxESP()
 				entry = CreateBoxESP(box)
 				state.BoxObjects[box] = entry
 			end
-			if entry then
-				UpdateBoxEntryVisual(entry, box, root, playerRoot)
-			end
 		end
 	end
 	for box in pairs(state.BoxObjects) do
@@ -815,6 +856,7 @@ local function UpdateBoxESP()
 	end
 	state.LastBoxCount = #boxes
 	state.LastBoxShownCount = shown
+	RefreshBoxDistances()
 end
 
 local lightingEffectProperties = {
@@ -915,12 +957,16 @@ local function RestoreLighting()
 	end
 end
 
+local function ReleaseNoDarkness()
+	state.OriginalLighting = nil
+end
+
 local function SetNoDarkness(enabled)
 	state.NoDarkness = enabled == true
 	if state.NoDarkness then
 		ApplyNoDarkness()
 	else
-		RestoreLighting()
+		ReleaseNoDarkness()
 	end
 end
 
