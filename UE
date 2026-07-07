@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v19"
+local ModuleVersion = "UE-Utility-v20"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -958,11 +958,40 @@ local function SetNoDarkness(enabled)
 	end
 end
 
-local function TeleportToBase()
+local function StableTeleport(cframe)
 	local character = Player and Player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
-	if not root then return end
-	root.CFrame = CFrame.new(BASE_POSITION)
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not character or not root then return false end
+	if humanoid then
+		humanoid.Sit = false
+		humanoid.PlatformStand = false
+		humanoid.AutoRotate = true
+		pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+	end
+	pcall(function()
+		root.AssemblyLinearVelocity = Vector3.zero
+		root.AssemblyAngularVelocity = Vector3.zero
+	end)
+	character:PivotTo(cframe)
+	task.delay(0.08, function()
+		if root and root.Parent then
+			pcall(function()
+				root.AssemblyLinearVelocity = Vector3.zero
+				root.AssemblyAngularVelocity = Vector3.zero
+			end)
+		end
+		if humanoid and humanoid.Parent then
+			humanoid.Sit = false
+			humanoid.PlatformStand = false
+			pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Running) end)
+		end
+	end)
+	return true
+end
+
+local function TeleportToBase()
+	return StableTeleport(CFrame.new(BASE_POSITION + Vector3.new(0, 4, 0)))
 end
 
 local function EnemyRoot(enemy)
@@ -1015,12 +1044,9 @@ local function FindNearestHunterTrapRoot(skipVisited)
 end
 
 local function TeleportToHunterTrapRoot(trapRoot)
-	local character = Player and Player.Character
-	local root = character and character:FindFirstChild("HumanoidRootPart")
-	if not root or not trapRoot then return false end
-	local targetPosition = trapRoot.Position + Vector3.new(0, 3, 0)
-	root.CFrame = CFrame.new(targetPosition, trapRoot.Position)
-	return true
+	if not trapRoot then return false end
+	local targetPosition = trapRoot.Position + Vector3.new(0, 5, 0)
+	return StableTeleport(CFrame.new(targetPosition, trapRoot.Position))
 end
 
 local function AutoHunterTrapStep()
