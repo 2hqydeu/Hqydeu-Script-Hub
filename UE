@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v29"
+local ModuleVersion = "UE-Utility-v30"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -146,6 +146,8 @@ local HUNTER_TRAP_LOOT_INTERVAL = 0.22
 local HUNTER_TRAP_LOOT_SWEEP_TIME = 1.75
 local HUNTER_TRAP_HITBOX_SIZE = Vector3.new(24, 24, 24)
 local HUNTER_TRAP_APPROACH_INTERVAL = 1.15
+local HUNTER_TRAP_STRAFE_INTERVAL = 0.45
+local HUNTER_TRAP_STRAFE_DISTANCE = 9
 for _, boxType in ipairs(BOX_TYPES) do
 	if state.SelectedBoxTypes[boxType] == nil then state.SelectedBoxTypes[boxType] = true end
 end
@@ -793,9 +795,6 @@ local function CollectLootBoxes()
 		end
 	end
 	for _, structure in ipairs(folder:GetChildren()) do
-		if BoxTypeFromName(structure.Name) then
-			addCandidate(structure)
-		end
 		local lootFolder = structure:FindFirstChild("Loot")
 		if lootFolder then
 			for _, box in ipairs(lootFolder:GetChildren()) do
@@ -1220,6 +1219,45 @@ local function FaceNearestHunterNear(position, radius)
 	return nearestRoot
 end
 
+local function StrafeNearestHunterNear(position, radius, runId)
+	if not IsAutoTrapRunActive(runId) then return nil end
+	local hunterRoot = FaceNearestHunterNear(position, radius)
+	if not hunterRoot then return nil end
+	local now = os.clock()
+	if now - (state.LastHunterTrapStrafeAt or 0) < HUNTER_TRAP_STRAFE_INTERVAL then
+		return hunterRoot
+	end
+	state.LastHunterTrapStrafeAt = now
+	local character = Player and Player.Character
+	local playerRoot = PlayerRoot()
+	if not character or not playerRoot then return hunterRoot end
+	local offset = playerRoot.Position - hunterRoot.Position
+	local flatOffset = Vector3.new(offset.X, 0, offset.Z)
+	if flatOffset.Magnitude < 1 then
+		local fallback = -hunterRoot.CFrame.LookVector
+		flatOffset = Vector3.new(fallback.X, 0, fallback.Z)
+	end
+	if flatOffset.Magnitude < 1 then flatOffset = Vector3.new(0, 0, 1) end
+	local radial = flatOffset.Unit
+	state.HunterTrapStrafeDirection = -(tonumber(state.HunterTrapStrafeDirection) or 1)
+	local tangent = Vector3.new(-radial.Z, 0, radial.X) * state.HunterTrapStrafeDirection
+	local distance = flatOffset.Magnitude
+	local desired
+	if distance < 7 or distance > 13 then
+		desired = hunterRoot.Position + radial * HUNTER_TRAP_STRAFE_DISTANCE
+	else
+		desired = playerRoot.Position + tangent * 3.5
+	end
+	desired = Vector3.new(desired.X, playerRoot.Position.Y, desired.Z)
+	local lookAt = Vector3.new(hunterRoot.Position.X, desired.Y, hunterRoot.Position.Z)
+	pcall(function()
+		playerRoot.AssemblyLinearVelocity = Vector3.zero
+		playerRoot.AssemblyAngularVelocity = Vector3.zero
+		character:PivotTo(CFrame.new(desired, lookAt))
+	end)
+	return hunterRoot
+end
+
 local function RestoreHunterTrapHitbox(part)
 	local originals = state.HunterTrapHitboxOriginals
 	local original = originals and originals[part]
@@ -1448,7 +1486,9 @@ local function CurrentEquippedTool()
 end
 
 local function UseCurrentEquippedTool()
-	local tool = CurrentEquippedTool()
+	local equipped = CurrentEquippedTool()
+	local forced = EquipCombatWeapon()
+	local tool = CurrentEquippedTool() or (forced and forced:IsA("Tool") and forced or equipped)
 	if tool then
 		pcall(function() tool:Activate() end)
 	end
@@ -1790,6 +1830,7 @@ local function AutoHunterTrapStep()
 			state.AutoTrapStartedAt = now
 			state.AutoTrapLootStartedAt = nil
 			state.LastHunterTrapUseAt = 0
+			state.LastHunterTrapStrafeAt = 0
 			state.HunterTrapAttackBusy = false
 			RestoreHunterTrapHitboxes()
 			if not IsAutoTrapRunActive(runId) then return end
@@ -1810,6 +1851,7 @@ local function AutoHunterTrapStep()
 			state.AutoTrapPhase = "activating_tool"
 			state.AutoTrapLootStartedAt = nil
 			state.LastHunterTrapUseAt = 0
+			state.LastHunterTrapStrafeAt = 0
 		elseif now - (state.AutoTrapStartedAt or now) >= HUNTER_TRAP_SPAWN_TIMEOUT then
 			state.AutoTrapVisited = state.AutoTrapVisited or {}
 			state.AutoTrapVisited[target] = true
@@ -1832,7 +1874,7 @@ local function AutoHunterTrapStep()
 			if IsAutoTrapRunActive(runId) then AutoHunterTrapStep() end
 		elseif now - (state.LastHunterTrapUseAt or 0) >= HUNTER_TRAP_ATTACK_INTERVAL then
 			state.LastHunterTrapUseAt = now
-			FaceNearestHunterNear(target.Position, HUNTER_TRAP_ENEMY_RADIUS)
+			StrafeNearestHunterNear(target.Position, HUNTER_TRAP_ENEMY_RADIUS, runId)
 			UseCurrentEquippedTool()
 		else
 			FaceNearestHunterNear(target.Position, HUNTER_TRAP_ENEMY_RADIUS)
@@ -1929,6 +1971,8 @@ local function ToggleAutoHunterTrap()
 		state.LastHunterTrapMove = 0
 		state.LastHunterTrapApproachAt = 0
 		state.LastHunterTrapUseAt = 0
+		state.LastHunterTrapStrafeAt = 0
+		state.HunterTrapStrafeDirection = 1
 		RestoreHunterTrapHitboxes()
 		RestoreAutoTrapFacing()
 		AutoHunterTrapStep()
@@ -1939,6 +1983,8 @@ local function ToggleAutoHunterTrap()
 		state.HunterTrapAttackBusy = false
 		state.LastHunterTrapApproachAt = 0
 		state.LastHunterTrapUseAt = 0
+		state.LastHunterTrapStrafeAt = 0
+		state.HunterTrapStrafeDirection = 1
 		RestoreHunterTrapHitboxes()
 		RestoreAutoTrapFacing()
 	end
