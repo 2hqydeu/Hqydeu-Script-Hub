@@ -1,1 +1,404 @@
+-- Page-only module for Hqydeu Script Hub. Upload this file to its raw GitHub target.
+local Runtime = (type(getgenv) == "function" and getgenv().HqydeuLoader_Runtime) or shared.HqydeuLoader_Runtime
+if not Runtime then return warn("Hqydeu page module: main hub runtime was not found") end
+
+local HubState = Runtime.HubState
+local ThemeObjects = Runtime.ThemeObjects
+local MainFrame = Runtime.MainFrame
+local ScreenGui = Runtime.ScreenGui
+local Players = Runtime.Players or game:GetService("Players")
+local Player = Runtime.Player or Players.LocalPlayer
+local RunService = Runtime.RunService or game:GetService("RunService")
+local SavedKeybinds = Runtime.SavedKeybinds or {}
+local AccentColor = Runtime.GetAccentColor and Runtime.GetAccentColor() or Color3.fromRGB(0, 210, 255)
+local InactiveTextColor = Runtime.InactiveTextColor or function() return Color3.fromRGB(255, 255, 255) end
+local LoadKeybind = Runtime.LoadKeybind or function() return Enum.KeyCode.Unknown end
+local SaveKeybind = Runtime.SaveKeybind or function() end
+local KeybindText = Runtime.KeybindText or function(keyCode) return keyCode == Enum.KeyCode.Unknown and "..." or keyCode.Name end
+local PlayClick = Runtime.PlayClick or function() end
+local TrackConnection = Runtime.TrackConnection or function(name, connection) HubState.Connections[name] = connection; return connection end
+local UpdateTheme = Runtime.UpdateTheme or function() end
+if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu page module: runtime is incomplete") end
+HubState.Connections = HubState.Connections or {}
+ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
+
+local ModuleVersion = "UE-EnemyESP-v1"
+local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
+local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
+if existingPage and existingPage:GetAttribute("ModuleVersion") == ModuleVersion and ThemeObjects.OpenUndeadExpeditionPage then
+	ThemeObjects.OpenUndeadExpeditionPage()
+	return
+end
+if existingPage then existingPage:Destroy() end
+if existingEspFolder then existingEspFolder:Destroy() end
+for _, connectionName in ipairs({"UndeadExpeditionESPHeartbeat"}) do
+	if HubState.Connections[connectionName] then
+		HubState.Connections[connectionName]:Disconnect()
+		HubState.Connections[connectionName] = nil
+	end
+end
+
+local state = HubState.UndeadExpeditionState or {
+	EnemyESP = false,
+	LastEnemyCount = 0,
+	LastScan = 0,
+	ESPObjects = {},
+}
+HubState.UndeadExpeditionState = state
+state.ESPObjects = {}
+state.EnemyESP = state.EnemyESP == true
+
+local uePage = Instance.new("ScrollingFrame")
+uePage.Name = "UndeadExpeditionPage"
+uePage.Size = UDim2.new(0, 346, 1, -54)
+uePage.Position = UDim2.new(1.1, 0, 0, 54)
+uePage.BackgroundTransparency = 1
+uePage.BorderSizePixel = 0
+uePage.ClipsDescendants = true
+uePage.ScrollBarThickness = 3
+uePage.ScrollBarImageColor3 = AccentColor
+uePage.ScrollingDirection = Enum.ScrollingDirection.Y
+uePage.ElasticBehavior = Enum.ElasticBehavior.Never
+uePage.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+uePage.CanvasSize = UDim2.new(0, 0, 0, 90)
+uePage.Visible = false
+uePage:SetAttribute("ModuleVersion", ModuleVersion)
+uePage.Parent = MainFrame
+
+local espFolder = Instance.new("Folder")
+espFolder.Name = "UndeadExpeditionESP"
+espFolder.Parent = ScreenGui or uePage
+
+local function AddText(obj)
+	table.insert(ThemeObjects.Texts, obj)
+	return obj
+end
+
+local function AddBackground(obj)
+	table.insert(ThemeObjects.Backgrounds, obj)
+	return obj
+end
+
+local function EnsureControlOutline(obj)
+	if not obj then return obj end
+	local outline = obj:FindFirstChild("ControlOutline")
+	if not outline then
+		outline = Instance.new("UIStroke")
+		outline.Name = "ControlOutline"
+		outline.Parent = obj
+	end
+	if outline:IsA("UIStroke") then
+		outline.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		outline.Color = Color3.fromRGB(0, 0, 0)
+		outline.Thickness = 1.25
+		outline.Transparency = 0
+	end
+	return obj
+end
+
+local function CreateRow(name, y)
+	local row = Instance.new("Frame")
+	row.Name = name
+	row.Size = UDim2.new(1, -24, 0, 38)
+	row.Position = UDim2.new(0, 12, 0, y)
+	row.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
+	row.BackgroundTransparency = 0.92
+	row.BorderSizePixel = 0
+	row.Parent = uePage
+	AddBackground(row)
+	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+	return row
+end
+
+local function CreateTitle(parent, text)
+	local title = Instance.new("TextLabel")
+	title.Size = UDim2.new(0, 150, 0, 24)
+	title.Position = UDim2.new(0, 12, 0, 7)
+	title.BackgroundTransparency = 1
+	title.Text = text
+	title.Font = Enum.Font.GothamBold
+	title.TextSize = 11
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.Parent = parent
+	return AddText(title)
+end
+
+local function CreateButton(parent, name, text, xOffset, width)
+	local button = Instance.new("TextButton")
+	button.Name = name
+	button.Size = UDim2.new(0, width, 0, 22)
+	button.Position = UDim2.new(1, xOffset, 0, 8)
+	button.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	button.BackgroundTransparency = 0.8
+	button.BorderSizePixel = 0
+	button.Text = text
+	button.Font = Enum.Font.GothamBold
+	button.TextSize = 9
+	button.Parent = parent
+	AddBackground(button)
+	AddText(button)
+	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 5)
+	EnsureControlOutline(button)
+	return button
+end
+
+local espRow = CreateRow("UndeadExpeditionEnemyESPRow", 4)
+local espTitle = CreateTitle(espRow, "Enemy ESP:")
+local espStatus = Instance.new("TextLabel")
+espStatus.Name = "UndeadExpeditionEnemyESPStatus"
+espStatus.Size = UDim2.new(0, 78, 0, 18)
+espStatus.Position = UDim2.new(1, -184, 0, 10)
+espStatus.BackgroundTransparency = 1
+espStatus.Text = "Found: 0"
+espStatus.Font = Enum.Font.GothamBold
+espStatus.TextSize = 8
+espStatus.TextXAlignment = Enum.TextXAlignment.Right
+espStatus.TextTruncate = Enum.TextTruncate.AtEnd
+espStatus.Parent = espRow
+AddText(espStatus)
+local espToggle = CreateButton(espRow, "UndeadExpeditionEnemyESPToggle", "Off", -98, 44)
+
+local function IsUndeadExpeditionActive()
+	return ThemeObjects.ActiveTabName == "Games" and HubState.SelectedGame == "Undead Expedition" and uePage.Parent ~= nil and uePage.Visible == true
+end
+
+local function IsPlayerCharacter(model)
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player.Character == model then return true end
+	end
+	return false
+end
+
+local enemyNameHints = {
+	zombie = true,
+	undead = true,
+	enemy = true,
+	enemies = true,
+	monster = true,
+	mob = true,
+	npc = true,
+	walker = true,
+	runner = true,
+	boss = true,
+}
+
+local function HasEnemyNameHint(instance)
+	local current = instance
+	while current and current ~= workspace do
+		local lower = string.lower(current.Name or "")
+		for hint in pairs(enemyNameHints) do
+			if lower:find(hint, 1, true) then return true end
+		end
+		current = current.Parent
+	end
+	return false
+end
+
+local function IsEnemyModel(model)
+	if not model or not model:IsA("Model") then return false end
+	if IsPlayerCharacter(model) then return false end
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then return false end
+	local root = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+	if not root then return false end
+	if model:IsDescendantOf(MainFrame) or (ScreenGui and model:IsDescendantOf(ScreenGui)) then return false end
+	if HasEnemyNameHint(model) then return true end
+	return humanoid.DisplayDistanceType ~= Enum.HumanoidDisplayDistanceType.None
+end
+
+local function EnemyRoot(model)
+	return model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+end
+
+local function EnemyDisplayName(model)
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	local name = humanoid and humanoid.DisplayName and humanoid.DisplayName ~= "" and humanoid.DisplayName or model.Name
+	return tostring(name or "Enemy")
+end
+
+local function CreateESP(model)
+	local root = EnemyRoot(model)
+	if not root then return nil end
+	local holder = Instance.new("Folder")
+	holder.Name = "ESP_" .. model.Name
+	holder.Parent = espFolder
+
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "EnemyHighlight"
+	highlight.Adornee = model
+	highlight.FillColor = Color3.fromRGB(220, 42, 58)
+	highlight.FillTransparency = 0.72
+	highlight.OutlineColor = AccentColor
+	highlight.OutlineTransparency = 0
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.Parent = holder
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "EnemyBillboard"
+	billboard.Adornee = root
+	billboard.Size = UDim2.new(0, 130, 0, 30)
+	billboard.StudsOffset = Vector3.new(0, 3.2, 0)
+	billboard.AlwaysOnTop = true
+	billboard.LightInfluence = 0
+	billboard.Parent = holder
+
+	local label = Instance.new("TextLabel")
+	label.Name = "EnemyLabel"
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.BackgroundTransparency = 1
+	label.Text = EnemyDisplayName(model)
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 11
+	label.TextColor3 = AccentColor
+	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	label.TextStrokeTransparency = 0.2
+	label.TextWrapped = true
+	label.Parent = billboard
+
+	return {Holder = holder, Highlight = highlight, Billboard = billboard, Label = label}
+end
+
+local function RemoveESP(model)
+	local entry = state.ESPObjects[model]
+	if entry and entry.Holder then entry.Holder:Destroy() end
+	state.ESPObjects[model] = nil
+end
+
+local function ClearESP()
+	for model in pairs(state.ESPObjects) do
+		RemoveESP(model)
+	end
+	if espFolder then espFolder:ClearAllChildren() end
+end
+
+local function UpdateESP()
+	if not state.EnemyESP then
+		state.LastEnemyCount = 0
+		ClearESP()
+		return
+	end
+	local seen = {}
+	local count = 0
+	for _, obj in ipairs(workspace:GetDescendants()) do
+		if obj:IsA("Model") and IsEnemyModel(obj) then
+			seen[obj] = true
+			count += 1
+			local entry = state.ESPObjects[obj]
+			if not entry or not entry.Holder or not entry.Holder.Parent then
+				entry = CreateESP(obj)
+				state.ESPObjects[obj] = entry
+			end
+			if entry then
+				local humanoid = obj:FindFirstChildOfClass("Humanoid")
+				local root = EnemyRoot(obj)
+				if root then entry.Billboard.Adornee = root end
+				entry.Highlight.Adornee = obj
+				if humanoid then
+					entry.Label.Text = ("%s  [%d/%d]"):format(EnemyDisplayName(obj), math.max(0, math.floor(humanoid.Health)), math.max(1, math.floor(humanoid.MaxHealth)))
+				else
+					entry.Label.Text = EnemyDisplayName(obj)
+				end
+			end
+		end
+	end
+	for model in pairs(state.ESPObjects) do
+		if not seen[model] or not model.Parent then
+			RemoveESP(model)
+		end
+	end
+	state.LastEnemyCount = count
+end
+
+local function RefreshButtons()
+	espToggle.Text = state.EnemyESP and "On" or "Off"
+	espStatus.Text = ("Found: %d"):format(state.LastEnemyCount or 0)
+	espTitle.TextColor3 = state.EnemyESP and AccentColor or InactiveTextColor()
+	for _, obj in ipairs(uePage:GetDescendants()) do
+		if obj:IsA("TextButton") then
+			EnsureControlOutline(obj)
+			if obj.Name == "FeatureKeybindButton" then obj.TextColor3 = AccentColor end
+		end
+	end
+end
+
+local function ToggleEnemyESP()
+	state.EnemyESP = not state.EnemyESP
+	if not state.EnemyESP then ClearESP() end
+	RefreshButtons()
+	UpdateTheme(true)
+end
+
+espToggle.MouseButton1Click:Connect(function()
+	PlayClick()
+	ToggleEnemyESP()
+end)
+
+table.insert(ThemeObjects.StateTexts, {Object = espTitle, IsEnabled = function() return state.EnemyESP end})
+ThemeObjects.AddFeatureKeybind({Name = "Enemy ESP", Storage = "UEEnemyESP", Parent = espRow, Toggle = espToggle, Get = function() return LoadKeybind("UEEnemyESP") end, Set = function(key) SaveKeybind("UEEnemyESP", key) end, Action = ToggleEnemyESP})
+
+TrackConnection("UndeadExpeditionESPHeartbeat", RunService.Heartbeat:Connect(function()
+	if not uePage.Parent then return end
+	local now = os.clock()
+	if now - (state.LastScan or 0) < 0.35 then return end
+	state.LastScan = now
+	UpdateESP()
+	RefreshButtons()
+end))
+
+local previousCloseTransientPopups = ThemeObjects.CloseTransientPopups
+ThemeObjects.CloseTransientPopups = function(...)
+	if previousCloseTransientPopups then
+		return previousCloseTransientPopups(...)
+	end
+end
+
+ThemeObjects.OpenUndeadExpeditionPage = function()
+	HubState.SelectedGame = "Undead Expedition"
+	HubState.settingsOpen = false
+	if HubState.SettingsPage then
+		HubState.SettingsPage.Position = UDim2.new(1.1, 80, 0, 32)
+	end
+	if HubState.PageHeader then HubState.PageHeader.Text = "Undead Expedition" end
+	if HubState.GamesTabButton then HubState.GamesTabButton.Text = "Undead Expedition" end
+	if HubState.MM2BackButton then HubState.MM2BackButton.Visible = true end
+	for _, page in ipairs({
+		HubState.MovementPage,
+		HubState.CombatPage,
+		ThemeObjects.CameraPage,
+		HubState.TeleportPage,
+		HubState.ScriptsPage,
+		MainFrame:FindFirstChild("ExtrasPage"),
+		HubState.GamesPage,
+		HubState.MM2Page,
+		MainFrame:FindFirstChild("QuietOrDiePage"),
+		MainFrame:FindFirstChild("GrowABeehivePage"),
+	}) do
+		if page and page ~= uePage then
+			page.Visible = false
+			page.Position = UDim2.new(1.1, 0, 0, 54)
+		end
+	end
+	local quietCoins = HubState.PageHeader and HubState.PageHeader:FindFirstChild("QuietOrDieCoinsDisplay")
+	if quietCoins then quietCoins.Visible = false end
+	local quietWins = HubState.PageHeader and HubState.PageHeader:FindFirstChild("QuietOrDieWinsDisplay")
+	if quietWins then quietWins.Visible = false end
+	local quietHistory = HubState.PageHeader and HubState.PageHeader:FindFirstChild("QuietOrDieHistoryButton")
+	if quietHistory then quietHistory.Visible = false end
+	local growSeason = HubState.PageHeader and HubState.PageHeader:FindFirstChild("GrowABeehiveSeasonDisplay")
+	if growSeason then growSeason.Visible = false end
+	local growHistory = HubState.PageHeader and HubState.PageHeader:FindFirstChild("GrowABeehiveHistoryButton")
+	if growHistory then growHistory.Visible = false end
+	uePage.Visible = true
+	uePage.Position = UDim2.new(0, 122, 0, 54)
+	ThemeObjects.ActiveTabName = "Games"
+	HubState.ActiveTabIndex = table.find(HubState.TabNames, "Games") or HubState.ActiveTabIndex
+	HubState.ActiveContentPage = uePage
+	RefreshButtons()
+	UpdateTheme(true)
+	RefreshButtons()
+end
+
+RefreshButtons()
+ThemeObjects.OpenUndeadExpeditionPage()
+UpdateTheme(true)
 
