@@ -22,7 +22,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v4"
+local ModuleVersion = "UE-Utility-v5"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 if existingPage and existingPage:GetAttribute("ModuleVersion") == ModuleVersion and ThemeObjects.OpenUndeadExpeditionPage then
@@ -31,7 +31,7 @@ if existingPage and existingPage:GetAttribute("ModuleVersion") == ModuleVersion 
 end
 if existingPage then existingPage:Destroy() end
 if existingEspFolder then existingEspFolder:Destroy() end
-for _, connectionName in ipairs({"UndeadExpeditionESPHeartbeat", "UndeadExpeditionCandidateAdded"}) do
+for _, connectionName in ipairs({"UndeadExpeditionESPHeartbeat", "UndeadExpeditionCandidateAdded", "UndeadExpeditionContainerAdded"}) do
 	if HubState.Connections[connectionName] then
 		HubState.Connections[connectionName]:Disconnect()
 		HubState.Connections[connectionName] = nil
@@ -61,6 +61,11 @@ if type(state.LootCandidateConnections) == "table" then
 		if connection then connection:Disconnect() end
 	end
 end
+if type(state.ContainerWatchers) == "table" then
+	for _, watcher in pairs(state.ContainerWatchers) do
+		if watcher and watcher.Connection then watcher.Connection:Disconnect() end
+	end
+end
 state.ESPObjects = {}
 state.LootObjects = {}
 state.EnemyESP = state.EnemyESP == true
@@ -70,13 +75,18 @@ state.CandidateModels = {}
 state.CandidateConnections = {}
 state.LootCandidates = {}
 state.LootCandidateConnections = {}
+state.ContainerWatchers = {}
 state.LastShownCount = 0
 state.LastLootShownCount = 0
 
-local MAX_ESP_OBJECTS = 22
-local MAX_LOOT_OBJECTS = 28
-local FULL_RESCAN_INTERVAL = 6
+local ENEMY_CONTAINER_NAME = "Enemies"
+local LOOT_CONTAINER_NAME = "Structures"
+local MAX_ESP_OBJECTS = 14
+local MAX_LOOT_OBJECTS = 18
+local FULL_RESCAN_INTERVAL = 10
 local LABEL_UPDATE_INTERVAL = 1.2
+local ESP_UPDATE_INTERVAL = 0.75
+local USE_LOOT_HIGHLIGHTS = false
 local BASE_POSITION = Vector3.new(130, 53, -397)
 
 local uePage = Instance.new("ScrollingFrame")
@@ -219,6 +229,27 @@ local baseRow = CreateRow("UndeadExpeditionBaseTPRow", 142)
 local baseTitle = CreateTitle(baseRow, "Base TP:")
 local baseButton = CreateButton(baseRow, "UndeadExpeditionBaseTPButton", "TP", -98, 44)
 
+local function WorkspaceContainer(name)
+	local container = workspace:FindFirstChild(name)
+	if container then return container end
+	return nil
+end
+
+local function IsInsideWorkspaceContainer(instance, name)
+	local container = WorkspaceContainer(name)
+	return container and instance and (instance == container or instance:IsDescendantOf(container))
+end
+
+local function ForContainerDescendants(name, callback)
+	local container = WorkspaceContainer(name)
+	if not container then return false end
+	callback(container)
+	for _, obj in ipairs(container:GetDescendants()) do
+		callback(obj)
+	end
+	return true
+end
+
 local function IsPlayerCharacter(model)
 	for _, player in ipairs(Players:GetPlayers()) do
 		if player.Character == model then return true end
@@ -257,6 +288,7 @@ end
 
 local function IsEnemyModel(model)
 	if not model or not model:IsA("Model") then return false end
+	if not IsInsideWorkspaceContainer(model, ENEMY_CONTAINER_NAME) then return false end
 	if IsPlayerCharacter(model) then return false end
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
 	if not humanoid or humanoid.Health <= 0 then return false end
@@ -441,6 +473,7 @@ end
 
 local function LooksLikeLoot(instance)
 	if not instance or IsPlayerOwned(instance) then return false end
+	if not IsInsideWorkspaceContainer(instance, LOOT_CONTAINER_NAME) then return false end
 	if ReadRarityFrom(instance) then return true end
 	if instance:IsA("ProximityPrompt") then
 		local text = string.lower(tostring(instance.ActionText or "") .. " " .. tostring(instance.ObjectText or ""))
@@ -513,15 +546,18 @@ local function CreateLootESP(target)
 	holder.Name = "LootESP_" .. target.Name
 	holder.Parent = espFolder
 
-	local highlight = Instance.new("Highlight")
-	highlight.Name = "LootHighlight"
-	highlight.Adornee = target
-	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-	highlight.FillColor = color
-	highlight.OutlineColor = color
-	highlight.FillTransparency = 0.82
-	highlight.OutlineTransparency = 0.05
-	highlight.Parent = holder
+	local highlight = nil
+	if USE_LOOT_HIGHLIGHTS then
+		highlight = Instance.new("Highlight")
+		highlight.Name = "LootHighlight"
+		highlight.Adornee = target
+		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		highlight.FillColor = color
+		highlight.OutlineColor = color
+		highlight.FillTransparency = 0.82
+		highlight.OutlineTransparency = 0.05
+		highlight.Parent = holder
+	end
 
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "LootBillboard"
@@ -607,9 +643,9 @@ local function ClearLootESP()
 end
 
 local function FullLootScan()
-	for _, obj in ipairs(workspace:GetDescendants()) do
+	ForContainerDescendants(LOOT_CONTAINER_NAME, function(obj)
 		AddLootCandidateFromDescendant(obj)
-	end
+	end)
 end
 
 local lightingEffectProperties = {
@@ -729,9 +765,9 @@ local function TeleportToBase()
 end
 
 local function FullCandidateScan()
-	for _, obj in ipairs(workspace:GetDescendants()) do
+	ForContainerDescendants(ENEMY_CONTAINER_NAME, function(obj)
 		AddCandidateFromDescendant(obj)
-	end
+	end)
 end
 
 local function PlayerRoot()
@@ -895,14 +931,20 @@ local function RefreshButtons()
 	end
 end
 
+local EnsureContainerWatchers
+
 local function ToggleEnemyESP()
 	state.EnemyESP = not state.EnemyESP
 	if state.EnemyESP then
 		state.LastFullScan = 0
+		EnsureContainerWatchers()
 		FullCandidateScan()
 		UpdateESP()
 	else
 		ClearESP()
+		local watcher = state.ContainerWatchers[ENEMY_CONTAINER_NAME]
+		if watcher and watcher.Connection then watcher.Connection:Disconnect() end
+		state.ContainerWatchers[ENEMY_CONTAINER_NAME] = nil
 	end
 	RefreshButtons()
 	UpdateTheme(true)
@@ -912,10 +954,14 @@ local function ToggleLootESP()
 	state.LootESP = not state.LootESP
 	if state.LootESP then
 		state.LastLootFullScan = 0
+		EnsureContainerWatchers()
 		FullLootScan()
 		UpdateLootESP()
 	else
 		ClearLootESP()
+		local watcher = state.ContainerWatchers[LOOT_CONTAINER_NAME]
+		if watcher and watcher.Connection then watcher.Connection:Disconnect() end
+		state.ContainerWatchers[LOOT_CONTAINER_NAME] = nil
 	end
 	RefreshButtons()
 	UpdateTheme(true)
@@ -952,12 +998,34 @@ ThemeObjects.AddFeatureKeybind({Name = "Loot ESP", Storage = "UELootESP", Parent
 ThemeObjects.AddFeatureKeybind({Name = "No Darkness", Storage = "UENoDarkness", Parent = darknessRow, Toggle = darknessToggle, Get = function() return LoadKeybind("UENoDarkness") end, Set = function(key) SaveKeybind("UENoDarkness", key) end, Action = ToggleNoDarkness})
 ThemeObjects.AddFeatureKeybind({Name = "Base TP", Storage = "UEBaseTP", Parent = baseRow, Toggle = baseButton, Get = function() return LoadKeybind("UEBaseTP") end, Set = function(key) SaveKeybind("UEBaseTP", key) end, Action = TeleportToBase})
 
-TrackConnection("UndeadExpeditionCandidateAdded", workspace.DescendantAdded:Connect(function(obj)
+local function WatchWorkspaceContainer(name, handler)
+	local container = WorkspaceContainer(name)
+	if not container then return end
+	local existing = state.ContainerWatchers[name]
+	if existing and existing.Container == container then return end
+	if existing and existing.Connection then existing.Connection:Disconnect() end
+	state.ContainerWatchers[name] = {
+		Container = container,
+		Connection = container.DescendantAdded:Connect(handler),
+	}
+end
+
+EnsureContainerWatchers = function()
 	if state.EnemyESP then
-		AddCandidateFromDescendant(obj)
+		WatchWorkspaceContainer(ENEMY_CONTAINER_NAME, function(obj)
+			if state.EnemyESP then AddCandidateFromDescendant(obj) end
+		end)
 	end
 	if state.LootESP then
-		AddLootCandidateFromDescendant(obj)
+		WatchWorkspaceContainer(LOOT_CONTAINER_NAME, function(obj)
+			if state.LootESP then AddLootCandidateFromDescendant(obj) end
+		end)
+	end
+end
+
+TrackConnection("UndeadExpeditionContainerAdded", workspace.ChildAdded:Connect(function(child)
+	if child.Name == ENEMY_CONTAINER_NAME or child.Name == LOOT_CONTAINER_NAME then
+		task.defer(EnsureContainerWatchers)
 	end
 end))
 
@@ -968,8 +1036,9 @@ TrackConnection("UndeadExpeditionESPHeartbeat", RunService.Heartbeat:Connect(fun
 		state.LastLightingApply = now
 		ApplyNoDarkness()
 	end
-	if now - (state.LastScan or 0) < 0.5 then return end
+	if now - (state.LastScan or 0) < ESP_UPDATE_INTERVAL then return end
 	state.LastScan = now
+	EnsureContainerWatchers()
 	UpdateESP()
 	UpdateLootESP()
 	RefreshButtons()
