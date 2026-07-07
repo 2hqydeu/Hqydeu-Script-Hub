@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v18"
+local ModuleVersion = "UE-Utility-v19"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -130,7 +130,9 @@ local BOX_TYPE_COLORS = {
 }
 local MAX_BOX_OBJECTS = 40
 local BOX_SCAN_INTERVAL = 0.75
-local HUNTER_TRAP_INTERVAL = 1.25
+local HUNTER_TRAP_INTERVAL = 0.35
+local HUNTER_TRAP_ENEMY_RADIUS = 85
+local HUNTER_TRAP_SPAWN_TIMEOUT = 10
 for _, boxType in ipairs(BOX_TYPES) do
 	if state.SelectedBoxTypes[boxType] == nil then state.SelectedBoxTypes[boxType] = true end
 end
@@ -963,7 +965,28 @@ local function TeleportToBase()
 	root.CFrame = CFrame.new(BASE_POSITION)
 end
 
-local function FindNearestHunterTrapRoot()
+local function EnemyRoot(enemy)
+	if not enemy then return nil end
+	if enemy:IsA("BasePart") then return enemy end
+	if enemy:IsA("Model") then return enemy.PrimaryPart or enemy:FindFirstChild("HumanoidRootPart") or enemy:FindFirstChildWhichIsA("BasePart", true) end
+	return enemy:FindFirstChildWhichIsA("BasePart", true)
+end
+
+local function CountEnemiesNear(position, radius)
+	local folder = workspace:FindFirstChild("Enemies")
+	if not folder then return 0 end
+	local count = 0
+	for _, enemy in ipairs(folder:GetChildren()) do
+		local root = EnemyRoot(enemy)
+		local humanoid = enemy:IsA("Model") and enemy:FindFirstChildOfClass("Humanoid") or nil
+		if root and (not humanoid or humanoid.Health > 0) and (root.Position - position).Magnitude <= radius then
+			count += 1
+		end
+	end
+	return count
+end
+
+local function FindNearestHunterTrapRoot(skipVisited)
 	local folder = StructuresFolder()
 	local playerRoot = PlayerRoot()
 	if not folder or not playerRoot then return nil end
@@ -973,6 +996,7 @@ local function FindNearestHunterTrapRoot()
 		if not candidate or BoxType(candidate) ~= "Hunter Trap" then return end
 		local root = BoxRoot(candidate)
 		if not root then return end
+		if skipVisited and state.AutoTrapVisited and state.AutoTrapVisited[root] then return end
 		local distance = (root.Position - playerRoot.Position).Magnitude
 		if distance < closestDistance then
 			closestDistance = distance
@@ -990,14 +1014,65 @@ local function FindNearestHunterTrapRoot()
 	return closestRoot
 end
 
-local function GoToNearestHunterTrap()
+local function TeleportToHunterTrapRoot(trapRoot)
 	local character = Player and Player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
-	local trapRoot = FindNearestHunterTrapRoot()
 	if not root or not trapRoot then return false end
 	local targetPosition = trapRoot.Position + Vector3.new(0, 3, 0)
 	root.CFrame = CFrame.new(targetPosition, trapRoot.Position)
 	return true
+end
+
+local function AutoHunterTrapStep()
+	if not state.AutoHunterTrap then return end
+	local now = os.clock()
+	local target = state.AutoTrapTarget
+	if target and (not target.Parent) then
+		state.AutoTrapTarget = nil
+		state.AutoTrapPhase = "seeking"
+		target = nil
+	end
+
+	if not target then
+		local nextTrap = FindNearestHunterTrapRoot(true)
+		if not nextTrap then
+			state.AutoTrapVisited = {}
+			nextTrap = FindNearestHunterTrapRoot(false)
+		end
+		if nextTrap then
+			state.AutoTrapTarget = nextTrap
+			state.AutoTrapPhase = "waiting_spawn"
+			state.AutoTrapStartedAt = now
+			TeleportToHunterTrapRoot(nextTrap)
+		else
+			state.AutoTrapPhase = "base_wait"
+			TeleportToBase()
+		end
+		return
+	end
+
+	local enemies = CountEnemiesNear(target.Position, HUNTER_TRAP_ENEMY_RADIUS)
+	if state.AutoTrapPhase == "waiting_spawn" then
+		if enemies > 0 then
+			state.AutoTrapPhase = "waiting_clear"
+		elseif now - (state.AutoTrapStartedAt or now) >= HUNTER_TRAP_SPAWN_TIMEOUT then
+			state.AutoTrapVisited = state.AutoTrapVisited or {}
+			state.AutoTrapVisited[target] = true
+			state.AutoTrapTarget = nil
+			state.AutoTrapPhase = "seeking"
+			AutoHunterTrapStep()
+		end
+	elseif state.AutoTrapPhase == "waiting_clear" then
+		if enemies <= 0 then
+			state.AutoTrapVisited = state.AutoTrapVisited or {}
+			state.AutoTrapVisited[target] = true
+			state.AutoTrapTarget = nil
+			state.AutoTrapPhase = "seeking"
+			AutoHunterTrapStep()
+		end
+	else
+		state.AutoTrapPhase = "seeking"
+	end
 end
 
 RefreshButtons = function()
@@ -1073,8 +1148,14 @@ end
 local function ToggleAutoHunterTrap()
 	state.AutoHunterTrap = not state.AutoHunterTrap
 	if state.AutoHunterTrap then
+		state.AutoTrapVisited = {}
+		state.AutoTrapTarget = nil
+		state.AutoTrapPhase = "seeking"
 		state.LastHunterTrapMove = 0
-		GoToNearestHunterTrap()
+		AutoHunterTrapStep()
+	else
+		state.AutoTrapTarget = nil
+		state.AutoTrapPhase = nil
 	end
 	RefreshButtons()
 	UpdateTheme(true)
@@ -1156,7 +1237,7 @@ TrackConnection("UndeadExpeditionLightingHeartbeat", RunService.Heartbeat:Connec
 	end
 	if state.AutoHunterTrap and now - (state.LastHunterTrapMove or 0) >= HUNTER_TRAP_INTERVAL then
 		state.LastHunterTrapMove = now
-		GoToNearestHunterTrap()
+		AutoHunterTrapStep()
 	end
 	if state.BoxESP and now - (state.LastBoxScan or 0) >= BOX_SCAN_INTERVAL then
 		state.LastBoxScan = now
