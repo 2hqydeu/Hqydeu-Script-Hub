@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v27"
+local ModuleVersion = "UE-Utility-v28"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -137,10 +137,10 @@ local BOX_TYPE_COLORS = {
 }
 local MAX_BOX_OBJECTS = 40
 local BOX_SCAN_INTERVAL = 0.75
-local HUNTER_TRAP_INTERVAL = 0.2
+local HUNTER_TRAP_INTERVAL = 0.1
 local HUNTER_TRAP_ENEMY_RADIUS = 85
 local HUNTER_TRAP_SPAWN_TIMEOUT = 10
-local HUNTER_TRAP_ATTACK_INTERVAL = 0.08
+local HUNTER_TRAP_ATTACK_INTERVAL = 0.09
 local HUNTER_TRAP_LOOT_RADIUS = 95
 local HUNTER_TRAP_LOOT_INTERVAL = 0.22
 local HUNTER_TRAP_LOOT_SWEEP_TIME = 1.75
@@ -1395,6 +1395,24 @@ local function UseCombatWeapon(tool)
 	SendMouseClick()
 end
 
+local function CurrentEquippedTool()
+	local character = Player and Player.Character
+	if not character then return nil end
+	for _, child in ipairs(character:GetChildren()) do
+		if child:IsA("Tool") then return child end
+	end
+	return nil
+end
+
+local function UseCurrentEquippedTool()
+	local tool = CurrentEquippedTool()
+	if tool then
+		pcall(function() tool:Activate() end)
+	end
+	SendMouseClick()
+	return tool ~= nil
+end
+
 local function CollectToolHitParts(tool)
 	local parts = {}
 	local seen = {}
@@ -1727,6 +1745,9 @@ local function AutoHunterTrapStep()
 			state.AutoTrapPhase = "waiting_spawn"
 			state.AutoTrapStartedAt = now
 			state.AutoTrapLootStartedAt = nil
+			state.LastHunterTrapUseAt = 0
+			state.HunterTrapAttackBusy = false
+			RestoreHunterTrapHitboxes()
 			if not IsAutoTrapRunActive(runId) then return end
 			TeleportToHunterTrapRoot(nextTrap)
 		else
@@ -1741,9 +1762,9 @@ local function AutoHunterTrapStep()
 	local enemies = CountEnemiesNear(target.Position, HUNTER_TRAP_ENEMY_RADIUS)
 	if state.AutoTrapPhase == "waiting_spawn" then
 		if enemies > 0 then
-			state.AutoTrapPhase = "waiting_clear"
+			state.AutoTrapPhase = "activating_tool"
 			state.AutoTrapLootStartedAt = nil
-			TryClearHunterTrapEnemies(target.Position, runId)
+			state.LastHunterTrapUseAt = 0
 		elseif now - (state.AutoTrapStartedAt or now) >= HUNTER_TRAP_SPAWN_TIMEOUT then
 			state.AutoTrapVisited = state.AutoTrapVisited or {}
 			state.AutoTrapVisited[target] = true
@@ -1753,16 +1774,8 @@ local function AutoHunterTrapStep()
 			RestoreHunterTrapHitboxes()
 			if IsAutoTrapRunActive(runId) then AutoHunterTrapStep() end
 		end
-	elseif state.AutoTrapPhase == "waiting_clear" then
-		enemies = TryClearHunterTrapEnemies(target.Position, runId)
+	elseif state.AutoTrapPhase == "activating_tool" then
 		if enemies <= 0 then
-			state.AutoTrapPhase = "looting"
-			state.AutoTrapLootStartedAt = now
-			SweepHunterTrapDrops(target.Position, runId)
-		end
-	elseif state.AutoTrapPhase == "looting" then
-		SweepHunterTrapDrops(target.Position, runId)
-		if now - (state.AutoTrapLootStartedAt or now) >= HUNTER_TRAP_LOOT_SWEEP_TIME then
 			state.AutoTrapVisited = state.AutoTrapVisited or {}
 			state.AutoTrapVisited[target] = true
 			state.AutoTrapTarget = nil
@@ -1770,6 +1783,9 @@ local function AutoHunterTrapStep()
 			state.AutoTrapLootStartedAt = nil
 			RestoreHunterTrapHitboxes()
 			if IsAutoTrapRunActive(runId) then AutoHunterTrapStep() end
+		elseif now - (state.LastHunterTrapUseAt or 0) >= HUNTER_TRAP_ATTACK_INTERVAL then
+			state.LastHunterTrapUseAt = now
+			UseCurrentEquippedTool()
 		end
 	else
 		state.AutoTrapPhase = "seeking"
@@ -1861,6 +1877,7 @@ local function ToggleAutoHunterTrap()
 		state.HunterTrapAttackBusy = false
 		state.LastHunterTrapMove = 0
 		state.LastHunterTrapApproachAt = 0
+		state.LastHunterTrapUseAt = 0
 		RestoreHunterTrapHitboxes()
 		AutoHunterTrapStep()
 	else
@@ -1869,6 +1886,7 @@ local function ToggleAutoHunterTrap()
 		state.AutoTrapLootStartedAt = nil
 		state.HunterTrapAttackBusy = false
 		state.LastHunterTrapApproachAt = 0
+		state.LastHunterTrapUseAt = 0
 		RestoreHunterTrapHitboxes()
 	end
 	RefreshButtons()
