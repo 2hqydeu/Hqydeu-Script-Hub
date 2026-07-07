@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v30"
+local ModuleVersion = "UE-Utility-v31"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -85,6 +85,10 @@ state.AutoTrapTarget = nil
 state.AutoTrapPhase = nil
 state.AutoTrapLootStartedAt = nil
 state.HunterTrapAttackBusy = false
+state.AutoMobFarm = false
+state.AutoMobRunId = (tonumber(state.AutoMobRunId) or 0) + 1
+state.AutoMobTarget = nil
+state.AutoMobPhase = nil
 state.StructureNotifications = state.StructureNotifications ~= false
 state.LastStructureName = state.LastStructureName or nil
 state.LastStructureCount = tonumber(state.LastStructureCount) or 0
@@ -117,7 +121,7 @@ state.BoxObjects = {}
 if type(ThemeObjects.FeatureKeybindEntries) == "table" then
 	for index = #ThemeObjects.FeatureKeybindEntries, 1, -1 do
 		local entry = ThemeObjects.FeatureKeybindEntries[index]
-		if entry and (entry.Storage == "UEEnemyESP" or entry.Storage == "UELootESP" or entry.Storage == "UEBoxESP" or entry.Storage == "UEBoxFilters" or entry.Storage == "UENoDarkness" or entry.Storage == "UEBaseTP" or entry.Storage == "UEStructureNotifications" or entry.Storage == "UEAutoHunterTrap") then
+		if entry and (entry.Storage == "UEEnemyESP" or entry.Storage == "UELootESP" or entry.Storage == "UEBoxESP" or entry.Storage == "UEBoxFilters" or entry.Storage == "UENoDarkness" or entry.Storage == "UEBaseTP" or entry.Storage == "UEStructureNotifications" or entry.Storage == "UEAutoHunterTrap" or entry.Storage == "UEAutoMobFarm") then
 			table.remove(ThemeObjects.FeatureKeybindEntries, index)
 		end
 	end
@@ -148,6 +152,11 @@ local HUNTER_TRAP_HITBOX_SIZE = Vector3.new(24, 24, 24)
 local HUNTER_TRAP_APPROACH_INTERVAL = 1.15
 local HUNTER_TRAP_STRAFE_INTERVAL = 0.45
 local HUNTER_TRAP_STRAFE_DISTANCE = 9
+local MOB_FARM_INTERVAL = 0.1
+local MOB_FARM_ATTACK_INTERVAL = 0.09
+local MOB_FARM_SCAN_RADIUS = 3000
+local MOB_FARM_STRAFE_INTERVAL = 0.45
+local MOB_FARM_STRAFE_DISTANCE = 9
 for _, boxType in ipairs(BOX_TYPES) do
 	if state.SelectedBoxTypes[boxType] == nil then state.SelectedBoxTypes[boxType] = true end
 end
@@ -166,7 +175,7 @@ uePage.ScrollBarImageColor3 = AccentColor
 uePage.ScrollingDirection = Enum.ScrollingDirection.Y
 uePage.ElasticBehavior = Enum.ElasticBehavior.Never
 uePage.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-uePage.CanvasSize = UDim2.new(0, 0, 0, 252)
+uePage.CanvasSize = UDim2.new(0, 0, 0, 298)
 uePage.Visible = false
 uePage:SetAttribute("ModuleVersion", ModuleVersion)
 uePage.Parent = MainFrame
@@ -341,6 +350,10 @@ local structureAlertsToggle = CreateButton(structureAlertsRow, "UndeadExpedition
 local autoTrapRow = CreateRow("UndeadExpeditionAutoTrapRow", 188)
 local autoTrapTitle = CreateTitle(autoTrapRow, "Auto Trap TP:")
 local autoTrapToggle = CreateButton(autoTrapRow, "UndeadExpeditionAutoTrapToggle", "Off", -98, 44)
+
+local autoMobRow = CreateRow("UndeadExpeditionAutoMobRow", 234)
+local autoMobTitle = CreateTitle(autoMobRow, "Auto Mob Farm:")
+local autoMobToggle = CreateButton(autoMobRow, "UndeadExpeditionAutoMobToggle", "Off", -98, 44)
 
 local filterDock = Instance.new("Frame")
 filterDock.Name = "UndeadExpeditionFilterDock"
@@ -697,6 +710,15 @@ end
 
 local function IsAutoTrapRunActive(runId)
 	return state.AutoHunterTrap == true and runId == state.AutoTrapRunId
+end
+
+local function NextAutoMobRunId()
+	state.AutoMobRunId = (tonumber(state.AutoMobRunId) or 0) + 1
+	return state.AutoMobRunId
+end
+
+local function IsAutoMobRunActive(runId)
+	return state.AutoMobFarm == true and runId == state.AutoMobRunId
 end
 
 local function HasHunterTrapText(value)
@@ -1145,6 +1167,12 @@ local function IsLiveEnemyNear(enemy, position, radius)
 		and (root.Position - position).Magnitude <= radius
 end
 
+local function IsLiveMob(enemy)
+	local root = EnemyRoot(enemy)
+	local humanoid = EnemyHumanoid(enemy)
+	return root ~= nil and (not humanoid or humanoid.Health > 0)
+end
+
 local function CountEnemiesNear(position, radius)
 	local folder = workspace:FindFirstChild("Enemies")
 	if not folder then return 0 end
@@ -1174,6 +1202,33 @@ local function CollectEnemiesNear(position, radius)
 		return distanceA < distanceB
 	end)
 	return enemies
+end
+
+local function CollectMobsNear(position, radius)
+	local folder = workspace:FindFirstChild("Enemies")
+	local mobs = {}
+	if not folder then return mobs end
+	for _, enemy in ipairs(folder:GetChildren()) do
+		local root = EnemyRoot(enemy)
+		if root and IsLiveMob(enemy) and (not position or (root.Position - position).Magnitude <= radius) then
+			table.insert(mobs, enemy)
+		end
+	end
+	table.sort(mobs, function(a, b)
+		local playerRoot = PlayerRoot()
+		local rootA = EnemyRoot(a)
+		local rootB = EnemyRoot(b)
+		local origin = playerRoot and playerRoot.Position or position
+		local distanceA = origin and rootA and (rootA.Position - origin).Magnitude or math.huge
+		local distanceB = origin and rootB and (rootB.Position - origin).Magnitude or math.huge
+		return distanceA < distanceB
+	end)
+	return mobs
+end
+
+local function NearestMobRoot(position, radius)
+	local mob = CollectMobsNear(position, radius)[1]
+	return mob, EnemyRoot(mob)
 end
 
 local function RestoreAutoTrapFacing()
@@ -1256,6 +1311,49 @@ local function StrafeNearestHunterNear(position, radius, runId)
 		character:PivotTo(CFrame.new(desired, lookAt))
 	end)
 	return hunterRoot
+end
+
+local function StrafeAroundMobRoot(mobRoot, runId)
+	if not IsAutoMobRunActive(runId) or not mobRoot or not mobRoot.Parent then return false end
+	local character = Player and Player.Character
+	local playerRoot = PlayerRoot()
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not character or not playerRoot then return false end
+	if humanoid then humanoid.AutoRotate = false end
+	local now = os.clock()
+	if now - (state.LastMobFarmStrafeAt or 0) < MOB_FARM_STRAFE_INTERVAL then
+		local lookAt = Vector3.new(mobRoot.Position.X, playerRoot.Position.Y, mobRoot.Position.Z)
+		if (lookAt - playerRoot.Position).Magnitude > 0.25 then
+			pcall(function() character:PivotTo(CFrame.new(playerRoot.Position, lookAt)) end)
+		end
+		return true
+	end
+	state.LastMobFarmStrafeAt = now
+	local offset = playerRoot.Position - mobRoot.Position
+	local flatOffset = Vector3.new(offset.X, 0, offset.Z)
+	if flatOffset.Magnitude < 1 then
+		local fallback = -mobRoot.CFrame.LookVector
+		flatOffset = Vector3.new(fallback.X, 0, fallback.Z)
+	end
+	if flatOffset.Magnitude < 1 then flatOffset = Vector3.new(0, 0, 1) end
+	local radial = flatOffset.Unit
+	state.MobFarmStrafeDirection = -(tonumber(state.MobFarmStrafeDirection) or 1)
+	local tangent = Vector3.new(-radial.Z, 0, radial.X) * state.MobFarmStrafeDirection
+	local distance = flatOffset.Magnitude
+	local desired
+	if distance < 7 or distance > 13 then
+		desired = mobRoot.Position + radial * MOB_FARM_STRAFE_DISTANCE
+	else
+		desired = playerRoot.Position + tangent * 3.5
+	end
+	desired = Vector3.new(desired.X, playerRoot.Position.Y, desired.Z)
+	local lookAt = Vector3.new(mobRoot.Position.X, desired.Y, mobRoot.Position.Z)
+	pcall(function()
+		playerRoot.AssemblyLinearVelocity = Vector3.zero
+		playerRoot.AssemblyAngularVelocity = Vector3.zero
+		character:PivotTo(CFrame.new(desired, lookAt))
+	end)
+	return true
 end
 
 local function RestoreHunterTrapHitbox(part)
@@ -1820,15 +1918,12 @@ local function AutoHunterTrapStep()
 
 	if not target then
 		local nextTrap = FindNearestHunterTrapRoot(true)
-		if not nextTrap then
-			state.AutoTrapVisited = {}
-			nextTrap = FindNearestHunterTrapRoot(false)
-		end
 		if nextTrap then
 			state.AutoTrapTarget = nextTrap
 			state.AutoTrapPhase = "waiting_spawn"
 			state.AutoTrapStartedAt = now
 			state.AutoTrapLootStartedAt = nil
+			state.AutoTrapBaseWaitTeleported = false
 			state.LastHunterTrapUseAt = 0
 			state.LastHunterTrapStrafeAt = 0
 			state.HunterTrapAttackBusy = false
@@ -1840,7 +1935,10 @@ local function AutoHunterTrapStep()
 			state.AutoTrapLootStartedAt = nil
 			RestoreHunterTrapHitboxes()
 			RestoreAutoTrapFacing()
-			TeleportToBase()
+			if not state.AutoTrapBaseWaitTeleported then
+				state.AutoTrapBaseWaitTeleported = true
+				TeleportToBase()
+			end
 		end
 		return
 	end
@@ -1887,6 +1985,63 @@ local function AutoHunterTrapStep()
 	end
 end
 
+local function TeleportNearMobRoot(mobRoot)
+	if not mobRoot then return false end
+	local playerRoot = PlayerRoot()
+	local offset = playerRoot and (playerRoot.Position - mobRoot.Position) or -mobRoot.CFrame.LookVector
+	local flatOffset = Vector3.new(offset.X, 0, offset.Z)
+	if flatOffset.Magnitude < 1 then
+		local fallback = -mobRoot.CFrame.LookVector
+		flatOffset = Vector3.new(fallback.X, 0, fallback.Z)
+	end
+	if flatOffset.Magnitude < 1 then flatOffset = Vector3.new(0, 0, 1) end
+	local position = mobRoot.Position + flatOffset.Unit * MOB_FARM_STRAFE_DISTANCE + Vector3.new(0, 2, 0)
+	return StableTeleport(CFrame.new(position, mobRoot.Position))
+end
+
+local function AutoMobFarmStep()
+	if not state.AutoMobFarm then return end
+	local runId = state.AutoMobRunId
+	if not IsAutoMobRunActive(runId) then return end
+	local now = os.clock()
+	local target = state.AutoMobTarget
+	if target and (not target.Parent or not IsLiveMob(target)) then
+		state.AutoMobTarget = nil
+		state.AutoMobPhase = "seeking"
+		target = nil
+	end
+	if not target then
+		local mob, root = NearestMobRoot(PlayerRoot() and PlayerRoot().Position or nil, MOB_FARM_SCAN_RADIUS)
+		if not mob or not root then
+			state.AutoMobPhase = "waiting"
+			RestoreAutoTrapFacing()
+			return
+		end
+		state.AutoMobTarget = mob
+		state.AutoMobPhase = "attacking"
+		state.LastMobFarmUseAt = 0
+		state.LastMobFarmStrafeAt = 0
+		if not IsAutoMobRunActive(runId) then return end
+		TeleportNearMobRoot(root)
+		return
+	end
+	local targetRoot = EnemyRoot(target)
+	if not targetRoot then
+		state.AutoMobTarget = nil
+		state.AutoMobPhase = "seeking"
+		return
+	end
+	if state.AutoMobPhase == "attacking" then
+		StrafeAroundMobRoot(targetRoot, runId)
+		if now - (state.LastMobFarmUseAt or 0) >= MOB_FARM_ATTACK_INTERVAL then
+			state.LastMobFarmUseAt = now
+			UseCurrentEquippedTool()
+		end
+	else
+		state.AutoMobPhase = "seeking"
+	end
+end
+
 RefreshButtons = function()
 	structureStatus.Text = state.LastStructureMessage or "Waiting for structure..."
 	boxToggle.Text = state.BoxESP and "On" or "Off"
@@ -1896,10 +2051,12 @@ RefreshButtons = function()
 	boxStatus.Text = state.BoxESP and ("%d/%d"):format(boxShown, boxFound) or "0/0"
 	darknessToggle.Text = state.NoDarkness and "On" or "Off"
 	autoTrapToggle.Text = state.AutoHunterTrap and "On" or "Off"
+	autoMobToggle.Text = state.AutoMobFarm and "On" or "Off"
 	structureAlertsToggle.Text = state.StructureNotifications and "On" or "Off"
 	boxTitle.TextColor3 = state.BoxESP and AccentColor or InactiveTextColor()
 	darknessTitle.TextColor3 = state.NoDarkness and AccentColor or InactiveTextColor()
 	autoTrapTitle.TextColor3 = state.AutoHunterTrap and AccentColor or InactiveTextColor()
+	autoMobTitle.TextColor3 = state.AutoMobFarm and AccentColor or InactiveTextColor()
 	structureAlertsTitle.TextColor3 = state.StructureNotifications and AccentColor or InactiveTextColor()
 	baseTitle.TextColor3 = InactiveTextColor()
 	filterDock.Visible = state.LootFiltersOpen and IsUEPageActive()
@@ -1961,6 +2118,15 @@ local function ToggleAutoHunterTrap()
 	state.AutoHunterTrap = not state.AutoHunterTrap
 	NextAutoTrapRunId()
 	if state.AutoHunterTrap then
+		if state.AutoMobFarm then
+			state.AutoMobFarm = false
+			NextAutoMobRunId()
+			state.AutoMobTarget = nil
+			state.AutoMobPhase = nil
+			state.LastMobFarmUseAt = 0
+			state.LastMobFarmStrafeAt = 0
+			state.MobFarmStrafeDirection = 1
+		end
 		state.AutoTrapVisited = {}
 		state.AutoTrapTarget = nil
 		state.AutoTrapPhase = "seeking"
@@ -1973,6 +2139,7 @@ local function ToggleAutoHunterTrap()
 		state.LastHunterTrapUseAt = 0
 		state.LastHunterTrapStrafeAt = 0
 		state.HunterTrapStrafeDirection = 1
+		state.AutoTrapBaseWaitTeleported = false
 		RestoreHunterTrapHitboxes()
 		RestoreAutoTrapFacing()
 		AutoHunterTrapStep()
@@ -1985,7 +2152,46 @@ local function ToggleAutoHunterTrap()
 		state.LastHunterTrapUseAt = 0
 		state.LastHunterTrapStrafeAt = 0
 		state.HunterTrapStrafeDirection = 1
+		state.AutoTrapBaseWaitTeleported = false
 		RestoreHunterTrapHitboxes()
+		RestoreAutoTrapFacing()
+	end
+	RefreshButtons()
+	UpdateTheme(true)
+end
+
+local function ToggleAutoMobFarm()
+	state.AutoMobFarm = not state.AutoMobFarm
+	NextAutoMobRunId()
+	if state.AutoMobFarm then
+		if state.AutoHunterTrap then
+			state.AutoHunterTrap = false
+			NextAutoTrapRunId()
+			state.AutoTrapTarget = nil
+			state.AutoTrapPhase = nil
+			state.AutoTrapLootStartedAt = nil
+			state.HunterTrapAttackBusy = false
+			state.LastHunterTrapApproachAt = 0
+			state.LastHunterTrapUseAt = 0
+			state.LastHunterTrapStrafeAt = 0
+			state.HunterTrapStrafeDirection = 1
+			RestoreHunterTrapHitboxes()
+		end
+		state.AutoMobTarget = nil
+		state.AutoMobPhase = "seeking"
+		state.LastMobFarmMove = 0
+		state.LastMobFarmUseAt = 0
+		state.LastMobFarmStrafeAt = 0
+		state.MobFarmStrafeDirection = 1
+		RestoreAutoTrapFacing()
+		AutoMobFarmStep()
+	else
+		state.AutoMobTarget = nil
+		state.AutoMobPhase = nil
+		state.LastMobFarmMove = 0
+		state.LastMobFarmUseAt = 0
+		state.LastMobFarmStrafeAt = 0
+		state.MobFarmStrafeDirection = 1
 		RestoreAutoTrapFacing()
 	end
 	RefreshButtons()
@@ -2038,16 +2244,23 @@ autoTrapToggle.MouseButton1Click:Connect(function()
 	ToggleAutoHunterTrap()
 end)
 
+autoMobToggle.MouseButton1Click:Connect(function()
+	PlayClick()
+	ToggleAutoMobFarm()
+end)
+
 table.insert(ThemeObjects.StateTexts, {Object = boxTitle, IsEnabled = function() return state.BoxESP end})
 table.insert(ThemeObjects.StateTexts, {Object = darknessTitle, IsEnabled = function() return state.NoDarkness end})
 table.insert(ThemeObjects.StateTexts, {Object = structureAlertsTitle, IsEnabled = function() return state.StructureNotifications end})
 table.insert(ThemeObjects.StateTexts, {Object = autoTrapTitle, IsEnabled = function() return state.AutoHunterTrap end})
+table.insert(ThemeObjects.StateTexts, {Object = autoMobTitle, IsEnabled = function() return state.AutoMobFarm end})
 ThemeObjects.AddFeatureKeybind({Name = "Box ESP", Storage = "UEBoxESP", Parent = boxRow, Toggle = boxToggle, Get = function() return LoadGameKeybind("UEBoxESP") end, Set = function(key) SaveGameKeybind("UEBoxESP", key) end, Action = ToggleBoxESP})
 ThemeObjects.AddFeatureKeybind({Name = "Box Filters", Storage = "UEBoxFilters", Get = function() return LoadGameKeybind("UEBoxFilters") end, Set = function(key) SaveGameKeybind("UEBoxFilters", key) end, Action = ToggleBoxFilters})
 ThemeObjects.AddFeatureKeybind({Name = "No Darkness", Storage = "UENoDarkness", Parent = darknessRow, Toggle = darknessToggle, Get = function() return LoadGameKeybind("UENoDarkness") end, Set = function(key) SaveGameKeybind("UENoDarkness", key) end, Action = ToggleNoDarkness})
 ThemeObjects.AddFeatureKeybind({Name = "Base TP", Storage = "UEBaseTP", Parent = baseRow, Toggle = baseButton, Get = function() return LoadGameKeybind("UEBaseTP") end, Set = function(key) SaveGameKeybind("UEBaseTP", key) end, Action = TeleportToBase})
 ThemeObjects.AddFeatureKeybind({Name = "Structure Alerts", Storage = "UEStructureNotifications", Parent = structureAlertsRow, Toggle = structureAlertsToggle, Get = function() return LoadGameKeybind("UEStructureNotifications") end, Set = function(key) SaveGameKeybind("UEStructureNotifications", key) end, Action = ToggleStructureNotifications})
 ThemeObjects.AddFeatureKeybind({Name = "Auto Trap TP", Storage = "UEAutoHunterTrap", Parent = autoTrapRow, Toggle = autoTrapToggle, Get = function() return LoadGameKeybind("UEAutoHunterTrap") end, Set = function(key) SaveGameKeybind("UEAutoHunterTrap", key) end, Action = ToggleAutoHunterTrap})
+ThemeObjects.AddFeatureKeybind({Name = "Auto Mob Farm", Storage = "UEAutoMobFarm", Parent = autoMobRow, Toggle = autoMobToggle, Get = function() return LoadGameKeybind("UEAutoMobFarm") end, Set = function(key) SaveGameKeybind("UEAutoMobFarm", key) end, Action = ToggleAutoMobFarm})
 
 TrackConnection("UndeadExpeditionContainerAdded", workspace.ChildAdded:Connect(function(child)
 	if child.Name == "Structures" then
@@ -2069,6 +2282,10 @@ TrackConnection("UndeadExpeditionLightingHeartbeat", RunService.Heartbeat:Connec
 	if state.AutoHunterTrap and now - (state.LastHunterTrapMove or 0) >= HUNTER_TRAP_INTERVAL then
 		state.LastHunterTrapMove = now
 		AutoHunterTrapStep()
+	end
+	if state.AutoMobFarm and now - (state.LastMobFarmMove or 0) >= MOB_FARM_INTERVAL then
+		state.LastMobFarmMove = now
+		AutoMobFarmStep()
 	end
 	if state.BoxESP and now - (state.LastBoxScan or 0) >= BOX_SCAN_INTERVAL then
 		state.LastBoxScan = now
