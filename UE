@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v15"
+local ModuleVersion = "UE-Utility-v16"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -575,16 +575,33 @@ local function PlayerRoot()
 	return character and character:FindFirstChild("HumanoidRootPart")
 end
 
-local function BoxRoot(box)
-	if not box then return nil end
-	if box:IsA("BasePart") then return box end
-	if box:IsA("Model") then return box.PrimaryPart or box:FindFirstChildWhichIsA("BasePart", true) end
-	return box:FindFirstChildWhichIsA("BasePart", true)
-end
-
 local function HasHunterTrapText(value)
 	local lower = string.lower(tostring(value or ""))
 	return lower:find("hunter", 1, true) ~= nil and lower:find("trap", 1, true) ~= nil
+end
+
+local function HunterTrapPart(box)
+	if not box then return nil end
+	if box:IsA("BasePart") and string.lower(box.Name) == "string" then return box end
+	local direct = box:FindFirstChild("string")
+	if direct and direct:IsA("BasePart") then return direct end
+	for _, child in ipairs(box:GetDescendants()) do
+		if child:IsA("BasePart") and string.lower(child.Name) == "string" then
+			return child
+		end
+	end
+	return nil
+end
+
+local function BoxRoot(box)
+	if not box then return nil end
+	if HasHunterTrapText(box.Name) then
+		local trapPart = HunterTrapPart(box)
+		if trapPart then return trapPart end
+	end
+	if box:IsA("BasePart") then return box end
+	if box:IsA("Model") then return box.PrimaryPart or box:FindFirstChildWhichIsA("BasePart", true) end
+	return box:FindFirstChildWhichIsA("BasePart", true)
 end
 
 local function BoxTypeFromName(name)
@@ -613,6 +630,13 @@ end
 
 local function BoxColor(box)
 	return BOX_TYPE_COLORS[BoxType(box) or ""] or AccentColor
+end
+
+local function BoxHighlightTarget(box, root)
+	if BoxType(box) == "Hunter Trap" and root then
+		return root
+	end
+	return box
 end
 
 local function IsBoxAllowed(box)
@@ -690,7 +714,7 @@ local function CreateBoxESP(box)
 
 	local highlight = Instance.new("Highlight")
 	highlight.Name = "BoxHighlight"
-	highlight.Adornee = box
+	highlight.Adornee = BoxHighlightTarget(box, root)
 	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 	highlight.FillColor = boxColor
 	highlight.OutlineColor = boxColor
@@ -727,7 +751,7 @@ end
 local function UpdateBoxEntryVisual(entry, box, root, playerRoot)
 	if not entry or not box or not root then return end
 	entry.Billboard.Adornee = root
-	entry.Highlight.Adornee = box
+	entry.Highlight.Adornee = BoxHighlightTarget(box, root)
 	local boxColor = BoxColor(box)
 	entry.Highlight.FillColor = boxColor
 	entry.Highlight.OutlineColor = boxColor
