@@ -22,7 +22,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-EnemyESP-v1"
+local ModuleVersion = "UE-EnemyESP-v2"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 if existingPage and existingPage:GetAttribute("ModuleVersion") == ModuleVersion and ThemeObjects.OpenUndeadExpeditionPage then
@@ -31,7 +31,7 @@ if existingPage and existingPage:GetAttribute("ModuleVersion") == ModuleVersion 
 end
 if existingPage then existingPage:Destroy() end
 if existingEspFolder then existingEspFolder:Destroy() end
-for _, connectionName in ipairs({"UndeadExpeditionESPHeartbeat"}) do
+for _, connectionName in ipairs({"UndeadExpeditionESPHeartbeat", "UndeadExpeditionCandidateAdded"}) do
 	if HubState.Connections[connectionName] then
 		HubState.Connections[connectionName]:Disconnect()
 		HubState.Connections[connectionName] = nil
@@ -47,6 +47,13 @@ local state = HubState.UndeadExpeditionState or {
 HubState.UndeadExpeditionState = state
 state.ESPObjects = {}
 state.EnemyESP = state.EnemyESP == true
+state.CandidateModels = {}
+state.CandidateConnections = {}
+state.LastShownCount = 0
+
+local MAX_ESP_OBJECTS = 45
+local FULL_RESCAN_INTERVAL = 3
+local LABEL_UPDATE_INTERVAL = 0.6
 
 local uePage = Instance.new("ScrollingFrame")
 uePage.Name = "UndeadExpeditionPage"
@@ -216,6 +223,46 @@ local function EnemyDisplayName(model)
 	return tostring(name or "Enemy")
 end
 
+local RemoveESP
+
+local function RemoveCandidate(model)
+	state.CandidateModels[model] = nil
+	local connections = state.CandidateConnections[model]
+	if connections then
+		for _, connection in ipairs(connections) do
+			if connection then connection:Disconnect() end
+		end
+	end
+	state.CandidateConnections[model] = nil
+end
+
+local function AddCandidate(model)
+	if not model or not model:IsA("Model") or state.CandidateModels[model] then return end
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return end
+	state.CandidateModels[model] = true
+	state.CandidateConnections[model] = {
+		humanoid.Died:Connect(function()
+			RemoveESP(model)
+			RemoveCandidate(model)
+		end),
+		model.AncestryChanged:Connect(function(_, parent)
+			if not parent then
+				RemoveESP(model)
+				RemoveCandidate(model)
+			end
+		end),
+	}
+end
+
+local function AddCandidateFromDescendant(obj)
+	if obj:IsA("Humanoid") and obj.Parent and obj.Parent:IsA("Model") then
+		AddCandidate(obj.Parent)
+	elseif obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") then
+		AddCandidate(obj)
+	end
+end
+
 local function CreateESP(model)
 	local root = EnemyRoot(model)
 	if not root then return nil end
@@ -258,7 +305,7 @@ local function CreateESP(model)
 	return {Holder = holder, Highlight = highlight, Billboard = billboard, Label = label}
 end
 
-local function RemoveESP(model)
+function RemoveESP(model)
 	local entry = state.ESPObjects[model]
 	if entry and entry.Holder then entry.Holder:Destroy() end
 	state.ESPObjects[model] = nil
@@ -271,47 +318,88 @@ local function ClearESP()
 	if espFolder then espFolder:ClearAllChildren() end
 end
 
+local function FullCandidateScan()
+	for _, obj in ipairs(workspace:GetDescendants()) do
+		AddCandidateFromDescendant(obj)
+	end
+end
+
+local function PlayerRoot()
+	local character = Player and Player.Character
+	return character and character:FindFirstChild("HumanoidRootPart")
+end
+
 local function UpdateESP()
 	if not state.EnemyESP then
 		state.LastEnemyCount = 0
+		state.LastShownCount = 0
 		ClearESP()
 		return
 	end
+	local now = os.clock()
+	if now - (state.LastFullScan or 0) >= FULL_RESCAN_INTERVAL then
+		state.LastFullScan = now
+		FullCandidateScan()
+	end
+
+	local playerRoot = PlayerRoot()
+	local candidates = {}
+	for model in pairs(state.CandidateModels) do
+		if model.Parent and IsEnemyModel(model) then
+			local root = EnemyRoot(model)
+			local distance = playerRoot and root and (root.Position - playerRoot.Position).Magnitude or 0
+			table.insert(candidates, {Model = model, Distance = distance})
+		else
+			RemoveESP(model)
+			RemoveCandidate(model)
+		end
+	end
+	table.sort(candidates, function(a, b)
+		return a.Distance < b.Distance
+	end)
+
 	local seen = {}
-	local count = 0
-	for _, obj in ipairs(workspace:GetDescendants()) do
-		if obj:IsA("Model") and IsEnemyModel(obj) then
-			seen[obj] = true
-			count += 1
-			local entry = state.ESPObjects[obj]
-			if not entry or not entry.Holder or not entry.Holder.Parent then
-				entry = CreateESP(obj)
-				state.ESPObjects[obj] = entry
-			end
-			if entry then
-				local humanoid = obj:FindFirstChildOfClass("Humanoid")
-				local root = EnemyRoot(obj)
-				if root then entry.Billboard.Adornee = root end
-				entry.Highlight.Adornee = obj
+	local shown = 0
+	for _, candidate in ipairs(candidates) do
+		if shown >= MAX_ESP_OBJECTS then break end
+		local model = candidate.Model
+		seen[model] = true
+		shown += 1
+		local entry = state.ESPObjects[model]
+		if not entry or not entry.Holder or not entry.Holder.Parent then
+			entry = CreateESP(model)
+			state.ESPObjects[model] = entry
+		end
+		if entry then
+			local humanoid = model:FindFirstChildOfClass("Humanoid")
+			local root = EnemyRoot(model)
+			if root then entry.Billboard.Adornee = root end
+			entry.Highlight.Adornee = model
+			if now - (entry.LastLabelUpdate or 0) >= LABEL_UPDATE_INTERVAL then
+				entry.LastLabelUpdate = now
 				if humanoid then
-					entry.Label.Text = ("%s  [%d/%d]"):format(EnemyDisplayName(obj), math.max(0, math.floor(humanoid.Health)), math.max(1, math.floor(humanoid.MaxHealth)))
+					entry.Label.Text = ("%s  [%d/%d]"):format(EnemyDisplayName(model), math.max(0, math.floor(humanoid.Health)), math.max(1, math.floor(humanoid.MaxHealth)))
 				else
-					entry.Label.Text = EnemyDisplayName(obj)
+					entry.Label.Text = EnemyDisplayName(model)
 				end
 			end
 		end
 	end
+
 	for model in pairs(state.ESPObjects) do
-		if not seen[model] or not model.Parent then
+		if not seen[model] then
 			RemoveESP(model)
 		end
 	end
-	state.LastEnemyCount = count
+	state.LastEnemyCount = #candidates
+	state.LastShownCount = shown
 end
 
 local function RefreshButtons()
 	espToggle.Text = state.EnemyESP and "On" or "Off"
-	espStatus.Text = ("Found: %d"):format(state.LastEnemyCount or 0)
+	local found = state.LastEnemyCount or 0
+	local shown = state.LastShownCount or 0
+	espStatus.Text = state.EnemyESP and ("Shown: %d/%d"):format(shown, found) or "Shown: 0/0"
 	espTitle.TextColor3 = state.EnemyESP and AccentColor or InactiveTextColor()
 	for _, obj in ipairs(uePage:GetDescendants()) do
 		if obj:IsA("TextButton") then
@@ -323,7 +411,13 @@ end
 
 local function ToggleEnemyESP()
 	state.EnemyESP = not state.EnemyESP
-	if not state.EnemyESP then ClearESP() end
+	if state.EnemyESP then
+		state.LastFullScan = 0
+		FullCandidateScan()
+		UpdateESP()
+	else
+		ClearESP()
+	end
 	RefreshButtons()
 	UpdateTheme(true)
 end
@@ -336,10 +430,15 @@ end)
 table.insert(ThemeObjects.StateTexts, {Object = espTitle, IsEnabled = function() return state.EnemyESP end})
 ThemeObjects.AddFeatureKeybind({Name = "Enemy ESP", Storage = "UEEnemyESP", Parent = espRow, Toggle = espToggle, Get = function() return LoadKeybind("UEEnemyESP") end, Set = function(key) SaveKeybind("UEEnemyESP", key) end, Action = ToggleEnemyESP})
 
+TrackConnection("UndeadExpeditionCandidateAdded", workspace.DescendantAdded:Connect(function(obj)
+	if not state.EnemyESP then return end
+	AddCandidateFromDescendant(obj)
+end))
+
 TrackConnection("UndeadExpeditionESPHeartbeat", RunService.Heartbeat:Connect(function()
 	if not uePage.Parent then return end
 	local now = os.clock()
-	if now - (state.LastScan or 0) < 0.35 then return end
+	if now - (state.LastScan or 0) < 0.2 then return end
 	state.LastScan = now
 	UpdateESP()
 	RefreshButtons()
@@ -401,4 +500,3 @@ end
 RefreshButtons()
 ThemeObjects.OpenUndeadExpeditionPage()
 UpdateTheme(true)
-
