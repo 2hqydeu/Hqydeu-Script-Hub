@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v31"
+local ModuleVersion = "UE-Utility-v32"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -155,8 +155,11 @@ local HUNTER_TRAP_STRAFE_DISTANCE = 9
 local MOB_FARM_INTERVAL = 0.1
 local MOB_FARM_ATTACK_INTERVAL = 0.09
 local MOB_FARM_SCAN_RADIUS = 3000
-local MOB_FARM_STRAFE_INTERVAL = 0.45
-local MOB_FARM_STRAFE_DISTANCE = 9
+local MOB_FARM_STRAFE_INTERVAL = 0.9
+local MOB_FARM_STRAFE_DISTANCE = 4.5
+local MOB_FARM_RANGED_DISTANCE = 3.5
+local MOB_FARM_NUDGE_DISTANCE = 1.15
+local MOB_FARM_HITBOX_SIZE = Vector3.new(18, 18, 18)
 for _, boxType in ipairs(BOX_TYPES) do
 	if state.SelectedBoxTypes[boxType] == nil then state.SelectedBoxTypes[boxType] = true end
 end
@@ -1313,7 +1316,44 @@ local function StrafeNearestHunterNear(position, radius, runId)
 	return hunterRoot
 end
 
-local function StrafeAroundMobRoot(mobRoot, runId)
+local function MobHasText(enemy, terms)
+	if not enemy then return false end
+	local function hasTerm(value)
+		local lower = string.lower(tostring(value or ""))
+		for _, term in ipairs(terms) do
+			if lower:find(term, 1, true) then return true end
+		end
+		return false
+	end
+	if hasTerm(enemy.Name) then return true end
+	for _, attributeName in ipairs({"EnemyType", "Type", "MobType", "MonsterType", "DisplayName"}) do
+		if hasTerm(enemy:GetAttribute(attributeName)) then return true end
+	end
+	for _, child in ipairs(enemy:GetDescendants()) do
+		if child:IsA("StringValue") and hasTerm(child.Value) then return true end
+		if (child:IsA("TextLabel") or child:IsA("TextButton") or child:IsA("TextBox")) and hasTerm(child.Text) then return true end
+	end
+	return false
+end
+
+local function IsRangedMob(enemy)
+	return MobHasText(enemy, {"throw", "ranged", "archer", "shooter", "caster", "mage", "spitter"})
+end
+
+local function MobFarmAttackDistance(enemy, mobRoot)
+	local distance = IsRangedMob(enemy) and MOB_FARM_RANGED_DISTANCE or MOB_FARM_STRAFE_DISTANCE
+	if mobRoot and mobRoot:IsA("BasePart") then
+		local original = state.MobFarmHitboxOriginals and state.MobFarmHitboxOriginals[mobRoot]
+		local size = original and original.Size or mobRoot.Size
+		local maxSize = math.max(size.X, size.Y, size.Z)
+		if maxSize > 10 then
+			distance = math.clamp((maxSize * 0.42) + 2, distance, 9)
+		end
+	end
+	return distance
+end
+
+local function StrafeAroundMobRoot(enemy, mobRoot, runId)
 	if not IsAutoMobRunActive(runId) or not mobRoot or not mobRoot.Parent then return false end
 	local character = Player and Player.Character
 	local playerRoot = PlayerRoot()
@@ -1321,10 +1361,15 @@ local function StrafeAroundMobRoot(mobRoot, runId)
 	if not character or not playerRoot then return false end
 	if humanoid then humanoid.AutoRotate = false end
 	local now = os.clock()
+	local attackDistance = MobFarmAttackDistance(enemy, mobRoot)
+	local ranged = IsRangedMob(enemy)
 	if now - (state.LastMobFarmStrafeAt or 0) < MOB_FARM_STRAFE_INTERVAL then
 		local lookAt = Vector3.new(mobRoot.Position.X, playerRoot.Position.Y, mobRoot.Position.Z)
 		if (lookAt - playerRoot.Position).Magnitude > 0.25 then
-			pcall(function() character:PivotTo(CFrame.new(playerRoot.Position, lookAt)) end)
+			pcall(function()
+				playerRoot.AssemblyAngularVelocity = Vector3.zero
+				character:PivotTo(CFrame.new(playerRoot.Position, lookAt))
+			end)
 		end
 		return true
 	end
@@ -1340,11 +1385,11 @@ local function StrafeAroundMobRoot(mobRoot, runId)
 	state.MobFarmStrafeDirection = -(tonumber(state.MobFarmStrafeDirection) or 1)
 	local tangent = Vector3.new(-radial.Z, 0, radial.X) * state.MobFarmStrafeDirection
 	local distance = flatOffset.Magnitude
-	local desired
-	if distance < 7 or distance > 13 then
-		desired = mobRoot.Position + radial * MOB_FARM_STRAFE_DISTANCE
+	local desired = mobRoot.Position + radial * attackDistance
+	if not ranged and distance >= attackDistance - 1.25 and distance <= attackDistance + 1.75 then
+		desired = playerRoot.Position + tangent * MOB_FARM_NUDGE_DISTANCE
 	else
-		desired = playerRoot.Position + tangent * 3.5
+		desired = mobRoot.Position + radial * attackDistance
 	end
 	desired = Vector3.new(desired.X, playerRoot.Position.Y, desired.Z)
 	local lookAt = Vector3.new(mobRoot.Position.X, desired.Y, mobRoot.Position.Z)
@@ -1413,6 +1458,70 @@ local function ExpandHunterTrapEnemyHitboxes(enemies)
 	for part in pairs(state.HunterTrapHitboxOriginals) do
 		if not active[part] or not part.Parent then
 			RestoreHunterTrapHitbox(part)
+		end
+	end
+end
+
+local function RestoreMobFarmHitbox(part)
+	local originals = state.MobFarmHitboxOriginals
+	local original = originals and originals[part]
+	if not original then return end
+	if part and part.Parent then
+		pcall(function()
+			part.Size = original.Size
+			part.Transparency = original.Transparency
+			part.CanCollide = original.CanCollide
+			part.CanTouch = original.CanTouch
+			part.Massless = original.Massless
+			if original.CanQuery ~= nil then part.CanQuery = original.CanQuery end
+		end)
+	end
+	originals[part] = nil
+end
+
+local function RestoreMobFarmHitboxes()
+	if type(state.MobFarmHitboxOriginals) ~= "table" then
+		state.MobFarmHitboxOriginals = {}
+		return
+	end
+	for part in pairs(state.MobFarmHitboxOriginals) do
+		RestoreMobFarmHitbox(part)
+	end
+end
+
+local function ExpandMobFarmTargetHitbox(enemy)
+	state.MobFarmHitboxOriginals = state.MobFarmHitboxOriginals or {}
+	local root = EnemyRoot(enemy)
+	local active = {}
+	if root and root:IsA("BasePart") then
+		active[root] = true
+		if not state.MobFarmHitboxOriginals[root] then
+			state.MobFarmHitboxOriginals[root] = {
+				Size = root.Size,
+				Transparency = root.Transparency,
+				CanCollide = root.CanCollide,
+				CanTouch = root.CanTouch,
+				Massless = root.Massless,
+				CanQuery = SafeGet(root, "CanQuery"),
+			}
+		end
+		local size = root.Size
+		pcall(function()
+			root.Size = Vector3.new(
+				math.max(size.X, MOB_FARM_HITBOX_SIZE.X),
+				math.max(size.Y, MOB_FARM_HITBOX_SIZE.Y),
+				math.max(size.Z, MOB_FARM_HITBOX_SIZE.Z)
+			)
+			root.Transparency = 1
+			root.CanCollide = false
+			root.CanTouch = true
+			root.Massless = true
+			SafeSet(root, "CanQuery", true)
+		end)
+	end
+	for part in pairs(state.MobFarmHitboxOriginals) do
+		if not active[part] or not part.Parent then
+			RestoreMobFarmHitbox(part)
 		end
 	end
 end
@@ -1985,7 +2094,7 @@ local function AutoHunterTrapStep()
 	end
 end
 
-local function TeleportNearMobRoot(mobRoot)
+local function TeleportNearMobRoot(enemy, mobRoot)
 	if not mobRoot then return false end
 	local playerRoot = PlayerRoot()
 	local offset = playerRoot and (playerRoot.Position - mobRoot.Position) or -mobRoot.CFrame.LookVector
@@ -1995,7 +2104,7 @@ local function TeleportNearMobRoot(mobRoot)
 		flatOffset = Vector3.new(fallback.X, 0, fallback.Z)
 	end
 	if flatOffset.Magnitude < 1 then flatOffset = Vector3.new(0, 0, 1) end
-	local position = mobRoot.Position + flatOffset.Unit * MOB_FARM_STRAFE_DISTANCE + Vector3.new(0, 2, 0)
+	local position = mobRoot.Position + flatOffset.Unit * MobFarmAttackDistance(enemy, mobRoot) + Vector3.new(0, 2, 0)
 	return StableTeleport(CFrame.new(position, mobRoot.Position))
 end
 
@@ -2006,6 +2115,7 @@ local function AutoMobFarmStep()
 	local now = os.clock()
 	local target = state.AutoMobTarget
 	if target and (not target.Parent or not IsLiveMob(target)) then
+		RestoreMobFarmHitboxes()
 		state.AutoMobTarget = nil
 		state.AutoMobPhase = "seeking"
 		target = nil
@@ -2014,6 +2124,7 @@ local function AutoMobFarmStep()
 		local mob, root = NearestMobRoot(PlayerRoot() and PlayerRoot().Position or nil, MOB_FARM_SCAN_RADIUS)
 		if not mob or not root then
 			state.AutoMobPhase = "waiting"
+			RestoreMobFarmHitboxes()
 			RestoreAutoTrapFacing()
 			return
 		end
@@ -2022,20 +2133,26 @@ local function AutoMobFarmStep()
 		state.LastMobFarmUseAt = 0
 		state.LastMobFarmStrafeAt = 0
 		if not IsAutoMobRunActive(runId) then return end
-		TeleportNearMobRoot(root)
+		ExpandMobFarmTargetHitbox(mob)
+		TeleportNearMobRoot(mob, root)
 		return
 	end
 	local targetRoot = EnemyRoot(target)
 	if not targetRoot then
+		RestoreMobFarmHitboxes()
 		state.AutoMobTarget = nil
 		state.AutoMobPhase = "seeking"
 		return
 	end
 	if state.AutoMobPhase == "attacking" then
-		StrafeAroundMobRoot(targetRoot, runId)
+		ExpandMobFarmTargetHitbox(target)
+		StrafeAroundMobRoot(target, targetRoot, runId)
 		if now - (state.LastMobFarmUseAt or 0) >= MOB_FARM_ATTACK_INTERVAL then
 			state.LastMobFarmUseAt = now
-			UseCurrentEquippedTool()
+			local tool = EquipCombatWeapon()
+			UseCombatWeapon(tool)
+			TouchWeaponToEnemy(tool, target)
+			FireToolCombatRemotes(tool, target)
 		end
 	else
 		state.AutoMobPhase = "seeking"
@@ -2126,6 +2243,7 @@ local function ToggleAutoHunterTrap()
 			state.LastMobFarmUseAt = 0
 			state.LastMobFarmStrafeAt = 0
 			state.MobFarmStrafeDirection = 1
+			RestoreMobFarmHitboxes()
 		end
 		state.AutoTrapVisited = {}
 		state.AutoTrapTarget = nil
@@ -2183,6 +2301,7 @@ local function ToggleAutoMobFarm()
 		state.LastMobFarmUseAt = 0
 		state.LastMobFarmStrafeAt = 0
 		state.MobFarmStrafeDirection = 1
+		RestoreMobFarmHitboxes()
 		RestoreAutoTrapFacing()
 		AutoMobFarmStep()
 	else
@@ -2192,6 +2311,7 @@ local function ToggleAutoMobFarm()
 		state.LastMobFarmUseAt = 0
 		state.LastMobFarmStrafeAt = 0
 		state.MobFarmStrafeDirection = 1
+		RestoreMobFarmHitboxes()
 		RestoreAutoTrapFacing()
 	end
 	RefreshButtons()
