@@ -13,6 +13,8 @@ local FrameThemeColor = Runtime.GetFrameThemeColor and Runtime.GetFrameThemeColo
 local InactiveTextColor = Runtime.InactiveTextColor or function() return Color3.fromRGB(255, 255, 255) end
 local LoadKeybind = Runtime.LoadKeybind or function() return Enum.KeyCode.Unknown end
 local SaveKeybind = Runtime.SaveKeybind or function() end
+local LoadGameKeybind = Runtime.LoadGameKeybind or LoadKeybind
+local SaveGameKeybind = Runtime.SaveGameKeybind or SaveKeybind
 local KeybindText = Runtime.KeybindText or function(keyCode) return keyCode == Enum.KeyCode.Unknown and "..." or keyCode.Name end
 local SavePersistentSettings = Runtime.SavePersistentSettings or function() end
 local GuiSizeValue = Runtime.GuiSizeValue or 50
@@ -718,7 +720,7 @@ beeSellKeybindButton.Position = UDim2.new(0, 8, 0, 5)
 beeSellKeybindButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 beeSellKeybindButton.BackgroundTransparency = 0.35
 beeSellKeybindButton.BorderSizePixel = 0
-beeSellKeybindButton.Text = KeybindText(LoadKeybind("GABHSellBeesMenu"))
+beeSellKeybindButton.Text = KeybindText(LoadGameKeybind("GABHSellBeesMenu"))
 beeSellKeybindButton.Font = Enum.Font.GothamBold
 beeSellKeybindButton.TextSize = 8
 beeSellKeybindButton.TextColor3 = AccentColor
@@ -1581,11 +1583,11 @@ table.insert(ThemeObjects.StateTexts, {Object = beeSellTitle, IsEnabled = functi
 local function KeybindStoragePart(value)
 	return tostring(value):gsub("%W+", "")
 end
-ThemeObjects.AddFeatureKeybind({Name = "Auto Roll", Storage = "GABHAutoRoll", Parent = rollRow, Toggle = rollToggle, Get = function() return LoadKeybind("GABHAutoRoll") end, Set = function(key) SaveKeybind("GABHAutoRoll", key) end, Action = ToggleRoll})
-ThemeObjects.AddFeatureKeybind({Name = "Auto Buy", Storage = "GABHAutoBuy", Parent = buyRow, Toggle = buyToggle, Get = function() return LoadKeybind("GABHAutoBuy") end, Set = function(key) SaveKeybind("GABHAutoBuy", key) end, Action = ToggleBuy})
-ThemeObjects.AddFeatureKeybind({Name = "Auto Sell", Storage = "GABHAutoSell", Parent = sellRow, Toggle = sellToggle, Get = function() return LoadKeybind("GABHAutoSell") end, Set = function(key) SaveKeybind("GABHAutoSell", key) end, Action = ToggleSell})
-ThemeObjects.AddFeatureKeybind({Name = "Auto Equip Best", Storage = "GABHAutoEquip", Parent = equipRow, Toggle = equipToggle, Get = function() return LoadKeybind("GABHAutoEquip") end, Set = function(key) SaveKeybind("GABHAutoEquip", key) end, Action = ToggleEquip})
-local sellBeesKeybindEntry = {Name = "Sell Bees Menu", Storage = "GABHSellBeesMenu", Parent = beeSellRow, Toggle = beeSellButton, Get = function() return LoadKeybind("GABHSellBeesMenu") end, Set = function(key) SaveKeybind("GABHSellBeesMenu", key); beeSellKeybindButton.Text = KeybindText(key) end, Action = ToggleBeeSellPanel}
+ThemeObjects.AddFeatureKeybind({Name = "Auto Roll", Storage = "GABHAutoRoll", Parent = rollRow, Toggle = rollToggle, Get = function() return LoadGameKeybind("GABHAutoRoll") end, Set = function(key) SaveGameKeybind("GABHAutoRoll", key) end, Action = ToggleRoll})
+ThemeObjects.AddFeatureKeybind({Name = "Auto Buy", Storage = "GABHAutoBuy", Parent = buyRow, Toggle = buyToggle, Get = function() return LoadGameKeybind("GABHAutoBuy") end, Set = function(key) SaveGameKeybind("GABHAutoBuy", key) end, Action = ToggleBuy})
+ThemeObjects.AddFeatureKeybind({Name = "Auto Sell", Storage = "GABHAutoSell", Parent = sellRow, Toggle = sellToggle, Get = function() return LoadGameKeybind("GABHAutoSell") end, Set = function(key) SaveGameKeybind("GABHAutoSell", key) end, Action = ToggleSell})
+ThemeObjects.AddFeatureKeybind({Name = "Auto Equip Best", Storage = "GABHAutoEquip", Parent = equipRow, Toggle = equipToggle, Get = function() return LoadGameKeybind("GABHAutoEquip") end, Set = function(key) SaveGameKeybind("GABHAutoEquip", key) end, Action = ToggleEquip})
+local sellBeesKeybindEntry = {Name = "Sell Bees Menu", Storage = "GABHSellBeesMenu", Parent = beeSellRow, Toggle = beeSellButton, Get = function() return LoadGameKeybind("GABHSellBeesMenu") end, Set = function(key) SaveGameKeybind("GABHSellBeesMenu", key); beeSellKeybindButton.Text = KeybindText(key) end, Action = ToggleBeeSellPanel}
 ThemeObjects.AddFeatureKeybind(sellBeesKeybindEntry)
 beeSellKeybindButton.MouseButton1Click:Connect(function()
 	PlayClick()
@@ -1595,7 +1597,7 @@ beeSellKeybindButton.MouseButton1Click:Connect(function()
 end)
 if ThemeObjects.AttachKeybindClearPrompt then ThemeObjects.AttachKeybindClearPrompt(sellBeesKeybindEntry, beeSellKeybindButton) end
 EnsureControlOutline(beeSellKeybindButton)
-ThemeObjects.AddFeatureKeybind({Name = "Buy Filters Menu", Storage = "GABHBuyFiltersMenu", Get = function() return LoadKeybind("GABHBuyFiltersMenu") end, Set = function(key) SaveKeybind("GABHBuyFiltersMenu", key) end, Action = function()
+ThemeObjects.AddFeatureKeybind({Name = "Buy Filters Menu", Storage = "GABHBuyFiltersMenu", Get = function() return LoadGameKeybind("GABHBuyFiltersMenu") end, Set = function(key) SaveGameKeybind("GABHBuyFiltersMenu", key) end, Action = function()
 	state.FiltersOpen = not state.FiltersOpen
 	if state.FiltersOpen then
 		state.SellBeesOpen = false
@@ -1604,7 +1606,7 @@ ThemeObjects.AddFeatureKeybind({Name = "Buy Filters Menu", Storage = "GABHBuyFil
 	RefreshButtons()
 	UpdateTheme(true)
 end})
-ThemeObjects.AddFeatureKeybind({Name = "Recent Purchases", Storage = "GABHRecentPurchases", Get = function() return LoadKeybind("GABHRecentPurchases") end, Set = function(key) SaveKeybind("GABHRecentPurchases", key) end, Action = function()
+ThemeObjects.AddFeatureKeybind({Name = "Recent Purchases", Storage = "GABHRecentPurchases", Get = function() return LoadGameKeybind("GABHRecentPurchases") end, Set = function(key) SaveGameKeybind("GABHRecentPurchases", key) end, Action = function()
 	state.HistoryOpen = not state.HistoryOpen
 	if state.HistoryOpen then
 		state.FiltersOpen = false
@@ -1617,7 +1619,7 @@ end})
 for _, entry in ipairs(beeSellButtons) do
 	local kind, value = entry.Kind, entry.Value
 	local storage = "GABHSell" .. KeybindStoragePart(kind) .. KeybindStoragePart(value)
-	ThemeObjects.AddFeatureKeybind({Name = "Sell " .. value .. " Bees", Storage = storage, Get = function() return LoadKeybind(storage) end, Set = function(key) SaveKeybind(storage, key) end, Action = function()
+	ThemeObjects.AddFeatureKeybind({Name = "Sell " .. value .. " Bees", Storage = storage, Get = function() return LoadGameKeybind(storage) end, Set = function(key) SaveGameKeybind(storage, key) end, Action = function()
 		task.spawn(TrashMatchingBeeTools, kind, value)
 	end})
 end
