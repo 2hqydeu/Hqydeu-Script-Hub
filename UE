@@ -37,12 +37,13 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v21"
+local ModuleVersion = "UE-Utility-v22"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
 local existingMarkerFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionStructureMarkers")
 local existingStructureNotification = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionStructureNotification")
+local existingStructureTimerDisplay = HubState.PageHeader and HubState.PageHeader:FindFirstChild("UndeadExpeditionStructureTimerDisplay")
 if existingPage and existingPage:GetAttribute("ModuleVersion") == ModuleVersion and ThemeObjects.OpenUndeadExpeditionPage then
 	ThemeObjects.OpenUndeadExpeditionPage()
 	return
@@ -52,6 +53,7 @@ if existingEspFolder then existingEspFolder:Destroy() end
 if existingFilterDock then existingFilterDock:Destroy() end
 if existingMarkerFolder then existingMarkerFolder:Destroy() end
 if existingStructureNotification then existingStructureNotification:Destroy() end
+if existingStructureTimerDisplay then existingStructureTimerDisplay:Destroy() end
 
 for _, connectionName in ipairs({
 	"UndeadExpeditionESPHeartbeat",
@@ -282,6 +284,21 @@ structureStatus.Visible = false
 structureStatus.Parent = uePage
 AddText(structureStatus)
 
+local structureTimerDisplay = Instance.new("TextLabel")
+structureTimerDisplay.Name = "UndeadExpeditionStructureTimerDisplay"
+structureTimerDisplay.Size = UDim2.new(0, 190, 0, 12)
+structureTimerDisplay.Position = UDim2.new(0.5, -95, 0, 4)
+structureTimerDisplay.BackgroundTransparency = 1
+structureTimerDisplay.Text = "SPECIAL: ..."
+structureTimerDisplay.Font = Enum.Font.GothamBold
+structureTimerDisplay.TextSize = 9
+structureTimerDisplay.TextColor3 = Color3.fromRGB(255, 255, 255)
+structureTimerDisplay.TextXAlignment = Enum.TextXAlignment.Center
+structureTimerDisplay.TextTruncate = Enum.TextTruncate.AtEnd
+structureTimerDisplay.Visible = false
+structureTimerDisplay.Parent = HubState.PageHeader or uePage
+AddText(structureTimerDisplay)
+
 local boxRow = CreateRow("UndeadExpeditionBoxESPRow", 4)
 local boxTitle = CreateTitle(boxRow, "Box ESP:")
 local boxStatus = Instance.new("TextLabel")
@@ -402,6 +419,83 @@ local RefreshButtons
 
 local function IsUEPageActive()
 	return ThemeObjects.ActiveTabName == "Games" and HubState.SelectedGame == "Undead Expedition" and uePage.Parent ~= nil and uePage.Visible == true
+end
+
+local function NormalizeStructureTimerText(text)
+	text = tostring(text or ""):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+	local upper = string.upper(text)
+	local clock = text:match("%d+:%d%d:%d%d") or text:match("%d+:%d%d")
+	if clock and upper:find("GUARANTEED", 1, true) and upper:find("SPECIAL", 1, true) and upper:find("STRUCTURE", 1, true) then
+		return "SPECIAL: " .. clock
+	end
+	return nil
+end
+
+local function ReadStructureTimerFromLabel(label)
+	if not label or not (label:IsA("TextLabel") or label:IsA("TextButton") or label:IsA("TextBox")) then return nil end
+	local text = NormalizeStructureTimerText(label.Text)
+	if text then return text end
+	local parent = label.Parent
+	if parent then
+		local pieces = {}
+		for _, child in ipairs(parent:GetDescendants()) do
+			if child:IsA("TextLabel") or child:IsA("TextButton") or child:IsA("TextBox") then
+				local childText = tostring(child.Text or "")
+				if childText ~= "" then table.insert(pieces, childText) end
+			end
+		end
+		return NormalizeStructureTimerText(table.concat(pieces, " "))
+	end
+	return nil
+end
+
+local function FindStructureTimerText(force)
+	local now = os.clock()
+	local cachedLabel = state.StructureTimerTextLabel
+	if cachedLabel and cachedLabel.Parent and (cachedLabel:IsA("TextLabel") or cachedLabel:IsA("TextButton") or cachedLabel:IsA("TextBox")) then
+		local text = ReadStructureTimerFromLabel(cachedLabel)
+		if text then
+			state.LastStructureTimerText = text
+			return text
+		end
+	end
+	if not force and now - (state.LastStructureTimerTextScan or 0) < 0.25 then
+		return state.LastStructureTimerText
+	end
+	state.LastStructureTimerTextScan = now
+	local roots = {}
+	local playerGui = Player and Player:FindFirstChildOfClass("PlayerGui")
+	if playerGui then table.insert(roots, playerGui) end
+	table.insert(roots, workspace)
+	for _, root in ipairs(roots) do
+		for _, obj in ipairs(root:GetDescendants()) do
+			if (obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox")) and (not ScreenGui or not obj:IsDescendantOf(ScreenGui)) then
+				local text = ReadStructureTimerFromLabel(obj)
+				if text then
+					state.StructureTimerTextLabel = obj
+					state.LastStructureTimerText = text
+					return text
+				end
+			end
+		end
+	end
+	state.StructureTimerTextLabel = nil
+	state.LastStructureTimerText = nil
+	return nil
+end
+
+local function RefreshStructureTimerDisplay(force)
+	if not structureTimerDisplay then return end
+	structureTimerDisplay.Visible = IsUEPageActive()
+	if not structureTimerDisplay.Visible then return end
+	local timerText = FindStructureTimerText(force)
+	if timerText then
+		structureTimerDisplay.TextColor3 = AccentColor
+		structureTimerDisplay.Text = timerText
+	else
+		structureTimerDisplay.TextColor3 = Color3.fromRGB(255, 255, 255)
+		structureTimerDisplay.Text = "SPECIAL: N/A"
+	end
 end
 
 local function CreateFilterLabel(text, y)
@@ -1051,10 +1145,18 @@ end
 local function ToolRank(tool)
 	if not tool or not tool:IsA("Tool") then return -1 end
 	local lower = string.lower(tool.Name)
-	local rank = 1
-	for _, term in ipairs({"sword", "blade", "knife", "axe", "scythe", "spear", "club", "bat", "mace", "hammer", "katana", "weapon", "gun", "bow"}) do
+	local rank = tool.Parent == (Player and Player.Character) and 1 or 0
+	for _, term in ipairs({"sword", "blade", "katana", "knife", "axe", "scythe", "spear", "club", "bat", "mace", "hammer", "weapon", "gun", "bow"}) do
 		if lower:find(term, 1, true) then
-			rank += 5
+			rank += 100
+			break
+		end
+	end
+	if lower:find("sword", 1, true) or lower:find("blade", 1, true) or lower:find("katana", 1, true) then rank += 35 end
+	if lower:find("diamond", 1, true) then rank += 10 end
+	for _, term in ipairs({"trap", "box", "crate", "potion", "food", "bait", "item", "key", "ancient"}) do
+		if lower:find(term, 1, true) then
+			rank -= 25
 			break
 		end
 	end
@@ -1066,24 +1168,22 @@ local function EquipCombatTool()
 	local character = Player and Player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if not character or not humanoid or humanoid.Health <= 0 then return nil end
-	for _, child in ipairs(character:GetChildren()) do
-		if child:IsA("Tool") then return child end
-	end
 	local backpack = Player and Player:FindFirstChild("Backpack")
 	local bestTool
 	local bestRank = -1
-	for _, container in ipairs({backpack, character}) do
-		if container then
-			for _, child in ipairs(container:GetChildren()) do
-				local rank = ToolRank(child)
-				if rank > bestRank then
-					bestRank = rank
-					bestTool = child
-				end
+	local containers = {}
+	if backpack then table.insert(containers, backpack) end
+	table.insert(containers, character)
+	for _, container in ipairs(containers) do
+		for _, child in ipairs(container:GetChildren()) do
+			local rank = ToolRank(child)
+			if rank > bestRank then
+				bestRank = rank
+				bestTool = child
 			end
 		end
 	end
-	if bestTool and bestTool.Parent == backpack then
+	if bestTool and bestTool.Parent ~= character then
 		pcall(function() humanoid:EquipTool(bestTool) end)
 	end
 	return bestTool
@@ -1524,10 +1624,14 @@ end))
 task.spawn(function()
 	while uePage.Parent do
 		local active = IsUEPageActive()
+		structureTimerDisplay.Visible = active
 		if not active then
 			state.LootFiltersOpen = false
 			filterDock.Visible = false
 			if structureNotification then structureNotification.Visible = false end
+			structureTimerDisplay.Visible = false
+		else
+			RefreshStructureTimerDisplay(false)
 		end
 		task.wait(active and 0.5 or 0.35)
 	end
@@ -1574,6 +1678,8 @@ ThemeObjects.OpenUndeadExpeditionPage = function()
 	ThemeObjects.ActiveTabName = "Games"
 	HubState.ActiveTabIndex = table.find(HubState.TabNames, "Games") or HubState.ActiveTabIndex
 	HubState.ActiveContentPage = uePage
+	state.LastStructureTimerTextScan = 0
+	RefreshStructureTimerDisplay(true)
 	WatchStructures()
 	if state.NoDarkness then ApplyNoDarkness() end
 	RefreshButtons()
