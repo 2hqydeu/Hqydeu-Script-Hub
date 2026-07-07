@@ -60,6 +60,32 @@ local function SaveKeybind(featureName, keyCode)
 	SavePersistentSettings()
 end
 
+SavedKeybinds.KeybindsByPlace = type(SavedKeybinds.KeybindsByPlace) == "table" and SavedKeybinds.KeybindsByPlace or {}
+local function CurrentPlaceKeybindBucket()
+	local placeKey = tostring(game.PlaceId)
+	local bucket = SavedKeybinds.KeybindsByPlace[placeKey]
+	if type(bucket) ~= "table" then
+		bucket = {}
+		SavedKeybinds.KeybindsByPlace[placeKey] = bucket
+	end
+	return bucket
+end
+
+local function LoadGameKeybind(featureName)
+	local bucket = SavedKeybinds.KeybindsByPlace[tostring(game.PlaceId)]
+	local savedName = type(bucket) == "table" and bucket[featureName] or nil
+	if type(savedName) == "string" then
+		local success, keyCode = pcall(function() return Enum.KeyCode[savedName] end)
+		if success and keyCode then return keyCode end
+	end
+	return LoadKeybind(featureName)
+end
+
+local function SaveGameKeybind(featureName, keyCode)
+	CurrentPlaceKeybindBucket()[featureName] = keyCode.Name
+	SavePersistentSettings()
+end
+
 local function LoadColor(settingName, fallback)
 	local saved = SavedKeybinds[settingName]
 	if type(saved) == "table" and tonumber(saved.R) and tonumber(saved.G) and tonumber(saved.B) then
@@ -978,7 +1004,7 @@ HubState.MinimizeKeybind = LoadKeybind("MinimizeGUI")
 if HubState.MinimizeKeybind == Enum.KeyCode.Unknown then HubState.MinimizeKeybind = Enum.KeyCode.LeftControl end
 HubState.IsBindingFlingTarget = false
 ThemeObjects.PlayerTP = {Keybind = LoadKeybind("PlayerTPMenu"), Binding = false, Dragging = false}
-ThemeObjects.MM2RoleDetails = {Keybind = LoadKeybind("MM2RoleDetails"), Binding = false, Dragging = false, Moved = false}
+ThemeObjects.MM2RoleDetails = {Keybind = LoadGameKeybind("MM2RoleDetails"), Binding = false, Dragging = false, Moved = false}
 HubState.BodyVelocity = nil
 HubState.BodyGyro = nil
 HubState.Connections = {}
@@ -2089,6 +2115,8 @@ local HqydeuRuntime = {
 	KeybindText = KeybindText,
 	LoadKeybind = LoadKeybind,
 	SaveKeybind = SaveKeybind,
+	LoadGameKeybind = LoadGameKeybind,
+	SaveGameKeybind = SaveGameKeybind,
 	SavePersistentSettings = SavePersistentSettings,
 	GuiSizeValue = GuiSizeValue,
 	GuiScaleFromValue = GuiScaleFromValue,
@@ -2363,7 +2391,7 @@ ThemeObjects.DeepESP.Toggle.MouseButton1Click:Connect(function()
 	PlayClick()
 	ThemeObjects.SetQODESP(not ThemeObjects.DeepESP.Enabled)
 end)
-ThemeObjects.AddFeatureKeybind({Name = "Body ESP", Storage = "QODESP", Parent = ThemeObjects.DeepESP.Row, Toggle = ThemeObjects.DeepESP.Toggle, Get = function() return LoadKeybind("QODESP") end, Set = function(key) SaveKeybind("QODESP", key) end, Action = function()
+ThemeObjects.AddFeatureKeybind({Name = "Body ESP", Storage = "QODESP", Parent = ThemeObjects.DeepESP.Row, Toggle = ThemeObjects.DeepESP.Toggle, Get = function() return LoadGameKeybind("QODESP") end, Set = function(key) SaveGameKeybind("QODESP", key) end, Action = function()
 	ThemeObjects.SetQODESP(not ThemeObjects.DeepESP.Enabled)
 end})
 
