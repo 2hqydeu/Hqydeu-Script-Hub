@@ -14,6 +14,8 @@ local AccentColor = Runtime.GetAccentColor and Runtime.GetAccentColor() or Color
 local InactiveTextColor = Runtime.InactiveTextColor or function() return Color3.fromRGB(255, 255, 255) end
 local LoadKeybind = Runtime.LoadKeybind or function() return Enum.KeyCode.Unknown end
 local SaveKeybind = Runtime.SaveKeybind or function() end
+local LoadGameKeybind = Runtime.LoadGameKeybind or LoadKeybind
+local SaveGameKeybind = Runtime.SaveGameKeybind or SaveKeybind
 local PlayClick = Runtime.PlayClick or function() end
 local TrackConnection = Runtime.TrackConnection or function(name, connection) HubState.Connections[name] = connection; return connection end
 local UpdateTheme = Runtime.UpdateTheme or function() end
@@ -24,7 +26,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v12"
+local ModuleVersion = "UE-Utility-v13"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -225,8 +227,8 @@ if HubState.PageHeader then
 	if not structureDisplay then
 		structureDisplay = Instance.new("TextLabel")
 		structureDisplay.Name = "UndeadExpeditionStructureDisplay"
-		structureDisplay.Size = UDim2.new(1, -205, 0, 12)
-		structureDisplay.Position = UDim2.new(0, 150, 0, 4)
+		structureDisplay.Size = UDim2.new(0, 190, 0, 12)
+		structureDisplay.Position = UDim2.new(0.5, -95, 0, 4)
 		structureDisplay.BackgroundTransparency = 1
 		structureDisplay.Text = "STRUCTURE: N/A"
 		structureDisplay.Font = Enum.Font.GothamBold
@@ -239,8 +241,8 @@ if HubState.PageHeader then
 		AddText(structureDisplay)
 	end
 	if structureDisplay then
-		structureDisplay.Size = UDim2.new(1, -205, 0, 12)
-		structureDisplay.Position = UDim2.new(0, 150, 0, 4)
+		structureDisplay.Size = UDim2.new(0, 190, 0, 12)
+		structureDisplay.Position = UDim2.new(0.5, -95, 0, 4)
 		structureDisplay.TextSize = 8
 		structureDisplay.TextXAlignment = Enum.TextXAlignment.Center
 		structureDisplay.TextTruncate = Enum.TextTruncate.AtEnd
@@ -932,10 +934,10 @@ end)
 
 table.insert(ThemeObjects.StateTexts, {Object = boxTitle, IsEnabled = function() return state.BoxESP end})
 table.insert(ThemeObjects.StateTexts, {Object = darknessTitle, IsEnabled = function() return state.NoDarkness end})
-ThemeObjects.AddFeatureKeybind({Name = "Box ESP", Storage = "UEBoxESP", Parent = boxRow, Toggle = boxToggle, Get = function() return LoadKeybind("UEBoxESP") end, Set = function(key) SaveKeybind("UEBoxESP", key) end, Action = ToggleBoxESP})
-ThemeObjects.AddFeatureKeybind({Name = "Box Filters", Storage = "UEBoxFilters", Get = function() return LoadKeybind("UEBoxFilters") end, Set = function(key) SaveKeybind("UEBoxFilters", key) end, Action = ToggleBoxFilters})
-ThemeObjects.AddFeatureKeybind({Name = "No Darkness", Storage = "UENoDarkness", Parent = darknessRow, Toggle = darknessToggle, Get = function() return LoadKeybind("UENoDarkness") end, Set = function(key) SaveKeybind("UENoDarkness", key) end, Action = ToggleNoDarkness})
-ThemeObjects.AddFeatureKeybind({Name = "Base TP", Storage = "UEBaseTP", Parent = baseRow, Toggle = baseButton, Get = function() return LoadKeybind("UEBaseTP") end, Set = function(key) SaveKeybind("UEBaseTP", key) end, Action = TeleportToBase})
+ThemeObjects.AddFeatureKeybind({Name = "Box ESP", Storage = "UEBoxESP", Parent = boxRow, Toggle = boxToggle, Get = function() return LoadGameKeybind("UEBoxESP") end, Set = function(key) SaveGameKeybind("UEBoxESP", key) end, Action = ToggleBoxESP})
+ThemeObjects.AddFeatureKeybind({Name = "Box Filters", Storage = "UEBoxFilters", Get = function() return LoadGameKeybind("UEBoxFilters") end, Set = function(key) SaveGameKeybind("UEBoxFilters", key) end, Action = ToggleBoxFilters})
+ThemeObjects.AddFeatureKeybind({Name = "No Darkness", Storage = "UENoDarkness", Parent = darknessRow, Toggle = darknessToggle, Get = function() return LoadGameKeybind("UENoDarkness") end, Set = function(key) SaveGameKeybind("UENoDarkness", key) end, Action = ToggleNoDarkness})
+ThemeObjects.AddFeatureKeybind({Name = "Base TP", Storage = "UEBaseTP", Parent = baseRow, Toggle = baseButton, Get = function() return LoadGameKeybind("UEBaseTP") end, Set = function(key) SaveGameKeybind("UEBaseTP", key) end, Action = TeleportToBase})
 
 TrackConnection("UndeadExpeditionContainerAdded", workspace.ChildAdded:Connect(function(child)
 	if child.Name == "Structures" then
