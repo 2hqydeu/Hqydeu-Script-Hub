@@ -25,7 +25,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v6"
+local ModuleVersion = "UE-Utility-v7"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -86,6 +86,8 @@ state.LootFiltersOpen = false
 state.SelectedEnemyTypes = type(state.SelectedEnemyTypes) == "table" and state.SelectedEnemyTypes or {}
 state.KnownEnemyTypes = type(state.KnownEnemyTypes) == "table" and state.KnownEnemyTypes or {}
 state.SelectedLootRarities = type(state.SelectedLootRarities) == "table" and state.SelectedLootRarities or {}
+state.SelectedCrateTypes = type(state.SelectedCrateTypes) == "table" and state.SelectedCrateTypes or {}
+state.KnownCrateTypes = type(state.KnownCrateTypes) == "table" and state.KnownCrateTypes or {}
 state.LastShownCount = 0
 state.LastLootShownCount = 0
 
@@ -93,6 +95,7 @@ local Green = Color3.fromRGB(38, 190, 92)
 local Red = Color3.fromRGB(220, 42, 58)
 local ENEMY_CONTAINER_NAME = "Enemies"
 local LOOT_CONTAINER_NAME = "Structures"
+local ITEM_CONTAINER_NAMES = {"Items", "ItemDrops", "DroppedItems", "Drops", "Loot", "GroundItems", "WorldItems", "Pickups", "Interactables", "Debris", "Structures"}
 local MAX_ESP_OBJECTS = 14
 local MAX_LOOT_OBJECTS = 18
 local FULL_RESCAN_INTERVAL = 10
@@ -101,9 +104,14 @@ local ESP_UPDATE_INTERVAL = 0.75
 local USE_LOOT_HIGHLIGHTS = false
 local BASE_POSITION = Vector3.new(130, 53, -397)
 local LootRarityOptions = {"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Secret", "Loot"}
+local DefaultCrateFilterOptions = {"Wooden", "Silver", "Gold", "Golden", "Military", "Medical", "Ammo", "Weapon", "Supply", "Crate", "Chest", "Box"}
 local DefaultEnemyFilterOptions = {"Zombie", "Undead", "Walker", "Runner", "Boss"}
 for _, rarity in ipairs(LootRarityOptions) do
 	if state.SelectedLootRarities[rarity] == nil then state.SelectedLootRarities[rarity] = true end
+end
+for _, crateType in ipairs(DefaultCrateFilterOptions) do
+	state.KnownCrateTypes[crateType] = true
+	if state.SelectedCrateTypes[crateType] == nil then state.SelectedCrateTypes[crateType] = false end
 end
 for _, enemyType in ipairs(DefaultEnemyFilterOptions) do
 	state.KnownEnemyTypes[enemyType] = true
@@ -227,7 +235,7 @@ local enemyFiltersButton = CreateButton(espRow, "UndeadExpeditionEnemyFilters", 
 local espToggle = CreateButton(espRow, "UndeadExpeditionEnemyESPToggle", "Off", -98, 44)
 
 local lootRow = CreateRow("UndeadExpeditionLootESPRow", 50)
-local lootTitle = CreateTitle(lootRow, "Loot ESP:")
+local lootTitle = CreateTitle(lootRow, "Item ESP:")
 local lootStatus = Instance.new("TextLabel")
 lootStatus.Name = "UndeadExpeditionLootESPStatus"
 lootStatus.Size = UDim2.new(0, 50, 0, 18)
@@ -369,6 +377,27 @@ local function SortedEnemyFilterOptions()
 	return options
 end
 
+local function RegisterCrateFilterOption(value)
+	value = SanitizeFilterName(value)
+	if not state.KnownCrateTypes[value] then
+		state.KnownCrateTypes[value] = true
+		state.SelectedCrateTypes[value] = false
+		lastFilterSignature = ""
+	end
+	return value
+end
+
+local function SortedCrateFilterOptions()
+	local options = {}
+	for value in pairs(state.KnownCrateTypes) do
+		table.insert(options, value)
+	end
+	table.sort(options, function(a, b)
+		return string.lower(a) < string.lower(b)
+	end)
+	return options
+end
+
 local function CreateFilterLabel(text, y)
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.new(1, -4, 0, 14)
@@ -405,6 +434,8 @@ local function CreateFilterButton(kind, value, x, y)
 		PlayClick()
 		if kind == "Enemy" then
 			state.SelectedEnemyTypes[value] = not (state.SelectedEnemyTypes[value] ~= false)
+		elseif kind == "Crate" then
+			state.SelectedCrateTypes[value] = not (state.SelectedCrateTypes[value] ~= false)
 		else
 			state.SelectedLootRarities[value] = not (state.SelectedLootRarities[value] ~= false)
 		end
@@ -416,6 +447,9 @@ end
 local function FilterButtonSelected(entry)
 	if entry.Kind == "Enemy" then
 		return state.SelectedEnemyTypes[entry.Value] ~= false
+	end
+	if entry.Kind == "Crate" then
+		return state.SelectedCrateTypes[entry.Value] ~= false
 	end
 	return state.SelectedLootRarities[entry.Value] ~= false
 end
@@ -434,20 +468,32 @@ local function RefreshFilterDock()
 	if not filterDock.Visible then return end
 	local mode = state.EnemyFiltersOpen and "Enemy" or "Loot"
 	local options = mode == "Enemy" and SortedEnemyFilterOptions() or LootRarityOptions
+	local crateOptions = mode == "Loot" and SortedCrateFilterOptions() or {}
 	filterHeader.Text = mode == "Enemy" and "Enemy Filters" or "Loot Filters"
-	local signature = mode .. ":" .. table.concat(options, "|")
+	local signature = mode .. ":" .. table.concat(options, "|") .. ":crates:" .. table.concat(crateOptions, "|")
 	if signature ~= lastFilterSignature then
 		lastFilterSignature = signature
 		filterButtons = {}
 		filterScroll:ClearAllChildren()
-		CreateFilterLabel(mode == "Enemy" and "Enemies" or "Rarities", 0)
+		CreateFilterLabel(mode == "Enemy" and "Enemies" or "Items", 0)
 		local y = 16
 		for index, option in ipairs(options) do
 			local column = (index - 1) % 3
 			local row = math.floor((index - 1) / 3)
-			CreateFilterButton(mode, option, column * 82, y + row * 23)
+			CreateFilterButton(mode == "Enemy" and "Enemy" or "Loot", option, column * 82, y + row * 23)
 		end
-		filterScroll.CanvasSize = UDim2.new(0, 0, 0, y + math.ceil(#options / 3) * 23 + 6)
+		y = y + math.ceil(#options / 3) * 23 + 6
+		if mode == "Loot" then
+			CreateFilterLabel("Crates", y)
+			y += 16
+			for index, option in ipairs(crateOptions) do
+				local column = (index - 1) % 3
+				local row = math.floor((index - 1) / 3)
+				CreateFilterButton("Crate", option, column * 82, y + row * 23)
+			end
+			y = y + math.ceil(#crateOptions / 3) * 23 + 6
+		end
+		filterScroll.CanvasSize = UDim2.new(0, 0, 0, y)
 	end
 	UpdateFilterButtonText()
 	UpdateFilterDockPosition()
@@ -464,6 +510,13 @@ local function IsInsideWorkspaceContainer(instance, name)
 	return container and instance and (instance == container or instance:IsDescendantOf(container))
 end
 
+local function IsInsideAnyWorkspaceContainer(instance, names)
+	for _, name in ipairs(names) do
+		if IsInsideWorkspaceContainer(instance, name) then return true end
+	end
+	return false
+end
+
 local function ForContainerDescendants(name, callback)
 	local container = WorkspaceContainer(name)
 	if not container then return false end
@@ -472,6 +525,20 @@ local function ForContainerDescendants(name, callback)
 		callback(obj)
 	end
 	return true
+end
+
+local function ForAnyContainerDescendants(names, callback)
+	local visited = {}
+	for _, name in ipairs(names) do
+		local container = WorkspaceContainer(name)
+		if container and not visited[container] then
+			visited[container] = true
+			callback(container)
+			for _, obj in ipairs(container:GetDescendants()) do
+				callback(obj)
+			end
+		end
+	end
 end
 
 local function IsPlayerCharacter(model)
@@ -666,13 +733,16 @@ local function ReadRarityFrom(instance)
 		local rarity = NormalizeRarity(instance:GetAttribute(attributeName))
 		if rarity then return rarity end
 	end
-	for _, child in ipairs(instance:GetChildren()) do
+	for _, child in ipairs(instance:GetDescendants()) do
 		if child:IsA("StringValue") or child:IsA("IntValue") or child:IsA("NumberValue") then
 			local lower = string.lower(child.Name or "")
 			if lower:find("rarity", 1, true) or lower:find("tier", 1, true) or lower:find("quality", 1, true) then
 				local rarity = NormalizeRarity(child.Value)
 				if rarity then return rarity end
 			end
+		elseif child:IsA("TextLabel") or child:IsA("TextButton") then
+			local rarity = NormalizeRarity(child.Text)
+			if rarity then return rarity end
 		end
 	end
 	return nil
@@ -692,11 +762,101 @@ local function LootRarity(instance)
 	return "Loot"
 end
 
-local function LootAllowed(target)
-	local rarity = LootRarity(target)
-	if state.SelectedLootRarities[rarity] == nil then
-		state.SelectedLootRarities[rarity] = true
+local crateTextHints = {
+	crate = true,
+	chest = true,
+	box = true,
+	lootbox = true,
+	supply = true,
+	cache = true,
+}
+
+local crateTypeHints = {
+	"Wooden",
+	"Silver",
+	"Gold",
+	"Golden",
+	"Military",
+	"Medical",
+	"Ammo",
+	"Weapon",
+	"Supply",
+	"Crate",
+	"Chest",
+	"Box",
+}
+
+local function ObjectTextBlob(instance)
+	local parts = {}
+	local current = instance
+	while current and current ~= workspace do
+		table.insert(parts, tostring(current.Name or ""))
+		current = current.Parent
 	end
+	if instance then
+		for _, child in ipairs(instance:GetDescendants()) do
+			if child:IsA("StringValue") then
+				table.insert(parts, tostring(child.Value or ""))
+			elseif child:IsA("TextLabel") or child:IsA("TextButton") then
+				table.insert(parts, tostring(child.Text or ""))
+			elseif child:IsA("ProximityPrompt") then
+				table.insert(parts, tostring(child.ActionText or ""))
+				table.insert(parts, tostring(child.ObjectText or ""))
+			end
+		end
+	end
+	return table.concat(parts, " ")
+end
+
+local function PromptText(instance)
+	if not instance or not instance:IsA("ProximityPrompt") then return "" end
+	return tostring(instance.ActionText or "") .. " " .. tostring(instance.ObjectText or "")
+end
+
+local function IsCrateLoot(target)
+	local text = string.lower(ObjectTextBlob(target))
+	for hint in pairs(crateTextHints) do
+		if text:find(hint, 1, true) then return true end
+	end
+	for _, crateType in ipairs(crateTypeHints) do
+		if text:find(string.lower(crateType), 1, true) and (IsInsideWorkspaceContainer(target, LOOT_CONTAINER_NAME) or text:find("crate", 1, true) or text:find("chest", 1, true) or text:find("box", 1, true) or text:find("supply", 1, true)) then
+			return true
+		end
+	end
+	return false
+end
+
+local function CrateType(target)
+	local text = string.lower(ObjectTextBlob(target))
+	for _, crateType in ipairs(crateTypeHints) do
+		if text:find(string.lower(crateType), 1, true) then
+			return RegisterCrateFilterOption(crateType)
+		end
+	end
+	return RegisterCrateFilterOption("Crate")
+end
+
+local function LootDisplayColor(target)
+	if IsCrateLoot(target) then
+		return Color3.fromRGB(255, 210, 120)
+	end
+	return RarityColor(LootRarity(target))
+end
+
+local function LootDisplayKind(target)
+	return IsCrateLoot(target) and "Crate" or LootRarity(target)
+end
+
+local function LootAllowed(target)
+	if IsCrateLoot(target) then
+		local crateType = CrateType(target)
+		if state.SelectedCrateTypes[crateType] == nil then
+			state.SelectedCrateTypes[crateType] = false
+		end
+		return state.SelectedCrateTypes[crateType] == true
+	end
+	local rarity = LootRarity(target)
+	if state.SelectedLootRarities[rarity] == nil then state.SelectedLootRarities[rarity] = true end
 	return state.SelectedLootRarities[rarity] ~= false
 end
 
@@ -714,10 +874,11 @@ end
 
 local function LooksLikeLoot(instance)
 	if not instance or IsPlayerOwned(instance) then return false end
-	if not IsInsideWorkspaceContainer(instance, LOOT_CONTAINER_NAME) then return false end
+	if not IsInsideAnyWorkspaceContainer(instance, ITEM_CONTAINER_NAMES) then return false end
 	if ReadRarityFrom(instance) then return true end
 	if instance:IsA("ProximityPrompt") then
-		local text = string.lower(tostring(instance.ActionText or "") .. " " .. tostring(instance.ObjectText or ""))
+		local text = string.lower(PromptText(instance))
+		if text:find("claim", 1, true) or text:find("pickup", 1, true) or text:find("pick up", 1, true) or text:find("take", 1, true) or text:find("collect", 1, true) then return true end
 		for hint in pairs(lootNameHints) do
 			if text:find(hint, 1, true) then return true end
 		end
@@ -749,8 +910,22 @@ end
 
 local function LootDisplayName(target)
 	if not target then return "Loot" end
+	if IsCrateLoot(target) then
+		return CrateType(target) .. " Crate"
+	end
 	local displayName = target:GetAttribute("DisplayName") or target:GetAttribute("ItemName") or target:GetAttribute("Name")
 	if displayName and tostring(displayName) ~= "" then return tostring(displayName) end
+	for _, child in ipairs(target:GetDescendants()) do
+		if child:IsA("TextLabel") or child:IsA("TextButton") then
+			local text = tostring(child.Text or "")
+			if text ~= "" and not NormalizeRarity(text) and not string.lower(text):find("claim", 1, true) then
+				return text
+			end
+		elseif child:IsA("ProximityPrompt") then
+			local objectText = tostring(child.ObjectText or "")
+			if objectText ~= "" and not NormalizeRarity(objectText) then return objectText end
+		end
+	end
 	if target.Name == "Handle" and target.Parent then return tostring(target.Parent.Name) end
 	return tostring(target.Name or "Loot")
 end
@@ -768,6 +943,7 @@ local function AddLootCandidateFromDescendant(instance)
 	local target = LootTargetFromDescendant(instance)
 	if not target or state.LootCandidates[target] then return end
 	if not LootRoot(target) then return end
+	if IsCrateLoot(target) then CrateType(target) end
 	state.LootCandidates[target] = true
 	state.LootCandidateConnections[target] = target.AncestryChanged:Connect(function(_, parent)
 		if not parent then
@@ -780,8 +956,8 @@ end
 local function CreateLootESP(target)
 	local root = LootRoot(target)
 	if not root then return nil end
-	local rarity = LootRarity(target)
-	local color = RarityColor(rarity)
+	local rarity = LootDisplayKind(target)
+	local color = LootDisplayColor(target)
 
 	local holder = Instance.new("Folder")
 	holder.Name = "LootESP_" .. target.Name
@@ -884,7 +1060,7 @@ local function ClearLootESP()
 end
 
 local function FullLootScan()
-	ForContainerDescendants(LOOT_CONTAINER_NAME, function(obj)
+	ForAnyContainerDescendants(ITEM_CONTAINER_NAMES, function(obj)
 		AddLootCandidateFromDescendant(obj)
 	end)
 end
@@ -1131,8 +1307,8 @@ local function UpdateLootESP()
 			state.LootObjects[target] = entry
 		end
 		if entry then
-			local rarity = LootRarity(target)
-			local color = RarityColor(rarity)
+				local rarity = LootDisplayKind(target)
+				local color = LootDisplayColor(target)
 			entry.Billboard.Adornee = candidate.Root
 			entry.Label.TextColor3 = color
 			if entry.Highlight then
@@ -1212,9 +1388,11 @@ local function ToggleLootESP()
 		UpdateLootESP()
 	else
 		ClearLootESP()
-		local watcher = state.ContainerWatchers[LOOT_CONTAINER_NAME]
-		if watcher and watcher.Connection then watcher.Connection:Disconnect() end
-		state.ContainerWatchers[LOOT_CONTAINER_NAME] = nil
+		for _, containerName in ipairs(ITEM_CONTAINER_NAMES) do
+			local watcher = state.ContainerWatchers[containerName]
+			if watcher and watcher.Connection then watcher.Connection:Disconnect() end
+			state.ContainerWatchers[containerName] = nil
+		end
 	end
 	RefreshButtons()
 	UpdateTheme(true)
@@ -1283,7 +1461,7 @@ table.insert(ThemeObjects.StateTexts, {Object = espTitle, IsEnabled = function()
 table.insert(ThemeObjects.StateTexts, {Object = lootTitle, IsEnabled = function() return state.LootESP end})
 table.insert(ThemeObjects.StateTexts, {Object = darknessTitle, IsEnabled = function() return state.NoDarkness end})
 ThemeObjects.AddFeatureKeybind({Name = "Enemy ESP", Storage = "UEEnemyESP", Parent = espRow, Toggle = espToggle, Get = function() return LoadKeybind("UEEnemyESP") end, Set = function(key) SaveKeybind("UEEnemyESP", key) end, Action = ToggleEnemyESP})
-ThemeObjects.AddFeatureKeybind({Name = "Loot ESP", Storage = "UELootESP", Parent = lootRow, Toggle = lootToggle, Get = function() return LoadKeybind("UELootESP") end, Set = function(key) SaveKeybind("UELootESP", key) end, Action = ToggleLootESP})
+ThemeObjects.AddFeatureKeybind({Name = "Item ESP", Storage = "UELootESP", Parent = lootRow, Toggle = lootToggle, Get = function() return LoadKeybind("UELootESP") end, Set = function(key) SaveKeybind("UELootESP", key) end, Action = ToggleLootESP})
 ThemeObjects.AddFeatureKeybind({Name = "No Darkness", Storage = "UENoDarkness", Parent = darknessRow, Toggle = darknessToggle, Get = function() return LoadKeybind("UENoDarkness") end, Set = function(key) SaveKeybind("UENoDarkness", key) end, Action = ToggleNoDarkness})
 ThemeObjects.AddFeatureKeybind({Name = "Base TP", Storage = "UEBaseTP", Parent = baseRow, Toggle = baseButton, Get = function() return LoadKeybind("UEBaseTP") end, Set = function(key) SaveKeybind("UEBaseTP", key) end, Action = TeleportToBase})
 
@@ -1306,15 +1484,24 @@ EnsureContainerWatchers = function()
 		end)
 	end
 	if state.LootESP then
-		WatchWorkspaceContainer(LOOT_CONTAINER_NAME, function(obj)
-			if state.LootESP then AddLootCandidateFromDescendant(obj) end
-		end)
+		for _, containerName in ipairs(ITEM_CONTAINER_NAMES) do
+			WatchWorkspaceContainer(containerName, function(obj)
+				if state.LootESP then AddLootCandidateFromDescendant(obj) end
+			end)
+		end
 	end
 end
 
 TrackConnection("UndeadExpeditionContainerAdded", workspace.ChildAdded:Connect(function(child)
-	if child.Name == ENEMY_CONTAINER_NAME or child.Name == LOOT_CONTAINER_NAME then
+	if child.Name == ENEMY_CONTAINER_NAME then
 		task.defer(EnsureContainerWatchers)
+		return
+	end
+	for _, containerName in ipairs(ITEM_CONTAINER_NAMES) do
+		if child.Name == containerName then
+			task.defer(EnsureContainerWatchers)
+			return
+		end
 	end
 end))
 
