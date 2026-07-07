@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v28"
+local ModuleVersion = "UE-Utility-v29"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -1177,6 +1177,49 @@ local function CollectEnemiesNear(position, radius)
 	return enemies
 end
 
+local function RestoreAutoTrapFacing()
+	local character = Player and Player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.AutoRotate = true
+	end
+end
+
+local function FaceNearestHunterNear(position, radius)
+	local playerRoot = PlayerRoot()
+	local character = Player and Player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not playerRoot or not character then return nil end
+	local nearestRoot
+	local nearestDistance = math.huge
+	for _, enemy in ipairs(CollectEnemiesNear(position, radius)) do
+		local root = EnemyRoot(enemy)
+		if root then
+			local distance = (root.Position - playerRoot.Position).Magnitude
+			if distance < nearestDistance then
+				nearestDistance = distance
+				nearestRoot = root
+			end
+		end
+	end
+	if not nearestRoot then
+		RestoreAutoTrapFacing()
+		return nil
+	end
+	if humanoid then humanoid.AutoRotate = false end
+	local lookAt = Vector3.new(nearestRoot.Position.X, playerRoot.Position.Y, nearestRoot.Position.Z)
+	if (lookAt - playerRoot.Position).Magnitude > 0.25 then
+		pcall(function()
+			playerRoot.AssemblyAngularVelocity = Vector3.zero
+			if playerRoot.AssemblyLinearVelocity.Magnitude > 35 then
+				playerRoot.AssemblyLinearVelocity = playerRoot.AssemblyLinearVelocity.Unit * 12
+			end
+			character:PivotTo(CFrame.new(playerRoot.Position, lookAt))
+		end)
+	end
+	return nearestRoot
+end
+
 local function RestoreHunterTrapHitbox(part)
 	local originals = state.HunterTrapHitboxOriginals
 	local original = originals and originals[part]
@@ -1731,6 +1774,7 @@ local function AutoHunterTrapStep()
 		state.AutoTrapPhase = "seeking"
 		state.AutoTrapLootStartedAt = nil
 		RestoreHunterTrapHitboxes()
+		RestoreAutoTrapFacing()
 		target = nil
 	end
 
@@ -1754,6 +1798,7 @@ local function AutoHunterTrapStep()
 			state.AutoTrapPhase = "base_wait"
 			state.AutoTrapLootStartedAt = nil
 			RestoreHunterTrapHitboxes()
+			RestoreAutoTrapFacing()
 			TeleportToBase()
 		end
 		return
@@ -1772,6 +1817,7 @@ local function AutoHunterTrapStep()
 			state.AutoTrapPhase = "seeking"
 			state.AutoTrapLootStartedAt = nil
 			RestoreHunterTrapHitboxes()
+			RestoreAutoTrapFacing()
 			if IsAutoTrapRunActive(runId) then AutoHunterTrapStep() end
 		end
 	elseif state.AutoTrapPhase == "activating_tool" then
@@ -1782,15 +1828,20 @@ local function AutoHunterTrapStep()
 			state.AutoTrapPhase = "seeking"
 			state.AutoTrapLootStartedAt = nil
 			RestoreHunterTrapHitboxes()
+			RestoreAutoTrapFacing()
 			if IsAutoTrapRunActive(runId) then AutoHunterTrapStep() end
 		elseif now - (state.LastHunterTrapUseAt or 0) >= HUNTER_TRAP_ATTACK_INTERVAL then
 			state.LastHunterTrapUseAt = now
+			FaceNearestHunterNear(target.Position, HUNTER_TRAP_ENEMY_RADIUS)
 			UseCurrentEquippedTool()
+		else
+			FaceNearestHunterNear(target.Position, HUNTER_TRAP_ENEMY_RADIUS)
 		end
 	else
 		state.AutoTrapPhase = "seeking"
 		state.AutoTrapLootStartedAt = nil
 		RestoreHunterTrapHitboxes()
+		RestoreAutoTrapFacing()
 	end
 end
 
@@ -1879,6 +1930,7 @@ local function ToggleAutoHunterTrap()
 		state.LastHunterTrapApproachAt = 0
 		state.LastHunterTrapUseAt = 0
 		RestoreHunterTrapHitboxes()
+		RestoreAutoTrapFacing()
 		AutoHunterTrapStep()
 	else
 		state.AutoTrapTarget = nil
@@ -1888,6 +1940,7 @@ local function ToggleAutoHunterTrap()
 		state.LastHunterTrapApproachAt = 0
 		state.LastHunterTrapUseAt = 0
 		RestoreHunterTrapHitboxes()
+		RestoreAutoTrapFacing()
 	end
 	RefreshButtons()
 	UpdateTheme(true)
