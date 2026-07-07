@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v20"
+local ModuleVersion = "UE-Utility-v21"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -130,9 +130,13 @@ local BOX_TYPE_COLORS = {
 }
 local MAX_BOX_OBJECTS = 40
 local BOX_SCAN_INTERVAL = 0.75
-local HUNTER_TRAP_INTERVAL = 0.35
+local HUNTER_TRAP_INTERVAL = 0.2
 local HUNTER_TRAP_ENEMY_RADIUS = 85
 local HUNTER_TRAP_SPAWN_TIMEOUT = 10
+local HUNTER_TRAP_ATTACK_INTERVAL = 0.16
+local HUNTER_TRAP_LOOT_RADIUS = 95
+local HUNTER_TRAP_LOOT_INTERVAL = 0.22
+local HUNTER_TRAP_LOOT_SWEEP_TIME = 1.75
 for _, boxType in ipairs(BOX_TYPES) do
 	if state.SelectedBoxTypes[boxType] == nil then state.SelectedBoxTypes[boxType] = true end
 end
@@ -1001,18 +1005,243 @@ local function EnemyRoot(enemy)
 	return enemy:FindFirstChildWhichIsA("BasePart", true)
 end
 
+local function EnemyHumanoid(enemy)
+	return enemy and enemy:IsA("Model") and enemy:FindFirstChildOfClass("Humanoid") or nil
+end
+
+local function IsLiveEnemyNear(enemy, position, radius)
+	local root = EnemyRoot(enemy)
+	local humanoid = EnemyHumanoid(enemy)
+	return root ~= nil
+		and (not humanoid or humanoid.Health > 0)
+		and (root.Position - position).Magnitude <= radius
+end
+
 local function CountEnemiesNear(position, radius)
 	local folder = workspace:FindFirstChild("Enemies")
 	if not folder then return 0 end
 	local count = 0
 	for _, enemy in ipairs(folder:GetChildren()) do
-		local root = EnemyRoot(enemy)
-		local humanoid = enemy:IsA("Model") and enemy:FindFirstChildOfClass("Humanoid") or nil
-		if root and (not humanoid or humanoid.Health > 0) and (root.Position - position).Magnitude <= radius then
+		if IsLiveEnemyNear(enemy, position, radius) then
 			count += 1
 		end
 	end
 	return count
+end
+
+local function CollectEnemiesNear(position, radius)
+	local folder = workspace:FindFirstChild("Enemies")
+	local enemies = {}
+	if not folder then return enemies end
+	for _, enemy in ipairs(folder:GetChildren()) do
+		if IsLiveEnemyNear(enemy, position, radius) then
+			table.insert(enemies, enemy)
+		end
+	end
+	table.sort(enemies, function(a, b)
+		local rootA = EnemyRoot(a)
+		local rootB = EnemyRoot(b)
+		local distanceA = rootA and (rootA.Position - position).Magnitude or math.huge
+		local distanceB = rootB and (rootB.Position - position).Magnitude or math.huge
+		return distanceA < distanceB
+	end)
+	return enemies
+end
+
+local function ToolRank(tool)
+	if not tool or not tool:IsA("Tool") then return -1 end
+	local lower = string.lower(tool.Name)
+	local rank = 1
+	for _, term in ipairs({"sword", "blade", "knife", "axe", "scythe", "spear", "club", "bat", "mace", "hammer", "katana", "weapon", "gun", "bow"}) do
+		if lower:find(term, 1, true) then
+			rank += 5
+			break
+		end
+	end
+	if tool:FindFirstChild("Handle") then rank += 1 end
+	return rank
+end
+
+local function EquipCombatTool()
+	local character = Player and Player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not character or not humanoid or humanoid.Health <= 0 then return nil end
+	for _, child in ipairs(character:GetChildren()) do
+		if child:IsA("Tool") then return child end
+	end
+	local backpack = Player and Player:FindFirstChild("Backpack")
+	local bestTool
+	local bestRank = -1
+	for _, container in ipairs({backpack, character}) do
+		if container then
+			for _, child in ipairs(container:GetChildren()) do
+				local rank = ToolRank(child)
+				if rank > bestRank then
+					bestRank = rank
+					bestTool = child
+				end
+			end
+		end
+	end
+	if bestTool and bestTool.Parent == backpack then
+		pcall(function() humanoid:EquipTool(bestTool) end)
+	end
+	return bestTool
+end
+
+local function ToolTouchPart(tool)
+	if not tool then return nil end
+	local handle = tool:FindFirstChild("Handle")
+	if handle and handle:IsA("BasePart") then return handle end
+	return tool:FindFirstChildWhichIsA("BasePart", true)
+end
+
+local function FireTouch(partA, partB)
+	if not partA or not partB or typeof(firetouchinterest) ~= "function" then return end
+	pcall(function()
+		firetouchinterest(partA, partB, 0)
+		firetouchinterest(partA, partB, 1)
+	end)
+end
+
+local function AttackHunterTrapEnemy(enemy, trapPosition)
+	local enemyRoot = EnemyRoot(enemy)
+	local playerRoot = PlayerRoot()
+	if not enemyRoot or not playerRoot then return false end
+	local approachOffset = (playerRoot.Position - enemyRoot.Position)
+	if approachOffset.Magnitude < 1 then approachOffset = Vector3.new(0, 0, 1) end
+	local attackPosition = enemyRoot.Position + approachOffset.Unit * 3 + Vector3.new(0, 1.4, 0)
+	StableTeleport(CFrame.new(attackPosition, enemyRoot.Position))
+	local tool = EquipCombatTool()
+	if tool then pcall(function() tool:Activate() end) end
+	local hitPart = ToolTouchPart(tool) or PlayerRoot()
+	FireTouch(hitPart, enemyRoot)
+	local touched = 0
+	for _, part in ipairs(enemy:GetDescendants()) do
+		if part:IsA("BasePart") then
+			FireTouch(hitPart, part)
+			touched += 1
+			if touched >= 12 then break end
+		end
+	end
+	return true
+end
+
+local function TryClearHunterTrapEnemies(position)
+	local enemies = CollectEnemiesNear(position, HUNTER_TRAP_ENEMY_RADIUS)
+	if #enemies <= 0 then return 0 end
+	local now = os.clock()
+	if now - (state.LastHunterTrapAttack or 0) >= HUNTER_TRAP_ATTACK_INTERVAL then
+		state.LastHunterTrapAttack = now
+		AttackHunterTrapEnemy(enemies[1], position)
+	end
+	return #enemies
+end
+
+local function PickupRoot(instance)
+	if not instance then return nil end
+	if instance:IsA("BasePart") then return instance end
+	if instance:IsA("Model") then return instance.PrimaryPart or instance:FindFirstChildWhichIsA("BasePart", true) end
+	if instance:IsA("Tool") then return instance:FindFirstChild("Handle") or instance:FindFirstChildWhichIsA("BasePart", true) end
+	local part = instance:FindFirstAncestorWhichIsA("BasePart")
+	if part then return part end
+	local model = instance:FindFirstAncestorOfClass("Model")
+	return model and (model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)) or nil
+end
+
+local function PickupContainer(instance)
+	if not instance then return nil end
+	if instance:IsA("Tool") or instance:IsA("Model") or instance:IsA("BasePart") then return instance end
+	return instance:FindFirstAncestorOfClass("Tool")
+		or instance:FindFirstAncestorOfClass("Model")
+		or instance:FindFirstAncestorWhichIsA("BasePart")
+end
+
+local function HasPickupText(value)
+	local lower = string.lower(tostring(value or ""))
+	for _, term in ipairs({"drop", "loot", "item", "coin", "gold", "cash", "gem", "crystal", "scrap", "bone", "fang", "essence", "shard", "reward", "bag", "pouch"}) do
+		if lower:find(term, 1, true) then return true end
+	end
+	return false
+end
+
+local function IsIgnoredPickupCandidate(instance, container)
+	local character = Player and Player.Character
+	local enemies = workspace:FindFirstChild("Enemies")
+	if character and instance:IsDescendantOf(character) then return true end
+	if enemies and instance:IsDescendantOf(enemies) then return true end
+	if HasHunterTrapText(instance.Name) or (container and HasHunterTrapText(container.Name)) then return true end
+	if container and BoxType(container) then return true end
+	return false
+end
+
+local function IsHunterDropCandidate(instance)
+	local container = PickupContainer(instance)
+	if not container or IsIgnoredPickupCandidate(instance, container) then return false end
+	if container:IsA("Tool") then return true end
+	if instance:IsA("ProximityPrompt") or instance:IsA("ClickDetector") then return true end
+	if instance:IsA("TouchTransmitter") then
+		return HasPickupText(instance.Name) or HasPickupText(container.Name) or (instance.Parent and HasPickupText(instance.Parent.Name))
+	end
+	return HasPickupText(instance.Name) or HasPickupText(container.Name)
+end
+
+local function CollectHunterDropsNear(position, radius)
+	local drops = {}
+	local seen = {}
+	for _, instance in ipairs(workspace:GetDescendants()) do
+		if IsHunterDropCandidate(instance) then
+			local container = PickupContainer(instance)
+			local root = PickupRoot(container or instance)
+			if root and (root.Position - position).Magnitude <= radius and not seen[container or root] then
+				seen[container or root] = true
+				table.insert(drops, container or root)
+			end
+		end
+	end
+	table.sort(drops, function(a, b)
+		local rootA = PickupRoot(a)
+		local rootB = PickupRoot(b)
+		local distanceA = rootA and (rootA.Position - position).Magnitude or math.huge
+		local distanceB = rootB and (rootB.Position - position).Magnitude or math.huge
+		return distanceA < distanceB
+	end)
+	return drops
+end
+
+local function TriggerPickupObject(object)
+	local root = PickupRoot(object)
+	local playerRoot = PlayerRoot()
+	if not root or not playerRoot then return false end
+	StableTeleport(CFrame.new(root.Position + Vector3.new(0, 2.25, 0), root.Position))
+	playerRoot = PlayerRoot()
+	if not playerRoot then return false end
+	FireTouch(playerRoot, root)
+	local holder = object
+	if not holder.GetDescendants then holder = root end
+	for _, instance in ipairs(holder:GetDescendants()) do
+		if instance:IsA("ProximityPrompt") and typeof(fireproximityprompt) == "function" then
+			pcall(function() fireproximityprompt(instance) end)
+		elseif instance:IsA("ClickDetector") and typeof(fireclickdetector) == "function" then
+			pcall(function() fireclickdetector(instance) end)
+		elseif instance:IsA("BasePart") then
+			FireTouch(playerRoot, instance)
+		end
+	end
+	return true
+end
+
+local function SweepHunterTrapDrops(position)
+	local now = os.clock()
+	if now - (state.LastHunterTrapLootSweep or 0) < HUNTER_TRAP_LOOT_INTERVAL then return end
+	state.LastHunterTrapLootSweep = now
+	local drops = CollectHunterDropsNear(position, HUNTER_TRAP_LOOT_RADIUS)
+	local picked = 0
+	for _, drop in ipairs(drops) do
+		TriggerPickupObject(drop)
+		picked += 1
+		if picked >= 4 then break end
+	end
 end
 
 local function FindNearestHunterTrapRoot(skipVisited)
@@ -1056,6 +1285,7 @@ local function AutoHunterTrapStep()
 	if target and (not target.Parent) then
 		state.AutoTrapTarget = nil
 		state.AutoTrapPhase = "seeking"
+		state.AutoTrapLootStartedAt = nil
 		target = nil
 	end
 
@@ -1069,9 +1299,11 @@ local function AutoHunterTrapStep()
 			state.AutoTrapTarget = nextTrap
 			state.AutoTrapPhase = "waiting_spawn"
 			state.AutoTrapStartedAt = now
+			state.AutoTrapLootStartedAt = nil
 			TeleportToHunterTrapRoot(nextTrap)
 		else
 			state.AutoTrapPhase = "base_wait"
+			state.AutoTrapLootStartedAt = nil
 			TeleportToBase()
 		end
 		return
@@ -1081,23 +1313,36 @@ local function AutoHunterTrapStep()
 	if state.AutoTrapPhase == "waiting_spawn" then
 		if enemies > 0 then
 			state.AutoTrapPhase = "waiting_clear"
+			state.AutoTrapLootStartedAt = nil
+			TryClearHunterTrapEnemies(target.Position)
 		elseif now - (state.AutoTrapStartedAt or now) >= HUNTER_TRAP_SPAWN_TIMEOUT then
 			state.AutoTrapVisited = state.AutoTrapVisited or {}
 			state.AutoTrapVisited[target] = true
 			state.AutoTrapTarget = nil
 			state.AutoTrapPhase = "seeking"
+			state.AutoTrapLootStartedAt = nil
 			AutoHunterTrapStep()
 		end
 	elseif state.AutoTrapPhase == "waiting_clear" then
+		enemies = TryClearHunterTrapEnemies(target.Position)
 		if enemies <= 0 then
+			state.AutoTrapPhase = "looting"
+			state.AutoTrapLootStartedAt = now
+			SweepHunterTrapDrops(target.Position)
+		end
+	elseif state.AutoTrapPhase == "looting" then
+		SweepHunterTrapDrops(target.Position)
+		if now - (state.AutoTrapLootStartedAt or now) >= HUNTER_TRAP_LOOT_SWEEP_TIME then
 			state.AutoTrapVisited = state.AutoTrapVisited or {}
 			state.AutoTrapVisited[target] = true
 			state.AutoTrapTarget = nil
 			state.AutoTrapPhase = "seeking"
+			state.AutoTrapLootStartedAt = nil
 			AutoHunterTrapStep()
 		end
 	else
 		state.AutoTrapPhase = "seeking"
+		state.AutoTrapLootStartedAt = nil
 	end
 end
 
@@ -1177,11 +1422,15 @@ local function ToggleAutoHunterTrap()
 		state.AutoTrapVisited = {}
 		state.AutoTrapTarget = nil
 		state.AutoTrapPhase = "seeking"
+		state.AutoTrapLootStartedAt = nil
+		state.LastHunterTrapAttack = 0
+		state.LastHunterTrapLootSweep = 0
 		state.LastHunterTrapMove = 0
 		AutoHunterTrapStep()
 	else
 		state.AutoTrapTarget = nil
 		state.AutoTrapPhase = nil
+		state.AutoTrapLootStartedAt = nil
 	end
 	RefreshButtons()
 	UpdateTheme(true)
