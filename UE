@@ -1,6 +1,7 @@
 -- Page-only module for Hqydeu Script Hub. Upload this file to its raw GitHub target.
 local Runtime = (type(getgenv) == "function" and getgenv().HqydeuLoader_Runtime) or shared.HqydeuLoader_Runtime
 if not Runtime then return warn("Hqydeu page module: main hub runtime was not found") end
+if Runtime.ActivateGameKeybindScope then Runtime.ActivateGameKeybindScope("Undead Expedition") end
 
 local HubState = Runtime.HubState
 local ThemeObjects = Runtime.ThemeObjects
@@ -9,6 +10,7 @@ local ScreenGui = Runtime.ScreenGui
 local Players = Runtime.Players or game:GetService("Players")
 local Player = Runtime.Player or Players.LocalPlayer
 local RunService = Runtime.RunService or game:GetService("RunService")
+local TweenService = Runtime.TweenService or game:GetService("TweenService")
 local Lighting = game:GetService("Lighting")
 local AccentColor = Runtime.GetAccentColor and Runtime.GetAccentColor() or Color3.fromRGB(0, 210, 255)
 local InactiveTextColor = Runtime.InactiveTextColor or function() return Color3.fromRGB(255, 255, 255) end
@@ -26,11 +28,12 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v13"
+local ModuleVersion = "UE-Utility-v14"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
 local existingMarkerFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionStructureMarkers")
+local existingStructureNotification = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionStructureNotification")
 if existingPage and existingPage:GetAttribute("ModuleVersion") == ModuleVersion and ThemeObjects.OpenUndeadExpeditionPage then
 	ThemeObjects.OpenUndeadExpeditionPage()
 	return
@@ -39,6 +42,7 @@ if existingPage then existingPage:Destroy() end
 if existingEspFolder then existingEspFolder:Destroy() end
 if existingFilterDock then existingFilterDock:Destroy() end
 if existingMarkerFolder then existingMarkerFolder:Destroy() end
+if existingStructureNotification then existingStructureNotification:Destroy() end
 
 for _, connectionName in ipairs({
 	"UndeadExpeditionESPHeartbeat",
@@ -64,6 +68,7 @@ state.EnemyFiltersOpen = false
 state.LootFiltersOpen = state.LootFiltersOpen == true
 state.BoxESP = state.BoxESP == true
 state.NoDarkness = state.NoDarkness == true
+state.StructureNotifications = state.StructureNotifications ~= false
 state.LastStructureName = state.LastStructureName or nil
 state.LastStructureCount = tonumber(state.LastStructureCount) or 0
 state.LastStructureMessage = state.LastStructureMessage or "STRUCTURE: N/A"
@@ -95,7 +100,7 @@ state.BoxObjects = {}
 if type(ThemeObjects.FeatureKeybindEntries) == "table" then
 	for index = #ThemeObjects.FeatureKeybindEntries, 1, -1 do
 		local entry = ThemeObjects.FeatureKeybindEntries[index]
-		if entry and (entry.Storage == "UEEnemyESP" or entry.Storage == "UELootESP" or entry.Storage == "UEBoxESP" or entry.Storage == "UEBoxFilters" or entry.Storage == "UENoDarkness" or entry.Storage == "UEBaseTP") then
+		if entry and (entry.Storage == "UEEnemyESP" or entry.Storage == "UELootESP" or entry.Storage == "UEBoxESP" or entry.Storage == "UEBoxFilters" or entry.Storage == "UENoDarkness" or entry.Storage == "UEBaseTP" or entry.Storage == "UEStructureNotifications") then
 			table.remove(ThemeObjects.FeatureKeybindEntries, index)
 		end
 	end
@@ -132,7 +137,7 @@ uePage.ScrollBarImageColor3 = AccentColor
 uePage.ScrollingDirection = Enum.ScrollingDirection.Y
 uePage.ElasticBehavior = Enum.ElasticBehavior.Never
 uePage.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-uePage.CanvasSize = UDim2.new(0, 0, 0, 160)
+uePage.CanvasSize = UDim2.new(0, 0, 0, 206)
 uePage.Visible = false
 uePage:SetAttribute("ModuleVersion", ModuleVersion)
 uePage.Parent = MainFrame
@@ -221,33 +226,28 @@ local function CreateButton(parent, name, text, xOffset, width)
 	return button
 end
 
-local structureDisplay
 if HubState.PageHeader then
-	structureDisplay = HubState.PageHeader:FindFirstChild("UndeadExpeditionStructureDisplay")
-	if not structureDisplay then
-		structureDisplay = Instance.new("TextLabel")
-		structureDisplay.Name = "UndeadExpeditionStructureDisplay"
-		structureDisplay.Size = UDim2.new(0, 190, 0, 12)
-		structureDisplay.Position = UDim2.new(0.5, -95, 0, 4)
-		structureDisplay.BackgroundTransparency = 1
-		structureDisplay.Text = "STRUCTURE: N/A"
-		structureDisplay.Font = Enum.Font.GothamBold
-		structureDisplay.TextSize = 8
-		structureDisplay.TextColor3 = Color3.fromRGB(255, 255, 255)
-		structureDisplay.TextXAlignment = Enum.TextXAlignment.Center
-		structureDisplay.TextTruncate = Enum.TextTruncate.AtEnd
-		structureDisplay.Visible = false
-		structureDisplay.Parent = HubState.PageHeader
-		AddText(structureDisplay)
-	end
-	if structureDisplay then
-		structureDisplay.Size = UDim2.new(0, 190, 0, 12)
-		structureDisplay.Position = UDim2.new(0.5, -95, 0, 4)
-		structureDisplay.TextSize = 8
-		structureDisplay.TextXAlignment = Enum.TextXAlignment.Center
-		structureDisplay.TextTruncate = Enum.TextTruncate.AtEnd
-	end
+	local oldStructureDisplay = HubState.PageHeader:FindFirstChild("UndeadExpeditionStructureDisplay")
+	if oldStructureDisplay then oldStructureDisplay:Destroy() end
 end
+
+local structureNotification = Instance.new("TextLabel")
+structureNotification.Name = "UndeadExpeditionStructureNotification"
+structureNotification.Size = UDim2.new(0, 280, 0, 24)
+structureNotification.Position = UDim2.new(0.5, -140, 0, 42)
+structureNotification.BackgroundTransparency = 1
+structureNotification.Text = ""
+structureNotification.Font = Enum.Font.GothamBold
+structureNotification.TextSize = 13
+structureNotification.TextColor3 = Color3.fromRGB(255, 255, 255)
+structureNotification.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+structureNotification.TextStrokeTransparency = 1
+structureNotification.TextTransparency = 1
+structureNotification.TextXAlignment = Enum.TextXAlignment.Center
+structureNotification.TextTruncate = Enum.TextTruncate.AtEnd
+structureNotification.ZIndex = 210
+structureNotification.Visible = false
+structureNotification.Parent = ScreenGui or MainFrame
 
 local structureStatus = Instance.new("TextLabel")
 structureStatus.Name = "UndeadExpeditionHiddenStructureStatus"
@@ -289,6 +289,10 @@ local darknessToggle = CreateButton(darknessRow, "UndeadExpeditionNoDarknessTogg
 local baseRow = CreateRow("UndeadExpeditionBaseTPRow", 96)
 local baseTitle = CreateTitle(baseRow, "Base TP:")
 local baseButton = CreateButton(baseRow, "UndeadExpeditionBaseTPButton", "TP", -98, 44)
+
+local structureAlertsRow = CreateRow("UndeadExpeditionStructureAlertsRow", 142)
+local structureAlertsTitle = CreateTitle(structureAlertsRow, "Structure Alerts:")
+local structureAlertsToggle = CreateButton(structureAlertsRow, "UndeadExpeditionStructureAlertsToggle", "On", -98, 44)
 
 local filterDock = Instance.new("Frame")
 filterDock.Name = "UndeadExpeditionFilterDock"
@@ -494,6 +498,33 @@ local function ShowStructureMarker(structure)
 	end)
 end
 
+local function ShowStructureNotification(message)
+	if not state.StructureNotifications or not structureNotification then return end
+	state.StructureNotificationToken = (tonumber(state.StructureNotificationToken) or 0) + 1
+	local token = state.StructureNotificationToken
+	if state.StructureNotificationTween then
+		pcall(function() state.StructureNotificationTween:Cancel() end)
+	end
+	structureNotification.Text = tostring(message or "")
+	structureNotification.Visible = IsUEPageActive()
+	structureNotification.TextTransparency = 0
+	structureNotification.TextStrokeTransparency = 0.16
+	task.delay(3, function()
+		if token ~= state.StructureNotificationToken or not structureNotification or not structureNotification.Parent then return end
+		local tween = TweenService:Create(structureNotification, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			TextTransparency = 1,
+			TextStrokeTransparency = 1,
+		})
+		state.StructureNotificationTween = tween
+		tween:Play()
+		tween.Completed:Connect(function()
+			if token == state.StructureNotificationToken and structureNotification then
+				structureNotification.Visible = false
+			end
+		end)
+	end)
+end
+
 local function SetStructureMessage(name)
 	name = CleanStructureName(name)
 	if state.LastStructureName == name then
@@ -503,12 +534,9 @@ local function SetStructureMessage(name)
 		state.LastStructureCount = 1
 	end
 	local suffix = state.LastStructureCount > 1 and (" x" .. tostring(state.LastStructureCount)) or ""
-	state.LastStructureMessage = ("STRUCTURE: %s%s"):format(name, suffix)
+	state.LastStructureMessage = ("%s Has Spawned%s"):format(name, suffix)
 	structureStatus.Text = state.LastStructureMessage
-	if structureDisplay then
-		structureDisplay.Text = state.LastStructureMessage
-		structureDisplay.TextColor3 = AccentColor
-	end
+	ShowStructureNotification(state.LastStructureMessage)
 end
 
 local function StructuresFolder()
@@ -839,10 +867,6 @@ local function TeleportToBase()
 end
 
 RefreshButtons = function()
-	if structureDisplay then
-		structureDisplay.Text = state.LastStructureMessage or "STRUCTURE: N/A"
-		structureDisplay.TextColor3 = state.LastStructureName and AccentColor or Color3.fromRGB(255, 255, 255)
-	end
 	structureStatus.Text = state.LastStructureMessage or "Waiting for structure..."
 	boxToggle.Text = state.BoxESP and "On" or "Off"
 	boxFiltersButton.Text = state.LootFiltersOpen and "Close" or "Edit"
@@ -850,8 +874,10 @@ RefreshButtons = function()
 	local boxShown = state.LastBoxShownCount or 0
 	boxStatus.Text = state.BoxESP and ("%d/%d"):format(boxShown, boxFound) or "0/0"
 	darknessToggle.Text = state.NoDarkness and "On" or "Off"
+	structureAlertsToggle.Text = state.StructureNotifications and "On" or "Off"
 	boxTitle.TextColor3 = state.BoxESP and AccentColor or InactiveTextColor()
 	darknessTitle.TextColor3 = state.NoDarkness and AccentColor or InactiveTextColor()
+	structureAlertsTitle.TextColor3 = state.StructureNotifications and AccentColor or InactiveTextColor()
 	baseTitle.TextColor3 = InactiveTextColor()
 	filterDock.Visible = state.LootFiltersOpen and IsUEPageActive()
 	for _, entry in ipairs(filterButtons) do
@@ -896,6 +922,18 @@ local function ToggleNoDarkness()
 	UpdateTheme(true)
 end
 
+local function ToggleStructureNotifications()
+	state.StructureNotifications = not state.StructureNotifications
+	if not state.StructureNotifications and structureNotification then
+		state.StructureNotificationToken = (tonumber(state.StructureNotificationToken) or 0) + 1
+		structureNotification.Visible = false
+		structureNotification.TextTransparency = 1
+		structureNotification.TextStrokeTransparency = 1
+	end
+	RefreshButtons()
+	UpdateTheme(true)
+end
+
 boxToggle.MouseButton1Click:Connect(function()
 	PlayClick()
 	ToggleBoxESP()
@@ -932,12 +970,19 @@ baseButton.MouseButton1Click:Connect(function()
 	TeleportToBase()
 end)
 
+structureAlertsToggle.MouseButton1Click:Connect(function()
+	PlayClick()
+	ToggleStructureNotifications()
+end)
+
 table.insert(ThemeObjects.StateTexts, {Object = boxTitle, IsEnabled = function() return state.BoxESP end})
 table.insert(ThemeObjects.StateTexts, {Object = darknessTitle, IsEnabled = function() return state.NoDarkness end})
+table.insert(ThemeObjects.StateTexts, {Object = structureAlertsTitle, IsEnabled = function() return state.StructureNotifications end})
 ThemeObjects.AddFeatureKeybind({Name = "Box ESP", Storage = "UEBoxESP", Parent = boxRow, Toggle = boxToggle, Get = function() return LoadGameKeybind("UEBoxESP") end, Set = function(key) SaveGameKeybind("UEBoxESP", key) end, Action = ToggleBoxESP})
 ThemeObjects.AddFeatureKeybind({Name = "Box Filters", Storage = "UEBoxFilters", Get = function() return LoadGameKeybind("UEBoxFilters") end, Set = function(key) SaveGameKeybind("UEBoxFilters", key) end, Action = ToggleBoxFilters})
 ThemeObjects.AddFeatureKeybind({Name = "No Darkness", Storage = "UENoDarkness", Parent = darknessRow, Toggle = darknessToggle, Get = function() return LoadGameKeybind("UENoDarkness") end, Set = function(key) SaveGameKeybind("UENoDarkness", key) end, Action = ToggleNoDarkness})
 ThemeObjects.AddFeatureKeybind({Name = "Base TP", Storage = "UEBaseTP", Parent = baseRow, Toggle = baseButton, Get = function() return LoadGameKeybind("UEBaseTP") end, Set = function(key) SaveGameKeybind("UEBaseTP", key) end, Action = TeleportToBase})
+ThemeObjects.AddFeatureKeybind({Name = "Structure Alerts", Storage = "UEStructureNotifications", Parent = structureAlertsRow, Toggle = structureAlertsToggle, Get = function() return LoadGameKeybind("UEStructureNotifications") end, Set = function(key) SaveGameKeybind("UEStructureNotifications", key) end, Action = ToggleStructureNotifications})
 
 TrackConnection("UndeadExpeditionContainerAdded", workspace.ChildAdded:Connect(function(child)
 	if child.Name == "Structures" then
@@ -963,10 +1008,10 @@ end))
 task.spawn(function()
 	while uePage.Parent do
 		local active = IsUEPageActive()
-		if structureDisplay then structureDisplay.Visible = active end
 		if not active then
 			state.LootFiltersOpen = false
 			filterDock.Visible = false
+			if structureNotification then structureNotification.Visible = false end
 		end
 		task.wait(active and 0.5 or 0.35)
 	end
@@ -1007,7 +1052,6 @@ ThemeObjects.OpenUndeadExpeditionPage = function()
 	if growSeason then growSeason.Visible = false end
 	local growHistory = HubState.PageHeader and HubState.PageHeader:FindFirstChild("GrowABeehiveHistoryButton")
 	if growHistory then growHistory.Visible = false end
-	if structureDisplay then structureDisplay.Visible = true end
 	uePage.Visible = true
 	uePage.Position = UDim2.new(0, 122, 0, 54)
 	ThemeObjects.ActiveTabName = "Games"
