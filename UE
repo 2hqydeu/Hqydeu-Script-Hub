@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v17"
+local ModuleVersion = "UE-Utility-v18"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -77,6 +77,7 @@ state.EnemyFiltersOpen = false
 state.LootFiltersOpen = state.LootFiltersOpen == true
 state.BoxESP = state.BoxESP == true
 state.NoDarkness = state.NoDarkness == true
+state.AutoHunterTrap = state.AutoHunterTrap == true
 state.StructureNotifications = state.StructureNotifications ~= false
 state.LastStructureName = state.LastStructureName or nil
 state.LastStructureCount = tonumber(state.LastStructureCount) or 0
@@ -109,7 +110,7 @@ state.BoxObjects = {}
 if type(ThemeObjects.FeatureKeybindEntries) == "table" then
 	for index = #ThemeObjects.FeatureKeybindEntries, 1, -1 do
 		local entry = ThemeObjects.FeatureKeybindEntries[index]
-		if entry and (entry.Storage == "UEEnemyESP" or entry.Storage == "UELootESP" or entry.Storage == "UEBoxESP" or entry.Storage == "UEBoxFilters" or entry.Storage == "UENoDarkness" or entry.Storage == "UEBaseTP" or entry.Storage == "UEStructureNotifications") then
+		if entry and (entry.Storage == "UEEnemyESP" or entry.Storage == "UELootESP" or entry.Storage == "UEBoxESP" or entry.Storage == "UEBoxFilters" or entry.Storage == "UENoDarkness" or entry.Storage == "UEBaseTP" or entry.Storage == "UEStructureNotifications" or entry.Storage == "UEAutoHunterTrap") then
 			table.remove(ThemeObjects.FeatureKeybindEntries, index)
 		end
 	end
@@ -129,7 +130,7 @@ local BOX_TYPE_COLORS = {
 }
 local MAX_BOX_OBJECTS = 40
 local BOX_SCAN_INTERVAL = 0.75
-local BOX_GROUP_DISTANCE = 7
+local HUNTER_TRAP_INTERVAL = 1.25
 for _, boxType in ipairs(BOX_TYPES) do
 	if state.SelectedBoxTypes[boxType] == nil then state.SelectedBoxTypes[boxType] = true end
 end
@@ -148,7 +149,7 @@ uePage.ScrollBarImageColor3 = AccentColor
 uePage.ScrollingDirection = Enum.ScrollingDirection.Y
 uePage.ElasticBehavior = Enum.ElasticBehavior.Never
 uePage.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-uePage.CanvasSize = UDim2.new(0, 0, 0, 206)
+uePage.CanvasSize = UDim2.new(0, 0, 0, 252)
 uePage.Visible = false
 uePage:SetAttribute("ModuleVersion", ModuleVersion)
 uePage.Parent = MainFrame
@@ -304,6 +305,10 @@ local baseButton = CreateButton(baseRow, "UndeadExpeditionBaseTPButton", "TP", -
 local structureAlertsRow = CreateRow("UndeadExpeditionStructureAlertsRow", 142)
 local structureAlertsTitle = CreateTitle(structureAlertsRow, "Structure Alerts:")
 local structureAlertsToggle = CreateButton(structureAlertsRow, "UndeadExpeditionStructureAlertsToggle", "On", -98, 44)
+
+local autoTrapRow = CreateRow("UndeadExpeditionAutoTrapRow", 188)
+local autoTrapTitle = CreateTitle(autoTrapRow, "Auto Trap TP:")
+local autoTrapToggle = CreateButton(autoTrapRow, "UndeadExpeditionAutoTrapToggle", "Off", -98, 44)
 
 local filterDock = Instance.new("Frame")
 filterDock.Name = "UndeadExpeditionFilterDock"
@@ -754,7 +759,7 @@ local function CreateBoxESP(box)
 	return {Holder = holder, Highlight = highlight, Billboard = billboard, Label = label}
 end
 
-local function UpdateBoxEntryVisual(entry, box, root, playerRoot, groupCount)
+local function UpdateBoxEntryVisual(entry, box, root, playerRoot)
 	if not entry or not box or not root then return end
 	entry.Billboard.Adornee = root
 	entry.Billboard.Enabled = true
@@ -764,57 +769,18 @@ local function UpdateBoxEntryVisual(entry, box, root, playerRoot, groupCount)
 	entry.Highlight.OutlineColor = boxColor
 	entry.Label.TextColor3 = boxColor
 	local distance = playerRoot and math.floor((root.Position - playerRoot.Position).Magnitude) or 0
-	local stackText = groupCount and groupCount > 1 and (" x" .. tostring(groupCount)) or ""
-	entry.Label.Text = ("%s%s [%d Studs]"):format(BoxDisplayName(box), stackText, distance)
-end
-
-local function HideBoxEntryLabel(entry, box, root)
-	if not entry or not box or not root then return end
-	entry.Billboard.Adornee = root
-	entry.Billboard.Enabled = false
-	entry.Highlight.Adornee = BoxHighlightTarget(box, root)
-	local boxColor = BoxColor(box)
-	entry.Highlight.FillColor = boxColor
-	entry.Highlight.OutlineColor = boxColor
-	entry.Label.TextColor3 = boxColor
+	entry.Label.Text = ("%s [%d Studs]"):format(BoxDisplayName(box), distance)
 end
 
 local function RefreshBoxDistances()
 	if not state.BoxESP then return end
 	local playerRoot = PlayerRoot()
-	local groups = {}
 	for box, entry in pairs(state.BoxObjects) do
 		local root = BoxRoot(box)
 		if root and entry and entry.Holder and entry.Holder.Parent then
-			local boxType = BoxType(box) or "Loot"
-			local distance = playerRoot and (root.Position - playerRoot.Position).Magnitude or 0
-			local selectedGroup
-			for _, group in ipairs(groups) do
-				if group.Type == boxType and (root.Position - group.Position).Magnitude <= BOX_GROUP_DISTANCE then
-					selectedGroup = group
-					break
-				end
-			end
-			if not selectedGroup then
-				selectedGroup = {Type = boxType, Position = root.Position, Members = {}}
-				table.insert(groups, selectedGroup)
-			end
-			table.insert(selectedGroup.Members, {Box = box, Entry = entry, Root = root, Distance = distance})
+			UpdateBoxEntryVisual(entry, box, root, playerRoot)
 		else
 			RemoveBoxESP(box)
-		end
-	end
-	for _, group in ipairs(groups) do
-		table.sort(group.Members, function(a, b)
-			return a.Distance < b.Distance
-		end)
-		local groupCount = #group.Members
-		for index, member in ipairs(group.Members) do
-			if index == 1 then
-				UpdateBoxEntryVisual(member.Entry, member.Box, member.Root, playerRoot, groupCount)
-			else
-				HideBoxEntryLabel(member.Entry, member.Box, member.Root)
-			end
 		end
 	end
 end
@@ -888,24 +854,36 @@ local function CaptureLightingEffectDefaults(effect, original)
 	original.Effects[effect] = saved
 end
 
-local function SaveLightingDefaults()
-	if not state.OriginalLighting then
-		state.OriginalLighting = {
-			ClockTime = Lighting.ClockTime,
-			TimeOfDay = SafeGet(Lighting, "TimeOfDay"),
-			Brightness = Lighting.Brightness,
-			FogEnd = Lighting.FogEnd,
-			FogStart = Lighting.FogStart,
-			FogColor = Lighting.FogColor,
-			Ambient = Lighting.Ambient,
-			OutdoorAmbient = Lighting.OutdoorAmbient,
-			ExposureCompensation = Lighting.ExposureCompensation,
-			GlobalShadows = SafeGet(Lighting, "GlobalShadows"),
-			Effects = {},
-		}
-	end
+local function IsNoDarknessLighting()
+	return Lighting.Brightness >= 3.8
+		and Lighting.FogEnd >= 900000
+		and Lighting.Ambient.R > 0.95
+		and Lighting.OutdoorAmbient.R > 0.95
+end
+
+local function BuildLightingSnapshot()
+	local snapshot = {
+		ClockTime = Lighting.ClockTime,
+		TimeOfDay = SafeGet(Lighting, "TimeOfDay"),
+		Brightness = Lighting.Brightness,
+		FogEnd = Lighting.FogEnd,
+		FogStart = Lighting.FogStart,
+		FogColor = Lighting.FogColor,
+		Ambient = Lighting.Ambient,
+		OutdoorAmbient = Lighting.OutdoorAmbient,
+		ExposureCompensation = Lighting.ExposureCompensation,
+		GlobalShadows = SafeGet(Lighting, "GlobalShadows"),
+		Effects = {},
+	}
 	for _, child in ipairs(Lighting:GetChildren()) do
-		CaptureLightingEffectDefaults(child, state.OriginalLighting)
+		CaptureLightingEffectDefaults(child, snapshot)
+	end
+	return snapshot
+end
+
+local function SaveLightingDefaults()
+	if not IsNoDarknessLighting() then
+		state.OriginalLighting = BuildLightingSnapshot()
 	end
 end
 
@@ -944,7 +922,18 @@ end
 
 local function RestoreLighting()
 	local original = state.OriginalLighting
-	if not original then return end
+	if not original then
+		SafeSet(Lighting, "ClockTime", 12)
+		SafeSet(Lighting, "TimeOfDay", "12:00:00")
+		SafeSet(Lighting, "Brightness", 2)
+		SafeSet(Lighting, "FogStart", 0)
+		SafeSet(Lighting, "FogEnd", 100000)
+		SafeSet(Lighting, "Ambient", Color3.fromRGB(128, 128, 128))
+		SafeSet(Lighting, "OutdoorAmbient", Color3.fromRGB(128, 128, 128))
+		SafeSet(Lighting, "ExposureCompensation", 0)
+		SafeSet(Lighting, "GlobalShadows", true)
+		return
+	end
 	for property, value in pairs(original) do
 		if property ~= "Effects" then SafeSet(Lighting, property, value) end
 	end
@@ -957,16 +946,13 @@ local function RestoreLighting()
 	end
 end
 
-local function ReleaseNoDarkness()
-	state.OriginalLighting = nil
-end
-
 local function SetNoDarkness(enabled)
 	state.NoDarkness = enabled == true
 	if state.NoDarkness then
 		ApplyNoDarkness()
 	else
-		ReleaseNoDarkness()
+		RestoreLighting()
+		state.OriginalLighting = nil
 	end
 end
 
@@ -977,6 +963,43 @@ local function TeleportToBase()
 	root.CFrame = CFrame.new(BASE_POSITION)
 end
 
+local function FindNearestHunterTrapRoot()
+	local folder = StructuresFolder()
+	local playerRoot = PlayerRoot()
+	if not folder or not playerRoot then return nil end
+	local closestRoot
+	local closestDistance = math.huge
+	local function consider(candidate)
+		if not candidate or BoxType(candidate) ~= "Hunter Trap" then return end
+		local root = BoxRoot(candidate)
+		if not root then return end
+		local distance = (root.Position - playerRoot.Position).Magnitude
+		if distance < closestDistance then
+			closestDistance = distance
+			closestRoot = root
+		end
+	end
+	for _, structure in ipairs(folder:GetChildren()) do
+		consider(structure)
+		for _, candidate in ipairs(structure:GetDescendants()) do
+			if HasHunterTrapText(candidate.Name) then
+				consider(candidate)
+			end
+		end
+	end
+	return closestRoot
+end
+
+local function GoToNearestHunterTrap()
+	local character = Player and Player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local trapRoot = FindNearestHunterTrapRoot()
+	if not root or not trapRoot then return false end
+	local targetPosition = trapRoot.Position + Vector3.new(0, 3, 0)
+	root.CFrame = CFrame.new(targetPosition, trapRoot.Position)
+	return true
+end
+
 RefreshButtons = function()
 	structureStatus.Text = state.LastStructureMessage or "Waiting for structure..."
 	boxToggle.Text = state.BoxESP and "On" or "Off"
@@ -985,9 +1008,11 @@ RefreshButtons = function()
 	local boxShown = state.LastBoxShownCount or 0
 	boxStatus.Text = state.BoxESP and ("%d/%d"):format(boxShown, boxFound) or "0/0"
 	darknessToggle.Text = state.NoDarkness and "On" or "Off"
+	autoTrapToggle.Text = state.AutoHunterTrap and "On" or "Off"
 	structureAlertsToggle.Text = state.StructureNotifications and "On" or "Off"
 	boxTitle.TextColor3 = state.BoxESP and AccentColor or InactiveTextColor()
 	darknessTitle.TextColor3 = state.NoDarkness and AccentColor or InactiveTextColor()
+	autoTrapTitle.TextColor3 = state.AutoHunterTrap and AccentColor or InactiveTextColor()
 	structureAlertsTitle.TextColor3 = state.StructureNotifications and AccentColor or InactiveTextColor()
 	baseTitle.TextColor3 = InactiveTextColor()
 	filterDock.Visible = state.LootFiltersOpen and IsUEPageActive()
@@ -1045,6 +1070,16 @@ local function ToggleStructureNotifications()
 	UpdateTheme(true)
 end
 
+local function ToggleAutoHunterTrap()
+	state.AutoHunterTrap = not state.AutoHunterTrap
+	if state.AutoHunterTrap then
+		state.LastHunterTrapMove = 0
+		GoToNearestHunterTrap()
+	end
+	RefreshButtons()
+	UpdateTheme(true)
+end
+
 boxToggle.MouseButton1Click:Connect(function()
 	PlayClick()
 	ToggleBoxESP()
@@ -1086,14 +1121,21 @@ structureAlertsToggle.MouseButton1Click:Connect(function()
 	ToggleStructureNotifications()
 end)
 
+autoTrapToggle.MouseButton1Click:Connect(function()
+	PlayClick()
+	ToggleAutoHunterTrap()
+end)
+
 table.insert(ThemeObjects.StateTexts, {Object = boxTitle, IsEnabled = function() return state.BoxESP end})
 table.insert(ThemeObjects.StateTexts, {Object = darknessTitle, IsEnabled = function() return state.NoDarkness end})
 table.insert(ThemeObjects.StateTexts, {Object = structureAlertsTitle, IsEnabled = function() return state.StructureNotifications end})
+table.insert(ThemeObjects.StateTexts, {Object = autoTrapTitle, IsEnabled = function() return state.AutoHunterTrap end})
 ThemeObjects.AddFeatureKeybind({Name = "Box ESP", Storage = "UEBoxESP", Parent = boxRow, Toggle = boxToggle, Get = function() return LoadGameKeybind("UEBoxESP") end, Set = function(key) SaveGameKeybind("UEBoxESP", key) end, Action = ToggleBoxESP})
 ThemeObjects.AddFeatureKeybind({Name = "Box Filters", Storage = "UEBoxFilters", Get = function() return LoadGameKeybind("UEBoxFilters") end, Set = function(key) SaveGameKeybind("UEBoxFilters", key) end, Action = ToggleBoxFilters})
 ThemeObjects.AddFeatureKeybind({Name = "No Darkness", Storage = "UENoDarkness", Parent = darknessRow, Toggle = darknessToggle, Get = function() return LoadGameKeybind("UENoDarkness") end, Set = function(key) SaveGameKeybind("UENoDarkness", key) end, Action = ToggleNoDarkness})
 ThemeObjects.AddFeatureKeybind({Name = "Base TP", Storage = "UEBaseTP", Parent = baseRow, Toggle = baseButton, Get = function() return LoadGameKeybind("UEBaseTP") end, Set = function(key) SaveGameKeybind("UEBaseTP", key) end, Action = TeleportToBase})
 ThemeObjects.AddFeatureKeybind({Name = "Structure Alerts", Storage = "UEStructureNotifications", Parent = structureAlertsRow, Toggle = structureAlertsToggle, Get = function() return LoadGameKeybind("UEStructureNotifications") end, Set = function(key) SaveGameKeybind("UEStructureNotifications", key) end, Action = ToggleStructureNotifications})
+ThemeObjects.AddFeatureKeybind({Name = "Auto Trap TP", Storage = "UEAutoHunterTrap", Parent = autoTrapRow, Toggle = autoTrapToggle, Get = function() return LoadGameKeybind("UEAutoHunterTrap") end, Set = function(key) SaveGameKeybind("UEAutoHunterTrap", key) end, Action = ToggleAutoHunterTrap})
 
 TrackConnection("UndeadExpeditionContainerAdded", workspace.ChildAdded:Connect(function(child)
 	if child.Name == "Structures" then
@@ -1111,6 +1153,10 @@ TrackConnection("UndeadExpeditionLightingHeartbeat", RunService.Heartbeat:Connec
 	WatchStructures()
 	if state.BoxESP then
 		RefreshBoxDistances()
+	end
+	if state.AutoHunterTrap and now - (state.LastHunterTrapMove or 0) >= HUNTER_TRAP_INTERVAL then
+		state.LastHunterTrapMove = now
+		GoToNearestHunterTrap()
 	end
 	if state.BoxESP and now - (state.LastBoxScan or 0) >= BOX_SCAN_INTERVAL then
 		state.LastBoxScan = now
