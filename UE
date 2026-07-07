@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v22"
+local ModuleVersion = "UE-Utility-v23"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -135,7 +135,7 @@ local BOX_SCAN_INTERVAL = 0.75
 local HUNTER_TRAP_INTERVAL = 0.2
 local HUNTER_TRAP_ENEMY_RADIUS = 85
 local HUNTER_TRAP_SPAWN_TIMEOUT = 10
-local HUNTER_TRAP_ATTACK_INTERVAL = 0.16
+local HUNTER_TRAP_ATTACK_INTERVAL = 0.08
 local HUNTER_TRAP_LOOT_RADIUS = 95
 local HUNTER_TRAP_LOOT_INTERVAL = 0.22
 local HUNTER_TRAP_LOOT_SWEEP_TIME = 1.75
@@ -1189,40 +1189,127 @@ local function EquipCombatTool()
 	return bestTool
 end
 
-local function ToolTouchPart(tool)
-	if not tool then return nil end
-	local handle = tool:FindFirstChild("Handle")
-	if handle and handle:IsA("BasePart") then return handle end
-	return tool:FindFirstChildWhichIsA("BasePart", true)
-end
-
 local function FireTouch(partA, partB)
 	if not partA or not partB or typeof(firetouchinterest) ~= "function" then return end
 	pcall(function()
 		firetouchinterest(partA, partB, 0)
 		firetouchinterest(partA, partB, 1)
 	end)
+	pcall(function()
+		firetouchinterest(partB, partA, 0)
+		firetouchinterest(partB, partA, 1)
+	end)
+end
+
+local function CollectToolHitParts(tool)
+	local parts = {}
+	local seen = {}
+	local function add(part)
+		if part and part:IsA("BasePart") and not seen[part] then
+			seen[part] = true
+			table.insert(parts, part)
+		end
+	end
+	if tool then
+		for _, name in ipairs({"Hitbox", "HitBox", "Blade", "Sword", "Handle", "Tip"}) do
+			add(tool:FindFirstChild(name, true))
+		end
+		for _, part in ipairs(tool:GetDescendants()) do
+			if part:IsA("BasePart") then add(part) end
+		end
+	end
+	local character = Player and Player.Character
+	if character then
+		for _, name in ipairs({"RightHand", "Right Arm", "RightLowerArm", "RightUpperArm", "HumanoidRootPart"}) do
+			add(character:FindFirstChild(name))
+		end
+	end
+	return parts
+end
+
+local function CollectEnemyHitParts(enemy)
+	local parts = {}
+	local seen = {}
+	local function add(part)
+		if part and part:IsA("BasePart") and not seen[part] then
+			seen[part] = true
+			table.insert(parts, part)
+		end
+	end
+	add(EnemyRoot(enemy))
+	if enemy then
+		for _, name in ipairs({"HumanoidRootPart", "Head", "Torso", "UpperTorso", "LowerTorso"}) do
+			add(enemy:FindFirstChild(name, true))
+		end
+		for _, part in ipairs(enemy:GetDescendants()) do
+			if part:IsA("BasePart") then add(part) end
+		end
+	end
+	return parts
+end
+
+local function TouchWeaponToEnemy(tool, enemy)
+	local hitParts = CollectToolHitParts(tool)
+	local enemyParts = CollectEnemyHitParts(enemy)
+	local touches = 0
+	for _, hitPart in ipairs(hitParts) do
+		for _, enemyPart in ipairs(enemyParts) do
+			FireTouch(hitPart, enemyPart)
+			touches += 1
+			if touches >= 80 then return touches end
+		end
+	end
+	return touches
+end
+
+local function LooksLikeCombatRemote(instance)
+	local lower = string.lower(instance and instance.Name or "")
+	for _, term in ipairs({"hit", "attack", "damage", "slash", "swing", "combat", "weapon", "melee"}) do
+		if lower:find(term, 1, true) then return true end
+	end
+	return false
+end
+
+local function FireToolCombatRemotes(tool, enemy)
+	if not tool or not enemy then return end
+	local enemyRoot = EnemyRoot(enemy)
+	local humanoid = EnemyHumanoid(enemy)
+	for _, remote in ipairs(tool:GetDescendants()) do
+		if (remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction")) and LooksLikeCombatRemote(remote) then
+			local function send(...)
+				if remote:IsA("RemoteEvent") then
+					remote:FireServer(...)
+				else
+					remote:InvokeServer(...)
+				end
+			end
+			pcall(send, enemy)
+			pcall(send, enemyRoot)
+			pcall(send, humanoid)
+			pcall(send, enemy, enemyRoot)
+			pcall(send, {Target = enemy, Hit = enemyRoot, Humanoid = humanoid})
+		end
+	end
 end
 
 local function AttackHunterTrapEnemy(enemy, trapPosition)
 	local enemyRoot = EnemyRoot(enemy)
 	local playerRoot = PlayerRoot()
 	if not enemyRoot or not playerRoot then return false end
-	local approachOffset = (playerRoot.Position - enemyRoot.Position)
-	if approachOffset.Magnitude < 1 then approachOffset = Vector3.new(0, 0, 1) end
-	local attackPosition = enemyRoot.Position + approachOffset.Unit * 3 + Vector3.new(0, 1.4, 0)
-	StableTeleport(CFrame.new(attackPosition, enemyRoot.Position))
 	local tool = EquipCombatTool()
-	if tool then pcall(function() tool:Activate() end) end
-	local hitPart = ToolTouchPart(tool) or PlayerRoot()
-	FireTouch(hitPart, enemyRoot)
-	local touched = 0
-	for _, part in ipairs(enemy:GetDescendants()) do
-		if part:IsA("BasePart") then
-			FireTouch(hitPart, part)
-			touched += 1
-			if touched >= 12 then break end
+	local approach = enemyRoot.CFrame.LookVector
+	if approach.Magnitude < 0.5 then approach = Vector3.new(0, 0, -1) end
+	local attackPosition = enemyRoot.Position - approach.Unit * 1.45 + Vector3.new(0, 1.1, 0)
+	for _ = 1, 4 do
+		if not state.AutoHunterTrap or not enemyRoot.Parent then break end
+		StableTeleport(CFrame.new(attackPosition, enemyRoot.Position))
+		tool = tool and tool.Parent and tool or EquipCombatTool()
+		if tool then
+			pcall(function() tool:Activate() end)
 		end
+		TouchWeaponToEnemy(tool, enemy)
+		FireToolCombatRemotes(tool, enemy)
+		task.wait(0.045)
 	end
 	return true
 end
@@ -1231,9 +1318,16 @@ local function TryClearHunterTrapEnemies(position)
 	local enemies = CollectEnemiesNear(position, HUNTER_TRAP_ENEMY_RADIUS)
 	if #enemies <= 0 then return 0 end
 	local now = os.clock()
-	if now - (state.LastHunterTrapAttack or 0) >= HUNTER_TRAP_ATTACK_INTERVAL then
+	if not state.HunterTrapAttackBusy and now - (state.LastHunterTrapAttack or 0) >= HUNTER_TRAP_ATTACK_INTERVAL then
 		state.LastHunterTrapAttack = now
-		AttackHunterTrapEnemy(enemies[1], position)
+		state.HunterTrapAttackBusy = true
+		local targetEnemy = enemies[1]
+		task.spawn(function()
+			pcall(function()
+				AttackHunterTrapEnemy(targetEnemy, position)
+			end)
+			state.HunterTrapAttackBusy = false
+		end)
 	end
 	return #enemies
 end
@@ -1525,12 +1619,14 @@ local function ToggleAutoHunterTrap()
 		state.AutoTrapLootStartedAt = nil
 		state.LastHunterTrapAttack = 0
 		state.LastHunterTrapLootSweep = 0
+		state.HunterTrapAttackBusy = false
 		state.LastHunterTrapMove = 0
 		AutoHunterTrapStep()
 	else
 		state.AutoTrapTarget = nil
 		state.AutoTrapPhase = nil
 		state.AutoTrapLootStartedAt = nil
+		state.HunterTrapAttackBusy = false
 	end
 	RefreshButtons()
 	UpdateTheme(true)
