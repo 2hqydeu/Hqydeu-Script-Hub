@@ -37,13 +37,27 @@ local function GuiScaleFromValue(value)
 	return InterfaceScale * (value / 50)
 end
 
-local function LoadKeybind(featureName)
-	local savedName = SavedKeybinds[featureName]
+SavedKeybinds.KeybindsByPlace = type(SavedKeybinds.KeybindsByPlace) == "table" and SavedKeybinds.KeybindsByPlace or {}
+local KeybindScopeActive = false
+local KeybindScopePlaceKey = nil
+local KeybindScopeName = nil
+local SuppressScopedKeybindSave = false
+
+local function DecodeKeybind(savedName)
 	if type(savedName) == "string" then
 		local success, keyCode = pcall(function() return Enum.KeyCode[savedName] end)
 		if success and keyCode then return keyCode end
 	end
-	return Enum.KeyCode.Unknown
+	return nil
+end
+
+local function LoadKeybind(featureName)
+	if KeybindScopeActive then
+		local bucket = SavedKeybinds.KeybindsByPlace[KeybindScopePlaceKey or tostring(game.PlaceId)]
+		local scopedKey = type(bucket) == "table" and DecodeKeybind(bucket[featureName]) or nil
+		if scopedKey then return scopedKey end
+	end
+	return DecodeKeybind(SavedKeybinds[featureName]) or Enum.KeyCode.Unknown
 end
 
 local function SavePersistentSettings()
@@ -56,13 +70,23 @@ local function SavePersistentSettings()
 end
 
 local function SaveKeybind(featureName, keyCode)
-	SavedKeybinds[featureName] = keyCode.Name
+	if SuppressScopedKeybindSave then return end
+	if KeybindScopeActive then
+		local placeKey = KeybindScopePlaceKey or tostring(game.PlaceId)
+		local bucket = SavedKeybinds.KeybindsByPlace[placeKey]
+		if type(bucket) ~= "table" then
+			bucket = {}
+			SavedKeybinds.KeybindsByPlace[placeKey] = bucket
+		end
+		bucket[featureName] = keyCode.Name
+	else
+		SavedKeybinds[featureName] = keyCode.Name
+	end
 	SavePersistentSettings()
 end
 
-SavedKeybinds.KeybindsByPlace = type(SavedKeybinds.KeybindsByPlace) == "table" and SavedKeybinds.KeybindsByPlace or {}
 local function CurrentPlaceKeybindBucket()
-	local placeKey = tostring(game.PlaceId)
+	local placeKey = KeybindScopePlaceKey or tostring(game.PlaceId)
 	local bucket = SavedKeybinds.KeybindsByPlace[placeKey]
 	if type(bucket) ~= "table" then
 		bucket = {}
@@ -72,16 +96,15 @@ local function CurrentPlaceKeybindBucket()
 end
 
 local function LoadGameKeybind(featureName)
-	local bucket = SavedKeybinds.KeybindsByPlace[tostring(game.PlaceId)]
+	local bucket = SavedKeybinds.KeybindsByPlace[KeybindScopePlaceKey or tostring(game.PlaceId)]
 	local savedName = type(bucket) == "table" and bucket[featureName] or nil
-	if type(savedName) == "string" then
-		local success, keyCode = pcall(function() return Enum.KeyCode[savedName] end)
-		if success and keyCode then return keyCode end
-	end
+	local keyCode = DecodeKeybind(savedName)
+	if keyCode then return keyCode end
 	return LoadKeybind(featureName)
 end
 
 local function SaveGameKeybind(featureName, keyCode)
+	if SuppressScopedKeybindSave then return end
 	CurrentPlaceKeybindBucket()[featureName] = keyCode.Name
 	SavePersistentSettings()
 end
@@ -325,6 +348,12 @@ ThemeObjects.AddFeatureKeybind = function(entry)
 		end
 	end
 	table.insert(ThemeObjects.FeatureKeybindEntries, entry)
+	if KeybindScopeActive and entry.Storage then
+		SuppressScopedKeybindSave = true
+		local scopedKey = LoadKeybind(entry.Storage)
+		pcall(entry.Set, scopedKey)
+		SuppressScopedKeybindSave = false
+	end
 	if entry.Parent and entry.Toggle and ThemeObjects.AttachFeatureKeybindButton then
 		ThemeObjects.AttachFeatureKeybindButton(entry, entry.Parent, entry.Toggle)
 	end
@@ -333,6 +362,33 @@ ThemeObjects.AddFeatureKeybind = function(entry)
 		ThemeObjects.AttachKeybindClearPrompt(entry, entry.Button)
 	end
 	if ThemeObjects.RefreshKeybindEditor then ThemeObjects.RefreshKeybindEditor() end
+end
+
+local function ApplyScopedKeybindsToEntries()
+	SuppressScopedKeybindSave = true
+	for _, entry in ipairs(ThemeObjects.FeatureKeybindEntries) do
+		if entry and entry.Storage and type(entry.Set) == "function" then
+			local key = LoadKeybind(entry.Storage)
+			pcall(entry.Set, key)
+			if entry.InlineButton then entry.InlineButton.Text = KeybindText(key) end
+		end
+	end
+	if HubState.MinimizeKeybind then
+		HubState.MinimizeKeybind = LoadKeybind("MinimizeGUI")
+		if HubState.MinimizeKeybindLabel then HubState.MinimizeKeybindLabel.Text = KeybindText(HubState.MinimizeKeybind) end
+	end
+	SuppressScopedKeybindSave = false
+	if ThemeObjects.RefreshKeybindEditor then ThemeObjects.RefreshKeybindEditor() end
+end
+
+local function ActivateGameKeybindScope(scopeName)
+	KeybindScopeActive = true
+	KeybindScopePlaceKey = tostring(game.PlaceId)
+	KeybindScopeName = tostring(scopeName or game.PlaceId)
+	if HubState then
+		HubState.ActiveKeybindScope = KeybindScopeName
+	end
+	ApplyScopedKeybindsToEntries()
 end
 
 ThemeObjects.BeginFeatureKeybind = function(entry, button)
@@ -2117,6 +2173,7 @@ local HqydeuRuntime = {
 	SaveKeybind = SaveKeybind,
 	LoadGameKeybind = LoadGameKeybind,
 	SaveGameKeybind = SaveGameKeybind,
+	ActivateGameKeybindScope = ActivateGameKeybindScope,
 	SavePersistentSettings = SavePersistentSettings,
 	GuiSizeValue = GuiSizeValue,
 	GuiScaleFromValue = GuiScaleFromValue,
