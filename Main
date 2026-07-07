@@ -4909,6 +4909,8 @@ local function ToggleSettings(forceClose)
 	if quietPage then quietPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true) end
 	local growPage = MainFrame:FindFirstChild("GrowABeehivePage")
 	if growPage then growPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true) end
+	local undeadPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
+	if undeadPage then undeadPage:TweenPosition(UDim2.new(posMove, activeX, 0, 54), "Out", "Quart", 0.4, true) end
 	HubState.TabScroll.Visible = not HubState.minimized
 	if not HubState.settingsOpen then
 		ThemeObjects.CloseTransientPopups()
