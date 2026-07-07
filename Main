@@ -389,6 +389,9 @@ local function ActivateGameKeybindScope(scopeName)
 		HubState.ActiveKeybindScope = KeybindScopeName
 	end
 	ApplyScopedKeybindsToEntries()
+	if ThemeObjects.ShowNotification then
+		ThemeObjects.ShowNotification("Keybinds loaded")
+	end
 end
 
 ThemeObjects.BeginFeatureKeybind = function(entry, button)
