@@ -1,7 +1,14 @@
 -- Page-only module for Hqydeu Script Hub. Upload this file to its raw GitHub target.
 local Runtime = (type(getgenv) == "function" and getgenv().HqydeuLoader_Runtime) or shared.HqydeuLoader_Runtime
 if not Runtime then return warn("Hqydeu page module: main hub runtime was not found") end
-if Runtime.ActivateGameKeybindScope then Runtime.ActivateGameKeybindScope("Grow a Beehive") end
+
+local function IsCurrentGamePage()
+	local replicatedStorage = game:GetService("ReplicatedStorage")
+	local configs = replicatedStorage:FindFirstChild("Configs")
+	local modules = replicatedStorage:FindFirstChild("Modules")
+	return (configs and configs:FindFirstChild("BeeConfig") ~= nil)
+		or (modules and modules:FindFirstChild("SeasonMath") ~= nil)
+end
 
 local HubState = Runtime.HubState
 local ThemeObjects = Runtime.ThemeObjects
@@ -1704,6 +1711,7 @@ end)
 
 ThemeObjects.OpenGrowABeehivePage = function()
 	HubState.SelectedGame = "Grow a Beehive"
+	if IsCurrentGamePage() and Runtime.ActivateGameKeybindScope then Runtime.ActivateGameKeybindScope("Grow a Beehive") end
 	HubState.settingsOpen = false
 	if HubState.SettingsPage then
 		HubState.SettingsPage.Position = UDim2.new(1.1, 80, 0, 32)
