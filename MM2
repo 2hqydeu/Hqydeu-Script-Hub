@@ -1,7 +1,10 @@
 -- Page-only module for Hqydeu Script Hub. Upload this file to its raw GitHub target.
 local Runtime = (type(getgenv) == "function" and getgenv().HqydeuLoader_Runtime) or shared.HqydeuLoader_Runtime
 if not Runtime then return warn("Hqydeu page module: main hub runtime was not found") end
-if Runtime.ActivateGameKeybindScope then Runtime.ActivateGameKeybindScope("MM2") end
+
+local function IsCurrentGamePage()
+	return game.PlaceId == 142823291
+end
 
 local HubState = Runtime.HubState
 local ThemeObjects = Runtime.ThemeObjects
@@ -1800,6 +1803,7 @@ end
 
 ThemeObjects.OpenMM2Page = function()
 	HubState.SelectedGame = "MM2"
+	if IsCurrentGamePage() and Runtime.ActivateGameKeybindScope then Runtime.ActivateGameKeybindScope("MM2") end
 	if HubState.PageHeader then HubState.PageHeader.Text = "MM2" end
 	if HubState.GamesTabButton then HubState.GamesTabButton.Text = "MM2" end
 	if HubState.MM2BackButton then HubState.MM2BackButton.Visible = true end
