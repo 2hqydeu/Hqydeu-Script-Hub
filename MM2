@@ -20,6 +20,8 @@ local InactiveTextColor = Runtime.InactiveTextColor or function() return Color3.
 local KeybindText = Runtime.KeybindText or function(keyCode) return keyCode and keyCode.Name or "..." end
 local LoadKeybind = Runtime.LoadKeybind or function() return Enum.KeyCode.Unknown end
 local SaveKeybind = Runtime.SaveKeybind or function() end
+local LoadGameKeybind = Runtime.LoadGameKeybind or LoadKeybind
+local SaveGameKeybind = Runtime.SaveGameKeybind or SaveKeybind
 local SavePersistentSettings = Runtime.SavePersistentSettings or function() end
 local GuiSizeValue = Runtime.GuiSizeValue or 50
 local GuiScaleFromValue = Runtime.GuiScaleFromValue or function(value) return 1 end
@@ -815,7 +817,7 @@ end))
 
 HubState.MM2RoleDetailsKeybindEntry = {Name = "MM2 Role Popup", Storage = "MM2RoleDetails", Button = HubState.MM2RoleDetailsBindButton, Get = function() return ThemeObjects.MM2RoleDetails.Keybind end, Set = function(key)
 	ThemeObjects.MM2RoleDetails.Keybind = key
-	SaveKeybind("MM2RoleDetails", key)
+	SaveGameKeybind("MM2RoleDetails", key)
 	if HubState.MM2RoleDetailsBindButton then HubState.MM2RoleDetailsBindButton.Text = KeybindText(key) end
 end, Action = function()
 	ThemeObjects.MM2RoleDetails.Toggle()
@@ -1542,13 +1544,13 @@ do
 	PlaceMM2Control(HubState.CoinFarmTitle, HubState.CoinFarmToggle, coinRow)
 	HubState.CoinFarmStatus.Visible = false
 	HubState.CoinFarmStatus.Parent = coinRow
-	ThemeObjects.AddFeatureKeybind({Name = "Auto Gun", Storage = "MM2AutoGun", Parent = gunRow, Toggle = HubState.AutoGunToggle, Get = function() return LoadKeybind("MM2AutoGun") end, Set = function(key) SaveKeybind("MM2AutoGun", key) end, Action = function()
+	ThemeObjects.AddFeatureKeybind({Name = "Auto Gun", Storage = "MM2AutoGun", Parent = gunRow, Toggle = HubState.AutoGunToggle, Get = function() return LoadGameKeybind("MM2AutoGun") end, Set = function(key) SaveGameKeybind("MM2AutoGun", key) end, Action = function()
 		SetAutoGunPickupEnabled(not HubState.AutoGunPickupEnabled)
 	end})
-	ThemeObjects.AddFeatureKeybind({Name = "Auto Stab", Storage = "MM2AutoStab", Parent = stabRow, Toggle = HubState.KillToggle, Get = function() return LoadKeybind("MM2AutoStab") end, Set = function(key) SaveKeybind("MM2AutoStab", key) end, Action = function()
+	ThemeObjects.AddFeatureKeybind({Name = "Auto Stab", Storage = "MM2AutoStab", Parent = stabRow, Toggle = HubState.KillToggle, Get = function() return LoadGameKeybind("MM2AutoStab") end, Set = function(key) SaveGameKeybind("MM2AutoStab", key) end, Action = function()
 		SetKillEnabled(not HubState.KillEnabled)
 	end})
-	ThemeObjects.AddFeatureKeybind({Name = "Coin Farm", Storage = "MM2CoinFarm", Parent = coinRow, Toggle = HubState.CoinFarmToggle, Get = function() return LoadKeybind("MM2CoinFarm") end, Set = function(key) SaveKeybind("MM2CoinFarm", key) end, Action = ToggleCoinFarm})
+	ThemeObjects.AddFeatureKeybind({Name = "Coin Farm", Storage = "MM2CoinFarm", Parent = coinRow, Toggle = HubState.CoinFarmToggle, Get = function() return LoadGameKeybind("MM2CoinFarm") end, Set = function(key) SaveGameKeybind("MM2CoinFarm", key) end, Action = ToggleCoinFarm})
 
 	local autoShootEnabled = false
 	local lastGunFired = 0
@@ -1704,7 +1706,7 @@ do
 	end)
 
 	table.insert(ThemeObjects.StateTexts, {Object = autoShootTitle, IsEnabled = function() return autoShootEnabled end})
-	ThemeObjects.AddFeatureKeybind({Name = "Auto Shoot", Storage = "MM2AutoShoot", Parent = shootRow, Toggle = autoShootToggle, Get = function() return LoadKeybind("MM2AutoShoot") end, Set = function(key) SaveKeybind("MM2AutoShoot", key) end, Action = function()
+	ThemeObjects.AddFeatureKeybind({Name = "Auto Shoot", Storage = "MM2AutoShoot", Parent = shootRow, Toggle = autoShootToggle, Get = function() return LoadGameKeybind("MM2AutoShoot") end, Set = function(key) SaveGameKeybind("MM2AutoShoot", key) end, Action = function()
 		SetAutoShootEnabled(not autoShootEnabled)
 	end})
 
