@@ -22,7 +22,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v3"
+local ModuleVersion = "UE-Utility-v4"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 if existingPage and existingPage:GetAttribute("ModuleVersion") == ModuleVersion and ThemeObjects.OpenUndeadExpeditionPage then
@@ -40,10 +40,13 @@ end
 
 local state = HubState.UndeadExpeditionState or {
 	EnemyESP = false,
+	LootESP = false,
 	NoDarkness = false,
 	LastEnemyCount = 0,
+	LastLootCount = 0,
 	LastScan = 0,
 	ESPObjects = {},
+	LootObjects = {},
 }
 HubState.UndeadExpeditionState = state
 if type(state.CandidateConnections) == "table" then
@@ -53,14 +56,25 @@ if type(state.CandidateConnections) == "table" then
 		end
 	end
 end
+if type(state.LootCandidateConnections) == "table" then
+	for _, connection in pairs(state.LootCandidateConnections) do
+		if connection then connection:Disconnect() end
+	end
+end
 state.ESPObjects = {}
+state.LootObjects = {}
 state.EnemyESP = state.EnemyESP == true
+state.LootESP = state.LootESP == true
 state.NoDarkness = state.NoDarkness == true
 state.CandidateModels = {}
 state.CandidateConnections = {}
+state.LootCandidates = {}
+state.LootCandidateConnections = {}
 state.LastShownCount = 0
+state.LastLootShownCount = 0
 
 local MAX_ESP_OBJECTS = 22
+local MAX_LOOT_OBJECTS = 28
 local FULL_RESCAN_INTERVAL = 6
 local LABEL_UPDATE_INTERVAL = 1.2
 local BASE_POSITION = Vector3.new(130, 53, -397)
@@ -69,16 +83,17 @@ local uePage = Instance.new("ScrollingFrame")
 uePage.Name = "UndeadExpeditionPage"
 uePage.Size = UDim2.new(0, 346, 1, -54)
 uePage.Position = UDim2.new(1.1, 0, 0, 54)
-uePage.BackgroundColor3 = Color3.fromRGB(22, 10, 28)
-uePage.BackgroundTransparency = 0.05
+uePage.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
+uePage.BackgroundTransparency = 1
 uePage.BorderSizePixel = 0
 uePage.ClipsDescendants = true
+uePage.ZIndex = 2
 uePage.ScrollBarThickness = 3
 uePage.ScrollBarImageColor3 = AccentColor
 uePage.ScrollingDirection = Enum.ScrollingDirection.Y
 uePage.ElasticBehavior = Enum.ElasticBehavior.Never
 uePage.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-uePage.CanvasSize = UDim2.new(0, 0, 0, 160)
+uePage.CanvasSize = UDim2.new(0, 0, 0, 206)
 uePage.Visible = false
 uePage:SetAttribute("ModuleVersion", ModuleVersion)
 uePage.Parent = MainFrame
@@ -120,8 +135,9 @@ local function CreateRow(name, y)
 	row.Size = UDim2.new(1, -24, 0, 38)
 	row.Position = UDim2.new(0, 12, 0, y)
 	row.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
-	row.BackgroundTransparency = 0.08
+	row.BackgroundTransparency = 0.92
 	row.BorderSizePixel = 0
+	row.ZIndex = 3
 	row.Parent = uePage
 	AddBackground(row)
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
@@ -133,6 +149,7 @@ local function CreateTitle(parent, text)
 	title.Size = UDim2.new(0, 150, 0, 24)
 	title.Position = UDim2.new(0, 12, 0, 7)
 	title.BackgroundTransparency = 1
+	title.ZIndex = 4
 	title.Text = text
 	title.Font = Enum.Font.GothamBold
 	title.TextSize = 11
@@ -149,6 +166,7 @@ local function CreateButton(parent, name, text, xOffset, width)
 	button.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	button.BackgroundTransparency = 0.8
 	button.BorderSizePixel = 0
+	button.ZIndex = 4
 	button.Text = text
 	button.Font = Enum.Font.GothamBold
 	button.TextSize = 9
@@ -176,11 +194,28 @@ espStatus.Parent = espRow
 AddText(espStatus)
 local espToggle = CreateButton(espRow, "UndeadExpeditionEnemyESPToggle", "Off", -98, 44)
 
-local darknessRow = CreateRow("UndeadExpeditionNoDarknessRow", 50)
+local lootRow = CreateRow("UndeadExpeditionLootESPRow", 50)
+local lootTitle = CreateTitle(lootRow, "Loot ESP:")
+local lootStatus = Instance.new("TextLabel")
+lootStatus.Name = "UndeadExpeditionLootESPStatus"
+lootStatus.Size = UDim2.new(0, 78, 0, 18)
+lootStatus.Position = UDim2.new(1, -184, 0, 10)
+lootStatus.BackgroundTransparency = 1
+lootStatus.ZIndex = 4
+lootStatus.Text = "Shown: 0/0"
+lootStatus.Font = Enum.Font.GothamBold
+lootStatus.TextSize = 8
+lootStatus.TextXAlignment = Enum.TextXAlignment.Right
+lootStatus.TextTruncate = Enum.TextTruncate.AtEnd
+lootStatus.Parent = lootRow
+AddText(lootStatus)
+local lootToggle = CreateButton(lootRow, "UndeadExpeditionLootESPToggle", "Off", -98, 44)
+
+local darknessRow = CreateRow("UndeadExpeditionNoDarknessRow", 96)
 local darknessTitle = CreateTitle(darknessRow, "No Darkness:")
 local darknessToggle = CreateButton(darknessRow, "UndeadExpeditionNoDarknessToggle", "Off", -98, 44)
 
-local baseRow = CreateRow("UndeadExpeditionBaseTPRow", 96)
+local baseRow = CreateRow("UndeadExpeditionBaseTPRow", 142)
 local baseTitle = CreateTitle(baseRow, "Base TP:")
 local baseButton = CreateButton(baseRow, "UndeadExpeditionBaseTPButton", "TP", -98, 44)
 
@@ -277,6 +312,243 @@ local function AddCandidateFromDescendant(obj)
 	end
 end
 
+local rarityDefinitions = {
+	{Name = "Secret", Key = "secret", Color = Color3.fromRGB(255, 0, 255)},
+	{Name = "Mythic", Key = "mythic", Color = Color3.fromRGB(255, 60, 90)},
+	{Name = "Legendary", Key = "legendary", Color = Color3.fromRGB(255, 170, 0)},
+	{Name = "Epic", Key = "epic", Color = Color3.fromRGB(190, 80, 255)},
+	{Name = "Rare", Key = "rare", Color = Color3.fromRGB(0, 170, 255)},
+	{Name = "Uncommon", Key = "uncommon", Color = Color3.fromRGB(70, 255, 90)},
+	{Name = "Common", Key = "common", Color = Color3.fromRGB(210, 210, 210)},
+}
+
+local lootNameHints = {
+	loot = true,
+	drop = true,
+	chest = true,
+	crate = true,
+	supply = true,
+	reward = true,
+	pickup = true,
+	item = true,
+	weapon = true,
+	ammo = true,
+	cash = true,
+	coin = true,
+	gem = true,
+}
+
+local function SafeGet(instance, property)
+	local ok, value = pcall(function()
+		return instance[property]
+	end)
+	if ok then return value end
+	return nil
+end
+
+local function SafeSet(instance, property, value)
+	pcall(function()
+		instance[property] = value
+	end)
+end
+
+local function IsPlayerOwned(instance)
+	if not instance then return true end
+	if instance:IsDescendantOf(MainFrame) or (ScreenGui and instance:IsDescendantOf(ScreenGui)) then return true end
+	for _, otherPlayer in ipairs(Players:GetPlayers()) do
+		if otherPlayer.Character and instance:IsDescendantOf(otherPlayer.Character) then return true end
+	end
+	if Player then
+		if Player:FindFirstChildOfClass("Backpack") and instance:IsDescendantOf(Player:FindFirstChildOfClass("Backpack")) then return true end
+		if Player:FindFirstChildOfClass("PlayerGui") and instance:IsDescendantOf(Player:FindFirstChildOfClass("PlayerGui")) then return true end
+	end
+	return false
+end
+
+local function NormalizeRarity(value)
+	if value == nil then return nil end
+	local raw = tostring(value)
+	if raw == "" then return nil end
+	local lower = string.lower(raw)
+	for _, definition in ipairs(rarityDefinitions) do
+		if lower:find(definition.Key, 1, true) then return definition.Name end
+	end
+	if tonumber(raw) then
+		local number = tonumber(raw)
+		if number <= 1 then return "Common" end
+		if number == 2 then return "Uncommon" end
+		if number == 3 then return "Rare" end
+		if number == 4 then return "Epic" end
+		if number == 5 then return "Legendary" end
+		return "Mythic"
+	end
+	return nil
+end
+
+local function RarityColor(rarity)
+	local lower = string.lower(tostring(rarity or ""))
+	for _, definition in ipairs(rarityDefinitions) do
+		if lower == string.lower(definition.Name) then return definition.Color end
+	end
+	return Color3.fromRGB(255, 255, 255)
+end
+
+local rarityAttributes = {"Rarity", "rarity", "Tier", "tier", "Quality", "quality", "ItemRarity", "DropRarity"}
+
+local function ReadRarityFrom(instance)
+	if not instance then return nil end
+	for _, attributeName in ipairs(rarityAttributes) do
+		local rarity = NormalizeRarity(instance:GetAttribute(attributeName))
+		if rarity then return rarity end
+	end
+	for _, child in ipairs(instance:GetChildren()) do
+		if child:IsA("StringValue") or child:IsA("IntValue") or child:IsA("NumberValue") then
+			local lower = string.lower(child.Name or "")
+			if lower:find("rarity", 1, true) or lower:find("tier", 1, true) or lower:find("quality", 1, true) then
+				local rarity = NormalizeRarity(child.Value)
+				if rarity then return rarity end
+			end
+		end
+	end
+	return nil
+end
+
+local function LootRarity(instance)
+	local current = instance
+	while current and current ~= workspace do
+		local rarity = ReadRarityFrom(current)
+		if rarity then return rarity end
+		local lower = string.lower(current.Name or "")
+		for _, definition in ipairs(rarityDefinitions) do
+			if lower:find(definition.Key, 1, true) then return definition.Name end
+		end
+		current = current.Parent
+	end
+	return "Loot"
+end
+
+local function HasLootNameHint(instance)
+	local current = instance
+	while current and current ~= workspace do
+		local lower = string.lower(current.Name or "")
+		for hint in pairs(lootNameHints) do
+			if lower:find(hint, 1, true) then return true end
+		end
+		current = current.Parent
+	end
+	return false
+end
+
+local function LooksLikeLoot(instance)
+	if not instance or IsPlayerOwned(instance) then return false end
+	if ReadRarityFrom(instance) then return true end
+	if instance:IsA("ProximityPrompt") then
+		local text = string.lower(tostring(instance.ActionText or "") .. " " .. tostring(instance.ObjectText or ""))
+		for hint in pairs(lootNameHints) do
+			if text:find(hint, 1, true) then return true end
+		end
+	end
+	if instance:IsA("BasePart") or instance:IsA("Model") or instance:IsA("Tool") or instance:IsA("ProximityPrompt") then
+		return HasLootNameHint(instance)
+	end
+	return false
+end
+
+local function LootTargetFromDescendant(instance)
+	if not LooksLikeLoot(instance) then return nil end
+	local target = instance:IsA("ProximityPrompt") and instance.Parent or instance
+	local tool = target and (target:IsA("Tool") and target or target:FindFirstAncestorOfClass("Tool"))
+	if tool and not IsPlayerOwned(tool) then return tool end
+	local model = target and (target:IsA("Model") and target or target:FindFirstAncestorOfClass("Model"))
+	if model and model ~= workspace and not IsPlayerCharacter(model) and not IsPlayerOwned(model) then return model end
+	if target and target:IsA("BasePart") and not IsPlayerOwned(target) then return target end
+	return nil
+end
+
+local function LootRoot(target)
+	if not target then return nil end
+	if target:IsA("BasePart") then return target end
+	if target:IsA("Tool") then return target:FindFirstChild("Handle") or target:FindFirstChildWhichIsA("BasePart") end
+	if target:IsA("Model") then return target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart") end
+	return nil
+end
+
+local function LootDisplayName(target)
+	if not target then return "Loot" end
+	local displayName = target:GetAttribute("DisplayName") or target:GetAttribute("ItemName") or target:GetAttribute("Name")
+	if displayName and tostring(displayName) ~= "" then return tostring(displayName) end
+	if target.Name == "Handle" and target.Parent then return tostring(target.Parent.Name) end
+	return tostring(target.Name or "Loot")
+end
+
+local RemoveLootESP
+
+local function RemoveLootCandidate(target)
+	state.LootCandidates[target] = nil
+	local connection = state.LootCandidateConnections[target]
+	if connection then connection:Disconnect() end
+	state.LootCandidateConnections[target] = nil
+end
+
+local function AddLootCandidateFromDescendant(instance)
+	local target = LootTargetFromDescendant(instance)
+	if not target or state.LootCandidates[target] then return end
+	if not LootRoot(target) then return end
+	state.LootCandidates[target] = true
+	state.LootCandidateConnections[target] = target.AncestryChanged:Connect(function(_, parent)
+		if not parent then
+			if RemoveLootESP then RemoveLootESP(target) end
+			RemoveLootCandidate(target)
+		end
+	end)
+end
+
+local function CreateLootESP(target)
+	local root = LootRoot(target)
+	if not root then return nil end
+	local rarity = LootRarity(target)
+	local color = RarityColor(rarity)
+
+	local holder = Instance.new("Folder")
+	holder.Name = "LootESP_" .. target.Name
+	holder.Parent = espFolder
+
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "LootHighlight"
+	highlight.Adornee = target
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.FillColor = color
+	highlight.OutlineColor = color
+	highlight.FillTransparency = 0.82
+	highlight.OutlineTransparency = 0.05
+	highlight.Parent = holder
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "LootBillboard"
+	billboard.Adornee = root
+	billboard.Size = UDim2.new(0, 140, 0, 26)
+	billboard.StudsOffset = Vector3.new(0, 2.5, 0)
+	billboard.AlwaysOnTop = true
+	billboard.LightInfluence = 0
+	billboard.MaxDistance = 750
+	billboard.Parent = holder
+
+	local label = Instance.new("TextLabel")
+	label.Name = "LootLabel"
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.BackgroundTransparency = 1
+	label.Text = ("%s  [%s]"):format(LootDisplayName(target), rarity)
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 10
+	label.TextColor3 = color
+	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	label.TextStrokeTransparency = 0.18
+	label.TextWrapped = true
+	label.Parent = billboard
+
+	return {Holder = holder, Billboard = billboard, Label = label, Highlight = highlight, LastRarity = rarity}
+end
+
 local function CreateESP(model)
 	local root = EnemyRoot(model)
 	if not root then return nil end
@@ -320,42 +592,123 @@ local function ClearESP()
 	for model in pairs(state.ESPObjects) do
 		RemoveESP(model)
 	end
-	if espFolder then espFolder:ClearAllChildren() end
+end
+
+function RemoveLootESP(target)
+	local entry = state.LootObjects[target]
+	if entry and entry.Holder then entry.Holder:Destroy() end
+	state.LootObjects[target] = nil
+end
+
+local function ClearLootESP()
+	for target in pairs(state.LootObjects) do
+		RemoveLootESP(target)
+	end
+end
+
+local function FullLootScan()
+	for _, obj in ipairs(workspace:GetDescendants()) do
+		AddLootCandidateFromDescendant(obj)
+	end
+end
+
+local lightingEffectProperties = {
+	Atmosphere = {"Density", "Offset", "Color", "Decay", "Glare", "Haze"},
+	ColorCorrectionEffect = {"Enabled", "Brightness", "Contrast", "Saturation", "TintColor"},
+	BloomEffect = {"Enabled", "Intensity", "Size", "Threshold"},
+	BlurEffect = {"Enabled", "Size"},
+	DepthOfFieldEffect = {"Enabled", "FarIntensity", "FocusDistance", "InFocusRadius", "NearIntensity"},
+	SunRaysEffect = {"Enabled", "Intensity", "Spread"},
+}
+
+local function LightingEffectClass(instance)
+	for className in pairs(lightingEffectProperties) do
+		if instance:IsA(className) then return className end
+	end
+	return nil
+end
+
+local function CaptureLightingEffectDefaults(effect, original)
+	local className = LightingEffectClass(effect)
+	if not className then return end
+	original.Effects = original.Effects or {}
+	if original.Effects[effect] then return end
+	local saved = {}
+	for _, property in ipairs(lightingEffectProperties[className]) do
+		local value = SafeGet(effect, property)
+		if value ~= nil then saved[property] = value end
+	end
+	original.Effects[effect] = saved
 end
 
 local function SaveLightingDefaults()
-	if state.OriginalLighting then return end
-	state.OriginalLighting = {
-		ClockTime = Lighting.ClockTime,
-		Brightness = Lighting.Brightness,
-		FogEnd = Lighting.FogEnd,
-		FogStart = Lighting.FogStart,
-		FogColor = Lighting.FogColor,
-		Ambient = Lighting.Ambient,
-		OutdoorAmbient = Lighting.OutdoorAmbient,
-		ExposureCompensation = Lighting.ExposureCompensation,
-	}
+	if not state.OriginalLighting then
+		state.OriginalLighting = {
+			ClockTime = Lighting.ClockTime,
+			TimeOfDay = SafeGet(Lighting, "TimeOfDay"),
+			Brightness = Lighting.Brightness,
+			FogEnd = Lighting.FogEnd,
+			FogStart = Lighting.FogStart,
+			FogColor = Lighting.FogColor,
+			Ambient = Lighting.Ambient,
+			OutdoorAmbient = Lighting.OutdoorAmbient,
+			ExposureCompensation = Lighting.ExposureCompensation,
+			GlobalShadows = SafeGet(Lighting, "GlobalShadows"),
+			Effects = {},
+		}
+	end
+	for _, child in ipairs(Lighting:GetChildren()) do
+		CaptureLightingEffectDefaults(child, state.OriginalLighting)
+	end
 end
 
 local function ApplyNoDarkness()
 	SaveLightingDefaults()
-	Lighting.ClockTime = 14
-	Lighting.Brightness = 3
-	Lighting.FogStart = 0
-	Lighting.FogEnd = 100000
-	Lighting.FogColor = Color3.fromRGB(255, 255, 255)
-	Lighting.Ambient = Color3.fromRGB(180, 180, 180)
-	Lighting.OutdoorAmbient = Color3.fromRGB(180, 180, 180)
-	Lighting.ExposureCompensation = 0.25
+	SafeSet(Lighting, "ClockTime", 14)
+	SafeSet(Lighting, "TimeOfDay", "14:00:00")
+	SafeSet(Lighting, "Brightness", 4)
+	SafeSet(Lighting, "FogStart", 0)
+	SafeSet(Lighting, "FogEnd", 1000000)
+	SafeSet(Lighting, "FogColor", Color3.fromRGB(255, 255, 255))
+	SafeSet(Lighting, "Ambient", Color3.fromRGB(255, 255, 255))
+	SafeSet(Lighting, "OutdoorAmbient", Color3.fromRGB(255, 255, 255))
+	SafeSet(Lighting, "ExposureCompensation", 0.45)
+	SafeSet(Lighting, "GlobalShadows", false)
+	for _, child in ipairs(Lighting:GetChildren()) do
+		CaptureLightingEffectDefaults(child, state.OriginalLighting)
+		if child:IsA("Atmosphere") then
+			SafeSet(child, "Density", 0)
+			SafeSet(child, "Haze", 0)
+			SafeSet(child, "Glare", 0)
+			SafeSet(child, "Offset", 0)
+			SafeSet(child, "Color", Color3.fromRGB(255, 255, 255))
+			SafeSet(child, "Decay", Color3.fromRGB(255, 255, 255))
+		elseif child:IsA("ColorCorrectionEffect") then
+			SafeSet(child, "Enabled", false)
+			SafeSet(child, "Brightness", 0)
+			SafeSet(child, "Contrast", 0)
+			SafeSet(child, "Saturation", 0)
+			SafeSet(child, "TintColor", Color3.fromRGB(255, 255, 255))
+		elseif child:IsA("BloomEffect") or child:IsA("BlurEffect") or child:IsA("DepthOfFieldEffect") or child:IsA("SunRaysEffect") then
+			SafeSet(child, "Enabled", false)
+		end
+	end
 end
 
 local function RestoreLighting()
 	local original = state.OriginalLighting
 	if not original then return end
 	for property, value in pairs(original) do
-		pcall(function()
-			Lighting[property] = value
-		end)
+		if property ~= "Effects" then
+			SafeSet(Lighting, property, value)
+		end
+	end
+	for effect, properties in pairs(original.Effects or {}) do
+		if typeof(effect) == "Instance" and effect.Parent then
+			for property, value in pairs(properties) do
+				SafeSet(effect, property, value)
+			end
+		end
 	end
 end
 
@@ -450,19 +803,94 @@ local function UpdateESP()
 	state.LastShownCount = shown
 end
 
+local function UpdateLootESP()
+	if not state.LootESP then
+		state.LastLootCount = 0
+		state.LastLootShownCount = 0
+		ClearLootESP()
+		return
+	end
+	local now = os.clock()
+	if now - (state.LastLootFullScan or 0) >= FULL_RESCAN_INTERVAL then
+		state.LastLootFullScan = now
+		FullLootScan()
+	end
+
+	local playerRoot = PlayerRoot()
+	local candidates = {}
+	for target in pairs(state.LootCandidates) do
+		local root = LootRoot(target)
+		if target.Parent and root and not IsPlayerOwned(target) then
+			local distance = playerRoot and (root.Position - playerRoot.Position).Magnitude or 0
+			table.insert(candidates, {Target = target, Root = root, Distance = distance})
+		else
+			RemoveLootESP(target)
+			RemoveLootCandidate(target)
+		end
+	end
+	table.sort(candidates, function(a, b)
+		return a.Distance < b.Distance
+	end)
+
+	local seen = {}
+	local shown = 0
+	for _, candidate in ipairs(candidates) do
+		if shown >= MAX_LOOT_OBJECTS then break end
+		local target = candidate.Target
+		seen[target] = true
+		shown += 1
+		local entry = state.LootObjects[target]
+		if not entry or not entry.Holder or not entry.Holder.Parent then
+			entry = CreateLootESP(target)
+			state.LootObjects[target] = entry
+		end
+		if entry then
+			local rarity = LootRarity(target)
+			local color = RarityColor(rarity)
+			entry.Billboard.Adornee = candidate.Root
+			entry.Label.TextColor3 = color
+			if entry.Highlight then
+				entry.Highlight.Adornee = target
+				entry.Highlight.FillColor = color
+				entry.Highlight.OutlineColor = color
+			end
+			if now - (entry.LastLabelUpdate or 0) >= LABEL_UPDATE_INTERVAL then
+				entry.LastLabelUpdate = now
+				entry.Label.Text = ("%s  [%s]  [%dm]"):format(LootDisplayName(target), rarity, math.floor(candidate.Distance))
+			end
+		end
+	end
+
+	for target in pairs(state.LootObjects) do
+		if not seen[target] then
+			RemoveLootESP(target)
+		end
+	end
+	state.LastLootCount = #candidates
+	state.LastLootShownCount = shown
+end
+
 local function RefreshButtons()
 	espToggle.Text = state.EnemyESP and "On" or "Off"
+	lootToggle.Text = state.LootESP and "On" or "Off"
 	darknessToggle.Text = state.NoDarkness and "On" or "Off"
 	local found = state.LastEnemyCount or 0
 	local shown = state.LastShownCount or 0
+	local lootFound = state.LastLootCount or 0
+	local lootShown = state.LastLootShownCount or 0
 	espStatus.Text = state.EnemyESP and ("Shown: %d/%d"):format(shown, found) or "Shown: 0/0"
+	lootStatus.Text = state.LootESP and ("Shown: %d/%d"):format(lootShown, lootFound) or "Shown: 0/0"
 	espTitle.TextColor3 = state.EnemyESP and AccentColor or InactiveTextColor()
+	lootTitle.TextColor3 = state.LootESP and AccentColor or InactiveTextColor()
 	darknessTitle.TextColor3 = state.NoDarkness and AccentColor or InactiveTextColor()
 	baseTitle.TextColor3 = InactiveTextColor()
 	for _, obj in ipairs(uePage:GetDescendants()) do
 		if obj:IsA("TextButton") then
+			obj.ZIndex = 4
 			EnsureControlOutline(obj)
 			if obj.Name == "FeatureKeybindButton" then obj.TextColor3 = AccentColor end
+		elseif obj:IsA("TextLabel") then
+			obj.ZIndex = 4
 		end
 	end
 end
@@ -480,6 +908,19 @@ local function ToggleEnemyESP()
 	UpdateTheme(true)
 end
 
+local function ToggleLootESP()
+	state.LootESP = not state.LootESP
+	if state.LootESP then
+		state.LastLootFullScan = 0
+		FullLootScan()
+		UpdateLootESP()
+	else
+		ClearLootESP()
+	end
+	RefreshButtons()
+	UpdateTheme(true)
+end
+
 local function ToggleNoDarkness()
 	SetNoDarkness(not state.NoDarkness)
 	RefreshButtons()
@@ -489,6 +930,10 @@ end
 espToggle.MouseButton1Click:Connect(function()
 	PlayClick()
 	ToggleEnemyESP()
+end)
+lootToggle.MouseButton1Click:Connect(function()
+	PlayClick()
+	ToggleLootESP()
 end)
 darknessToggle.MouseButton1Click:Connect(function()
 	PlayClick()
@@ -500,14 +945,20 @@ baseButton.MouseButton1Click:Connect(function()
 end)
 
 table.insert(ThemeObjects.StateTexts, {Object = espTitle, IsEnabled = function() return state.EnemyESP end})
+table.insert(ThemeObjects.StateTexts, {Object = lootTitle, IsEnabled = function() return state.LootESP end})
 table.insert(ThemeObjects.StateTexts, {Object = darknessTitle, IsEnabled = function() return state.NoDarkness end})
 ThemeObjects.AddFeatureKeybind({Name = "Enemy ESP", Storage = "UEEnemyESP", Parent = espRow, Toggle = espToggle, Get = function() return LoadKeybind("UEEnemyESP") end, Set = function(key) SaveKeybind("UEEnemyESP", key) end, Action = ToggleEnemyESP})
+ThemeObjects.AddFeatureKeybind({Name = "Loot ESP", Storage = "UELootESP", Parent = lootRow, Toggle = lootToggle, Get = function() return LoadKeybind("UELootESP") end, Set = function(key) SaveKeybind("UELootESP", key) end, Action = ToggleLootESP})
 ThemeObjects.AddFeatureKeybind({Name = "No Darkness", Storage = "UENoDarkness", Parent = darknessRow, Toggle = darknessToggle, Get = function() return LoadKeybind("UENoDarkness") end, Set = function(key) SaveKeybind("UENoDarkness", key) end, Action = ToggleNoDarkness})
 ThemeObjects.AddFeatureKeybind({Name = "Base TP", Storage = "UEBaseTP", Parent = baseRow, Toggle = baseButton, Get = function() return LoadKeybind("UEBaseTP") end, Set = function(key) SaveKeybind("UEBaseTP", key) end, Action = TeleportToBase})
 
 TrackConnection("UndeadExpeditionCandidateAdded", workspace.DescendantAdded:Connect(function(obj)
-	if not state.EnemyESP then return end
-	AddCandidateFromDescendant(obj)
+	if state.EnemyESP then
+		AddCandidateFromDescendant(obj)
+	end
+	if state.LootESP then
+		AddLootCandidateFromDescendant(obj)
+	end
 end))
 
 TrackConnection("UndeadExpeditionESPHeartbeat", RunService.Heartbeat:Connect(function()
@@ -520,12 +971,16 @@ TrackConnection("UndeadExpeditionESPHeartbeat", RunService.Heartbeat:Connect(fun
 	if now - (state.LastScan or 0) < 0.5 then return end
 	state.LastScan = now
 	UpdateESP()
+	UpdateLootESP()
 	RefreshButtons()
 end))
 
 ThemeObjects.OpenUndeadExpeditionPage = function()
 	HubState.SelectedGame = "Undead Expedition"
 	HubState.settingsOpen = false
+	if ThemeObjects.CloseTransientPopups then
+		ThemeObjects.CloseTransientPopups()
+	end
 	if HubState.SettingsPage then
 		HubState.SettingsPage.Position = UDim2.new(1.1, 80, 0, 32)
 	end
@@ -573,4 +1028,3 @@ end
 RefreshButtons()
 ThemeObjects.OpenUndeadExpeditionPage()
 UpdateTheme(true)
-
