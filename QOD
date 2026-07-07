@@ -20,6 +20,8 @@ local InactiveTextColor = Runtime.InactiveTextColor or function() return Color3.
 local KeybindText = Runtime.KeybindText or function(keyCode) return keyCode and keyCode.Name or "..." end
 local LoadKeybind = Runtime.LoadKeybind or function() return Enum.KeyCode.Unknown end
 local SaveKeybind = Runtime.SaveKeybind or function() end
+local LoadGameKeybind = Runtime.LoadGameKeybind or LoadKeybind
+local SaveGameKeybind = Runtime.SaveGameKeybind or SaveKeybind
 local SavePersistentSettings = Runtime.SavePersistentSettings or function() end
 local GuiSizeValue = Runtime.GuiSizeValue or 50
 local GuiScaleFromValue = Runtime.GuiScaleFromValue or function(value) return 1 end
@@ -608,7 +610,7 @@ do
 		killTitle.TextColor3 = killState.Enabled and AccentColor or InactiveTextColor()
 	end)
 	table.insert(ThemeObjects.StateTexts, {Object = killTitle, IsEnabled = function() return killState.Enabled end})
-	ThemeObjects.AddFeatureKeybind({Name = "Auto Kill", Storage = "QODAutoKill", Parent = killRow, Toggle = killToggle, Get = function() return LoadKeybind("QODAutoKill") end, Set = function(key) SaveKeybind("QODAutoKill", key) end, Action = function()
+	ThemeObjects.AddFeatureKeybind({Name = "Auto Kill", Storage = "QODAutoKill", Parent = killRow, Toggle = killToggle, Get = function() return LoadGameKeybind("QODAutoKill") end, Set = function(key) SaveGameKeybind("QODAutoKill", key) end, Action = function()
 		killState.Enabled = not killState.Enabled
 		killToggle.Text = killState.Enabled and "On" or "Off"
 		killTitle.TextColor3 = killState.Enabled and AccentColor or InactiveTextColor()
@@ -620,7 +622,7 @@ do
 		reviveTitle.TextColor3 = reviveState.Enabled and AccentColor or InactiveTextColor()
 	end)
 	table.insert(ThemeObjects.StateTexts, {Object = reviveTitle, IsEnabled = function() return reviveState.Enabled end})
-	ThemeObjects.AddFeatureKeybind({Name = "Auto Revive", Storage = "QODAutoRevive", Parent = reviveRow, Toggle = reviveToggle, Get = function() return LoadKeybind("QODAutoRevive") end, Set = function(key) SaveKeybind("QODAutoRevive", key) end, Action = function()
+	ThemeObjects.AddFeatureKeybind({Name = "Auto Revive", Storage = "QODAutoRevive", Parent = reviveRow, Toggle = reviveToggle, Get = function() return LoadGameKeybind("QODAutoRevive") end, Set = function(key) SaveGameKeybind("QODAutoRevive", key) end, Action = function()
 		reviveState.Enabled = not reviveState.Enabled
 		reviveState.Triggered = {}
 		reviveToggle.Text = reviveState.Enabled and "On" or "Off"
@@ -644,7 +646,7 @@ do
 		farmTitle.TextColor3 = farmState.Enabled and AccentColor or InactiveTextColor()
 	end)
 	table.insert(ThemeObjects.StateTexts, {Object = farmTitle, IsEnabled = function() return farmState.Enabled end})
-	ThemeObjects.AddFeatureKeybind({Name = "Auto Farm", Storage = "QODAutoFarm", Parent = farmRow, Toggle = farmToggle, Get = function() return LoadKeybind("QODAutoFarm") end, Set = function(key) SaveKeybind("QODAutoFarm", key) end, Action = function()
+	ThemeObjects.AddFeatureKeybind({Name = "Auto Farm", Storage = "QODAutoFarm", Parent = farmRow, Toggle = farmToggle, Get = function() return LoadGameKeybind("QODAutoFarm") end, Set = function(key) SaveGameKeybind("QODAutoFarm", key) end, Action = function()
 		farmState.Enabled = not farmState.Enabled
 		if farmState.Enabled and eventState.Enabled and farmState.SafePlace then
 			eventState.Enabled = false
@@ -695,7 +697,7 @@ do
 		eventTitle.TextColor3 = eventState.Enabled and AccentColor or InactiveTextColor()
 	end)
 	table.insert(ThemeObjects.StateTexts, {Object = eventTitle, IsEnabled = function() return eventState.Enabled end})
-	ThemeObjects.AddFeatureKeybind({Name = "Auto Event", Storage = "QODAutoEvent", Parent = eventRow, Toggle = eventToggle, Get = function() return LoadKeybind("QODAutoEvent") end, Set = function(key) SaveKeybind("QODAutoEvent", key) end, Action = function()
+	ThemeObjects.AddFeatureKeybind({Name = "Auto Event", Storage = "QODAutoEvent", Parent = eventRow, Toggle = eventToggle, Get = function() return LoadGameKeybind("QODAutoEvent") end, Set = function(key) SaveGameKeybind("QODAutoEvent", key) end, Action = function()
 		eventState.Enabled = not eventState.Enabled
 		if eventState.Enabled and farmState.Enabled and farmState.SafePlace then
 			farmState.Enabled = false
