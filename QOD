@@ -1,7 +1,12 @@
 -- Page-only module for Hqydeu Script Hub. Upload this file to its raw GitHub target.
 local Runtime = (type(getgenv) == "function" and getgenv().HqydeuLoader_Runtime) or shared.HqydeuLoader_Runtime
 if not Runtime then return warn("Hqydeu page module: main hub runtime was not found") end
-if Runtime.ActivateGameKeybindScope then Runtime.ActivateGameKeybindScope("Quiet Or Die") end
+
+local function IsCurrentGamePage()
+	local replicatedStorage = game:GetService("ReplicatedStorage")
+	return replicatedStorage:FindFirstChild("AbilityEvent") ~= nil
+		or replicatedStorage:FindFirstChild("ResetCooldownEvent") ~= nil
+end
 
 local HubState = Runtime.HubState
 local ThemeObjects = Runtime.ThemeObjects
@@ -1048,6 +1053,7 @@ do
 
 	ThemeObjects.OpenQuietOrDiePage = function()
 		HubState.SelectedGame = "Quiet Or Die"
+		if IsCurrentGamePage() and Runtime.ActivateGameKeybindScope then Runtime.ActivateGameKeybindScope("Quiet Or Die") end
 		if HubState.PageHeader then HubState.PageHeader.Text = "Quiet Or Die" end
 		if HubState.GamesTabButton then HubState.GamesTabButton.Text = "Quiet Or Die" end
 		if HubState.MM2BackButton then HubState.MM2BackButton.Visible = true end
