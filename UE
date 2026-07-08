@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v45-wave-grace-and-drop-position"
+local ModuleVersion = "UE-Utility-v46-crate-unlock-and-self-defense"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -97,6 +97,7 @@ state.AutoTrapPhase = "Idle"
 state.AutoTrapQueue = {}
 state.AutoTrapHandled = {}
 state.AutoTrapSweepSkipped = {}
+state.ToolInteractionActive = false
 
 local function DisconnectTableConnections(connections)
 	if type(connections) ~= "table" then return end
@@ -1138,16 +1139,20 @@ local function HoldOnBox(target, targetRoot, options)
 	local isEnabled = options.IsEnabled or function() return true end
 
 	local requiredKey = BOX_TYPE_REQUIRED_KEY[BoxType(target)]
-	if requiredKey and not EquipKeyTool(requiredKey) then
-		warn(logPrefix .. " missing " .. requiredKey .. " for " .. tostring(target.Name))
-		if statusLabel then statusLabel.Text = "Need " .. requiredKey end
-		return false
+	if requiredKey then
+		if not EquipKeyTool(requiredKey) then
+			warn(logPrefix .. " missing " .. requiredKey .. " for " .. tostring(target.Name))
+			if statusLabel then statusLabel.Text = "Need " .. requiredKey end
+			return false
+		end
+		state.ToolInteractionActive = true
 	end
 
 	local openPrompt = FindOpenPrompt(target)
 	if not openPrompt then
 		warn(logPrefix .. " no ProximityPrompt found on " .. tostring(target.Name))
 		if statusLabel then statusLabel.Text = "No prompt found" end
+		state.ToolInteractionActive = false
 		return false
 	end
 
@@ -1182,7 +1187,10 @@ local function HoldOnBox(target, targetRoot, options)
 		end)
 	end
 
-	if not StableTeleport(CFrame.new(anchorPosition)) then return false end
+	if not StableTeleport(CFrame.new(anchorPosition)) then
+		state.ToolInteractionActive = false
+		return false
+	end
 	task.wait(0.15)
 	AimCameraAtPrompt()
 
@@ -1205,6 +1213,7 @@ local function HoldOnBox(target, targetRoot, options)
 
 	local pressedAtLeastOnce = false
 	local usedFireFallback = false
+	state.ToolInteractionActive = true
 	local deadline = os.clock() + holdDuration + FARM_OPEN_SAFETY_BUFFER
 	while isEnabled() and uePage.Parent and target.Parent and BoxRoot(target) and os.clock() < deadline do
 		if HasDriftedAway() then StableTeleport(CFrame.new(anchorPosition)) end
@@ -1224,6 +1233,7 @@ local function HoldOnBox(target, targetRoot, options)
 	if pressedAtLeastOnce then
 		ReleaseInteractKey(keyCode)
 	end
+	state.ToolInteractionActive = false
 	RestoreCamera()
 	local success = not (target.Parent and BoxRoot(target))
 	if not success then
@@ -1239,8 +1249,12 @@ local function ClaimNearbyDrop(boxPosition, options)
 	while isEnabled() and uePage.Parent and os.clock() < claimDeadline do
 		local claimPrompt, claimPart = FindNearbyClaimPrompt(boxPosition, FARM_CLAIM_SEARCH_RADIUS)
 		if claimPrompt and claimPart then
+			state.ToolInteractionActive = true
 			local anchorPosition = claimPart.Position + Vector3.new(0, 1, 0)
-			if not StableTeleport(CFrame.new(anchorPosition)) then return end
+			if not StableTeleport(CFrame.new(anchorPosition)) then
+				state.ToolInteractionActive = false
+				return
+			end
 			task.wait(0.1)
 
 			local keyCode = claimPrompt.KeyboardKeyCode
@@ -1253,6 +1267,7 @@ local function ClaimNearbyDrop(boxPosition, options)
 			end
 
 			task.wait(FARM_CLAIM_POST_FIRE_WAIT)
+			state.ToolInteractionActive = false
 			if not claimPrompt.Parent then return end
 		else
 			task.wait(0.15)
@@ -1659,7 +1674,8 @@ local function GetIdleSweepBoxTargets()
 	if not folder then return {} end
 	local targets = {}
 	for _, structure in ipairs(folder:GetChildren()) do
-		if not FindMatchingEncounter(structure) then
+		local isUnhandledEncounter = FindMatchingEncounter(structure) and not state.AutoTrapHandled[structure]
+		if not isUnhandledEncounter then
 			local lootFolder = structure:FindFirstChild("Loot")
 			if lootFolder then
 				for _, box in ipairs(lootFolder:GetChildren()) do
@@ -1821,6 +1837,62 @@ task.spawn(function()
 			RunAutoTrapStep()
 		end
 		task.wait(TRAP_IDLE_WAIT)
+	end
+end)
+
+local SELF_DEFENSE_RADIUS = 12
+local SELF_DEFENSE_FIRE_INTERVAL = 0.3
+
+local function GetNearbyHostileEnemies(radius)
+	local root = PlayerRoot()
+	if not root then return {} end
+	local enemiesFolder = workspace:FindFirstChild("Enemies")
+	if not enemiesFolder then return {} end
+	local nearby = {}
+	for _, child in ipairs(enemiesFolder:GetChildren()) do
+		local humanoid = child:FindFirstChildOfClass("Humanoid")
+		if humanoid and humanoid.Health > 0 then
+			local enemyRoot = EnemyRoot(child)
+			if enemyRoot and (enemyRoot.Position - root.Position).Magnitude <= radius then
+				table.insert(nearby, child)
+			end
+		end
+	end
+	return nearby
+end
+
+task.spawn(function()
+	local lastFire = 0
+	while uePage.Parent do
+		if state.AutoTrapEnabled and not state.ToolInteractionActive then
+			local now = os.clock()
+			if now - lastFire >= SELF_DEFENSE_FIRE_INTERVAL then
+				local nearby = GetNearbyHostileEnemies(SELF_DEFENSE_RADIUS)
+				if #nearby > 0 then
+					local root = PlayerRoot()
+					local mouseClick = game.ReplicatedStorage:FindFirstChild("MouseClick")
+					if root and mouseClick then
+						table.sort(nearby, function(a, b)
+							local rootA, rootB = EnemyRoot(a), EnemyRoot(b)
+							if not rootA then return false end
+							if not rootB then return true end
+							return (root.Position - rootA.Position).Magnitude < (root.Position - rootB.Position).Magnitude
+						end)
+						local closestRoot = EnemyRoot(nearby[1])
+						if closestRoot then
+							lastFire = now
+							local tool = EquipAnyWeapon()
+							if tool then
+								pcall(function()
+									mouseClick:FireServer(tool.Name, CFrame.new(closestRoot.Position))
+								end)
+							end
+						end
+					end
+				end
+			end
+		end
+		task.wait(0.25)
 	end
 end)
 
