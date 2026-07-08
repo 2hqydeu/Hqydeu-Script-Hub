@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v26-stuck-failsafe-no-timer"
+local ModuleVersion = "UE-Utility-v27-combat-click-stabilize"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -152,6 +152,7 @@ local HUNTER_TRAP_CLEAR_TIMEOUT = 26
 local STRUCTURE_TRAP_CLEAR_TIMEOUT = 36
 local AUTO_TRAP_STUCK_ENEMY_TIMEOUT = 22
 local HUNTER_TRAP_ATTACK_INTERVAL = 0.09
+local AUTO_TRAP_COMBAT_CLICK_INTERVAL = 0.34
 local HUNTER_TRAP_LOOT_RADIUS = 95
 local HUNTER_TRAP_LOOT_INTERVAL = 0.22
 local HUNTER_TRAP_LOOT_SWEEP_TIME = 1.75
@@ -159,7 +160,7 @@ local HUNTER_TRAP_HITBOX_SIZE = Vector3.new(24, 24, 24)
 local STRUCTURE_TRAP_HITBOX_SIZE = Vector3.new(34, 34, 34)
 local HUNTER_TRAP_APPROACH_INTERVAL = 1.15
 local HUNTER_TRAP_STRAFE_INTERVAL = 0.45
-local STRUCTURE_TRAP_STRAFE_INTERVAL = 1.15
+local STRUCTURE_TRAP_STRAFE_INTERVAL = 2.4
 local HUNTER_TRAP_STRAFE_DISTANCE = 9
 local STRUCTURE_TRAP_STRAFE_DISTANCE = 5.5
 local HUNTER_TRAP_SEEK_INTERVAL = 0.55
@@ -1728,6 +1729,13 @@ local function SendMouseClick()
 	end)
 end
 
+local function SendCombatMouseClick()
+	local now = os.clock()
+	if now - (state.LastAutoTrapCombatClickAt or 0) < AUTO_TRAP_COMBAT_CLICK_INTERVAL then return end
+	state.LastAutoTrapCombatClickAt = now
+	SendMouseClick()
+end
+
 local function PressPickupKey()
 	if type(keypress) == "function" and type(keyrelease) == "function" then
 		pcall(function()
@@ -1746,10 +1754,11 @@ local function PressPickupKey()
 	end)
 end
 
-local function UseCombatWeapon(tool)
+local function UseCombatWeapon(tool, clickWeapon)
 	if tool and tool:IsA("Tool") then
 		pcall(function() tool:Activate() end)
 	end
+	if clickWeapon then SendCombatMouseClick() end
 end
 
 local function CurrentEquippedTool()
@@ -1761,13 +1770,14 @@ local function CurrentEquippedTool()
 	return nil
 end
 
-local function UseCurrentEquippedTool()
+local function UseCurrentEquippedTool(clickWeapon)
 	local equipped = CurrentEquippedTool()
 	local forced = EquipCombatWeapon()
 	local tool = CurrentEquippedTool() or (forced and forced:IsA("Tool") and forced or equipped)
 	if tool then
 		pcall(function() tool:Activate() end)
 	end
+	if clickWeapon then SendCombatMouseClick() end
 	return tool ~= nil
 end
 
@@ -2173,6 +2183,7 @@ local function AutoHunterTrapStep()
 			state.AutoTrapCombatStartedAt = nil
 			state.AutoTrapLastEnemyCount = nil
 			state.AutoTrapLastEnemyChangeAt = nil
+			state.LastAutoTrapCombatClickAt = 0
 			state.HunterTrapAttackBusy = false
 			state.LastHunterTrapSearchAt = 0
 			RestoreHunterTrapHitboxes()
@@ -2206,6 +2217,7 @@ local function AutoHunterTrapStep()
 			state.AutoTrapCombatStartedAt = now
 			state.AutoTrapLastEnemyCount = enemies
 			state.AutoTrapLastEnemyChangeAt = now
+			state.LastAutoTrapCombatClickAt = 0
 		elseif now - (state.AutoTrapStartedAt or now) >= HUNTER_TRAP_SPAWN_TIMEOUT then
 			state.AutoTrapVisited = state.AutoTrapVisited or {}
 			state.AutoTrapVisited[target] = true
@@ -2221,6 +2233,11 @@ local function AutoHunterTrapStep()
 			state.AutoTrapLastEnemyChangeAt = nil
 			RestoreHunterTrapHitboxes()
 			RestoreAutoTrapFacing()
+			if targetAnyEnemies then
+				state.LastHunterTrapSearchAt = now
+				TeleportToBase()
+				return
+			end
 			if IsAutoTrapRunActive(runId) then AutoHunterTrapStep() end
 		end
 	elseif state.AutoTrapPhase == "activating_tool" then
@@ -2246,6 +2263,11 @@ local function AutoHunterTrapStep()
 			state.AutoTrapLastEnemyChangeAt = nil
 			RestoreHunterTrapHitboxes()
 			RestoreAutoTrapFacing()
+			if targetAnyEnemies then
+				state.LastHunterTrapSearchAt = now
+				TeleportToBase()
+				return
+			end
 			if IsAutoTrapRunActive(runId) then AutoHunterTrapStep() end
 			return
 		end
@@ -2264,6 +2286,11 @@ local function AutoHunterTrapStep()
 			state.AutoTrapLastEnemyChangeAt = nil
 			RestoreHunterTrapHitboxes()
 			RestoreAutoTrapFacing()
+			if targetAnyEnemies then
+				state.LastHunterTrapSearchAt = now
+				TeleportToBase()
+				return
+			end
 			if IsAutoTrapRunActive(runId) then AutoHunterTrapStep() end
 		elseif now - (state.LastHunterTrapUseAt or 0) >= HUNTER_TRAP_ATTACK_INTERVAL then
 			state.LastHunterTrapUseAt = now
@@ -2272,8 +2299,8 @@ local function AutoHunterTrapStep()
 				ExpandHunterTrapEnemyHitboxes(structureEnemies, STRUCTURE_TRAP_HITBOX_SIZE)
 				StrafeNearestHunterNear(target.Position, enemyRadius, runId, true)
 				local tool = EquipCombatWeapon()
-				UseCombatWeapon(tool)
-				UseCurrentEquippedTool()
+				UseCombatWeapon(tool, true)
+				UseCurrentEquippedTool(true)
 				if structureEnemies[1] and now - (state.LastStructureTrapTouchAt or 0) >= 0.35 then
 					state.LastStructureTrapTouchAt = now
 					TouchWeaponToEnemy(tool, structureEnemies[1])
@@ -2281,7 +2308,7 @@ local function AutoHunterTrapStep()
 				end
 			else
 				StrafeNearestHunterNear(target.Position, enemyRadius, runId, false)
-				UseCurrentEquippedTool()
+				UseCurrentEquippedTool(true)
 			end
 		else
 			FaceNearestHunterNear(target.Position, enemyRadius, targetAnyEnemies)
@@ -2481,6 +2508,7 @@ local function ToggleAutoHunterTrap()
 		state.AutoTrapCombatStartedAt = nil
 		state.AutoTrapLastEnemyCount = nil
 		state.AutoTrapLastEnemyChangeAt = nil
+		state.LastAutoTrapCombatClickAt = 0
 		state.HunterTrapStrafeDirection = 1
 		state.AutoTrapBaseWaitTeleported = false
 		state.LastHunterTrapSearchAt = 0
@@ -2501,6 +2529,7 @@ local function ToggleAutoHunterTrap()
 		state.AutoTrapCombatStartedAt = nil
 		state.AutoTrapLastEnemyCount = nil
 		state.AutoTrapLastEnemyChangeAt = nil
+		state.LastAutoTrapCombatClickAt = 0
 		state.HunterTrapStrafeDirection = 1
 		state.AutoTrapBaseWaitTeleported = false
 		state.LastHunterTrapSearchAt = 0
