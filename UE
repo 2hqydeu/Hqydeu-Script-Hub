@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v37-crate-open-position-fix"
+local ModuleVersion = "UE-Utility-v38-crate-hold-duration-fire"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -1080,7 +1080,17 @@ local function HoldOnBox(target, targetRoot, options)
 
 	if statusLabel then statusLabel.Text = "Opening..." end
 	if type(fireproximityprompt) == "function" then
-		local ok, err = pcall(fireproximityprompt, openPrompt)
+		local holdDuration = (openPrompt.HoldDuration and openPrompt.HoldDuration > 0) and openPrompt.HoldDuration or nil
+		local ok, err
+		if holdDuration then
+			ok, err = pcall(fireproximityprompt, openPrompt, holdDuration)
+			if not ok then
+				warn(logPrefix .. " fireproximityprompt(prompt, " .. tostring(holdDuration) .. ") errored: " .. tostring(err) .. " -- retrying without duration")
+				ok, err = pcall(fireproximityprompt, openPrompt)
+			end
+		else
+			ok, err = pcall(fireproximityprompt, openPrompt)
+		end
 		if not ok then
 			warn(logPrefix .. " fireproximityprompt errored: " .. tostring(err))
 		end
