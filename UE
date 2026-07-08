@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v39-crate-virtual-input-hold"
+local ModuleVersion = "UE-Utility-v40-crate-continuous-key-hold"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -1043,6 +1043,26 @@ local function FindNearbyClaimPrompt(position, radius)
 	return bestPrompt, bestPart
 end
 
+local function PressInteractKey(keyCode)
+	if type(keypress) == "function" then
+		local ok = pcall(keypress, keyCode)
+		if ok then return true end
+	end
+	return pcall(function()
+		game:GetService("VirtualInputManager"):SendKeyEvent(true, keyCode, false, game)
+	end)
+end
+
+local function ReleaseInteractKey(keyCode)
+	if type(keyrelease) == "function" then
+		local ok = pcall(keyrelease, keyCode)
+		if ok then return end
+	end
+	pcall(function()
+		game:GetService("VirtualInputManager"):SendKeyEvent(false, keyCode, false, game)
+	end)
+end
+
 local function HoldOnBox(target, targetRoot, options)
 	options = options or {}
 	local statusLabel = options.StatusLabel
@@ -1085,23 +1105,25 @@ local function HoldOnBox(target, targetRoot, options)
 		keyCode = Enum.KeyCode.E
 	end
 
-	local vim = game:GetService("VirtualInputManager")
-	local keyDownOk = pcall(function() vim:SendKeyEvent(true, keyCode, false, game) end)
-	if not keyDownOk then
-		warn(logPrefix .. " VirtualInputManager key-down failed on " .. tostring(target.Name) .. " -- falling back to fireproximityprompt")
-		if type(fireproximityprompt) == "function" then
-			pcall(fireproximityprompt, openPrompt, holdDuration)
-		end
-	end
-
+	local pressedAtLeastOnce = false
+	local usedFireFallback = false
 	local deadline = os.clock() + holdDuration + FARM_OPEN_SAFETY_BUFFER
 	while isEnabled() and uePage.Parent and target.Parent and BoxRoot(target) and os.clock() < deadline do
 		if not HoldPosition() then break end
+		if PressInteractKey(keyCode) then
+			pressedAtLeastOnce = true
+		elseif not usedFireFallback then
+			usedFireFallback = true
+			warn(logPrefix .. " key simulation unavailable on " .. tostring(target.Name) .. " -- falling back to fireproximityprompt")
+			if type(fireproximityprompt) == "function" then
+				pcall(fireproximityprompt, openPrompt, holdDuration)
+			end
+		end
 		task.wait(FARM_MOVE_HOLD_INTERVAL)
 	end
 
-	if keyDownOk then
-		pcall(function() vim:SendKeyEvent(false, keyCode, false, game) end)
+	if pressedAtLeastOnce then
+		ReleaseInteractKey(keyCode)
 	end
 	local success = not (target.Parent and BoxRoot(target))
 	if not success then
