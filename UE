@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v19-revert-v14"
+local ModuleVersion = "UE-Utility-v20-trap2-safe-timer"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -166,6 +166,8 @@ local MOB_FARM_HITBOX_SIZE = Vector3.new(18, 18, 18)
 local MOB_FARM_STRONG_ATTACK_INTERVAL = 0.28
 local STRUCTURE_TIMER_SCAN_INTERVAL = 1.25
 local STRUCTURE_TIMER_FORCE_SCAN_INTERVAL = 0.4
+local STRUCTURE_TIMER_WORKSPACE_INTERVAL = 2.5
+local STRUCTURE_TIMER_WORKSPACE_NODE_BUDGET = 120
 for _, boxType in ipairs(BOX_TYPES) do
 	if state.SelectedBoxTypes[boxType] == nil then state.SelectedBoxTypes[boxType] = true end
 end
@@ -482,7 +484,8 @@ local function ReadStructureTimerFromLabel(label)
 	local text = NormalizeStructureTimerText(ownText)
 	if text then return text end
 	local parent = label.Parent
-	if parent then
+	for _ = 1, 2 do
+		if not parent then break end
 		local pieces = {ownText}
 		for _, child in ipairs(parent:GetChildren()) do
 			if child:IsA("TextLabel") or child:IsA("TextButton") or child:IsA("TextBox") then
@@ -490,9 +493,69 @@ local function ReadStructureTimerFromLabel(label)
 				if childText ~= "" then table.insert(pieces, childText) end
 			end
 		end
-		return NormalizeStructureTimerText(table.concat(pieces, " "))
+		text = NormalizeStructureTimerText(table.concat(pieces, " "))
+		if text then return text end
+		parent = parent.Parent
 	end
 	return nil
+end
+
+local function ScanStructureTimerObject(obj)
+	if not obj or (ScreenGui and obj:IsDescendantOf(ScreenGui)) then return nil end
+	if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+		local rawText = tostring(obj.Text or "")
+		if LooksLikeStructureTimerText(rawText) then
+			return ReadStructureTimerFromLabel(obj)
+		end
+	end
+	return nil
+end
+
+local function SeedWorkspaceTimerQueue()
+	state.StructureTimerWorkspaceQueue = {}
+	state.StructureTimerWorkspaceQueueIndex = 1
+	for _, child in ipairs(workspace:GetChildren()) do
+		local name = tostring(child.Name or "")
+		if name ~= "Enemies" and name ~= "Structures" and name ~= "Terrain" then
+			table.insert(state.StructureTimerWorkspaceQueue, child)
+		end
+	end
+end
+
+local function ScanWorkspaceTimerSlice()
+	local now = os.clock()
+	if now - (state.LastStructureTimerWorkspaceScan or 0) < STRUCTURE_TIMER_WORKSPACE_INTERVAL then
+		return state.LastStructureTimerText
+	end
+	state.LastStructureTimerWorkspaceScan = now
+	if type(state.StructureTimerWorkspaceQueue) ~= "table" or not state.StructureTimerWorkspaceQueue[state.StructureTimerWorkspaceQueueIndex or 1] then
+		SeedWorkspaceTimerQueue()
+	end
+	local queue = state.StructureTimerWorkspaceQueue
+	local index = tonumber(state.StructureTimerWorkspaceQueueIndex) or 1
+	local checked = 0
+	while queue[index] and checked < STRUCTURE_TIMER_WORKSPACE_NODE_BUDGET do
+		local obj = queue[index]
+		index += 1
+		checked += 1
+		if obj and obj.Parent then
+			local text = ScanStructureTimerObject(obj)
+			if text then
+				state.StructureTimerTextLabel = obj
+				state.LastStructureTimerText = text
+				state.StructureTimerWorkspaceQueueIndex = index
+				return text
+			end
+			for _, child in ipairs(obj:GetChildren()) do
+				local className = child.ClassName
+				if className == "SurfaceGui" or className == "BillboardGui" or className == "TextLabel" or className == "TextButton" or className == "TextBox" or className == "Frame" or className == "Folder" or className == "Model" then
+					if #queue < 900 then table.insert(queue, child) end
+				end
+			end
+		end
+	end
+	state.StructureTimerWorkspaceQueueIndex = index
+	return state.LastStructureTimerText
 end
 
 local function FindStructureTimerText(force)
@@ -514,21 +577,19 @@ local function FindStructureTimerText(force)
 	if playerGui then
 		for _, obj in ipairs(playerGui:GetDescendants()) do
 			if (obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox")) and (not ScreenGui or not obj:IsDescendantOf(ScreenGui)) then
-				local rawText = tostring(obj.Text or "")
-				if LooksLikeStructureTimerText(rawText) then
-					local text = ReadStructureTimerFromLabel(obj)
-					if text then
-						state.StructureTimerTextLabel = obj
-						state.LastStructureTimerText = text
-						return text
-					end
+				local text = ScanStructureTimerObject(obj)
+				if text then
+					state.StructureTimerTextLabel = obj
+					state.LastStructureTimerText = text
+					return text
 				end
 			end
 		end
 	end
+	local text = ScanWorkspaceTimerSlice()
+	if text then return text end
 	state.StructureTimerTextLabel = nil
-	state.LastStructureTimerText = nil
-	return nil
+	return state.LastStructureTimerText
 end
 
 local function RefreshStructureTimerDisplay(force)
@@ -753,17 +814,53 @@ local function HasHunterTrapText(value)
 	return lower:find("hunter", 1, true) ~= nil and lower:find("trap", 1, true) ~= nil
 end
 
-local function HunterTrapPart(box)
-	if not box then return nil end
-	if box:IsA("BasePart") and string.lower(box.Name) == "string" then return box end
-	local direct = box:FindFirstChild("string")
-	if direct and direct:IsA("BasePart") then return direct end
-	for _, child in ipairs(box:GetDescendants()) do
-		if child:IsA("BasePart") and string.lower(child.Name) == "string" then
-			return child
+local function HasHunterTrap2Text(value)
+	local lower = string.lower(tostring(value or "")):gsub("[%s_%-%#]+", "")
+	return lower:find("huntertrap2", 1, true) ~= nil
+end
+
+local function AncestorHasHunterTrap2Text(instance)
+	local current = instance
+	while current and current ~= workspace do
+		if HasHunterTrap2Text(current.Name) then return true end
+		current = current.Parent
+	end
+	return false
+end
+
+local function FindTrapPartByNames(root, names)
+	if not root then return nil end
+	local function matches(instance)
+		if not instance or not instance:IsA("BasePart") then return false end
+		local lower = string.lower(tostring(instance.Name or ""))
+		for _, name in ipairs(names) do
+			if lower == name or lower:find(name, 1, true) then return true end
+		end
+		return false
+	end
+	if matches(root) then return root end
+	local queue = {root}
+	local index = 1
+	local checked = 0
+	while queue[index] and checked < 350 do
+		local current = queue[index]
+		index += 1
+		checked += 1
+		for _, child in ipairs(current:GetChildren()) do
+			if matches(child) then return child end
+			if #queue < 350 then table.insert(queue, child) end
 		end
 	end
 	return nil
+end
+
+local function HunterTrapPart(box)
+	if not box then return nil end
+	if AncestorHasHunterTrap2Text(box) then
+		return FindTrapPartByNames(box, {"checker", "check", "trigger", "touch"})
+			or FindTrapPartByNames(box, {"string"})
+	end
+	return FindTrapPartByNames(box, {"string"})
 end
 
 local function BoxRoot(box)
