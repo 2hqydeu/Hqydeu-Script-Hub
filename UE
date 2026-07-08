@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v41-crate-clean-teleport"
+local ModuleVersion = "UE-Utility-v42-crate-camera-lock"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -1118,12 +1118,35 @@ local function HoldOnBox(target, targetRoot, options)
 		return (root.Position - anchorPosition).Magnitude > DRIFT_TOLERANCE
 	end
 
+	local function AimCameraAtPrompt()
+		local camera = workspace.CurrentCamera
+		local root = PlayerRoot()
+		if not camera or not root then return end
+		pcall(function()
+			camera.CameraType = Enum.CameraType.Scriptable
+			camera.CFrame = CFrame.new(root.Position + Vector3.new(0, 2.5, 0), anchorPosition)
+		end)
+	end
+
+	local function RestoreCamera()
+		local camera = workspace.CurrentCamera
+		if not camera then return end
+		local character = Player and Player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		pcall(function()
+			camera.CameraType = Enum.CameraType.Custom
+			if humanoid then camera.CameraSubject = humanoid end
+		end)
+	end
+
 	if not StableTeleport(CFrame.new(anchorPosition)) then return false end
 	task.wait(0.15)
+	AimCameraAtPrompt()
 
 	local waitDeadline = os.clock() + 1
 	while os.clock() < waitDeadline and openPrompt.Parent and not openPrompt.Enabled do
 		if HasDriftedAway() then StableTeleport(CFrame.new(anchorPosition)) end
+		AimCameraAtPrompt()
 		task.wait(0.1)
 	end
 	if not openPrompt.Enabled then
@@ -1142,6 +1165,7 @@ local function HoldOnBox(target, targetRoot, options)
 	local deadline = os.clock() + holdDuration + FARM_OPEN_SAFETY_BUFFER
 	while isEnabled() and uePage.Parent and target.Parent and BoxRoot(target) and os.clock() < deadline do
 		if HasDriftedAway() then StableTeleport(CFrame.new(anchorPosition)) end
+		AimCameraAtPrompt()
 		if PressInteractKey(keyCode) then
 			pressedAtLeastOnce = true
 		elseif not usedFireFallback then
@@ -1157,6 +1181,7 @@ local function HoldOnBox(target, targetRoot, options)
 	if pressedAtLeastOnce then
 		ReleaseInteractKey(keyCode)
 	end
+	RestoreCamera()
 	local success = not (target.Parent and BoxRoot(target))
 	if not success then
 		warn(logPrefix .. " " .. tostring(target.Name) .. " did not open after firing the prompt")
