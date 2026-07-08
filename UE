@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v58-perf-and-structures"
+local ModuleVersion = "UE-Utility-v59-auto-sell"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -2445,11 +2445,80 @@ do
 		end
 	end
 
+	local SELLER_POSITION = Vector3.new(124, 53, -383)
+	local AUTO_SELL_THRESHOLD = 25
+	local AUTO_SELL_SETTLE_WAIT = 0.75
+
+	local function GetBackpackItemCount()
+		local backpack = Player and Player:FindFirstChildOfClass("Backpack")
+		if not backpack then return 0 end
+		local count = 0
+		for _, tool in ipairs(backpack:GetChildren()) do
+			if tool:IsA("Tool") then count = count + 1 end
+		end
+		return count
+	end
+
+	local function RunAutoSellStep()
+		local backpack = Player and Player:FindFirstChildOfClass("Backpack")
+		if not backpack then return end
+
+		state.ToolInteractionActive = true
+		state.AutoTrapPhase = "Selling inventory"
+		RefreshButtons()
+
+		-- protect the currently equipped weapon and any quest keys from being swept up by the "sell everything" remote
+		local protectedTools = {}
+		local character = Player and Player.Character
+		local equipped = character and character:FindFirstChildOfClass("Tool")
+		if equipped then
+			table.insert(protectedTools, {Tool = equipped, Parent = equipped.Parent})
+			equipped.Parent = nil
+		end
+		for _, tool in ipairs(backpack:GetChildren()) do
+			if tool:IsA("Tool") and KEY_TOOL_NAMES[tool.Name] then
+				table.insert(protectedTools, {Tool = tool, Parent = tool.Parent})
+				tool.Parent = nil
+			end
+		end
+
+		StableTeleport(CFrame.new(SELLER_POSITION))
+		task.wait(0.3)
+
+		local base = workspace:FindFirstChild("Base")
+		local seller = base and base:FindFirstChild("Seller")
+		local prompt = seller and seller:FindFirstChildOfClass("ProximityPrompt")
+		if prompt then
+			pcall(function() fireproximityprompt(prompt) end)
+			task.wait(0.3)
+		end
+
+		local sellRemote = game.ReplicatedStorage:FindFirstChild("SellRemote")
+		if sellRemote then
+			pcall(function() sellRemote:FireServer("AllItems") end)
+		end
+		task.wait(AUTO_SELL_SETTLE_WAIT)
+
+		for _, entry in ipairs(protectedTools) do
+			if entry.Tool and entry.Tool.Parent == nil then
+				entry.Tool.Parent = entry.Parent
+			end
+		end
+
+		state.ToolInteractionActive = false
+		state.AutoTrapPhase = "Idle"
+		RefreshButtons()
+	end
+
 	task.spawn(function()
 		while uePage.Parent do
 			if state.AutoTrapEnabled then
-				ScanForExistingTrapStructures()
-				RunAutoTrapStep()
+				if GetBackpackItemCount() >= AUTO_SELL_THRESHOLD then
+					RunAutoSellStep()
+				else
+					ScanForExistingTrapStructures()
+					RunAutoTrapStep()
+				end
 			end
 			task.wait(TRAP_IDLE_WAIT)
 		end
