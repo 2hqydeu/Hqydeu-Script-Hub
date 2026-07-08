@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v48-universal-drop-pickup"
+local ModuleVersion = "UE-Utility-v49-facing-radius-early-exit"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -149,8 +149,8 @@ local FARM_TARGET_CACHE_INTERVAL = 0.2
 local FARM_MOVE_HOLD_INTERVAL = 0.05
 local BOX_OPEN_HOLD_DURATION = 3
 local FARM_OPEN_SAFETY_BUFFER = 1.5
-local FARM_CLAIM_SEARCH_RADIUS = 20
-local FARM_CLAIM_SEARCH_TIMEOUT = 3
+local FARM_CLAIM_SEARCH_RADIUS = 35
+local FARM_CLAIM_SEARCH_TIMEOUT = 2
 local FARM_CLAIM_POST_FIRE_WAIT = 0.5
 local FARM_SKIP_COOLDOWN = 6
 local FARM_IDLE_WAIT = 0.35
@@ -1253,7 +1253,7 @@ local function ClaimNearbyDrop(boxPosition, options)
 			local anchorPosition = claimPart.Position + Vector3.new(0, 1, 0)
 			if not StableTeleport(CFrame.new(anchorPosition)) then
 				state.ToolInteractionActive = false
-				return
+				return false
 			end
 			task.wait(0.1)
 
@@ -1268,11 +1268,12 @@ local function ClaimNearbyDrop(boxPosition, options)
 
 			task.wait(FARM_CLAIM_POST_FIRE_WAIT)
 			state.ToolInteractionActive = false
-			if not claimPrompt.Parent then return end
+			if not claimPrompt.Parent then return true end
 		else
 			task.wait(0.15)
 		end
 	end
+	return false
 end
 
 local function RunLootFarmStep()
@@ -1661,11 +1662,13 @@ local function FightEnemies(trapPosition, nameFilters)
 end
 
 local function ClaimDropsNearArea(fallbackPosition, attempts)
+	task.wait(0.5)
 	for _ = 1, (attempts or 4) do
 		if not (state.AutoTrapEnabled and uePage.Parent) then break end
 		local root = PlayerRoot()
 		local searchPosition = root and root.Position or fallbackPosition
-		ClaimNearbyDrop(searchPosition, {IsEnabled = function() return state.AutoTrapEnabled end})
+		local claimed = ClaimNearbyDrop(searchPosition, {IsEnabled = function() return state.AutoTrapEnabled end})
+		if not claimed then break end
 	end
 end
 
@@ -1908,6 +1911,10 @@ task.spawn(function()
 						local closestRoot = EnemyRoot(nearby[1])
 						if closestRoot then
 							lastFire = now
+							local lookAt = Vector3.new(closestRoot.Position.X, root.Position.Y, closestRoot.Position.Z)
+							if (lookAt - root.Position).Magnitude > 0.05 then
+								root.CFrame = CFrame.new(root.Position, lookAt)
+							end
 							local tool = EquipAnyWeapon()
 							if tool then
 								pcall(function()
