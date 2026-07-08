@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v57-esp-default-off"
+local ModuleVersion = "UE-Utility-v58-perf-and-structures"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -80,6 +80,15 @@ for _, connectionName in ipairs({
 	end
 end
 
+local function StructureFilterKey(name)
+	name = tostring(name or "")
+	local lower = string.lower(name)
+	if lower:find("hunter", 1, true) and lower:find("trap", 1, true) then
+		return "Hunter Trap"
+	end
+	return name
+end
+
 local state = HubState.UndeadExpeditionState or {}
 HubState.UndeadExpeditionState = state
 state.EnemyESP = false
@@ -91,7 +100,25 @@ state.ESPMobsEnabled = state.ESPMobsEnabled == true
 state.KnownStructureTypes = type(state.KnownStructureTypes) == "table" and state.KnownStructureTypes or {}
 state.SelectedStructureTypes = type(state.SelectedStructureTypes) == "table" and state.SelectedStructureTypes or {}
 state.ESPSelectedRarities = type(state.ESPSelectedRarities) == "table" and state.ESPSelectedRarities or {}
-for _, seedName in ipairs({"Hunter Trap", "Hunter Trap2", "Graveyard", "Ancient Ruins"}) do
+do
+	-- collapse any stale per-type entries (e.g. "Hunter Trap2") from before types were merged by filter key
+	local mergedTypes = {}
+	local mergedSelected = {}
+	for _, name in ipairs(state.KnownStructureTypes) do
+		local key = StructureFilterKey(name)
+		if not table.find(mergedTypes, key) then
+			table.insert(mergedTypes, key)
+		end
+		if state.SelectedStructureTypes[name] == true then
+			mergedSelected[key] = true
+		elseif mergedSelected[key] == nil then
+			mergedSelected[key] = state.SelectedStructureTypes[key]
+		end
+	end
+	state.KnownStructureTypes = mergedTypes
+	state.SelectedStructureTypes = mergedSelected
+end
+for _, seedName in ipairs({"Hunter Trap", "Graveyard", "Ancient Ruins"}) do
 	if not table.find(state.KnownStructureTypes, seedName) then
 		table.insert(state.KnownStructureTypes, seedName)
 	end
@@ -731,7 +758,7 @@ do
 	end
 
 	-- Structures ESP: dynamically discovered structure types (grows as new ones are seen), reserved capacity below
-	local STRUCTURE_FILTER_CAPACITY = 15
+	local STRUCTURE_FILTER_CAPACITY = 24
 	structureFilterButtons = {}
 
 	local function CreateStructureFilterButton(value, x, y)
@@ -782,6 +809,7 @@ do
 
 	RegisterKnownStructureType = function(name)
 		if not name or name == "" then return end
+		name = StructureFilterKey(name)
 		if not table.find(state.KnownStructureTypes, name) then
 			table.insert(state.KnownStructureTypes, name)
 			table.sort(state.KnownStructureTypes)
@@ -1159,6 +1187,10 @@ do
 		end
 		state.StructuresFolder = folder
 
+		for _, child in ipairs(folder:GetChildren()) do
+			RegisterKnownStructureType(StructureDisplayName(child))
+		end
+
 		TrackConnection("UndeadExpeditionStructureAdded", folder.ChildAdded:Connect(function(child)
 			SetStructureMessage(StructureDisplayName(child))
 			ShowStructureMarker(child)
@@ -1531,17 +1563,31 @@ do
 		return mob.PrimaryPart or mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChildWhichIsA("BasePart", true)
 	end
 
+	local function IsAnyStructureTypeSelected()
+		for _, name in ipairs(state.KnownStructureTypes) do
+			if state.SelectedStructureTypes[name] == true then return true end
+		end
+		return false
+	end
+
+	local function IsAnyESPRaritySelected()
+		for _, tier in ipairs(RARITY_TIERS) do
+			if state.ESPSelectedRarities[tier] == true then return true end
+		end
+		return false
+	end
+
 	UpdateStructuresESP = function()
 		RunESPCategory(state.StructuresESPObjects, {
-			IsEnabled = function() return true end,
+			IsEnabled = IsAnyStructureTypeSelected,
 			Folder = structuresEspFolder,
 			GetTargets = function()
 				local folder = StructuresFolder()
 				if not folder then return {} end
 				local filtered = {}
 				for _, structure in ipairs(folder:GetChildren()) do
-					local name = StructureDisplayName(structure)
-					if state.SelectedStructureTypes[name] == true then
+					local key = StructureFilterKey(StructureDisplayName(structure))
+					if state.SelectedStructureTypes[key] == true then
 						table.insert(filtered, structure)
 					end
 				end
@@ -1558,7 +1604,7 @@ do
 
 	UpdateItemsESP = function()
 		RunESPCategory(state.ItemsESPObjects, {
-			IsEnabled = function() return true end,
+			IsEnabled = IsAnyESPRaritySelected,
 			Folder = itemsEspFolder,
 			GetTargets = function()
 				local filtered = {}
