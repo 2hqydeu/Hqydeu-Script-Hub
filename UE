@@ -37,10 +37,14 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v51-rarity-pickup-filters"
+local ModuleVersion = "UE-Utility-v52-ui-revamp-esp-categories"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
+local existingPickupDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionPickupDock")
+local existingStructuresEsp = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionStructuresESP")
+local existingItemsEsp = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionItemsESP")
+local existingMobsEsp = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionMobsESP")
 local existingMarkerFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionStructureMarkers")
 local existingStructureNotification = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionStructureNotification")
 local existingStructureTimerDisplay = HubState.PageHeader and HubState.PageHeader:FindFirstChild("UndeadExpeditionStructureTimerDisplay")
@@ -51,6 +55,10 @@ end
 if existingPage then existingPage:Destroy() end
 if existingEspFolder then existingEspFolder:Destroy() end
 if existingFilterDock then existingFilterDock:Destroy() end
+if existingPickupDock then existingPickupDock:Destroy() end
+if existingStructuresEsp then existingStructuresEsp:Destroy() end
+if existingItemsEsp then existingItemsEsp:Destroy() end
+if existingMobsEsp then existingMobsEsp:Destroy() end
 if existingMarkerFolder then existingMarkerFolder:Destroy() end
 if existingStructureNotification then existingStructureNotification:Destroy() end
 if existingStructureTimerDisplay then existingStructureTimerDisplay:Destroy() end
@@ -78,7 +86,10 @@ state.EnemyESP = false
 state.LootESP = false
 state.EnemyFiltersOpen = false
 state.LootFiltersOpen = state.LootFiltersOpen == true
-state.BoxESP = state.BoxESP == true
+state.BoxESP = state.BoxESP ~= false
+state.ESPStructuresEnabled = state.ESPStructuresEnabled == true
+state.ESPItemsEnabled = state.ESPItemsEnabled == true
+state.ESPMobsEnabled = state.ESPMobsEnabled == true
 state.NoDarkness = state.NoDarkness == true
 state.StructureNotifications = state.StructureNotifications ~= false
 state.LastStructureName = state.LastStructureName or nil
@@ -89,10 +100,6 @@ state.SelectedBoxTypes = type(state.SelectedBoxTypes) == "table" and state.Selec
 state.SelectedRarities = type(state.SelectedRarities) == "table" and state.SelectedRarities or {}
 state.PickupFiltersOpen = state.PickupFiltersOpen == true
 state.BoxObjects = {}
-state.LootFarmEnabled = state.LootFarmEnabled == true
-state.LootFarmCollected = tonumber(state.LootFarmCollected) or 0
-state.LootFarmSkipped = {}
-state.CachedFarmTargets = {}
 state.AutoTrapEnabled = state.AutoTrapEnabled == true
 state.AutoTrapKilled = tonumber(state.AutoTrapKilled) or 0
 state.AutoTrapPhase = "Idle"
@@ -121,6 +128,9 @@ state.ContainerWatchers = {}
 state.ESPObjects = {}
 state.LootObjects = {}
 state.BoxObjects = {}
+state.StructuresESPObjects = {}
+state.ItemsESPObjects = {}
+state.MobsESPObjects = {}
 
 if type(ThemeObjects.FeatureKeybindEntries) == "table" then
 	for index = #ThemeObjects.FeatureKeybindEntries, 1, -1 do
@@ -147,7 +157,6 @@ local MAX_BOX_OBJECTS = 40
 local BOX_SCAN_INTERVAL = 0.75
 local STRUCTURE_TIMER_SCAN_INTERVAL = 1.25
 local STRUCTURE_TIMER_FORCE_SCAN_INTERVAL = 0.4
-local FARM_TARGET_CACHE_INTERVAL = 0.2
 local FARM_MOVE_HOLD_INTERVAL = 0.05
 local BOX_OPEN_HOLD_DURATION = 3
 local FARM_OPEN_SAFETY_BUFFER = 1.5
@@ -155,7 +164,6 @@ local FARM_CLAIM_SEARCH_RADIUS = 35
 local FARM_CLAIM_SEARCH_TIMEOUT = 3
 local FARM_CLAIM_POST_FIRE_WAIT = 0.5
 local FARM_SKIP_COOLDOWN = 6
-local FARM_IDLE_WAIT = 0.35
 local TRAP2_LAND_OFFSET = Vector3.new(6, 0, 0)
 local TRAP_TRIGGER_WAIT = 2
 local TRAP_HUNTER_SCAN_WINDOW = 10
@@ -204,6 +212,19 @@ local function IsRarityAllowed(rarity)
 	return state.SelectedRarities[rarity] ~= false
 end
 
+local RARITY_COLOR_PRESETS = {
+	Common = Color3.fromRGB(190, 190, 190),
+	Uncommon = Color3.fromRGB(120, 200, 120),
+	Rare = Color3.fromRGB(90, 150, 255),
+	Epic = Color3.fromRGB(190, 100, 255),
+	Legendary = Color3.fromRGB(255, 170, 40),
+	Mythic = Color3.fromRGB(255, 70, 70),
+}
+
+local function GetRarityColor(rarity)
+	return (rarity and RARITY_COLOR_PRESETS[rarity]) or Color3.fromRGB(255, 255, 255)
+end
+
 local uePage = Instance.new("ScrollingFrame")
 uePage.Name = "UndeadExpeditionPage"
 uePage.Size = UDim2.new(0, 346, 1, -54)
@@ -218,7 +239,7 @@ uePage.ScrollBarImageColor3 = AccentColor
 uePage.ScrollingDirection = Enum.ScrollingDirection.Y
 uePage.ElasticBehavior = Enum.ElasticBehavior.Never
 uePage.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-uePage.CanvasSize = UDim2.new(0, 0, 0, 306)
+uePage.CanvasSize = UDim2.new(0, 0, 0, 214)
 uePage.Visible = false
 uePage:SetAttribute("ModuleVersion", ModuleVersion)
 uePage.Parent = MainFrame
@@ -230,6 +251,18 @@ markerFolder.Parent = ScreenGui or uePage
 local boxEspFolder = Instance.new("Folder")
 boxEspFolder.Name = "UndeadExpeditionESP"
 boxEspFolder.Parent = ScreenGui or uePage
+
+local structuresEspFolder = Instance.new("Folder")
+structuresEspFolder.Name = "UndeadExpeditionStructuresESP"
+structuresEspFolder.Parent = ScreenGui or uePage
+
+local itemsEspFolder = Instance.new("Folder")
+itemsEspFolder.Name = "UndeadExpeditionItemsESP"
+itemsEspFolder.Parent = ScreenGui or uePage
+
+local mobsEspFolder = Instance.new("Folder")
+mobsEspFolder.Name = "UndeadExpeditionMobsESP"
+mobsEspFolder.Parent = ScreenGui or uePage
 
 local function AddText(obj)
 	table.insert(ThemeObjects.Texts, obj)
@@ -360,8 +393,12 @@ structureTimerDisplay.Visible = false
 structureTimerDisplay.Parent = HubState.PageHeader or uePage
 AddText(structureTimerDisplay)
 
-local boxRow = CreateRow("UndeadExpeditionBoxESPRow", 4)
-local boxTitle = CreateTitle(boxRow, "Box ESP:")
+local baseRow = CreateRow("UndeadExpeditionBaseTPRow", 4)
+local baseTitle = CreateTitle(baseRow, "Base TP:")
+local baseButton = CreateButton(baseRow, "UndeadExpeditionBaseTPButton", "TP", -98, 44)
+
+local boxRow = CreateRow("UndeadExpeditionBoxESPRow", 50)
+local boxTitle = CreateTitle(boxRow, "ESP:")
 local boxStatus = Instance.new("TextLabel")
 boxStatus.Name = "UndeadExpeditionBoxESPStatus"
 boxStatus.Size = UDim2.new(0, 50, 0, 18)
@@ -378,34 +415,83 @@ AddText(boxStatus)
 local boxFiltersButton = CreateButton(boxRow, "UndeadExpeditionBoxFilters", "Edit", -152, 46)
 local boxToggle = CreateButton(boxRow, "UndeadExpeditionBoxESPToggle", "Off", -98, 44)
 
-local darknessRow = CreateRow("UndeadExpeditionNoDarknessRow", 50)
-local darknessTitle = CreateTitle(darknessRow, "No Darkness:")
-local darknessToggle = CreateButton(darknessRow, "UndeadExpeditionNoDarknessToggle", "Off", -98, 44)
+local trapRow = CreateRow("UndeadExpeditionAutoTrapRow", 96)
+trapRow.Size = UDim2.new(1, -24, 0, 54)
+local trapTitle = CreateTitle(trapRow, "Auto Trap:")
+local pickupButton = CreateButton(trapRow, "UndeadExpeditionPickupFilters", "Pickup", -152, 46)
+local trapToggle = CreateButton(trapRow, "UndeadExpeditionAutoTrapToggle", "Off", -98, 44)
+local trapStatus = Instance.new("TextLabel")
+trapStatus.Name = "UndeadExpeditionAutoTrapStatus"
+trapStatus.Size = UDim2.new(0, 220, 0, 16)
+trapStatus.Position = UDim2.new(0, 12, 0, 32)
+trapStatus.BackgroundTransparency = 1
+trapStatus.ZIndex = 4
+trapStatus.Text = "0 cleared"
+trapStatus.Font = Enum.Font.GothamBold
+trapStatus.TextSize = 8
+trapStatus.TextXAlignment = Enum.TextXAlignment.Left
+trapStatus.TextTruncate = Enum.TextTruncate.AtEnd
+trapStatus.Parent = trapRow
+AddText(trapStatus)
 
-local baseRow = CreateRow("UndeadExpeditionBaseTPRow", 96)
-local baseTitle = CreateTitle(baseRow, "Base TP:")
-local baseButton = CreateButton(baseRow, "UndeadExpeditionBaseTPButton", "TP", -98, 44)
+local miscRow = CreateRow("UndeadExpeditionMiscTogglesRow", 158)
+local darknessTitle = Instance.new("TextLabel")
+darknessTitle.Size = UDim2.new(0, 84, 0, 20)
+darknessTitle.Position = UDim2.new(0, 12, 0, 9)
+darknessTitle.BackgroundTransparency = 1
+darknessTitle.ZIndex = 4
+darknessTitle.Text = "No Darkness:"
+darknessTitle.Font = Enum.Font.GothamBold
+darknessTitle.TextSize = 8
+darknessTitle.TextXAlignment = Enum.TextXAlignment.Left
+darknessTitle.Parent = miscRow
+AddText(darknessTitle)
 
-local structureAlertsRow = CreateRow("UndeadExpeditionStructureAlertsRow", 142)
-local structureAlertsTitle = CreateTitle(structureAlertsRow, "Structure Alerts:")
-local structureAlertsToggle = CreateButton(structureAlertsRow, "UndeadExpeditionStructureAlertsToggle", "On", -98, 44)
+local darknessToggle = Instance.new("TextButton")
+darknessToggle.Name = "UndeadExpeditionNoDarknessToggle"
+darknessToggle.Size = UDim2.new(0, 34, 0, 20)
+darknessToggle.Position = UDim2.new(0, 100, 0, 9)
+darknessToggle.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+darknessToggle.BackgroundTransparency = 0.8
+darknessToggle.BorderSizePixel = 0
+darknessToggle.ZIndex = 4
+darknessToggle.Text = "Off"
+darknessToggle.Font = Enum.Font.GothamBold
+darknessToggle.TextSize = 8
+darknessToggle.Parent = miscRow
+AddBackground(darknessToggle)
+AddText(darknessToggle)
+Instance.new("UICorner", darknessToggle).CornerRadius = UDim.new(0, 5)
+EnsureControlOutline(darknessToggle)
 
-local farmRow = CreateRow("UndeadExpeditionLootFarmRow", 188)
-local farmTitle = CreateTitle(farmRow, "Auto Loot Farm:")
-local farmStatus = Instance.new("TextLabel")
-farmStatus.Name = "UndeadExpeditionLootFarmStatus"
-farmStatus.Size = UDim2.new(0, 110, 0, 18)
-farmStatus.Position = UDim2.new(1, -220, 0, 10)
-farmStatus.BackgroundTransparency = 1
-farmStatus.ZIndex = 4
-farmStatus.Text = "0 farmed"
-farmStatus.Font = Enum.Font.GothamBold
-farmStatus.TextSize = 8
-farmStatus.TextXAlignment = Enum.TextXAlignment.Right
-farmStatus.TextTruncate = Enum.TextTruncate.AtEnd
-farmStatus.Parent = farmRow
-AddText(farmStatus)
-local farmToggle = CreateButton(farmRow, "UndeadExpeditionLootFarmToggle", "Off", -98, 44)
+local structureAlertsTitle = Instance.new("TextLabel")
+structureAlertsTitle.Size = UDim2.new(0, 96, 0, 20)
+structureAlertsTitle.Position = UDim2.new(0, 168, 0, 9)
+structureAlertsTitle.BackgroundTransparency = 1
+structureAlertsTitle.ZIndex = 4
+structureAlertsTitle.Text = "Structure Alerts:"
+structureAlertsTitle.Font = Enum.Font.GothamBold
+structureAlertsTitle.TextSize = 8
+structureAlertsTitle.TextXAlignment = Enum.TextXAlignment.Left
+structureAlertsTitle.Parent = miscRow
+AddText(structureAlertsTitle)
+
+local structureAlertsToggle = Instance.new("TextButton")
+structureAlertsToggle.Name = "UndeadExpeditionStructureAlertsToggle"
+structureAlertsToggle.Size = UDim2.new(0, 34, 0, 20)
+structureAlertsToggle.Position = UDim2.new(1, -46, 0, 9)
+structureAlertsToggle.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+structureAlertsToggle.BackgroundTransparency = 0.8
+structureAlertsToggle.BorderSizePixel = 0
+structureAlertsToggle.ZIndex = 4
+structureAlertsToggle.Text = "On"
+structureAlertsToggle.Font = Enum.Font.GothamBold
+structureAlertsToggle.TextSize = 8
+structureAlertsToggle.Parent = miscRow
+AddBackground(structureAlertsToggle)
+AddText(structureAlertsToggle)
+Instance.new("UICorner", structureAlertsToggle).CornerRadius = UDim.new(0, 5)
+EnsureControlOutline(structureAlertsToggle)
 
 local trapRow = CreateRow("UndeadExpeditionAutoTrapRow", 234)
 trapRow.Size = UDim2.new(1, -24, 0, 54)
@@ -428,7 +514,7 @@ AddText(trapStatus)
 
 local filterDock = Instance.new("Frame")
 filterDock.Name = "UndeadExpeditionFilterDock"
-filterDock.Size = UDim2.new(0, 256, 0, 122)
+filterDock.Size = UDim2.new(0, 256, 0, 165)
 filterDock.BackgroundColor3 = FrameThemeColor
 filterDock.BackgroundTransparency = 0
 filterDock.BorderSizePixel = 0
@@ -501,7 +587,7 @@ filterScroll.ScrollBarThickness = 3
 filterScroll.ScrollBarImageColor3 = AccentColor
 filterScroll.ScrollingDirection = Enum.ScrollingDirection.Y
 filterScroll.ElasticBehavior = Enum.ElasticBehavior.Never
-filterScroll.CanvasSize = UDim2.new(0, 0, 0, 92)
+filterScroll.CanvasSize = UDim2.new(0, 0, 0, 135)
 filterScroll.ZIndex = 81
 filterScroll.Parent = filterDock
 
@@ -641,11 +727,45 @@ local function CreateFilterButton(value, x, y)
 	end)
 end
 
-CreateFilterLabel("Boxes / Traps", 0)
+local espCategoryButtons = {}
+
+local function CreateESPCategoryButton(text, stateKey, x, y)
+	local button = Instance.new("TextButton")
+	button.Name = "UndeadExpeditionESPCategory" .. stateKey
+	button.Size = UDim2.new(0, 76, 0, 20)
+	button.Position = UDim2.new(0, x, 0, y)
+	button.BackgroundColor3 = Green
+	button.BackgroundTransparency = 0
+	button.BorderSizePixel = 0
+	button.Font = Enum.Font.GothamBold
+	button.TextSize = 7
+	button.TextColor3 = Color3.fromRGB(255, 255, 255)
+	button.TextTruncate = Enum.TextTruncate.AtEnd
+	button.ZIndex = 82
+	button.Parent = filterScroll
+	AddText(button)
+	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 5)
+	EnsureControlOutline(button)
+	table.insert(espCategoryButtons, {Button = button, StateKey = stateKey, Label = text})
+	button.MouseButton1Click:Connect(function()
+		PlayClick()
+		state[stateKey] = not state[stateKey]
+		RefreshButtons()
+		UpdateTheme(true)
+	end)
+	return button
+end
+
+CreateFilterLabel("ESP Categories", 0)
+CreateESPCategoryButton("Structures", "ESPStructuresEnabled", 0, 16)
+CreateESPCategoryButton("Items", "ESPItemsEnabled", 82, 16)
+CreateESPCategoryButton("Mobs", "ESPMobsEnabled", 164, 16)
+
+CreateFilterLabel("Boxes / Traps", 42)
 for index, boxType in ipairs(BOX_TYPES) do
 	local column = (index - 1) % 3
 	local row = math.floor((index - 1) / 3)
-	CreateFilterButton(boxType, column * 82, 16 + row * 23)
+	CreateFilterButton(boxType, column * 82, 58 + row * 23)
 end
 
 local pickupRows = math.max(1, math.ceil(#RARITY_TIERS / 3))
@@ -682,7 +802,7 @@ pickupDockScale.Parent = pickupDock
 
 local function UpdatePickupDockPosition()
 	local scale = pickupDockScale.Scale
-	pickupDock.Position = UDim2.fromOffset(MainFrame.AbsolutePosition.X - ((256 + 7) * scale), MainFrame.AbsolutePosition.Y + ((54 + 122 + 7) * scale))
+	pickupDock.Position = UDim2.fromOffset(MainFrame.AbsolutePosition.X - ((256 + 7) * scale), MainFrame.AbsolutePosition.Y + ((54 + 165 + 7) * scale))
 end
 TrackConnection("UndeadExpeditionPickupDockPosition", MainFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(UpdatePickupDockPosition))
 TrackConnection("UndeadExpeditionPickupDockSize", MainFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdatePickupDockPosition))
@@ -1145,28 +1265,164 @@ local function UpdateBoxESP()
 	RefreshBoxDistances()
 end
 
-local function SetCharacterCollision(enabled)
-	local character = Player and Player.Character
-	if not character then return end
-	for _, part in ipairs(character:GetDescendants()) do
-		if part:IsA("BasePart") then part.CanCollide = enabled end
+local function CreateGenericESPEntry(folder, root, color, text)
+	local holder = Instance.new("Folder")
+	holder.Parent = folder
+
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "ESPHighlight"
+	highlight.Adornee = root
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.FillColor = color
+	highlight.OutlineColor = color
+	highlight.FillTransparency = 0.9
+	highlight.OutlineTransparency = 0.03
+	highlight.Parent = holder
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "ESPBillboard"
+	billboard.Adornee = root
+	billboard.Size = UDim2.new(0, 150, 0, 28)
+	billboard.StudsOffset = Vector3.new(0, 3.15, 0)
+	billboard.AlwaysOnTop = true
+	billboard.LightInfluence = 0
+	billboard.MaxDistance = 1500
+	billboard.Parent = holder
+
+	local label = Instance.new("TextLabel")
+	label.Name = "ESPLabel"
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 10
+	label.TextColor3 = color
+	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	label.TextStrokeTransparency = 0.1
+	label.TextWrapped = true
+	label.Parent = billboard
+
+	return {Holder = holder, Highlight = highlight, Billboard = billboard, Label = label}
+end
+
+local function RunESPCategory(objects, config)
+	if not config.IsEnabled() then
+		for target in pairs(objects) do
+			if objects[target].Holder then objects[target].Holder:Destroy() end
+			objects[target] = nil
+		end
+		return
+	end
+	local playerRoot = PlayerRoot()
+	local ok, targets = pcall(config.GetTargets)
+	if not ok or type(targets) ~= "table" then targets = {} end
+	local seen = {}
+	for _, target in ipairs(targets) do
+		local root = config.GetRoot(target)
+		if root then
+			seen[target] = true
+			local color = config.GetColor(target)
+			local text = config.GetLabel(target, root, playerRoot)
+			local entry = objects[target]
+			if not entry or not entry.Holder or not entry.Holder.Parent then
+				entry = CreateGenericESPEntry(config.Folder, root, color, text)
+				objects[target] = entry
+			else
+				entry.Highlight.Adornee = root
+				entry.Billboard.Adornee = root
+				entry.Highlight.FillColor = color
+				entry.Highlight.OutlineColor = color
+				entry.Label.TextColor3 = color
+				entry.Label.Text = text
+			end
+		end
+	end
+	for target in pairs(objects) do
+		if not seen[target] then
+			if objects[target].Holder then objects[target].Holder:Destroy() end
+			objects[target] = nil
+		end
 	end
 end
 
-local function GetFarmTargets()
-	local now = os.clock()
-	if now - (state.LastFarmTargetScan or 0) < FARM_TARGET_CACHE_INTERVAL then
-		return state.CachedFarmTargets or {}
-	end
-	state.LastFarmTargetScan = now
-	local targets = {}
-	for _, box in ipairs(CollectLootBoxes()) do
-		if BoxType(box) ~= "Hunter Trap" and BoxRoot(box) then
-			table.insert(targets, box)
+local function GetAllGroundItems()
+	local items = {}
+	for _, inst in ipairs(workspace:GetDescendants()) do
+		if inst:IsA("ProximityPrompt") and inst.Enabled then
+			local action = string.lower(tostring(inst.ActionText or ""))
+			if action:find("claim", 1, true) then
+				local part = inst.Parent
+				if part and part:IsA("BasePart") then
+					table.insert(items, part)
+				end
+			end
 		end
 	end
-	state.CachedFarmTargets = targets
-	return targets
+	return items
+end
+
+local function GetAllMobs()
+	local enemiesFolder = workspace:FindFirstChild("Enemies")
+	if not enemiesFolder then return {} end
+	local mobs = {}
+	for _, child in ipairs(enemiesFolder:GetChildren()) do
+		local humanoid = child:FindFirstChildOfClass("Humanoid")
+		if humanoid and humanoid.Health > 0 then
+			table.insert(mobs, child)
+		end
+	end
+	return mobs
+end
+
+local function GetMobRoot(mob)
+	if not mob then return nil end
+	return mob.PrimaryPart or mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChildWhichIsA("BasePart", true)
+end
+
+local function UpdateStructuresESP()
+	RunESPCategory(state.StructuresESPObjects, {
+		IsEnabled = function() return state.ESPStructuresEnabled end,
+		Folder = structuresEspFolder,
+		GetTargets = function()
+			local folder = StructuresFolder()
+			return folder and folder:GetChildren() or {}
+		end,
+		GetRoot = StructureRoot,
+		GetColor = function() return AccentColor end,
+		GetLabel = function(structure, root, playerRoot)
+			local distance = playerRoot and math.floor((root.Position - playerRoot.Position).Magnitude) or 0
+			return ("%s [%d Studs]"):format(StructureDisplayName(structure), distance)
+		end,
+	})
+end
+
+local function UpdateItemsESP()
+	RunESPCategory(state.ItemsESPObjects, {
+		IsEnabled = function() return state.ESPItemsEnabled end,
+		Folder = itemsEspFolder,
+		GetTargets = GetAllGroundItems,
+		GetRoot = function(part) return part end,
+		GetColor = function(part) return GetRarityColor(GetDropRarity(part)) end,
+		GetLabel = function(part, root, playerRoot)
+			local distance = playerRoot and math.floor((root.Position - playerRoot.Position).Magnitude) or 0
+			local rarity = GetDropRarity(part)
+			return ("%s%s [%d Studs]"):format(part.Name, rarity and (" (" .. rarity .. ")") or "", distance)
+		end,
+	})
+end
+
+local function UpdateMobsESP()
+	RunESPCategory(state.MobsESPObjects, {
+		IsEnabled = function() return state.ESPMobsEnabled end,
+		Folder = mobsEspFolder,
+		GetTargets = GetAllMobs,
+		GetRoot = GetMobRoot,
+		GetColor = function() return Color3.fromRGB(220, 60, 60) end,
+		GetLabel = function(mob, root, playerRoot)
+			local distance = playerRoot and math.floor((root.Position - playerRoot.Position).Magnitude) or 0
+			return ("%s [%d Studs]"):format(mob.Name, distance)
+		end,
+	})
 end
 
 local function FindOpenPrompt(box)
@@ -1433,71 +1689,6 @@ local function ClaimNearbyDrop(boxPosition, options)
 	return false
 end
 
-local function RunLootFarmStep()
-	local root = PlayerRoot()
-	if not root then return end
-
-	local now = os.clock()
-	local available = {}
-	for _, box in ipairs(GetFarmTargets()) do
-		local skipUntil = state.LootFarmSkipped[box]
-		if not skipUntil or now >= skipUntil then
-			table.insert(available, box)
-		end
-	end
-	if #available == 0 then return end
-
-	table.sort(available, function(a, b)
-		local rootA, rootB = BoxRoot(a), BoxRoot(b)
-		return (root.Position - rootA.Position).Magnitude < (root.Position - rootB.Position).Magnitude
-	end)
-
-	local target = available[1]
-	local targetRoot = BoxRoot(target)
-	if not targetRoot then return end
-
-	local boxPosition = targetRoot.Position
-	local opened = HoldOnBox(target, targetRoot, {
-		StatusLabel = farmStatus,
-		LogPrefix = "[UE Loot Farm]",
-		IsEnabled = function() return state.LootFarmEnabled end,
-	})
-	if opened then
-		state.LootFarmCollected = state.LootFarmCollected + 1
-		farmStatus.Text = ("%d farmed"):format(state.LootFarmCollected)
-		if state.LootFarmEnabled and uePage.Parent then
-			ClaimNearbyDrop(boxPosition, {IsEnabled = function() return state.LootFarmEnabled end})
-		end
-	else
-		state.LootFarmSkipped[target] = os.clock() + FARM_SKIP_COOLDOWN
-	end
-end
-
-local function SetLootFarmEnabled(enabled)
-	state.LootFarmEnabled = enabled == true
-	if state.LootFarmEnabled then
-		state.LootFarmSkipped = {}
-		state.LastFarmTargetScan = 0
-		SetCharacterCollision(false)
-	else
-		SetCharacterCollision(true)
-	end
-	RefreshButtons()
-	UpdateTheme(true)
-end
-
-local function ToggleLootFarm()
-	SetLootFarmEnabled(not state.LootFarmEnabled)
-end
-
-task.spawn(function()
-	while uePage.Parent do
-		if state.LootFarmEnabled then
-			RunLootFarmStep()
-		end
-		task.wait(FARM_IDLE_WAIT)
-	end
-end)
 
 local lightingEffectProperties = {
 	Atmosphere = {"Density", "Offset", "Color", "Decay", "Glare", "Haze"},
@@ -2112,20 +2303,23 @@ RefreshButtons = function()
 	boxStatus.Text = state.BoxESP and ("%d/%d"):format(boxShown, boxFound) or "0/0"
 	darknessToggle.Text = state.NoDarkness and "On" or "Off"
 	structureAlertsToggle.Text = state.StructureNotifications and "On" or "Off"
-	farmToggle.Text = state.LootFarmEnabled and "On" or "Off"
-	farmStatus.Text = ("%d farmed"):format(tonumber(state.LootFarmCollected) or 0)
 	trapToggle.Text = state.AutoTrapEnabled and "On" or "Off"
 	trapStatus.Text = state.AutoTrapEnabled and (tostring(state.AutoTrapPhase or "Idle") .. (" · %d cleared"):format(tonumber(state.AutoTrapKilled) or 0)) or ("%d cleared"):format(tonumber(state.AutoTrapKilled) or 0)
 	boxTitle.TextColor3 = state.BoxESP and AccentColor or InactiveTextColor()
 	darknessTitle.TextColor3 = state.NoDarkness and AccentColor or InactiveTextColor()
 	structureAlertsTitle.TextColor3 = state.StructureNotifications and AccentColor or InactiveTextColor()
-	farmTitle.TextColor3 = state.LootFarmEnabled and AccentColor or InactiveTextColor()
 	trapTitle.TextColor3 = state.AutoTrapEnabled and AccentColor or InactiveTextColor()
 	baseTitle.TextColor3 = InactiveTextColor()
 	filterDock.Visible = state.LootFiltersOpen and IsUEPageActive()
 	for _, entry in ipairs(filterButtons) do
 		local selected = state.SelectedBoxTypes[entry.Value] ~= false
 		entry.Button.Text = (selected and "ESP " or "NO ") .. entry.Value
+		entry.Button.BackgroundColor3 = selected and Green or Red
+		entry.Button.BackgroundTransparency = 0
+	end
+	for _, entry in ipairs(espCategoryButtons) do
+		local selected = state[entry.StateKey] == true
+		entry.Button.Text = (selected and "ON " or "OFF ") .. entry.Label
 		entry.Button.BackgroundColor3 = selected and Green or Red
 		entry.Button.BackgroundTransparency = 0
 	end
@@ -2247,11 +2441,6 @@ structureAlertsToggle.MouseButton1Click:Connect(function()
 	ToggleStructureNotifications()
 end)
 
-farmToggle.MouseButton1Click:Connect(function()
-	PlayClick()
-	ToggleLootFarm()
-end)
-
 trapToggle.MouseButton1Click:Connect(function()
 	PlayClick()
 	ToggleAutoTrap()
@@ -2260,15 +2449,13 @@ end)
 table.insert(ThemeObjects.StateTexts, {Object = boxTitle, IsEnabled = function() return state.BoxESP end})
 table.insert(ThemeObjects.StateTexts, {Object = darknessTitle, IsEnabled = function() return state.NoDarkness end})
 table.insert(ThemeObjects.StateTexts, {Object = structureAlertsTitle, IsEnabled = function() return state.StructureNotifications end})
-table.insert(ThemeObjects.StateTexts, {Object = farmTitle, IsEnabled = function() return state.LootFarmEnabled end})
 table.insert(ThemeObjects.StateTexts, {Object = trapTitle, IsEnabled = function() return state.AutoTrapEnabled end})
 ThemeObjects.AddFeatureKeybind({Name = "Box ESP", Storage = "UEBoxESP", Parent = boxRow, Toggle = boxToggle, Get = function() return LoadGameKeybind("UEBoxESP") end, Set = function(key) SaveGameKeybind("UEBoxESP", key) end, Action = ToggleBoxESP})
 ThemeObjects.AddFeatureKeybind({Name = "Box Filters", Storage = "UEBoxFilters", Get = function() return LoadGameKeybind("UEBoxFilters") end, Set = function(key) SaveGameKeybind("UEBoxFilters", key) end, Action = ToggleBoxFilters})
 ThemeObjects.AddFeatureKeybind({Name = "Pickup Filters", Storage = "UEPickupFilters", Get = function() return LoadGameKeybind("UEPickupFilters") end, Set = function(key) SaveGameKeybind("UEPickupFilters", key) end, Action = TogglePickupFilters})
-ThemeObjects.AddFeatureKeybind({Name = "No Darkness", Storage = "UENoDarkness", Parent = darknessRow, Toggle = darknessToggle, Get = function() return LoadGameKeybind("UENoDarkness") end, Set = function(key) SaveGameKeybind("UENoDarkness", key) end, Action = ToggleNoDarkness})
+ThemeObjects.AddFeatureKeybind({Name = "No Darkness", Storage = "UENoDarkness", Parent = miscRow, Toggle = darknessToggle, Get = function() return LoadGameKeybind("UENoDarkness") end, Set = function(key) SaveGameKeybind("UENoDarkness", key) end, Action = ToggleNoDarkness})
 ThemeObjects.AddFeatureKeybind({Name = "Base TP", Storage = "UEBaseTP", Parent = baseRow, Toggle = baseButton, Get = function() return LoadGameKeybind("UEBaseTP") end, Set = function(key) SaveGameKeybind("UEBaseTP", key) end, Action = TeleportToBase})
-ThemeObjects.AddFeatureKeybind({Name = "Structure Alerts", Storage = "UEStructureNotifications", Parent = structureAlertsRow, Toggle = structureAlertsToggle, Get = function() return LoadGameKeybind("UEStructureNotifications") end, Set = function(key) SaveGameKeybind("UEStructureNotifications", key) end, Action = ToggleStructureNotifications})
-ThemeObjects.AddFeatureKeybind({Name = "Loot Farm", Storage = "UELootFarm", Parent = farmRow, Toggle = farmToggle, Get = function() return LoadGameKeybind("UELootFarm") end, Set = function(key) SaveGameKeybind("UELootFarm", key) end, Action = ToggleLootFarm})
+ThemeObjects.AddFeatureKeybind({Name = "Structure Alerts", Storage = "UEStructureNotifications", Parent = miscRow, Toggle = structureAlertsToggle, Get = function() return LoadGameKeybind("UEStructureNotifications") end, Set = function(key) SaveGameKeybind("UEStructureNotifications", key) end, Action = ToggleStructureNotifications})
 ThemeObjects.AddFeatureKeybind({Name = "Auto Trap", Storage = "UEAutoTrap", Parent = trapRow, Toggle = trapToggle, Get = function() return LoadGameKeybind("UEAutoTrap") end, Set = function(key) SaveGameKeybind("UEAutoTrap", key) end, Action = ToggleAutoTrap})
 
 TrackConnection("UndeadExpeditionContainerAdded", workspace.ChildAdded:Connect(function(child)
@@ -2295,6 +2482,12 @@ TrackConnection("UndeadExpeditionLightingHeartbeat", RunService.Heartbeat:Connec
 		state.LastBoxScan = now
 		UpdateBoxESP()
 		RefreshButtons()
+	end
+	if now - (state.LastESPCategoryScan or 0) >= BOX_SCAN_INTERVAL then
+		state.LastESPCategoryScan = now
+		UpdateStructuresESP()
+		UpdateItemsESP()
+		UpdateMobsESP()
 	end
 end))
 
