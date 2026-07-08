@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v56-dock-reflow"
+local ModuleVersion = "UE-Utility-v57-esp-default-off"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -86,7 +86,7 @@ state.EnemyESP = false
 state.LootESP = false
 state.EnemyFiltersOpen = false
 state.LootFiltersOpen = state.LootFiltersOpen == true
-state.BoxESP = state.BoxESP ~= false
+state.BoxESP = state.BoxESP == true
 state.ESPMobsEnabled = state.ESPMobsEnabled == true
 state.KnownStructureTypes = type(state.KnownStructureTypes) == "table" and state.KnownStructureTypes or {}
 state.SelectedStructureTypes = type(state.SelectedStructureTypes) == "table" and state.SelectedStructureTypes or {}
