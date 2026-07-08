@@ -1,3 +1,4 @@
+UE Script
 -- Page-only module for Hqydeu Script Hub. Upload this file to its raw GitHub target.
 local Runtime = (type(getgenv) == "function" and getgenv().HqydeuLoader_Runtime) or shared.HqydeuLoader_Runtime
 if not Runtime then return warn("Hqydeu page module: main hub runtime was not found") end
@@ -37,7 +38,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v32-loot-farm-diagnostics"
+local ModuleVersion = "UE-Utility-v34-auto-trap-trigger-fix"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -91,6 +92,10 @@ state.LootFarmEnabled = state.LootFarmEnabled == true
 state.LootFarmCollected = tonumber(state.LootFarmCollected) or 0
 state.LootFarmSkipped = {}
 state.CachedFarmTargets = {}
+state.AutoTrapEnabled = state.AutoTrapEnabled == true
+state.AutoTrapKilled = tonumber(state.AutoTrapKilled) or 0
+state.AutoTrapPhase = "Idle"
+state.AutoTrapQueue = {}
 
 local function DisconnectTableConnections(connections)
 	if type(connections) ~= "table" then return end
@@ -116,7 +121,7 @@ state.BoxObjects = {}
 if type(ThemeObjects.FeatureKeybindEntries) == "table" then
 	for index = #ThemeObjects.FeatureKeybindEntries, 1, -1 do
 		local entry = ThemeObjects.FeatureKeybindEntries[index]
-		if entry and (entry.Storage == "UEEnemyESP" or entry.Storage == "UELootESP" or entry.Storage == "UEBoxESP" or entry.Storage == "UEBoxFilters" or entry.Storage == "UENoDarkness" or entry.Storage == "UEBaseTP" or entry.Storage == "UEStructureNotifications" or entry.Storage == "UEAutoHunterTrap" or entry.Storage == "UEAutoMobFarm" or entry.Storage == "UELootFarm") then
+		if entry and (entry.Storage == "UEEnemyESP" or entry.Storage == "UELootESP" or entry.Storage == "UEBoxESP" or entry.Storage == "UEBoxFilters" or entry.Storage == "UENoDarkness" or entry.Storage == "UEBaseTP" or entry.Storage == "UEStructureNotifications" or entry.Storage == "UEAutoHunterTrap" or entry.Storage == "UEAutoMobFarm" or entry.Storage == "UELootFarm" or entry.Storage == "UEAutoTrap") then
 			table.remove(ThemeObjects.FeatureKeybindEntries, index)
 		end
 	end
@@ -147,6 +152,13 @@ local FARM_CLAIM_SEARCH_TIMEOUT = 3
 local FARM_CLAIM_POST_FIRE_WAIT = 0.5
 local FARM_SKIP_COOLDOWN = 6
 local FARM_IDLE_WAIT = 0.35
+local TRAP2_LAND_OFFSET = Vector3.new(6, 0, 0)
+local TRAP_TRIGGER_WAIT = 2
+local TRAP_HUNTER_SCAN_WINDOW = 4
+local TRAP_COMBAT_FIRE_INTERVAL = 0.2
+local TRAP_COMBAT_STANDOFF = 6
+local TRAP_RESPAWN_WAIT = 1
+local TRAP_IDLE_WAIT = 0.5
 for _, boxType in ipairs(BOX_TYPES) do
 	if state.SelectedBoxTypes[boxType] == nil then state.SelectedBoxTypes[boxType] = true end
 end
@@ -165,7 +177,7 @@ uePage.ScrollBarImageColor3 = AccentColor
 uePage.ScrollingDirection = Enum.ScrollingDirection.Y
 uePage.ElasticBehavior = Enum.ElasticBehavior.Never
 uePage.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-uePage.CanvasSize = UDim2.new(0, 0, 0, 240)
+uePage.CanvasSize = UDim2.new(0, 0, 0, 286)
 uePage.Visible = false
 uePage:SetAttribute("ModuleVersion", ModuleVersion)
 uePage.Parent = MainFrame
@@ -354,6 +366,23 @@ farmStatus.Parent = farmRow
 AddText(farmStatus)
 local farmToggle = CreateButton(farmRow, "UndeadExpeditionLootFarmToggle", "Off", -98, 44)
 
+local trapRow = CreateRow("UndeadExpeditionAutoTrapRow", 234)
+local trapTitle = CreateTitle(trapRow, "Auto Trap:")
+local trapStatus = Instance.new("TextLabel")
+trapStatus.Name = "UndeadExpeditionAutoTrapStatus"
+trapStatus.Size = UDim2.new(0, 110, 0, 18)
+trapStatus.Position = UDim2.new(1, -220, 0, 10)
+trapStatus.BackgroundTransparency = 1
+trapStatus.ZIndex = 4
+trapStatus.Text = "0 cleared"
+trapStatus.Font = Enum.Font.GothamBold
+trapStatus.TextSize = 8
+trapStatus.TextXAlignment = Enum.TextXAlignment.Right
+trapStatus.TextTruncate = Enum.TextTruncate.AtEnd
+trapStatus.Parent = trapRow
+AddText(trapStatus)
+local trapToggle = CreateButton(trapRow, "UndeadExpeditionAutoTrapToggle", "Off", -98, 44)
+
 local filterDock = Instance.new("Frame")
 filterDock.Name = "UndeadExpeditionFilterDock"
 filterDock.Size = UDim2.new(0, 256, 0, 122)
@@ -437,6 +466,7 @@ local Green = Color3.fromRGB(38, 190, 92)
 local Red = Color3.fromRGB(220, 42, 58)
 local filterButtons = {}
 local RefreshButtons
+local HandleTrapStructureSpawn
 
 local function IsUEPageActive()
 	return ThemeObjects.ActiveTabName == "Games" and HubState.SelectedGame == "Undead Expedition" and uePage.Parent ~= nil and uePage.Visible == true
@@ -703,6 +733,7 @@ local function WatchStructures()
 	TrackConnection("UndeadExpeditionStructureAdded", folder.ChildAdded:Connect(function(child)
 		SetStructureMessage(StructureDisplayName(child))
 		ShowStructureMarker(child)
+		if HandleTrapStructureSpawn then HandleTrapStructureSpawn(child) end
 		state.LastBoxScan = 0
 	end))
 end
@@ -1303,6 +1334,194 @@ local function TeleportToBase()
 	return StableTeleport(CFrame.new(BASE_POSITION + Vector3.new(0, 4, 0)))
 end
 
+local function FindTrapTriggerPart(structure, isTrap2)
+	local direct = isTrap2 and structure:FindFirstChild("Trap") or structure:FindFirstChild("string")
+	if direct and direct:IsA("BasePart") then return direct end
+
+	local fallbackName = isTrap2 and "trap" or "string"
+	for _, child in ipairs(structure:GetDescendants()) do
+		if child:IsA("BasePart") and string.lower(child.Name) == fallbackName then
+			return child
+		end
+	end
+	return StructureRoot(structure)
+end
+
+local function IsHunterInstance(instance)
+	return instance ~= nil and string.find(string.lower(instance.Name), "hunter", 1, true) ~= nil
+end
+
+local function EnemyRoot(enemy)
+	if not enemy then return nil end
+	return enemy.PrimaryPart or enemy:FindFirstChild("HumanoidRootPart") or enemy:FindFirstChildWhichIsA("BasePart", true)
+end
+
+local function GetActiveHunters()
+	local enemiesFolder = workspace:FindFirstChild("Enemies")
+	if not enemiesFolder then return {} end
+	local hunters = {}
+	for _, child in ipairs(enemiesFolder:GetChildren()) do
+		if IsHunterInstance(child) then
+			local humanoid = child:FindFirstChildOfClass("Humanoid")
+			if humanoid and humanoid.Health > 0 then
+				table.insert(hunters, child)
+			end
+		end
+	end
+	return hunters
+end
+
+local function EquipAnyWeapon()
+	local character = Player and Player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return nil end
+	local equipped = character:FindFirstChildOfClass("Tool")
+	if equipped then return equipped end
+	local backpack = Player and Player:FindFirstChildOfClass("Backpack")
+	local backpackTool = backpack and backpack:FindFirstChildOfClass("Tool")
+	if backpackTool then
+		humanoid:EquipTool(backpackTool)
+		return backpackTool
+	end
+	return nil
+end
+
+local function FightHunters(trapPosition)
+	local mouseClick = game.ReplicatedStorage:FindFirstChild("MouseClick")
+	if not mouseClick then
+		warn("[UE Auto Trap] MouseClick remote not found; cannot attack Hunters")
+	end
+	local hadRoot = true
+	while state.AutoTrapEnabled and uePage.Parent do
+		local hunters = GetActiveHunters()
+		if #hunters == 0 then return true end
+
+		local root = PlayerRoot()
+		if not root then
+			hadRoot = false
+			task.wait(TRAP_RESPAWN_WAIT)
+		else
+			if not hadRoot then
+				hadRoot = true
+				task.wait(TRAP_RESPAWN_WAIT)
+				root = PlayerRoot()
+				if root then
+					warn("[UE Auto Trap] respawned, returning to trap site")
+					StableTeleport(CFrame.new(trapPosition + Vector3.new(0, 4, 0)))
+					task.wait(0.2)
+					root = PlayerRoot()
+				end
+			end
+			if root then
+				table.sort(hunters, function(a, b)
+					local rootA, rootB = EnemyRoot(a), EnemyRoot(b)
+					if not rootA then return false end
+					if not rootB then return true end
+					return (root.Position - rootA.Position).Magnitude < (root.Position - rootB.Position).Magnitude
+				end)
+				local target = hunters[1]
+				local targetRoot = EnemyRoot(target)
+				if targetRoot then
+					local flatOffset = Vector3.new(root.Position.X - targetRoot.Position.X, 0, root.Position.Z - targetRoot.Position.Z)
+					if flatOffset.Magnitude < 0.1 then flatOffset = Vector3.new(TRAP_COMBAT_STANDOFF, 0, 0) end
+					local standPosition = targetRoot.Position + flatOffset.Unit * TRAP_COMBAT_STANDOFF
+					ThemeObjects.SetRootUpright(root, root.CFrame, Vector3.new(standPosition.X, targetRoot.Position.Y, standPosition.Z))
+					root.AssemblyLinearVelocity = Vector3.zero
+					root.AssemblyAngularVelocity = Vector3.zero
+					local tool = EquipAnyWeapon()
+					if tool and mouseClick then
+						pcall(function()
+							mouseClick:FireServer(tool.Name, CFrame.new(targetRoot.Position))
+						end)
+					elseif not tool then
+						warn("[UE Auto Trap] no weapon Tool available to attack with")
+					end
+				end
+			end
+			task.wait(TRAP_COMBAT_FIRE_INTERVAL)
+		end
+	end
+	return false
+end
+
+local function RunAutoTrapStep()
+	if #state.AutoTrapQueue == 0 then return end
+	local structure = table.remove(state.AutoTrapQueue, 1)
+	if not structure or not structure.Parent then return end
+
+	local displayName = StructureDisplayName(structure)
+	local isTrap2 = string.lower(displayName):find("2", 1, true) ~= nil or string.lower(structure.Name):find("2", 1, true) ~= nil
+	local triggerPart = FindTrapTriggerPart(structure, isTrap2)
+	if not triggerPart then
+		warn("[UE Auto Trap] could not find a trigger part on " .. tostring(structure.Name))
+		return
+	end
+
+	local targetPosition = triggerPart.Position
+	if isTrap2 then
+		targetPosition = targetPosition + TRAP2_LAND_OFFSET
+	end
+
+	state.AutoTrapPhase = "Triggering"
+	RefreshButtons()
+	local root = PlayerRoot()
+	if not root then return end
+	StableTeleport(CFrame.new(targetPosition + Vector3.new(0, 4, 0)))
+	task.wait(TRAP_TRIGGER_WAIT)
+
+	state.AutoTrapPhase = "Waiting for Hunters"
+	RefreshButtons()
+	local waveDeadline = os.clock() + TRAP_HUNTER_SCAN_WINDOW
+	while #GetActiveHunters() == 0 and os.clock() < waveDeadline and state.AutoTrapEnabled do
+		task.wait(0.25)
+	end
+	if #GetActiveHunters() == 0 then
+		warn("[UE Auto Trap] no Hunters spawned after triggering " .. tostring(structure.Name))
+		state.AutoTrapPhase = "Idle"
+		RefreshButtons()
+		return
+	end
+
+	state.AutoTrapPhase = "Fighting"
+	RefreshButtons()
+	FightHunters(targetPosition)
+
+	state.AutoTrapPhase = "Returning to base"
+	RefreshButtons()
+	local root2 = PlayerRoot()
+	if root2 then TeleportToBase() end
+	state.AutoTrapKilled = (tonumber(state.AutoTrapKilled) or 0) + 1
+	state.AutoTrapPhase = "Idle"
+	RefreshButtons()
+end
+
+local function SetAutoTrapEnabled(enabled)
+	state.AutoTrapEnabled = enabled == true
+	if not state.AutoTrapEnabled then
+		state.AutoTrapPhase = "Idle"
+	end
+	RefreshButtons()
+	UpdateTheme(true)
+end
+
+local function ToggleAutoTrap()
+	SetAutoTrapEnabled(not state.AutoTrapEnabled)
+end
+
+HandleTrapStructureSpawn = function(structure)
+	if HasHunterTrapText(StructureDisplayName(structure)) or HasHunterTrapText(structure.Name) then
+		table.insert(state.AutoTrapQueue, structure)
+	end
+end
+
+task.spawn(function()
+	while uePage.Parent do
+		if state.AutoTrapEnabled then
+			RunAutoTrapStep()
+		end
+		task.wait(TRAP_IDLE_WAIT)
+	end
+end)
 
 RefreshButtons = function()
 	structureStatus.Text = state.LastStructureMessage or "Waiting for structure..."
@@ -1315,10 +1534,13 @@ RefreshButtons = function()
 	structureAlertsToggle.Text = state.StructureNotifications and "On" or "Off"
 	farmToggle.Text = state.LootFarmEnabled and "On" or "Off"
 	farmStatus.Text = ("%d farmed"):format(tonumber(state.LootFarmCollected) or 0)
+	trapToggle.Text = state.AutoTrapEnabled and "On" or "Off"
+	trapStatus.Text = state.AutoTrapEnabled and (tostring(state.AutoTrapPhase or "Idle") .. (" · %d cleared"):format(tonumber(state.AutoTrapKilled) or 0)) or ("%d cleared"):format(tonumber(state.AutoTrapKilled) or 0)
 	boxTitle.TextColor3 = state.BoxESP and AccentColor or InactiveTextColor()
 	darknessTitle.TextColor3 = state.NoDarkness and AccentColor or InactiveTextColor()
 	structureAlertsTitle.TextColor3 = state.StructureNotifications and AccentColor or InactiveTextColor()
 	farmTitle.TextColor3 = state.LootFarmEnabled and AccentColor or InactiveTextColor()
+	trapTitle.TextColor3 = state.AutoTrapEnabled and AccentColor or InactiveTextColor()
 	baseTitle.TextColor3 = InactiveTextColor()
 	filterDock.Visible = state.LootFiltersOpen and IsUEPageActive()
 	for _, entry in ipairs(filterButtons) do
@@ -1421,16 +1643,23 @@ farmToggle.MouseButton1Click:Connect(function()
 	ToggleLootFarm()
 end)
 
+trapToggle.MouseButton1Click:Connect(function()
+	PlayClick()
+	ToggleAutoTrap()
+end)
+
 table.insert(ThemeObjects.StateTexts, {Object = boxTitle, IsEnabled = function() return state.BoxESP end})
 table.insert(ThemeObjects.StateTexts, {Object = darknessTitle, IsEnabled = function() return state.NoDarkness end})
 table.insert(ThemeObjects.StateTexts, {Object = structureAlertsTitle, IsEnabled = function() return state.StructureNotifications end})
 table.insert(ThemeObjects.StateTexts, {Object = farmTitle, IsEnabled = function() return state.LootFarmEnabled end})
+table.insert(ThemeObjects.StateTexts, {Object = trapTitle, IsEnabled = function() return state.AutoTrapEnabled end})
 ThemeObjects.AddFeatureKeybind({Name = "Box ESP", Storage = "UEBoxESP", Parent = boxRow, Toggle = boxToggle, Get = function() return LoadGameKeybind("UEBoxESP") end, Set = function(key) SaveGameKeybind("UEBoxESP", key) end, Action = ToggleBoxESP})
 ThemeObjects.AddFeatureKeybind({Name = "Box Filters", Storage = "UEBoxFilters", Get = function() return LoadGameKeybind("UEBoxFilters") end, Set = function(key) SaveGameKeybind("UEBoxFilters", key) end, Action = ToggleBoxFilters})
 ThemeObjects.AddFeatureKeybind({Name = "No Darkness", Storage = "UENoDarkness", Parent = darknessRow, Toggle = darknessToggle, Get = function() return LoadGameKeybind("UENoDarkness") end, Set = function(key) SaveGameKeybind("UENoDarkness", key) end, Action = ToggleNoDarkness})
 ThemeObjects.AddFeatureKeybind({Name = "Base TP", Storage = "UEBaseTP", Parent = baseRow, Toggle = baseButton, Get = function() return LoadGameKeybind("UEBaseTP") end, Set = function(key) SaveGameKeybind("UEBaseTP", key) end, Action = TeleportToBase})
 ThemeObjects.AddFeatureKeybind({Name = "Structure Alerts", Storage = "UEStructureNotifications", Parent = structureAlertsRow, Toggle = structureAlertsToggle, Get = function() return LoadGameKeybind("UEStructureNotifications") end, Set = function(key) SaveGameKeybind("UEStructureNotifications", key) end, Action = ToggleStructureNotifications})
 ThemeObjects.AddFeatureKeybind({Name = "Loot Farm", Storage = "UELootFarm", Parent = farmRow, Toggle = farmToggle, Get = function() return LoadGameKeybind("UELootFarm") end, Set = function(key) SaveGameKeybind("UELootFarm", key) end, Action = ToggleLootFarm})
+ThemeObjects.AddFeatureKeybind({Name = "Auto Trap", Storage = "UEAutoTrap", Parent = trapRow, Toggle = trapToggle, Get = function() return LoadGameKeybind("UEAutoTrap") end, Set = function(key) SaveGameKeybind("UEAutoTrap", key) end, Action = ToggleAutoTrap})
 
 TrackConnection("UndeadExpeditionContainerAdded", workspace.ChildAdded:Connect(function(child)
 	if child.Name == "Structures" then
