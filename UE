@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v49-facing-radius-early-exit"
+local ModuleVersion = "UE-Utility-v50-trigger-retry-patience"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -156,7 +156,8 @@ local FARM_SKIP_COOLDOWN = 6
 local FARM_IDLE_WAIT = 0.35
 local TRAP2_LAND_OFFSET = Vector3.new(6, 0, 0)
 local TRAP_TRIGGER_WAIT = 2
-local TRAP_HUNTER_SCAN_WINDOW = 4
+local TRAP_HUNTER_SCAN_WINDOW = 10
+local TRAP_TRIGGER_ATTEMPTS = 3
 local TRAP_COMBAT_FIRE_INTERVAL = 0.2
 local TRAP_COMBAT_STANDOFF = 6
 local TRAP_RESPAWN_WAIT = 1
@@ -1758,21 +1759,31 @@ local function RunAutoTrapStep()
 		return
 	end
 
-	state.AutoTrapPhase = "Triggering " .. encounter.Id
-	RefreshButtons()
-	local root = PlayerRoot()
-	if not root then return end
-	StableTeleport(CFrame.new(targetPosition + Vector3.new(0, 4, 0)))
-	task.wait(TRAP_TRIGGER_WAIT)
+	local enemiesFound = false
+	for attempt = 1, TRAP_TRIGGER_ATTEMPTS do
+		if not state.AutoTrapEnabled then break end
+		state.AutoTrapPhase = "Triggering " .. encounter.Id
+		RefreshButtons()
+		local root = PlayerRoot()
+		if not root then break end
+		StableTeleport(CFrame.new(targetPosition + Vector3.new(0, 4, 0)))
+		task.wait(TRAP_TRIGGER_WAIT)
 
-	state.AutoTrapPhase = "Waiting for enemies"
-	RefreshButtons()
-	local waveDeadline = os.clock() + TRAP_HUNTER_SCAN_WINDOW
-	while #GetActiveEnemies(encounter.EnemyNames) == 0 and os.clock() < waveDeadline and state.AutoTrapEnabled do
-		task.wait(0.25)
+		state.AutoTrapPhase = "Waiting for enemies"
+		RefreshButtons()
+		local waveDeadline = os.clock() + TRAP_HUNTER_SCAN_WINDOW
+		while #GetActiveEnemies(encounter.EnemyNames) == 0 and os.clock() < waveDeadline and state.AutoTrapEnabled do
+			task.wait(0.25)
+		end
+		if #GetActiveEnemies(encounter.EnemyNames) > 0 then
+			enemiesFound = true
+			break
+		end
+		warn("[UE Auto Trap] no enemies spawned after triggering " .. tostring(structure.Name) .. " (" .. encounter.Id .. "), attempt " .. attempt .. "/" .. TRAP_TRIGGER_ATTEMPTS)
 	end
-	if #GetActiveEnemies(encounter.EnemyNames) == 0 then
-		warn("[UE Auto Trap] no enemies spawned after triggering " .. tostring(structure.Name) .. " (" .. encounter.Id .. ")")
+
+	if not enemiesFound then
+		warn("[UE Auto Trap] giving up on " .. tostring(structure.Name) .. " (" .. encounter.Id .. ") after " .. TRAP_TRIGGER_ATTEMPTS .. " attempts")
 		state.AutoTrapPhase = "Idle"
 		RefreshButtons()
 		return
