@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v54-register-fix"
+local ModuleVersion = "UE-Utility-v55-layout-revamp"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -249,7 +249,7 @@ uePage.ScrollBarImageColor3 = AccentColor
 uePage.ScrollingDirection = Enum.ScrollingDirection.Y
 uePage.ElasticBehavior = Enum.ElasticBehavior.Never
 uePage.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-uePage.CanvasSize = UDim2.new(0, 0, 0, 270)
+uePage.CanvasSize = UDim2.new(0, 0, 0, 250)
 uePage.Visible = false
 uePage:SetAttribute("ModuleVersion", ModuleVersion)
 uePage.Parent = MainFrame
@@ -403,15 +403,11 @@ structureTimerDisplay.Visible = false
 structureTimerDisplay.Parent = HubState.PageHeader or uePage
 AddText(structureTimerDisplay)
 
-local mobsRow = CreateRow("UndeadExpeditionMobsESPRow", 4)
-local mobsTitle = CreateTitle(mobsRow, "Mobs ESP:")
-local mobsToggle = CreateButton(mobsRow, "UndeadExpeditionMobsESPToggle", "Off", -98, 44)
-
-local baseRow = CreateRow("UndeadExpeditionBaseTPRow", 50)
+local baseRow = CreateRow("UndeadExpeditionBaseTPRow", 4)
 local baseTitle = CreateTitle(baseRow, "Base TP:")
 local baseButton = CreateButton(baseRow, "UndeadExpeditionBaseTPButton", "TP", -98, 44)
 
-local boxRow = CreateRow("UndeadExpeditionBoxESPRow", 96)
+local boxRow = CreateRow("UndeadExpeditionBoxESPRow", 50)
 local boxTitle = CreateTitle(boxRow, "ESP:")
 local boxStatus = Instance.new("TextLabel")
 boxStatus.Name = "UndeadExpeditionBoxESPStatus"
@@ -429,7 +425,7 @@ AddText(boxStatus)
 local boxFiltersButton = CreateButton(boxRow, "UndeadExpeditionBoxFilters", "Edit", -152, 46)
 local boxToggle = CreateButton(boxRow, "UndeadExpeditionBoxESPToggle", "Off", -98, 44)
 
-local trapRow = CreateRow("UndeadExpeditionAutoTrapRow", 142)
+local trapRow = CreateRow("UndeadExpeditionAutoTrapRow", 96)
 trapRow.Size = UDim2.new(1, -24, 0, 54)
 local trapTitle = CreateTitle(trapRow, "Auto Trap:")
 local pickupButton = CreateButton(trapRow, "UndeadExpeditionPickupFilters", "Pickup", -152, 46)
@@ -448,53 +444,13 @@ trapStatus.TextTruncate = Enum.TextTruncate.AtEnd
 trapStatus.Parent = trapRow
 AddText(trapStatus)
 
-local function CreateToggleCard(name, y, isRight, titleText, defaultButtonText)
-	local card = Instance.new("Frame")
-	card.Name = name
-	card.Size = UDim2.new(0.5, -16, 0, 48)
-	card.Position = isRight and UDim2.new(0.5, 4, 0, y) or UDim2.new(0, 12, 0, y)
-	card.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
-	card.BackgroundTransparency = 0.92
-	card.BorderSizePixel = 0
-	card.ZIndex = 3
-	card.Parent = uePage
-	AddBackground(card)
-	Instance.new("UICorner", card).CornerRadius = UDim.new(0, 6)
+local darknessRow = CreateRow("UndeadExpeditionNoDarknessRow", 158)
+local darknessTitle = CreateTitle(darknessRow, "No Darkness:")
+local darknessToggle = CreateButton(darknessRow, "UndeadExpeditionNoDarknessToggle", "Off", -98, 44)
 
-	local titleLabel = Instance.new("TextLabel")
-	titleLabel.Size = UDim2.new(1, -8, 0, 16)
-	titleLabel.Position = UDim2.new(0, 4, 0, 6)
-	titleLabel.BackgroundTransparency = 1
-	titleLabel.ZIndex = 4
-	titleLabel.Text = titleText
-	titleLabel.Font = Enum.Font.GothamBold
-	titleLabel.TextSize = 9
-	titleLabel.TextXAlignment = Enum.TextXAlignment.Center
-	titleLabel.Parent = card
-	AddText(titleLabel)
-
-	local toggle = Instance.new("TextButton")
-	toggle.Size = UDim2.new(0, 44, 0, 20)
-	toggle.Position = UDim2.new(0.5, -22, 0, 24)
-	toggle.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-	toggle.BackgroundTransparency = 0.8
-	toggle.BorderSizePixel = 0
-	toggle.ZIndex = 4
-	toggle.Text = defaultButtonText
-	toggle.Font = Enum.Font.GothamBold
-	toggle.TextSize = 9
-	toggle.Parent = card
-	AddBackground(toggle)
-	AddText(toggle)
-	Instance.new("UICorner", toggle).CornerRadius = UDim.new(0, 5)
-	EnsureControlOutline(toggle)
-
-	return card, titleLabel, toggle
-end
-
-local darknessCardY = 204
-local darknessCard, darknessTitle, darknessToggle = CreateToggleCard("UndeadExpeditionNoDarknessCard", darknessCardY, false, "No Darkness", "Off")
-local structureAlertsCard, structureAlertsTitle, structureAlertsToggle = CreateToggleCard("UndeadExpeditionStructureAlertsCard", darknessCardY, true, "Structure Alerts", "On")
+local structureAlertsRow = CreateRow("UndeadExpeditionStructureAlertsRow", 204)
+local structureAlertsTitle = CreateTitle(structureAlertsRow, "Structure Alerts:")
+local structureAlertsToggle = CreateButton(structureAlertsRow, "UndeadExpeditionStructureAlertsToggle", "On", -98, 44)
 
 local filterDock = Instance.new("Frame")
 filterDock.Name = "UndeadExpeditionFilterDock"
@@ -571,7 +527,7 @@ filterScroll.ScrollBarThickness = 3
 filterScroll.ScrollBarImageColor3 = AccentColor
 filterScroll.ScrollingDirection = Enum.ScrollingDirection.Y
 filterScroll.ElasticBehavior = Enum.ElasticBehavior.Never
-filterScroll.CanvasSize = UDim2.new(0, 0, 0, 330)
+filterScroll.CanvasSize = UDim2.new(0, 0, 0, 339 + math.max(1, math.ceil(#RARITY_TIERS / 3)) * 23 + 10)
 filterScroll.ZIndex = 81
 filterScroll.Parent = filterDock
 
@@ -673,6 +629,7 @@ end
 
 local pickupDock, pickupCloseButton, UpdatePickupDockPosition, RegisterKnownStructureType
 local structureFilterButtons, espRarityButtons, pickupFilterButtons
+local mobsTitle, mobsToggle
 do
 	local function CreateFilterLabel(text, y)
 		local label = Instance.new("TextLabel")
@@ -686,6 +643,7 @@ do
 		label.ZIndex = 82
 		label.Parent = filterScroll
 		AddText(label)
+		return label
 	end
 
 	local function CreateFilterButton(value, x, y)
@@ -805,7 +763,7 @@ do
 				local index = #structureFilterButtons
 				local column = index % 3
 				local row = math.floor(index / 3)
-				CreateStructureFilterButton(name, column * 82, 38 + row * 23)
+				CreateStructureFilterButton(name, column * 82, 94 + row * 23)
 			end
 		end
 	end
@@ -820,8 +778,26 @@ do
 		EnsureStructureFilterButtons()
 	end
 
-	CreateFilterLabel("Structures ESP", 0)
-	CreateAllNoneButtons(16,
+	mobsTitle = CreateFilterLabel("Mobs ESP", 0)
+	mobsToggle = Instance.new("TextButton")
+	mobsToggle.Name = "UndeadExpeditionMobsESPFilterToggle"
+	mobsToggle.Size = UDim2.new(0, 76, 0, 20)
+	mobsToggle.Position = UDim2.new(0, 0, 0, 18)
+	mobsToggle.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	mobsToggle.BackgroundTransparency = 0.35
+	mobsToggle.BorderSizePixel = 0
+	mobsToggle.Font = Enum.Font.GothamBold
+	mobsToggle.TextSize = 8
+	mobsToggle.Text = "Off"
+	mobsToggle.ZIndex = 82
+	mobsToggle.Parent = filterScroll
+	AddBackground(mobsToggle)
+	AddText(mobsToggle)
+	Instance.new("UICorner", mobsToggle).CornerRadius = UDim.new(0, 5)
+	EnsureControlOutline(mobsToggle)
+
+	CreateFilterLabel("Structures ESP", 54)
+	CreateAllNoneButtons(70,
 		function()
 			for _, name in ipairs(state.KnownStructureTypes) do state.SelectedStructureTypes[name] = true end
 		end,
@@ -831,7 +807,7 @@ do
 	)
 	EnsureStructureFilterButtons()
 
-	CreateFilterLabel("Boxes / Traps", 161)
+	CreateFilterLabel("Boxes / Traps", 222)
 	local BOX_FILTER_TYPES = {}
 	for _, boxType in ipairs(BOX_TYPES) do
 		if boxType ~= "Hunter Trap" then
@@ -841,7 +817,7 @@ do
 	for index, boxType in ipairs(BOX_FILTER_TYPES) do
 		local column = (index - 1) % 3
 		local row = math.floor((index - 1) / 3)
-		CreateFilterButton(boxType, column * 82, 177 + row * 23)
+		CreateFilterButton(boxType, column * 82, 240 + row * 23)
 	end
 
 	-- Item Rarities ESP: independent from the Pickup rarity filters (visibility vs. auto-collect are separate concerns)
@@ -873,8 +849,8 @@ do
 		end)
 	end
 
-	CreateFilterLabel("Item Rarities ESP", 231)
-	CreateAllNoneButtons(247,
+	CreateFilterLabel("Item Rarities ESP", 299)
+	CreateAllNoneButtons(317,
 		function()
 			for _, tier in ipairs(RARITY_TIERS) do state.ESPSelectedRarities[tier] = true end
 		end,
@@ -885,7 +861,7 @@ do
 	for index, tier in ipairs(RARITY_TIERS) do
 		local column = (index - 1) % 3
 		local row = math.floor((index - 1) / 3)
-		CreateESPRarityButton(tier, column * 82, 269 + row * 23)
+		CreateESPRarityButton(tier, column * 82, 339 + row * 23)
 	end
 
 	local pickupRows = math.max(1, math.ceil(#RARITY_TIERS / 3))
@@ -2622,12 +2598,11 @@ table.insert(ThemeObjects.StateTexts, {Object = structureAlertsTitle, IsEnabled 
 table.insert(ThemeObjects.StateTexts, {Object = trapTitle, IsEnabled = function() return state.AutoTrapEnabled end})
 table.insert(ThemeObjects.StateTexts, {Object = mobsTitle, IsEnabled = function() return state.ESPMobsEnabled end})
 ThemeObjects.AddFeatureKeybind({Name = "Box ESP", Storage = "UEBoxESP", Parent = boxRow, Toggle = boxToggle, Get = function() return LoadGameKeybind("UEBoxESP") end, Set = function(key) SaveGameKeybind("UEBoxESP", key) end, Action = ToggleBoxESP})
-ThemeObjects.AddFeatureKeybind({Name = "Mobs ESP", Storage = "UEMobsESP", Parent = mobsRow, Toggle = mobsToggle, Get = function() return LoadGameKeybind("UEMobsESP") end, Set = function(key) SaveGameKeybind("UEMobsESP", key) end, Action = ToggleMobsESP})
 ThemeObjects.AddFeatureKeybind({Name = "Box Filters", Storage = "UEBoxFilters", Get = function() return LoadGameKeybind("UEBoxFilters") end, Set = function(key) SaveGameKeybind("UEBoxFilters", key) end, Action = ToggleBoxFilters})
 ThemeObjects.AddFeatureKeybind({Name = "Pickup Filters", Storage = "UEPickupFilters", Get = function() return LoadGameKeybind("UEPickupFilters") end, Set = function(key) SaveGameKeybind("UEPickupFilters", key) end, Action = TogglePickupFilters})
-ThemeObjects.AddFeatureKeybind({Name = "No Darkness", Storage = "UENoDarkness", Parent = darknessCard, Toggle = darknessToggle, Get = function() return LoadGameKeybind("UENoDarkness") end, Set = function(key) SaveGameKeybind("UENoDarkness", key) end, Action = ToggleNoDarkness})
+ThemeObjects.AddFeatureKeybind({Name = "No Darkness", Storage = "UENoDarkness", Parent = darknessRow, Toggle = darknessToggle, Get = function() return LoadGameKeybind("UENoDarkness") end, Set = function(key) SaveGameKeybind("UENoDarkness", key) end, Action = ToggleNoDarkness})
 ThemeObjects.AddFeatureKeybind({Name = "Base TP", Storage = "UEBaseTP", Parent = baseRow, Toggle = baseButton, Get = function() return LoadGameKeybind("UEBaseTP") end, Set = function(key) SaveGameKeybind("UEBaseTP", key) end, Action = TeleportToBase})
-ThemeObjects.AddFeatureKeybind({Name = "Structure Alerts", Storage = "UEStructureNotifications", Parent = structureAlertsCard, Toggle = structureAlertsToggle, Get = function() return LoadGameKeybind("UEStructureNotifications") end, Set = function(key) SaveGameKeybind("UEStructureNotifications", key) end, Action = ToggleStructureNotifications})
+ThemeObjects.AddFeatureKeybind({Name = "Structure Alerts", Storage = "UEStructureNotifications", Parent = structureAlertsRow, Toggle = structureAlertsToggle, Get = function() return LoadGameKeybind("UEStructureNotifications") end, Set = function(key) SaveGameKeybind("UEStructureNotifications", key) end, Action = ToggleStructureNotifications})
 ThemeObjects.AddFeatureKeybind({Name = "Auto Trap", Storage = "UEAutoTrap", Parent = trapRow, Toggle = trapToggle, Get = function() return LoadGameKeybind("UEAutoTrap") end, Set = function(key) SaveGameKeybind("UEAutoTrap", key) end, Action = ToggleAutoTrap})
 
 TrackConnection("UndeadExpeditionContainerAdded", workspace.ChildAdded:Connect(function(child)
