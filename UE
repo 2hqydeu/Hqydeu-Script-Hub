@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v33"
+local ModuleVersion = "UE-Utility-v34"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -152,6 +152,9 @@ local HUNTER_TRAP_HITBOX_SIZE = Vector3.new(24, 24, 24)
 local HUNTER_TRAP_APPROACH_INTERVAL = 1.15
 local HUNTER_TRAP_STRAFE_INTERVAL = 0.45
 local HUNTER_TRAP_STRAFE_DISTANCE = 9
+local HUNTER_TRAP_SEEK_INTERVAL = 0.55
+local HUNTER_TRAP_BASE_SCAN_INTERVAL = 2.25
+local HUNTER_TRAP_SIDE_DISTANCE = 8
 local MOB_FARM_INTERVAL = 0.1
 local MOB_FARM_ATTACK_INTERVAL = 0.09
 local MOB_FARM_SCAN_RADIUS = 3000
@@ -717,6 +720,8 @@ local function WatchStructures()
 		SetStructureMessage(StructureDisplayName(child))
 		ShowStructureMarker(child)
 		state.LastBoxScan = 0
+		state.LastHunterTrapSearchAt = 0
+		state.AutoTrapBaseWaitTeleported = false
 	end))
 end
 
@@ -2038,7 +2043,19 @@ end
 
 local function TeleportToHunterTrapRoot(trapRoot)
 	if not trapRoot then return false end
-	local targetPosition = trapRoot.Position + Vector3.new(0, 5, 0)
+	local playerRoot = PlayerRoot()
+	local offset = playerRoot and (playerRoot.Position - trapRoot.Position) or -trapRoot.CFrame.LookVector
+	local flatOffset = Vector3.new(offset.X, 0, offset.Z)
+	if flatOffset.Magnitude < 1 then
+		local fallback = -trapRoot.CFrame.LookVector
+		flatOffset = Vector3.new(fallback.X, 0, fallback.Z)
+	end
+	if flatOffset.Magnitude < 1 then flatOffset = Vector3.new(0, 0, 1) end
+	local sideDistance = HUNTER_TRAP_SIDE_DISTANCE
+	if trapRoot:IsA("BasePart") then
+		sideDistance = math.clamp((math.max(trapRoot.Size.X, trapRoot.Size.Z) * 0.5) + 4, HUNTER_TRAP_SIDE_DISTANCE, 10)
+	end
+	local targetPosition = trapRoot.Position + flatOffset.Unit * sideDistance + Vector3.new(0, 3, 0)
 	return StableTeleport(CFrame.new(targetPosition, trapRoot.Position))
 end
 
@@ -2052,12 +2069,18 @@ local function AutoHunterTrapStep()
 		state.AutoTrapTarget = nil
 		state.AutoTrapPhase = "seeking"
 		state.AutoTrapLootStartedAt = nil
+		state.LastHunterTrapSearchAt = 0
 		RestoreHunterTrapHitboxes()
 		RestoreAutoTrapFacing()
 		target = nil
 	end
 
 	if not target then
+		local scanInterval = state.AutoTrapPhase == "base_wait" and HUNTER_TRAP_BASE_SCAN_INTERVAL or HUNTER_TRAP_SEEK_INTERVAL
+		if now - (state.LastHunterTrapSearchAt or 0) < scanInterval then
+			return
+		end
+		state.LastHunterTrapSearchAt = now
 		local nextTrap = FindNearestHunterTrapRoot(true)
 		if nextTrap then
 			state.AutoTrapTarget = nextTrap
@@ -2068,6 +2091,7 @@ local function AutoHunterTrapStep()
 			state.LastHunterTrapUseAt = 0
 			state.LastHunterTrapStrafeAt = 0
 			state.HunterTrapAttackBusy = false
+			state.LastHunterTrapSearchAt = 0
 			RestoreHunterTrapHitboxes()
 			if not IsAutoTrapRunActive(runId) then return end
 			TeleportToHunterTrapRoot(nextTrap)
@@ -2097,6 +2121,7 @@ local function AutoHunterTrapStep()
 			state.AutoTrapTarget = nil
 			state.AutoTrapPhase = "seeking"
 			state.AutoTrapLootStartedAt = nil
+			state.LastHunterTrapSearchAt = 0
 			RestoreHunterTrapHitboxes()
 			RestoreAutoTrapFacing()
 			if IsAutoTrapRunActive(runId) then AutoHunterTrapStep() end
@@ -2108,6 +2133,7 @@ local function AutoHunterTrapStep()
 			state.AutoTrapTarget = nil
 			state.AutoTrapPhase = "seeking"
 			state.AutoTrapLootStartedAt = nil
+			state.LastHunterTrapSearchAt = 0
 			RestoreHunterTrapHitboxes()
 			RestoreAutoTrapFacing()
 			if IsAutoTrapRunActive(runId) then AutoHunterTrapStep() end
@@ -2303,6 +2329,7 @@ local function ToggleAutoHunterTrap()
 		state.LastHunterTrapStrafeAt = 0
 		state.HunterTrapStrafeDirection = 1
 		state.AutoTrapBaseWaitTeleported = false
+		state.LastHunterTrapSearchAt = 0
 		RestoreHunterTrapHitboxes()
 		RestoreAutoTrapFacing()
 		AutoHunterTrapStep()
@@ -2316,6 +2343,7 @@ local function ToggleAutoHunterTrap()
 		state.LastHunterTrapStrafeAt = 0
 		state.HunterTrapStrafeDirection = 1
 		state.AutoTrapBaseWaitTeleported = false
+		state.LastHunterTrapSearchAt = 0
 		RestoreHunterTrapHitboxes()
 		RestoreAutoTrapFacing()
 	end
@@ -2338,6 +2366,8 @@ local function ToggleAutoMobFarm()
 			state.LastHunterTrapUseAt = 0
 			state.LastHunterTrapStrafeAt = 0
 			state.HunterTrapStrafeDirection = 1
+			state.AutoTrapBaseWaitTeleported = false
+			state.LastHunterTrapSearchAt = 0
 			RestoreHunterTrapHitboxes()
 		end
 		state.AutoMobTarget = nil
@@ -2446,7 +2476,10 @@ TrackConnection("UndeadExpeditionLightingHeartbeat", RunService.Heartbeat:Connec
 		state.LastLightingApply = now
 		ApplyNoDarkness()
 	end
-	WatchStructures()
+	if now - (state.LastStructureWatchAt or 0) >= 1 then
+		state.LastStructureWatchAt = now
+		WatchStructures()
+	end
 	if state.BoxESP then
 		RefreshBoxDistances()
 	end
