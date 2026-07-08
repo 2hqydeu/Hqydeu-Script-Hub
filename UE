@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v55-layout-revamp"
+local ModuleVersion = "UE-Utility-v56-dock-reflow"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -301,6 +301,18 @@ local function EnsureControlOutline(obj)
 	return obj
 end
 
+local function ApplyBreathingGradient(gradient, intensity)
+	if not gradient then return end
+	local bgColor = FrameThemeColor
+	gradient.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, bgColor:Lerp(AccentColor, intensity * 0.16)),
+		ColorSequenceKeypoint.new(0.14, bgColor:Lerp(AccentColor, intensity * 0.74)),
+		ColorSequenceKeypoint.new(0.46, bgColor:Lerp(AccentColor, intensity)),
+		ColorSequenceKeypoint.new(0.72, bgColor:Lerp(AccentColor, intensity * 0.98)),
+		ColorSequenceKeypoint.new(1, bgColor:Lerp(AccentColor, intensity * 0.62)),
+	})
+end
+
 local function CreateRow(name, y)
 	local row = Instance.new("Frame")
 	row.Name = name
@@ -470,11 +482,7 @@ filterDockStroke.Transparency = 0.08
 filterDockStroke.Parent = filterDock
 if ThemeObjects.Accents then table.insert(ThemeObjects.Accents, filterDockStroke) end
 local filterDockGradient = Instance.new("UIGradient")
-filterDockGradient.Color = ColorSequence.new({
-	ColorSequenceKeypoint.new(0, FrameThemeColor:Lerp(Color3.fromRGB(255, 255, 255), 0.04)),
-	ColorSequenceKeypoint.new(1, FrameThemeColor:Lerp(Color3.fromRGB(0, 0, 0), 0.14)),
-})
-filterDockGradient.Rotation = 35
+filterDockGradient.Rotation = 125
 filterDockGradient.Parent = filterDock
 local filterDockScale = Instance.new("UIScale")
 filterDockScale.Scale = GuiScaleFromValue(GuiSizeValue)
@@ -527,7 +535,7 @@ filterScroll.ScrollBarThickness = 3
 filterScroll.ScrollBarImageColor3 = AccentColor
 filterScroll.ScrollingDirection = Enum.ScrollingDirection.Y
 filterScroll.ElasticBehavior = Enum.ElasticBehavior.Never
-filterScroll.CanvasSize = UDim2.new(0, 0, 0, 339 + math.max(1, math.ceil(#RARITY_TIERS / 3)) * 23 + 10)
+filterScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 filterScroll.ZIndex = 81
 filterScroll.Parent = filterDock
 
@@ -627,7 +635,7 @@ local function RefreshStructureTimerDisplay(force)
 	state.LastStructureTimerText = nil
 end
 
-local pickupDock, pickupCloseButton, UpdatePickupDockPosition, RegisterKnownStructureType
+local pickupDock, pickupCloseButton, UpdatePickupDockPosition, RegisterKnownStructureType, pickupDockGradient
 local structureFilterButtons, espRarityButtons, pickupFilterButtons
 local mobsTitle, mobsToggle
 do
@@ -718,6 +726,8 @@ do
 			RefreshButtons()
 			UpdateTheme(true)
 		end)
+
+		return allButton, noneButton
 	end
 
 	-- Structures ESP: dynamically discovered structure types (grows as new ones are seen), reserved capacity below
@@ -768,6 +778,8 @@ do
 		end
 	end
 
+	local ReflowFilterDockSections
+
 	RegisterKnownStructureType = function(name)
 		if not name or name == "" then return end
 		if not table.find(state.KnownStructureTypes, name) then
@@ -776,6 +788,7 @@ do
 		end
 		if state.SelectedStructureTypes[name] == nil then state.SelectedStructureTypes[name] = false end
 		EnsureStructureFilterButtons()
+		if ReflowFilterDockSections then ReflowFilterDockSections() end
 	end
 
 	mobsTitle = CreateFilterLabel("Mobs ESP", 0)
@@ -807,17 +820,24 @@ do
 	)
 	EnsureStructureFilterButtons()
 
-	CreateFilterLabel("Boxes / Traps", 222)
 	local BOX_FILTER_TYPES = {}
 	for _, boxType in ipairs(BOX_TYPES) do
 		if boxType ~= "Hunter Trap" then
 			table.insert(BOX_FILTER_TYPES, boxType)
 		end
 	end
-	for index, boxType in ipairs(BOX_FILTER_TYPES) do
-		local column = (index - 1) % 3
-		local row = math.floor((index - 1) / 3)
-		CreateFilterButton(boxType, column * 82, 240 + row * 23)
+
+	local boxSectionLabel = CreateFilterLabel("Box ESP", 0)
+	local boxAllButton, boxNoneButton = CreateAllNoneButtons(0,
+		function()
+			for _, boxType in ipairs(BOX_FILTER_TYPES) do state.SelectedBoxTypes[boxType] = true end
+		end,
+		function()
+			for _, boxType in ipairs(BOX_FILTER_TYPES) do state.SelectedBoxTypes[boxType] = false end
+		end
+	)
+	for _, boxType in ipairs(BOX_FILTER_TYPES) do
+		CreateFilterButton(boxType, 0, 0)
 	end
 
 	-- Item Rarities ESP: independent from the Pickup rarity filters (visibility vs. auto-collect are separate concerns)
@@ -849,8 +869,8 @@ do
 		end)
 	end
 
-	CreateFilterLabel("Item Rarities ESP", 299)
-	CreateAllNoneButtons(317,
+	local itemSectionLabel = CreateFilterLabel("Item ESP", 0)
+	local itemAllButton, itemNoneButton = CreateAllNoneButtons(0,
 		function()
 			for _, tier in ipairs(RARITY_TIERS) do state.ESPSelectedRarities[tier] = true end
 		end,
@@ -858,11 +878,44 @@ do
 			for _, tier in ipairs(RARITY_TIERS) do state.ESPSelectedRarities[tier] = false end
 		end
 	)
-	for index, tier in ipairs(RARITY_TIERS) do
-		local column = (index - 1) % 3
-		local row = math.floor((index - 1) / 3)
-		CreateESPRarityButton(tier, column * 82, 339 + row * 23)
+	for _, tier in ipairs(RARITY_TIERS) do
+		CreateESPRarityButton(tier, 0, 0)
 	end
+
+	ReflowFilterDockSections = function()
+		local visibleStructureCount = math.min(#state.KnownStructureTypes, STRUCTURE_FILTER_CAPACITY)
+		local structuresRows = math.max(1, math.ceil(visibleStructureCount / 3))
+		local boxLabelY = 94 + structuresRows * 23 + 13
+		boxSectionLabel.Position = UDim2.new(0, 0, 0, boxLabelY)
+		local boxAllY = boxLabelY + 18
+		boxAllButton.Position = UDim2.new(0, 0, 0, boxAllY)
+		boxNoneButton.Position = UDim2.new(0, 82, 0, boxAllY)
+		local boxGridY = boxAllY + 22
+		for index, entry in ipairs(filterButtons) do
+			local column = (index - 1) % 3
+			local row = math.floor((index - 1) / 3)
+			entry.Button.Position = UDim2.new(0, column * 82, 0, boxGridY + row * 23)
+		end
+		local boxRows = math.max(1, math.ceil(#filterButtons / 3))
+		local boxSectionEnd = boxGridY + boxRows * 23 - 3
+
+		local itemLabelY = boxSectionEnd + 16
+		itemSectionLabel.Position = UDim2.new(0, 0, 0, itemLabelY)
+		local itemAllY = itemLabelY + 18
+		itemAllButton.Position = UDim2.new(0, 0, 0, itemAllY)
+		itemNoneButton.Position = UDim2.new(0, 82, 0, itemAllY)
+		local itemGridY = itemAllY + 22
+		for index, entry in ipairs(espRarityButtons) do
+			local column = (index - 1) % 3
+			local row = math.floor((index - 1) / 3)
+			entry.Button.Position = UDim2.new(0, column * 82, 0, itemGridY + row * 23)
+		end
+		local itemRows = math.max(1, math.ceil(#espRarityButtons / 3))
+		local itemSectionEnd = itemGridY + itemRows * 23 - 3
+
+		filterScroll.CanvasSize = UDim2.new(0, 0, 0, itemSectionEnd + 10)
+	end
+	ReflowFilterDockSections()
 
 	local pickupRows = math.max(1, math.ceil(#RARITY_TIERS / 3))
 	local pickupScrollHeight = 16 + pickupRows * 23
@@ -885,12 +938,8 @@ do
 	pickupDockStroke.Transparency = 0.08
 	pickupDockStroke.Parent = pickupDock
 	if ThemeObjects.Accents then table.insert(ThemeObjects.Accents, pickupDockStroke) end
-	local pickupDockGradient = Instance.new("UIGradient")
-	pickupDockGradient.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, FrameThemeColor:Lerp(Color3.fromRGB(255, 255, 255), 0.04)),
-		ColorSequenceKeypoint.new(1, FrameThemeColor:Lerp(Color3.fromRGB(0, 0, 0), 0.14)),
-	})
-	pickupDockGradient.Rotation = 35
+	pickupDockGradient = Instance.new("UIGradient")
+	pickupDockGradient.Rotation = 125
 	pickupDockGradient.Parent = pickupDock
 	local pickupDockScale = Instance.new("UIScale")
 	pickupDockScale.Scale = GuiScaleFromValue(GuiSizeValue)
@@ -898,7 +947,7 @@ do
 
 	UpdatePickupDockPosition = function()
 		local scale = pickupDockScale.Scale
-		pickupDock.Position = UDim2.fromOffset(MainFrame.AbsolutePosition.X - ((256 + 7) * scale), MainFrame.AbsolutePosition.Y + ((54 + 280 + 7) * scale))
+		pickupDock.Position = UDim2.fromOffset(MainFrame.AbsolutePosition.X - ((256 + 7) * scale), MainFrame.AbsolutePosition.Y + (54 * scale))
 	end
 	TrackConnection("UndeadExpeditionPickupDockPosition", MainFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(UpdatePickupDockPosition))
 	TrackConnection("UndeadExpeditionPickupDockSize", MainFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdatePickupDockPosition))
@@ -2493,6 +2542,7 @@ end
 
 local function ToggleBoxFilters()
 	state.LootFiltersOpen = not state.LootFiltersOpen
+	if state.LootFiltersOpen then state.PickupFiltersOpen = false end
 	RefreshButtons()
 	UpdateTheme(true)
 end
@@ -2505,6 +2555,7 @@ end
 
 local function TogglePickupFilters()
 	state.PickupFiltersOpen = not state.PickupFiltersOpen
+	if state.PickupFiltersOpen then state.LootFiltersOpen = false end
 	RefreshButtons()
 	UpdateTheme(true)
 end
@@ -2635,6 +2686,12 @@ TrackConnection("UndeadExpeditionLightingHeartbeat", RunService.Heartbeat:Connec
 		UpdateStructuresESP()
 		UpdateItemsESP()
 		UpdateMobsESP()
+	end
+	if now - (state.LastGradientPulse or 0) >= 0.033 then
+		state.LastGradientPulse = now
+		local pulse = 0.5 + ((math.sin((ThemeObjects.GradientPulseTime or 0) * 1.35) + 1) * 0.25)
+		ApplyBreathingGradient(filterDockGradient, pulse)
+		ApplyBreathingGradient(pickupDockGradient, pulse)
 	end
 end))
 
