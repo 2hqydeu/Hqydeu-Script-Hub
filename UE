@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v30-loot-farm-sequenced"
+local ModuleVersion = "UE-Utility-v31-loot-farm-simplified"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -140,6 +140,7 @@ local STRUCTURE_TIMER_SCAN_INTERVAL = 1.25
 local STRUCTURE_TIMER_FORCE_SCAN_INTERVAL = 0.4
 local FARM_TARGET_CACHE_INTERVAL = 0.2
 local FARM_MOVE_HOLD_INTERVAL = 0.05
+local BOX_OPEN_HOLD_DURATION = 3
 local FARM_OPEN_SAFETY_BUFFER = 1.5
 local FARM_CLAIM_SEARCH_RADIUS = 20
 local FARM_CLAIM_SEARCH_TIMEOUT = 3
@@ -1012,19 +1013,16 @@ end
 
 local function HoldOnBox(target, targetRoot)
 	local openPrompt = FindOpenPrompt(target)
-	local holdDuration = (openPrompt and openPrompt.HoldDuration) or 0
-	local deadline = os.clock() + holdDuration + FARM_OPEN_SAFETY_BUFFER
-	local fired = false
+	if openPrompt and type(fireproximityprompt) == "function" then
+		fireproximityprompt(openPrompt)
+	end
+	local deadline = os.clock() + BOX_OPEN_HOLD_DURATION + FARM_OPEN_SAFETY_BUFFER
 	while state.LootFarmEnabled and uePage.Parent and target.Parent and BoxRoot(target) and os.clock() < deadline do
 		local root = PlayerRoot()
 		if not root then break end
 		ThemeObjects.SetRootUpright(root, root.CFrame, targetRoot.Position + Vector3.new(0, 1, 0))
 		root.AssemblyLinearVelocity = Vector3.zero
 		root.AssemblyAngularVelocity = Vector3.zero
-		if not fired and openPrompt and openPrompt.Parent and type(fireproximityprompt) == "function" then
-			fired = true
-			pcall(fireproximityprompt, openPrompt, holdDuration)
-		end
 		task.wait(FARM_MOVE_HOLD_INTERVAL)
 	end
 	return not (target.Parent and BoxRoot(target))
@@ -1041,7 +1039,7 @@ local function ClaimNearbyDrop(boxPosition)
 			root.AssemblyLinearVelocity = Vector3.zero
 			root.AssemblyAngularVelocity = Vector3.zero
 			if type(fireproximityprompt) == "function" then
-				pcall(fireproximityprompt, claimPrompt)
+				fireproximityprompt(claimPrompt)
 			end
 			task.wait(FARM_CLAIM_POST_FIRE_WAIT)
 			if not claimPrompt.Parent then return end
