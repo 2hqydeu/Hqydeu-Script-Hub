@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v44-facing-and-loot-skip"
+local ModuleVersion = "UE-Utility-v45-wave-grace-and-drop-position"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -160,6 +160,7 @@ local TRAP_COMBAT_FIRE_INTERVAL = 0.2
 local TRAP_COMBAT_STANDOFF = 6
 local TRAP_RESPAWN_WAIT = 1
 local TRAP_IDLE_WAIT = 0.5
+local TRAP_WAVE_CLEAR_GRACE = 4
 for _, boxType in ipairs(BOX_TYPES) do
 	if state.SelectedBoxTypes[boxType] == nil then state.SelectedBoxTypes[boxType] = true end
 end
@@ -1577,68 +1578,79 @@ local function FightEnemies(trapPosition, nameFilters)
 		warn("[UE Auto Trap] MouseClick remote not found; cannot attack enemies")
 	end
 	local hadRoot = true
+	local emptySince = nil
 	while state.AutoTrapEnabled and uePage.Parent do
 		local enemies = GetActiveEnemies(nameFilters)
-		if #enemies == 0 then return true end
-
-		local root = PlayerRoot()
-		if not root then
-			hadRoot = false
-			task.wait(TRAP_RESPAWN_WAIT)
+		if #enemies == 0 then
+			if not emptySince then
+				emptySince = os.clock()
+			elseif os.clock() - emptySince >= TRAP_WAVE_CLEAR_GRACE then
+				return true
+			end
+			task.wait(0.5)
 		else
-			if not hadRoot then
-				hadRoot = true
+			emptySince = nil
+			local root = PlayerRoot()
+			if not root then
+				hadRoot = false
 				task.wait(TRAP_RESPAWN_WAIT)
-				root = PlayerRoot()
-				if root then
-					warn("[UE Auto Trap] respawned, returning to trap site")
-					StableTeleport(CFrame.new(trapPosition + Vector3.new(0, 4, 0)))
-					task.wait(0.2)
+			else
+				if not hadRoot then
+					hadRoot = true
+					task.wait(TRAP_RESPAWN_WAIT)
 					root = PlayerRoot()
-				end
-			end
-			if root then
-				table.sort(enemies, function(a, b)
-					local rootA, rootB = EnemyRoot(a), EnemyRoot(b)
-					if not rootA then return false end
-					if not rootB then return true end
-					return (root.Position - rootA.Position).Magnitude < (root.Position - rootB.Position).Magnitude
-				end)
-				local target = enemies[1]
-				local targetRoot = EnemyRoot(target)
-				if targetRoot then
-					local flatOffset = Vector3.new(root.Position.X - targetRoot.Position.X, 0, root.Position.Z - targetRoot.Position.Z)
-					if flatOffset.Magnitude < 0.1 then flatOffset = Vector3.new(TRAP_COMBAT_STANDOFF, 0, 0) end
-					local standPosition = targetRoot.Position + flatOffset.Unit * TRAP_COMBAT_STANDOFF
-					local facePosition = Vector3.new(standPosition.X, targetRoot.Position.Y, standPosition.Z)
-					local lookAt = Vector3.new(targetRoot.Position.X, facePosition.Y, targetRoot.Position.Z)
-					if (lookAt - facePosition).Magnitude > 0.05 then
-						root.CFrame = CFrame.new(facePosition, lookAt)
-					else
-						root.CFrame = CFrame.new(facePosition)
-					end
-					root.AssemblyLinearVelocity = Vector3.zero
-					root.AssemblyAngularVelocity = Vector3.zero
-					local tool = EquipAnyWeapon()
-					if tool and mouseClick then
-						pcall(function()
-							mouseClick:FireServer(tool.Name, CFrame.new(targetRoot.Position))
-						end)
-					elseif not tool then
-						warn("[UE Auto Trap] no weapon Tool available to attack with")
+					if root then
+						warn("[UE Auto Trap] respawned, returning to trap site")
+						StableTeleport(CFrame.new(trapPosition + Vector3.new(0, 4, 0)))
+						task.wait(0.2)
+						root = PlayerRoot()
 					end
 				end
+				if root then
+					table.sort(enemies, function(a, b)
+						local rootA, rootB = EnemyRoot(a), EnemyRoot(b)
+						if not rootA then return false end
+						if not rootB then return true end
+						return (root.Position - rootA.Position).Magnitude < (root.Position - rootB.Position).Magnitude
+					end)
+					local target = enemies[1]
+					local targetRoot = EnemyRoot(target)
+					if targetRoot then
+						local flatOffset = Vector3.new(root.Position.X - targetRoot.Position.X, 0, root.Position.Z - targetRoot.Position.Z)
+						if flatOffset.Magnitude < 0.1 then flatOffset = Vector3.new(TRAP_COMBAT_STANDOFF, 0, 0) end
+						local standPosition = targetRoot.Position + flatOffset.Unit * TRAP_COMBAT_STANDOFF
+						local facePosition = Vector3.new(standPosition.X, targetRoot.Position.Y, standPosition.Z)
+						local lookAt = Vector3.new(targetRoot.Position.X, facePosition.Y, targetRoot.Position.Z)
+						if (lookAt - facePosition).Magnitude > 0.05 then
+							root.CFrame = CFrame.new(facePosition, lookAt)
+						else
+							root.CFrame = CFrame.new(facePosition)
+						end
+						root.AssemblyLinearVelocity = Vector3.zero
+						root.AssemblyAngularVelocity = Vector3.zero
+						local tool = EquipAnyWeapon()
+						if tool and mouseClick then
+							pcall(function()
+								mouseClick:FireServer(tool.Name, CFrame.new(targetRoot.Position))
+							end)
+						elseif not tool then
+							warn("[UE Auto Trap] no weapon Tool available to attack with")
+						end
+					end
+				end
+				task.wait(TRAP_COMBAT_FIRE_INTERVAL)
 			end
-			task.wait(TRAP_COMBAT_FIRE_INTERVAL)
 		end
 	end
 	return false
 end
 
-local function ClaimDropsNearArea(position, attempts)
+local function ClaimDropsNearArea(fallbackPosition, attempts)
 	for _ = 1, (attempts or 4) do
 		if not (state.AutoTrapEnabled and uePage.Parent) then break end
-		ClaimNearbyDrop(position, {IsEnabled = function() return state.AutoTrapEnabled end})
+		local root = PlayerRoot()
+		local searchPosition = root and root.Position or fallbackPosition
+		ClaimNearbyDrop(searchPosition, {IsEnabled = function() return state.AutoTrapEnabled end})
 	end
 end
 
