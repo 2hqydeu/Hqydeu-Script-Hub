@@ -1,4 +1,3 @@
-UE Script
 -- Page-only module for Hqydeu Script Hub. Upload this file to its raw GitHub target.
 local Runtime = (type(getgenv) == "function" and getgenv().HqydeuLoader_Runtime) or shared.HqydeuLoader_Runtime
 if not Runtime then return warn("Hqydeu page module: main hub runtime was not found") end
