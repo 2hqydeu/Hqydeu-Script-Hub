@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v53-esp-filters-expanded"
+local ModuleVersion = "UE-Utility-v54-register-fix"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -671,893 +671,903 @@ local function RefreshStructureTimerDisplay(force)
 	state.LastStructureTimerText = nil
 end
 
-local function CreateFilterLabel(text, y)
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, -4, 0, 14)
-	label.Position = UDim2.new(0, 0, 0, y)
-	label.BackgroundTransparency = 1
-	label.Text = text
-	label.Font = Enum.Font.GothamBold
-	label.TextSize = 8
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.ZIndex = 82
-	label.Parent = filterScroll
-	AddText(label)
-end
-
-local function CreateFilterButton(value, x, y)
-	local button = Instance.new("TextButton")
-	button.Name = "UndeadExpeditionBoxFilter" .. tostring(value):gsub("%W+", "")
-	button.Size = UDim2.new(0, 76, 0, 20)
-	button.Position = UDim2.new(0, x, 0, y)
-	button.BackgroundColor3 = Green
-	button.BackgroundTransparency = 0
-	button.BorderSizePixel = 0
-	button.Font = Enum.Font.GothamBold
-	button.TextSize = 7
-	button.TextColor3 = Color3.fromRGB(255, 255, 255)
-	button.TextTruncate = Enum.TextTruncate.AtEnd
-	button.ZIndex = 82
-	button.Parent = filterScroll
-	AddText(button)
-	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 5)
-	EnsureControlOutline(button)
-	table.insert(filterButtons, {Button = button, Value = value})
-	button.MouseButton1Click:Connect(function()
-		PlayClick()
-		state.SelectedBoxTypes[value] = not (state.SelectedBoxTypes[value] ~= false)
-		RefreshButtons()
-		UpdateTheme(true)
-	end)
-end
-
-local function CreateAllNoneButtons(y, onAll, onNone)
-	local allButton = Instance.new("TextButton")
-	allButton.Size = UDim2.new(0, 76, 0, 18)
-	allButton.Position = UDim2.new(0, 0, 0, y)
-	allButton.BackgroundColor3 = Green
-	allButton.BackgroundTransparency = 0
-	allButton.BorderSizePixel = 0
-	allButton.Font = Enum.Font.GothamBold
-	allButton.TextSize = 7
-	allButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-	allButton.Text = "All"
-	allButton.ZIndex = 82
-	allButton.Parent = filterScroll
-	AddText(allButton)
-	AddBackground(allButton)
-	Instance.new("UICorner", allButton).CornerRadius = UDim.new(0, 5)
-	EnsureControlOutline(allButton)
-	allButton.MouseButton1Click:Connect(function()
-		PlayClick()
-		onAll()
-		RefreshButtons()
-		UpdateTheme(true)
-	end)
-
-	local noneButton = Instance.new("TextButton")
-	noneButton.Size = UDim2.new(0, 76, 0, 18)
-	noneButton.Position = UDim2.new(0, 82, 0, y)
-	noneButton.BackgroundColor3 = Red
-	noneButton.BackgroundTransparency = 0
-	noneButton.BorderSizePixel = 0
-	noneButton.Font = Enum.Font.GothamBold
-	noneButton.TextSize = 7
-	noneButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-	noneButton.Text = "None"
-	noneButton.ZIndex = 82
-	noneButton.Parent = filterScroll
-	AddText(noneButton)
-	AddBackground(noneButton)
-	Instance.new("UICorner", noneButton).CornerRadius = UDim.new(0, 5)
-	EnsureControlOutline(noneButton)
-	noneButton.MouseButton1Click:Connect(function()
-		PlayClick()
-		onNone()
-		RefreshButtons()
-		UpdateTheme(true)
-	end)
-end
-
--- Structures ESP: dynamically discovered structure types (grows as new ones are seen), reserved capacity below
-local STRUCTURE_FILTER_CAPACITY = 15
-local structureFilterButtons = {}
-
-local function CreateStructureFilterButton(value, x, y)
-	local button = Instance.new("TextButton")
-	button.Name = "UndeadExpeditionStructureFilter" .. tostring(value):gsub("%W+", "")
-	button.Size = UDim2.new(0, 76, 0, 20)
-	button.Position = UDim2.new(0, x, 0, y)
-	button.BackgroundColor3 = Red
-	button.BackgroundTransparency = 0
-	button.BorderSizePixel = 0
-	button.Font = Enum.Font.GothamBold
-	button.TextSize = 7
-	button.TextColor3 = Color3.fromRGB(255, 255, 255)
-	button.TextTruncate = Enum.TextTruncate.AtEnd
-	button.ZIndex = 82
-	button.Parent = filterScroll
-	AddText(button)
-	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 5)
-	EnsureControlOutline(button)
-	table.insert(structureFilterButtons, {Button = button, Value = value})
-	button.MouseButton1Click:Connect(function()
-		PlayClick()
-		state.SelectedStructureTypes[value] = not (state.SelectedStructureTypes[value] == true)
-		RefreshButtons()
-		UpdateTheme(true)
-	end)
-end
-
-local function EnsureStructureFilterButtons()
-	for _, name in ipairs(state.KnownStructureTypes) do
-		local exists = false
-		for _, entry in ipairs(structureFilterButtons) do
-			if entry.Value == name then
-				exists = true
-				break
-			end
-		end
-		if not exists and #structureFilterButtons < STRUCTURE_FILTER_CAPACITY then
-			local index = #structureFilterButtons
-			local column = index % 3
-			local row = math.floor(index / 3)
-			CreateStructureFilterButton(name, column * 82, 38 + row * 23)
-		end
+local pickupDock, pickupCloseButton, UpdatePickupDockPosition, RegisterKnownStructureType
+local structureFilterButtons, espRarityButtons, pickupFilterButtons
+do
+	local function CreateFilterLabel(text, y)
+		local label = Instance.new("TextLabel")
+		label.Size = UDim2.new(1, -4, 0, 14)
+		label.Position = UDim2.new(0, 0, 0, y)
+		label.BackgroundTransparency = 1
+		label.Text = text
+		label.Font = Enum.Font.GothamBold
+		label.TextSize = 8
+		label.TextXAlignment = Enum.TextXAlignment.Left
+		label.ZIndex = 82
+		label.Parent = filterScroll
+		AddText(label)
 	end
-end
 
-local function RegisterKnownStructureType(name)
-	if not name or name == "" then return end
-	if not table.find(state.KnownStructureTypes, name) then
-		table.insert(state.KnownStructureTypes, name)
-		table.sort(state.KnownStructureTypes)
-	end
-	if state.SelectedStructureTypes[name] == nil then state.SelectedStructureTypes[name] = false end
-	EnsureStructureFilterButtons()
-end
-
-CreateFilterLabel("Structures ESP", 0)
-CreateAllNoneButtons(16,
-	function()
-		for _, name in ipairs(state.KnownStructureTypes) do state.SelectedStructureTypes[name] = true end
-	end,
-	function()
-		for _, name in ipairs(state.KnownStructureTypes) do state.SelectedStructureTypes[name] = false end
-	end
-)
-EnsureStructureFilterButtons()
-
-CreateFilterLabel("Boxes / Traps", 161)
-local BOX_FILTER_TYPES = {}
-for _, boxType in ipairs(BOX_TYPES) do
-	if boxType ~= "Hunter Trap" then
-		table.insert(BOX_FILTER_TYPES, boxType)
-	end
-end
-for index, boxType in ipairs(BOX_FILTER_TYPES) do
-	local column = (index - 1) % 3
-	local row = math.floor((index - 1) / 3)
-	CreateFilterButton(boxType, column * 82, 177 + row * 23)
-end
-
--- Item Rarities ESP: independent from the Pickup rarity filters (visibility vs. auto-collect are separate concerns)
-local espRarityButtons = {}
-
-local function CreateESPRarityButton(value, x, y)
-	local button = Instance.new("TextButton")
-	button.Name = "UndeadExpeditionESPRarity" .. tostring(value):gsub("%W+", "")
-	button.Size = UDim2.new(0, 76, 0, 20)
-	button.Position = UDim2.new(0, x, 0, y)
-	button.BackgroundColor3 = Red
-	button.BackgroundTransparency = 0
-	button.BorderSizePixel = 0
-	button.Font = Enum.Font.GothamBold
-	button.TextSize = 7
-	button.TextColor3 = Color3.fromRGB(255, 255, 255)
-	button.TextTruncate = Enum.TextTruncate.AtEnd
-	button.ZIndex = 82
-	button.Parent = filterScroll
-	AddText(button)
-	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 5)
-	EnsureControlOutline(button)
-	table.insert(espRarityButtons, {Button = button, Value = value})
-	button.MouseButton1Click:Connect(function()
-		PlayClick()
-		state.ESPSelectedRarities[value] = not (state.ESPSelectedRarities[value] == true)
-		RefreshButtons()
-		UpdateTheme(true)
-	end)
-end
-
-CreateFilterLabel("Item Rarities ESP", 231)
-CreateAllNoneButtons(247,
-	function()
-		for _, tier in ipairs(RARITY_TIERS) do state.ESPSelectedRarities[tier] = true end
-	end,
-	function()
-		for _, tier in ipairs(RARITY_TIERS) do state.ESPSelectedRarities[tier] = false end
-	end
-)
-for index, tier in ipairs(RARITY_TIERS) do
-	local column = (index - 1) % 3
-	local row = math.floor((index - 1) / 3)
-	CreateESPRarityButton(tier, column * 82, 269 + row * 23)
-end
-
-local pickupRows = math.max(1, math.ceil(#RARITY_TIERS / 3))
-local pickupScrollHeight = 16 + pickupRows * 23
-local pickupDockHeight = math.max(80, pickupScrollHeight + 46)
-
-local pickupDock = Instance.new("Frame")
-pickupDock.Name = "UndeadExpeditionPickupDock"
-pickupDock.Size = UDim2.new(0, 256, 0, pickupDockHeight)
-pickupDock.BackgroundColor3 = FrameThemeColor
-pickupDock.BackgroundTransparency = 0
-pickupDock.BorderSizePixel = 0
-pickupDock.ZIndex = 80
-pickupDock.Visible = false
-pickupDock.Parent = ScreenGui or MainFrame
-AddBackground(pickupDock)
-Instance.new("UICorner", pickupDock).CornerRadius = UDim.new(0, 9)
-local pickupDockStroke = Instance.new("UIStroke")
-pickupDockStroke.Color = AccentColor
-pickupDockStroke.Thickness = 1.5
-pickupDockStroke.Transparency = 0.08
-pickupDockStroke.Parent = pickupDock
-if ThemeObjects.Accents then table.insert(ThemeObjects.Accents, pickupDockStroke) end
-local pickupDockGradient = Instance.new("UIGradient")
-pickupDockGradient.Color = ColorSequence.new({
-	ColorSequenceKeypoint.new(0, FrameThemeColor:Lerp(Color3.fromRGB(255, 255, 255), 0.04)),
-	ColorSequenceKeypoint.new(1, FrameThemeColor:Lerp(Color3.fromRGB(0, 0, 0), 0.14)),
-})
-pickupDockGradient.Rotation = 35
-pickupDockGradient.Parent = pickupDock
-local pickupDockScale = Instance.new("UIScale")
-pickupDockScale.Scale = GuiScaleFromValue(GuiSizeValue)
-pickupDockScale.Parent = pickupDock
-
-local function UpdatePickupDockPosition()
-	local scale = pickupDockScale.Scale
-	pickupDock.Position = UDim2.fromOffset(MainFrame.AbsolutePosition.X - ((256 + 7) * scale), MainFrame.AbsolutePosition.Y + ((54 + 280 + 7) * scale))
-end
-TrackConnection("UndeadExpeditionPickupDockPosition", MainFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(UpdatePickupDockPosition))
-TrackConnection("UndeadExpeditionPickupDockSize", MainFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdatePickupDockPosition))
-UpdatePickupDockPosition()
-
-local pickupHeader = Instance.new("TextLabel")
-pickupHeader.Size = UDim2.new(1, -40, 0, 14)
-pickupHeader.Position = UDim2.new(0, 8, 0, 6)
-pickupHeader.BackgroundTransparency = 1
-pickupHeader.Text = "Pickup Filters"
-pickupHeader.Font = Enum.Font.GothamBold
-pickupHeader.TextSize = 10
-pickupHeader.TextXAlignment = Enum.TextXAlignment.Center
-pickupHeader.ZIndex = 81
-pickupHeader.Parent = pickupDock
-AddText(pickupHeader)
-
-local pickupCloseButton = Instance.new("TextButton")
-pickupCloseButton.Name = "UndeadExpeditionPickupClose"
-pickupCloseButton.Size = UDim2.new(0, 18, 0, 18)
-pickupCloseButton.Position = UDim2.new(1, -24, 0, 5)
-pickupCloseButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-pickupCloseButton.BackgroundTransparency = 0.35
-pickupCloseButton.BorderSizePixel = 0
-pickupCloseButton.Text = "x"
-pickupCloseButton.Font = Enum.Font.GothamBold
-pickupCloseButton.TextSize = 9
-pickupCloseButton.ZIndex = 82
-pickupCloseButton.Parent = pickupDock
-AddBackground(pickupCloseButton)
-AddText(pickupCloseButton)
-Instance.new("UICorner", pickupCloseButton).CornerRadius = UDim.new(0, 5)
-EnsureControlOutline(pickupCloseButton)
-
-local pickupScroll = Instance.new("ScrollingFrame")
-pickupScroll.Name = "UndeadExpeditionPickupScroll"
-pickupScroll.Size = UDim2.new(1, -16, 1, -36)
-pickupScroll.Position = UDim2.new(0, 8, 0, 30)
-pickupScroll.BackgroundTransparency = 1
-pickupScroll.BorderSizePixel = 0
-pickupScroll.ScrollBarThickness = 3
-pickupScroll.ScrollBarImageColor3 = AccentColor
-pickupScroll.ScrollingDirection = Enum.ScrollingDirection.Y
-pickupScroll.ElasticBehavior = Enum.ElasticBehavior.Never
-pickupScroll.CanvasSize = UDim2.new(0, 0, 0, pickupScrollHeight)
-pickupScroll.ZIndex = 81
-pickupScroll.Parent = pickupDock
-
-local pickupFilterButtons = {}
-
-local function CreatePickupFilterButton(value, x, y)
-	local button = Instance.new("TextButton")
-	button.Name = "UndeadExpeditionPickupFilter" .. tostring(value):gsub("%W+", "")
-	button.Size = UDim2.new(0, 76, 0, 20)
-	button.Position = UDim2.new(0, x, 0, y)
-	button.BackgroundColor3 = Green
-	button.BackgroundTransparency = 0
-	button.BorderSizePixel = 0
-	button.Font = Enum.Font.GothamBold
-	button.TextSize = 7
-	button.TextColor3 = Color3.fromRGB(255, 255, 255)
-	button.TextTruncate = Enum.TextTruncate.AtEnd
-	button.ZIndex = 82
-	button.Parent = pickupScroll
-	AddText(button)
-	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 5)
-	EnsureControlOutline(button)
-	table.insert(pickupFilterButtons, {Button = button, Value = value})
-	button.MouseButton1Click:Connect(function()
-		PlayClick()
-		state.SelectedRarities[value] = not (state.SelectedRarities[value] ~= false)
-		RefreshButtons()
-		UpdateTheme(true)
-	end)
-end
-
-for index, tier in ipairs(RARITY_TIERS) do
-	local column = (index - 1) % 3
-	local row = math.floor((index - 1) / 3)
-	CreatePickupFilterButton(tier, column * 82, 16 + row * 23)
-end
-
-local function SafeGet(instance, property)
-	local ok, value = pcall(function()
-		return instance[property]
-	end)
-	if ok then return value end
-	return nil
-end
-
-local function SafeSet(instance, property, value)
-	pcall(function()
-		instance[property] = value
-	end)
-end
-
-local function CleanStructureName(name)
-	name = tostring(name or "Structure")
-	name = name:gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
-	name = name:gsub("%s*%(%d+%)$", ""):gsub("[%s_%-%#]*%d+$", "")
-	name = name:gsub("^%s+", ""):gsub("%s+$", "")
-	return name ~= "" and name or "Structure"
-end
-
-local function StructureDisplayName(structure)
-	if not structure then return "Structure" end
-	local displayName = structure:GetAttribute("DisplayName") or structure:GetAttribute("StructureName") or structure:GetAttribute("Name")
-	if displayName and tostring(displayName) ~= "" then return CleanStructureName(displayName) end
-	local stringValue = structure:FindFirstChild("Name")
-	if stringValue and stringValue:IsA("StringValue") and tostring(stringValue.Value) ~= "" then
-		return CleanStructureName(stringValue.Value)
-	end
-	return CleanStructureName(structure.Name)
-end
-
-local function StructureRoot(structure)
-	if not structure then return nil end
-	if structure:IsA("BasePart") then return structure end
-	if structure:IsA("Model") then return structure.PrimaryPart or structure:FindFirstChildWhichIsA("BasePart", true) end
-	return structure:FindFirstChildWhichIsA("BasePart", true)
-end
-
-local function ShowStructureMarker(structure)
-	local root = StructureRoot(structure)
-	if not root then return end
-	local billboard = Instance.new("BillboardGui")
-	billboard.Name = "StructureSpawnMarker"
-	billboard.Adornee = root
-	billboard.Size = UDim2.new(0, 54, 0, 54)
-	billboard.StudsOffset = Vector3.new(0, 8, 0)
-	billboard.AlwaysOnTop = true
-	billboard.LightInfluence = 0
-	billboard.MaxDistance = 2000
-	billboard.Parent = markerFolder
-
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, 0, 1, 0)
-	label.BackgroundTransparency = 1
-	label.Text = "!"
-	label.Font = Enum.Font.GothamBlack
-	label.TextSize = 34
-	label.TextColor3 = AccentColor
-	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-	label.TextStrokeTransparency = 0.12
-	label.Parent = billboard
-
-	task.delay(7.5, function()
-		if billboard and billboard.Parent then billboard:Destroy() end
-	end)
-end
-
-local function ShowStructureNotification(message)
-	if not state.StructureNotifications or not structureNotification then return end
-	state.StructureNotificationToken = (tonumber(state.StructureNotificationToken) or 0) + 1
-	local token = state.StructureNotificationToken
-	if state.StructureNotificationTween then
-		pcall(function() state.StructureNotificationTween:Cancel() end)
-	end
-	structureNotification.Text = tostring(message or "")
-	structureNotification.Visible = IsUEPageActive()
-	structureNotification.TextTransparency = 0
-	structureNotification.TextStrokeTransparency = 0.16
-	task.delay(3, function()
-		if token ~= state.StructureNotificationToken or not structureNotification or not structureNotification.Parent then return end
-		local tween = TweenService:Create(structureNotification, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			TextTransparency = 1,
-			TextStrokeTransparency = 1,
-		})
-		state.StructureNotificationTween = tween
-		tween:Play()
-		tween.Completed:Connect(function()
-			if token == state.StructureNotificationToken and structureNotification then
-				structureNotification.Visible = false
-			end
+	local function CreateFilterButton(value, x, y)
+		local button = Instance.new("TextButton")
+		button.Name = "UndeadExpeditionBoxFilter" .. tostring(value):gsub("%W+", "")
+		button.Size = UDim2.new(0, 76, 0, 20)
+		button.Position = UDim2.new(0, x, 0, y)
+		button.BackgroundColor3 = Green
+		button.BackgroundTransparency = 0
+		button.BorderSizePixel = 0
+		button.Font = Enum.Font.GothamBold
+		button.TextSize = 7
+		button.TextColor3 = Color3.fromRGB(255, 255, 255)
+		button.TextTruncate = Enum.TextTruncate.AtEnd
+		button.ZIndex = 82
+		button.Parent = filterScroll
+		AddText(button)
+		Instance.new("UICorner", button).CornerRadius = UDim.new(0, 5)
+		EnsureControlOutline(button)
+		table.insert(filterButtons, {Button = button, Value = value})
+		button.MouseButton1Click:Connect(function()
+			PlayClick()
+			state.SelectedBoxTypes[value] = not (state.SelectedBoxTypes[value] ~= false)
+			RefreshButtons()
+			UpdateTheme(true)
 		end)
-	end)
-end
-
-local function SetStructureMessage(name)
-	name = CleanStructureName(name)
-	if state.LastStructureName == name then
-		state.LastStructureCount = (tonumber(state.LastStructureCount) or 1) + 1
-	else
-		state.LastStructureName = name
-		state.LastStructureCount = 1
 	end
-	local suffix = state.LastStructureCount > 1 and (" x" .. tostring(state.LastStructureCount)) or ""
-	state.LastStructureMessage = ("%s Has Spawned%s"):format(name, suffix)
-	structureStatus.Text = state.LastStructureMessage
-	ShowStructureNotification(state.LastStructureMessage)
-end
 
-local function StructuresFolder()
-	return workspace:FindFirstChild("Structures")
-end
+	local function CreateAllNoneButtons(y, onAll, onNone)
+		local allButton = Instance.new("TextButton")
+		allButton.Size = UDim2.new(0, 76, 0, 18)
+		allButton.Position = UDim2.new(0, 0, 0, y)
+		allButton.BackgroundColor3 = Green
+		allButton.BackgroundTransparency = 0
+		allButton.BorderSizePixel = 0
+		allButton.Font = Enum.Font.GothamBold
+		allButton.TextSize = 7
+		allButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+		allButton.Text = "All"
+		allButton.ZIndex = 82
+		allButton.Parent = filterScroll
+		AddText(allButton)
+		AddBackground(allButton)
+		Instance.new("UICorner", allButton).CornerRadius = UDim.new(0, 5)
+		EnsureControlOutline(allButton)
+		allButton.MouseButton1Click:Connect(function()
+			PlayClick()
+			onAll()
+			RefreshButtons()
+			UpdateTheme(true)
+		end)
 
-local function WatchStructures()
-	local folder = StructuresFolder()
-	if not folder then return end
-	local existing = HubState.Connections.UndeadExpeditionStructureAdded
-	if existing and state.StructuresFolder == folder then return end
-	if existing then
-		existing:Disconnect()
-		HubState.Connections.UndeadExpeditionStructureAdded = nil
+		local noneButton = Instance.new("TextButton")
+		noneButton.Size = UDim2.new(0, 76, 0, 18)
+		noneButton.Position = UDim2.new(0, 82, 0, y)
+		noneButton.BackgroundColor3 = Red
+		noneButton.BackgroundTransparency = 0
+		noneButton.BorderSizePixel = 0
+		noneButton.Font = Enum.Font.GothamBold
+		noneButton.TextSize = 7
+		noneButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+		noneButton.Text = "None"
+		noneButton.ZIndex = 82
+		noneButton.Parent = filterScroll
+		AddText(noneButton)
+		AddBackground(noneButton)
+		Instance.new("UICorner", noneButton).CornerRadius = UDim.new(0, 5)
+		EnsureControlOutline(noneButton)
+		noneButton.MouseButton1Click:Connect(function()
+			PlayClick()
+			onNone()
+			RefreshButtons()
+			UpdateTheme(true)
+		end)
 	end
-	state.StructuresFolder = folder
 
-	TrackConnection("UndeadExpeditionStructureAdded", folder.ChildAdded:Connect(function(child)
-		SetStructureMessage(StructureDisplayName(child))
-		ShowStructureMarker(child)
-		RegisterKnownStructureType(StructureDisplayName(child))
-		if HandleTrapStructureSpawn then HandleTrapStructureSpawn(child) end
-		state.LastBoxScan = 0
-	end))
-end
+	-- Structures ESP: dynamically discovered structure types (grows as new ones are seen), reserved capacity below
+	local STRUCTURE_FILTER_CAPACITY = 15
+	structureFilterButtons = {}
 
-local function PlayerRoot()
-	local character = Player and Player.Character
-	return character and character:FindFirstChild("HumanoidRootPart")
-end
+	local function CreateStructureFilterButton(value, x, y)
+		local button = Instance.new("TextButton")
+		button.Name = "UndeadExpeditionStructureFilter" .. tostring(value):gsub("%W+", "")
+		button.Size = UDim2.new(0, 76, 0, 20)
+		button.Position = UDim2.new(0, x, 0, y)
+		button.BackgroundColor3 = Red
+		button.BackgroundTransparency = 0
+		button.BorderSizePixel = 0
+		button.Font = Enum.Font.GothamBold
+		button.TextSize = 7
+		button.TextColor3 = Color3.fromRGB(255, 255, 255)
+		button.TextTruncate = Enum.TextTruncate.AtEnd
+		button.ZIndex = 82
+		button.Parent = filterScroll
+		AddText(button)
+		Instance.new("UICorner", button).CornerRadius = UDim.new(0, 5)
+		EnsureControlOutline(button)
+		table.insert(structureFilterButtons, {Button = button, Value = value})
+		button.MouseButton1Click:Connect(function()
+			PlayClick()
+			state.SelectedStructureTypes[value] = not (state.SelectedStructureTypes[value] == true)
+			RefreshButtons()
+			UpdateTheme(true)
+		end)
+	end
 
-
-local function HasHunterTrapText(value)
-	local lower = string.lower(tostring(value or ""))
-	return lower:find("hunter", 1, true) ~= nil and lower:find("trap", 1, true) ~= nil
-end
-
-local function HunterTrapPart(box)
-	if not box then return nil end
-	if box:IsA("BasePart") and string.lower(box.Name) == "string" then return box end
-	local direct = box:FindFirstChild("string")
-	if direct and direct:IsA("BasePart") then return direct end
-	for _, child in ipairs(box:GetDescendants()) do
-		if child:IsA("BasePart") and string.lower(child.Name) == "string" then
-			return child
+	local function EnsureStructureFilterButtons()
+		for _, name in ipairs(state.KnownStructureTypes) do
+			local exists = false
+			for _, entry in ipairs(structureFilterButtons) do
+				if entry.Value == name then
+					exists = true
+					break
+				end
+			end
+			if not exists and #structureFilterButtons < STRUCTURE_FILTER_CAPACITY then
+				local index = #structureFilterButtons
+				local column = index % 3
+				local row = math.floor(index / 3)
+				CreateStructureFilterButton(name, column * 82, 38 + row * 23)
+			end
 		end
 	end
-	return nil
-end
 
-local function BoxRoot(box)
-	if not box then return nil end
-	if HasHunterTrapText(box.Name) then
-		local trapPart = HunterTrapPart(box)
-		if trapPart then return trapPart end
+	RegisterKnownStructureType = function(name)
+		if not name or name == "" then return end
+		if not table.find(state.KnownStructureTypes, name) then
+			table.insert(state.KnownStructureTypes, name)
+			table.sort(state.KnownStructureTypes)
+		end
+		if state.SelectedStructureTypes[name] == nil then state.SelectedStructureTypes[name] = false end
+		EnsureStructureFilterButtons()
 	end
-	if box:IsA("BasePart") then return box end
-	if box:IsA("Model") then return box.PrimaryPart or box:FindFirstChildWhichIsA("BasePart", true) end
-	return box:FindFirstChildWhichIsA("BasePart", true)
-end
 
-local function BoxTypeFromName(name)
-	local lower = string.lower(tostring(name or ""))
-	if HasHunterTrapText(lower) then return "Hunter Trap" end
+	CreateFilterLabel("Structures ESP", 0)
+	CreateAllNoneButtons(16,
+		function()
+			for _, name in ipairs(state.KnownStructureTypes) do state.SelectedStructureTypes[name] = true end
+		end,
+		function()
+			for _, name in ipairs(state.KnownStructureTypes) do state.SelectedStructureTypes[name] = false end
+		end
+	)
+	EnsureStructureFilterButtons()
+
+	CreateFilterLabel("Boxes / Traps", 161)
+	local BOX_FILTER_TYPES = {}
 	for _, boxType in ipairs(BOX_TYPES) do
-		if lower:find(string.lower(boxType), 1, true) then return boxType end
-	end
-	return nil
-end
-
-local function BoxType(box)
-	local nameType = BoxTypeFromName(box and box.Name)
-	if nameType then return nameType end
-	for _, child in ipairs(box:GetDescendants()) do
-		if child:IsA("StringValue") or child:IsA("TextLabel") or child:IsA("TextButton") then
-			local value = child:IsA("StringValue") and tostring(child.Value or "") or tostring(child.Text or "")
-			local valueLower = string.lower(value)
-			if HasHunterTrapText(valueLower) then return "Hunter Trap" end
-			local textType = BoxTypeFromName(valueLower)
-			if textType then return textType end
+		if boxType ~= "Hunter Trap" then
+			table.insert(BOX_FILTER_TYPES, boxType)
 		end
 	end
-	return nil
-end
-
-local function BoxColor(box)
-	return BOX_TYPE_COLORS[BoxType(box) or ""] or AccentColor
-end
-
-local function BoxHighlightTarget(box, root)
-	if BoxType(box) == "Hunter Trap" and root then
-		return root
+	for index, boxType in ipairs(BOX_FILTER_TYPES) do
+		local column = (index - 1) % 3
+		local row = math.floor((index - 1) / 3)
+		CreateFilterButton(boxType, column * 82, 177 + row * 23)
 	end
-	return box
-end
 
-local function BoxDisplayName(box)
-	local displayType = BoxType(box) or "Loot"
-	return displayType == "Hunter Trap" and displayType or (displayType .. " Box")
-end
+	-- Item Rarities ESP: independent from the Pickup rarity filters (visibility vs. auto-collect are separate concerns)
+	espRarityButtons = {}
 
-local function IsBoxAllowed(box)
-	local boxType = BoxType(box)
-	return boxType ~= nil and state.SelectedBoxTypes[boxType] ~= false
-end
+	local function CreateESPRarityButton(value, x, y)
+		local button = Instance.new("TextButton")
+		button.Name = "UndeadExpeditionESPRarity" .. tostring(value):gsub("%W+", "")
+		button.Size = UDim2.new(0, 76, 0, 20)
+		button.Position = UDim2.new(0, x, 0, y)
+		button.BackgroundColor3 = Red
+		button.BackgroundTransparency = 0
+		button.BorderSizePixel = 0
+		button.Font = Enum.Font.GothamBold
+		button.TextSize = 7
+		button.TextColor3 = Color3.fromRGB(255, 255, 255)
+		button.TextTruncate = Enum.TextTruncate.AtEnd
+		button.ZIndex = 82
+		button.Parent = filterScroll
+		AddText(button)
+		Instance.new("UICorner", button).CornerRadius = UDim.new(0, 5)
+		EnsureControlOutline(button)
+		table.insert(espRarityButtons, {Button = button, Value = value})
+		button.MouseButton1Click:Connect(function()
+			PlayClick()
+			state.ESPSelectedRarities[value] = not (state.ESPSelectedRarities[value] == true)
+			RefreshButtons()
+			UpdateTheme(true)
+		end)
+	end
 
-local function CollectLootBoxes()
-	local folder = StructuresFolder()
-	local boxes = {}
-	local seen = {}
-	if not folder then return boxes end
-	local function hasTrackedAncestor(candidate)
-		local parent = candidate and candidate.Parent
-		while parent and parent ~= folder do
-			if seen[parent] then return true end
-			parent = parent.Parent
+	CreateFilterLabel("Item Rarities ESP", 231)
+	CreateAllNoneButtons(247,
+		function()
+			for _, tier in ipairs(RARITY_TIERS) do state.ESPSelectedRarities[tier] = true end
+		end,
+		function()
+			for _, tier in ipairs(RARITY_TIERS) do state.ESPSelectedRarities[tier] = false end
 		end
-		return false
+	)
+	for index, tier in ipairs(RARITY_TIERS) do
+		local column = (index - 1) % 3
+		local row = math.floor((index - 1) / 3)
+		CreateESPRarityButton(tier, column * 82, 269 + row * 23)
 	end
-	local function addCandidate(candidate)
-		if not candidate or seen[candidate] then return end
-		if hasTrackedAncestor(candidate) then return end
-		if BoxRoot(candidate) and IsBoxAllowed(candidate) then
-			seen[candidate] = true
-			table.insert(boxes, candidate)
+
+	local pickupRows = math.max(1, math.ceil(#RARITY_TIERS / 3))
+	local pickupScrollHeight = 16 + pickupRows * 23
+	local pickupDockHeight = math.max(80, pickupScrollHeight + 46)
+
+	pickupDock = Instance.new("Frame")
+	pickupDock.Name = "UndeadExpeditionPickupDock"
+	pickupDock.Size = UDim2.new(0, 256, 0, pickupDockHeight)
+	pickupDock.BackgroundColor3 = FrameThemeColor
+	pickupDock.BackgroundTransparency = 0
+	pickupDock.BorderSizePixel = 0
+	pickupDock.ZIndex = 80
+	pickupDock.Visible = false
+	pickupDock.Parent = ScreenGui or MainFrame
+	AddBackground(pickupDock)
+	Instance.new("UICorner", pickupDock).CornerRadius = UDim.new(0, 9)
+	local pickupDockStroke = Instance.new("UIStroke")
+	pickupDockStroke.Color = AccentColor
+	pickupDockStroke.Thickness = 1.5
+	pickupDockStroke.Transparency = 0.08
+	pickupDockStroke.Parent = pickupDock
+	if ThemeObjects.Accents then table.insert(ThemeObjects.Accents, pickupDockStroke) end
+	local pickupDockGradient = Instance.new("UIGradient")
+	pickupDockGradient.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, FrameThemeColor:Lerp(Color3.fromRGB(255, 255, 255), 0.04)),
+		ColorSequenceKeypoint.new(1, FrameThemeColor:Lerp(Color3.fromRGB(0, 0, 0), 0.14)),
+	})
+	pickupDockGradient.Rotation = 35
+	pickupDockGradient.Parent = pickupDock
+	local pickupDockScale = Instance.new("UIScale")
+	pickupDockScale.Scale = GuiScaleFromValue(GuiSizeValue)
+	pickupDockScale.Parent = pickupDock
+
+	UpdatePickupDockPosition = function()
+		local scale = pickupDockScale.Scale
+		pickupDock.Position = UDim2.fromOffset(MainFrame.AbsolutePosition.X - ((256 + 7) * scale), MainFrame.AbsolutePosition.Y + ((54 + 280 + 7) * scale))
+	end
+	TrackConnection("UndeadExpeditionPickupDockPosition", MainFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(UpdatePickupDockPosition))
+	TrackConnection("UndeadExpeditionPickupDockSize", MainFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdatePickupDockPosition))
+	UpdatePickupDockPosition()
+
+	local pickupHeader = Instance.new("TextLabel")
+	pickupHeader.Size = UDim2.new(1, -40, 0, 14)
+	pickupHeader.Position = UDim2.new(0, 8, 0, 6)
+	pickupHeader.BackgroundTransparency = 1
+	pickupHeader.Text = "Pickup Filters"
+	pickupHeader.Font = Enum.Font.GothamBold
+	pickupHeader.TextSize = 10
+	pickupHeader.TextXAlignment = Enum.TextXAlignment.Center
+	pickupHeader.ZIndex = 81
+	pickupHeader.Parent = pickupDock
+	AddText(pickupHeader)
+
+	pickupCloseButton = Instance.new("TextButton")
+	pickupCloseButton.Name = "UndeadExpeditionPickupClose"
+	pickupCloseButton.Size = UDim2.new(0, 18, 0, 18)
+	pickupCloseButton.Position = UDim2.new(1, -24, 0, 5)
+	pickupCloseButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	pickupCloseButton.BackgroundTransparency = 0.35
+	pickupCloseButton.BorderSizePixel = 0
+	pickupCloseButton.Text = "x"
+	pickupCloseButton.Font = Enum.Font.GothamBold
+	pickupCloseButton.TextSize = 9
+	pickupCloseButton.ZIndex = 82
+	pickupCloseButton.Parent = pickupDock
+	AddBackground(pickupCloseButton)
+	AddText(pickupCloseButton)
+	Instance.new("UICorner", pickupCloseButton).CornerRadius = UDim.new(0, 5)
+	EnsureControlOutline(pickupCloseButton)
+
+	local pickupScroll = Instance.new("ScrollingFrame")
+	pickupScroll.Name = "UndeadExpeditionPickupScroll"
+	pickupScroll.Size = UDim2.new(1, -16, 1, -36)
+	pickupScroll.Position = UDim2.new(0, 8, 0, 30)
+	pickupScroll.BackgroundTransparency = 1
+	pickupScroll.BorderSizePixel = 0
+	pickupScroll.ScrollBarThickness = 3
+	pickupScroll.ScrollBarImageColor3 = AccentColor
+	pickupScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+	pickupScroll.ElasticBehavior = Enum.ElasticBehavior.Never
+	pickupScroll.CanvasSize = UDim2.new(0, 0, 0, pickupScrollHeight)
+	pickupScroll.ZIndex = 81
+	pickupScroll.Parent = pickupDock
+
+	pickupFilterButtons = {}
+
+	local function CreatePickupFilterButton(value, x, y)
+		local button = Instance.new("TextButton")
+		button.Name = "UndeadExpeditionPickupFilter" .. tostring(value):gsub("%W+", "")
+		button.Size = UDim2.new(0, 76, 0, 20)
+		button.Position = UDim2.new(0, x, 0, y)
+		button.BackgroundColor3 = Green
+		button.BackgroundTransparency = 0
+		button.BorderSizePixel = 0
+		button.Font = Enum.Font.GothamBold
+		button.TextSize = 7
+		button.TextColor3 = Color3.fromRGB(255, 255, 255)
+		button.TextTruncate = Enum.TextTruncate.AtEnd
+		button.ZIndex = 82
+		button.Parent = pickupScroll
+		AddText(button)
+		Instance.new("UICorner", button).CornerRadius = UDim.new(0, 5)
+		EnsureControlOutline(button)
+		table.insert(pickupFilterButtons, {Button = button, Value = value})
+		button.MouseButton1Click:Connect(function()
+			PlayClick()
+			state.SelectedRarities[value] = not (state.SelectedRarities[value] ~= false)
+			RefreshButtons()
+			UpdateTheme(true)
+		end)
+	end
+
+	for index, tier in ipairs(RARITY_TIERS) do
+		local column = (index - 1) % 3
+		local row = math.floor((index - 1) / 3)
+		CreatePickupFilterButton(tier, column * 82, 16 + row * 23)
+	end
+end
+
+local SafeGet, SafeSet, StructureDisplayName, StructureRoot, StructuresFolder, WatchStructures
+local PlayerRoot, HasHunterTrapText, BoxRoot, BoxTypeFromName, BoxType, ClearBoxESP, RefreshBoxDistances, UpdateBoxESP
+do
+	SafeGet = function(instance, property)
+		local ok, value = pcall(function()
+			return instance[property]
+		end)
+		if ok then return value end
+		return nil
+	end
+
+	SafeSet = function(instance, property, value)
+		pcall(function()
+			instance[property] = value
+		end)
+	end
+
+	local function CleanStructureName(name)
+		name = tostring(name or "Structure")
+		name = name:gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
+		name = name:gsub("%s*%(%d+%)$", ""):gsub("[%s_%-%#]*%d+$", "")
+		name = name:gsub("^%s+", ""):gsub("%s+$", "")
+		return name ~= "" and name or "Structure"
+	end
+
+	StructureDisplayName = function(structure)
+		if not structure then return "Structure" end
+		local displayName = structure:GetAttribute("DisplayName") or structure:GetAttribute("StructureName") or structure:GetAttribute("Name")
+		if displayName and tostring(displayName) ~= "" then return CleanStructureName(displayName) end
+		local stringValue = structure:FindFirstChild("Name")
+		if stringValue and stringValue:IsA("StringValue") and tostring(stringValue.Value) ~= "" then
+			return CleanStructureName(stringValue.Value)
 		end
+		return CleanStructureName(structure.Name)
 	end
-	for _, structure in ipairs(folder:GetChildren()) do
-		local lootFolder = structure:FindFirstChild("Loot")
-		if lootFolder then
-			for _, box in ipairs(lootFolder:GetChildren()) do
-				addCandidate(box)
+
+	StructureRoot = function(structure)
+		if not structure then return nil end
+		if structure:IsA("BasePart") then return structure end
+		if structure:IsA("Model") then return structure.PrimaryPart or structure:FindFirstChildWhichIsA("BasePart", true) end
+		return structure:FindFirstChildWhichIsA("BasePart", true)
+	end
+
+	local function ShowStructureMarker(structure)
+		local root = StructureRoot(structure)
+		if not root then return end
+		local billboard = Instance.new("BillboardGui")
+		billboard.Name = "StructureSpawnMarker"
+		billboard.Adornee = root
+		billboard.Size = UDim2.new(0, 54, 0, 54)
+		billboard.StudsOffset = Vector3.new(0, 8, 0)
+		billboard.AlwaysOnTop = true
+		billboard.LightInfluence = 0
+		billboard.MaxDistance = 2000
+		billboard.Parent = markerFolder
+
+		local label = Instance.new("TextLabel")
+		label.Size = UDim2.new(1, 0, 1, 0)
+		label.BackgroundTransparency = 1
+		label.Text = "!"
+		label.Font = Enum.Font.GothamBlack
+		label.TextSize = 34
+		label.TextColor3 = AccentColor
+		label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+		label.TextStrokeTransparency = 0.12
+		label.Parent = billboard
+
+		task.delay(7.5, function()
+			if billboard and billboard.Parent then billboard:Destroy() end
+		end)
+	end
+
+	local function ShowStructureNotification(message)
+		if not state.StructureNotifications or not structureNotification then return end
+		state.StructureNotificationToken = (tonumber(state.StructureNotificationToken) or 0) + 1
+		local token = state.StructureNotificationToken
+		if state.StructureNotificationTween then
+			pcall(function() state.StructureNotificationTween:Cancel() end)
+		end
+		structureNotification.Text = tostring(message or "")
+		structureNotification.Visible = IsUEPageActive()
+		structureNotification.TextTransparency = 0
+		structureNotification.TextStrokeTransparency = 0.16
+		task.delay(3, function()
+			if token ~= state.StructureNotificationToken or not structureNotification or not structureNotification.Parent then return end
+			local tween = TweenService:Create(structureNotification, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				TextTransparency = 1,
+				TextStrokeTransparency = 1,
+			})
+			state.StructureNotificationTween = tween
+			tween:Play()
+			tween.Completed:Connect(function()
+				if token == state.StructureNotificationToken and structureNotification then
+					structureNotification.Visible = false
+				end
+			end)
+		end)
+	end
+
+	local function SetStructureMessage(name)
+		name = CleanStructureName(name)
+		if state.LastStructureName == name then
+			state.LastStructureCount = (tonumber(state.LastStructureCount) or 1) + 1
+		else
+			state.LastStructureName = name
+			state.LastStructureCount = 1
+		end
+		local suffix = state.LastStructureCount > 1 and (" x" .. tostring(state.LastStructureCount)) or ""
+		state.LastStructureMessage = ("%s Has Spawned%s"):format(name, suffix)
+		structureStatus.Text = state.LastStructureMessage
+		ShowStructureNotification(state.LastStructureMessage)
+	end
+
+	StructuresFolder = function()
+		return workspace:FindFirstChild("Structures")
+	end
+
+	WatchStructures = function()
+		local folder = StructuresFolder()
+		if not folder then return end
+		local existing = HubState.Connections.UndeadExpeditionStructureAdded
+		if existing and state.StructuresFolder == folder then return end
+		if existing then
+			existing:Disconnect()
+			HubState.Connections.UndeadExpeditionStructureAdded = nil
+		end
+		state.StructuresFolder = folder
+
+		TrackConnection("UndeadExpeditionStructureAdded", folder.ChildAdded:Connect(function(child)
+			SetStructureMessage(StructureDisplayName(child))
+			ShowStructureMarker(child)
+			RegisterKnownStructureType(StructureDisplayName(child))
+			if HandleTrapStructureSpawn then HandleTrapStructureSpawn(child) end
+			state.LastBoxScan = 0
+		end))
+	end
+
+	PlayerRoot = function()
+		local character = Player and Player.Character
+		return character and character:FindFirstChild("HumanoidRootPart")
+	end
+
+	HasHunterTrapText = function(value)
+		local lower = string.lower(tostring(value or ""))
+		return lower:find("hunter", 1, true) ~= nil and lower:find("trap", 1, true) ~= nil
+	end
+
+	local function HunterTrapPart(box)
+		if not box then return nil end
+		if box:IsA("BasePart") and string.lower(box.Name) == "string" then return box end
+		local direct = box:FindFirstChild("string")
+		if direct and direct:IsA("BasePart") then return direct end
+		for _, child in ipairs(box:GetDescendants()) do
+			if child:IsA("BasePart") and string.lower(child.Name) == "string" then
+				return child
 			end
 		end
-		for _, child in ipairs(structure:GetChildren()) do
-			if child.Name ~= "Loot" and BoxTypeFromName(child.Name) then
-				addCandidate(child)
+		return nil
+	end
+
+	BoxRoot = function(box)
+		if not box then return nil end
+		if HasHunterTrapText(box.Name) then
+			local trapPart = HunterTrapPart(box)
+			if trapPart then return trapPart end
+		end
+		if box:IsA("BasePart") then return box end
+		if box:IsA("Model") then return box.PrimaryPart or box:FindFirstChildWhichIsA("BasePart", true) end
+		return box:FindFirstChildWhichIsA("BasePart", true)
+	end
+
+	BoxTypeFromName = function(name)
+		local lower = string.lower(tostring(name or ""))
+		if HasHunterTrapText(lower) then return "Hunter Trap" end
+		for _, boxType in ipairs(BOX_TYPES) do
+			if lower:find(string.lower(boxType), 1, true) then return boxType end
+		end
+		return nil
+	end
+
+	BoxType = function(box)
+		local nameType = BoxTypeFromName(box and box.Name)
+		if nameType then return nameType end
+		for _, child in ipairs(box:GetDescendants()) do
+			if child:IsA("StringValue") or child:IsA("TextLabel") or child:IsA("TextButton") then
+				local value = child:IsA("StringValue") and tostring(child.Value or "") or tostring(child.Text or "")
+				local valueLower = string.lower(value)
+				if HasHunterTrapText(valueLower) then return "Hunter Trap" end
+				local textType = BoxTypeFromName(valueLower)
+				if textType then return textType end
 			end
 		end
-		if state.SelectedBoxTypes["Hunter Trap"] ~= false then
-			for _, candidate in ipairs(structure:GetDescendants()) do
-				if HasHunterTrapText(candidate.Name) then
-					addCandidate(candidate)
+		return nil
+	end
+
+	local function BoxColor(box)
+		return BOX_TYPE_COLORS[BoxType(box) or ""] or AccentColor
+	end
+
+	local function BoxHighlightTarget(box, root)
+		if BoxType(box) == "Hunter Trap" and root then
+			return root
+		end
+		return box
+	end
+
+	local function BoxDisplayName(box)
+		local displayType = BoxType(box) or "Loot"
+		return displayType == "Hunter Trap" and displayType or (displayType .. " Box")
+	end
+
+	local function IsBoxAllowed(box)
+		local boxType = BoxType(box)
+		return boxType ~= nil and state.SelectedBoxTypes[boxType] ~= false
+	end
+
+	local function CollectLootBoxes()
+		local folder = StructuresFolder()
+		local boxes = {}
+		local seen = {}
+		if not folder then return boxes end
+		local function hasTrackedAncestor(candidate)
+			local parent = candidate and candidate.Parent
+			while parent and parent ~= folder do
+				if seen[parent] then return true end
+				parent = parent.Parent
+			end
+			return false
+		end
+		local function addCandidate(candidate)
+			if not candidate or seen[candidate] then return end
+			if hasTrackedAncestor(candidate) then return end
+			if BoxRoot(candidate) and IsBoxAllowed(candidate) then
+				seen[candidate] = true
+				table.insert(boxes, candidate)
+			end
+		end
+		for _, structure in ipairs(folder:GetChildren()) do
+			local lootFolder = structure:FindFirstChild("Loot")
+			if lootFolder then
+				for _, box in ipairs(lootFolder:GetChildren()) do
+					addCandidate(box)
+				end
+			end
+			for _, child in ipairs(structure:GetChildren()) do
+				if child.Name ~= "Loot" and BoxTypeFromName(child.Name) then
+					addCandidate(child)
+				end
+			end
+			if state.SelectedBoxTypes["Hunter Trap"] ~= false then
+				for _, candidate in ipairs(structure:GetDescendants()) do
+					if HasHunterTrapText(candidate.Name) then
+						addCandidate(candidate)
+					end
 				end
 			end
 		end
+		return boxes
 	end
-	return boxes
-end
 
-local function RemoveBoxESP(box)
-	local entry = state.BoxObjects[box]
-	if entry and entry.Holder then entry.Holder:Destroy() end
-	state.BoxObjects[box] = nil
-end
-
-local function ClearBoxESP()
-	for box in pairs(state.BoxObjects) do
-		RemoveBoxESP(box)
+	local function RemoveBoxESP(box)
+		local entry = state.BoxObjects[box]
+		if entry and entry.Holder then entry.Holder:Destroy() end
+		state.BoxObjects[box] = nil
 	end
-	if boxEspFolder then boxEspFolder:ClearAllChildren() end
-end
 
-local function CreateBoxESP(box)
-	local root = BoxRoot(box)
-	if not root then return nil end
-	local boxColor = BoxColor(box)
-	local holder = Instance.new("Folder")
-	holder.Name = "BoxESP_" .. tostring(box.Name)
-	holder.Parent = boxEspFolder
-
-	local highlight = Instance.new("Highlight")
-	highlight.Name = "BoxHighlight"
-	highlight.Adornee = BoxHighlightTarget(box, root)
-	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-	highlight.FillColor = boxColor
-	highlight.OutlineColor = boxColor
-	highlight.FillTransparency = 0.9
-	highlight.OutlineTransparency = 0.03
-	highlight.Parent = holder
-
-	local billboard = Instance.new("BillboardGui")
-	billboard.Name = "BoxBillboard"
-	billboard.Adornee = root
-	billboard.Size = UDim2.new(0, 150, 0, 28)
-	billboard.StudsOffset = Vector3.new(0, 3.15, 0)
-	billboard.AlwaysOnTop = true
-	billboard.LightInfluence = 0
-	billboard.MaxDistance = 1200
-	billboard.Parent = holder
-
-	local label = Instance.new("TextLabel")
-	label.Name = "BoxLabel"
-	label.Size = UDim2.new(1, 0, 1, 0)
-	label.BackgroundTransparency = 1
-	label.Text = BoxType(box) or "Box"
-	label.Font = Enum.Font.GothamBold
-	label.TextSize = 10
-	label.TextColor3 = boxColor
-	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-	label.TextStrokeTransparency = 0.1
-	label.TextWrapped = true
-	label.Parent = billboard
-
-	return {Holder = holder, Highlight = highlight, Billboard = billboard, Label = label}
-end
-
-local function UpdateBoxEntryVisual(entry, box, root, playerRoot)
-	if not entry or not box or not root then return end
-	entry.Billboard.Adornee = root
-	entry.Billboard.Enabled = true
-	entry.Highlight.Adornee = BoxHighlightTarget(box, root)
-	local boxColor = BoxColor(box)
-	entry.Highlight.FillColor = boxColor
-	entry.Highlight.OutlineColor = boxColor
-	entry.Label.TextColor3 = boxColor
-	local distance = playerRoot and math.floor((root.Position - playerRoot.Position).Magnitude) or 0
-	entry.Label.Text = ("%s [%d Studs]"):format(BoxDisplayName(box), distance)
-end
-
-local function RefreshBoxDistances()
-	if not state.BoxESP then return end
-	local playerRoot = PlayerRoot()
-	for box, entry in pairs(state.BoxObjects) do
-		local root = BoxRoot(box)
-		if root and entry and entry.Holder and entry.Holder.Parent then
-			UpdateBoxEntryVisual(entry, box, root, playerRoot)
-		else
+	ClearBoxESP = function()
+		for box in pairs(state.BoxObjects) do
 			RemoveBoxESP(box)
 		end
+		if boxEspFolder then boxEspFolder:ClearAllChildren() end
 	end
-end
 
-local function UpdateBoxESP()
-	if not state.BoxESP then
-		state.LastBoxCount = 0
-		state.LastBoxShownCount = 0
-		ClearBoxESP()
-		return
-	end
-	local playerRoot = PlayerRoot()
-	local boxes = CollectLootBoxes()
-	table.sort(boxes, function(a, b)
-		local rootA = BoxRoot(a)
-		local rootB = BoxRoot(b)
-		local distA = playerRoot and rootA and (rootA.Position - playerRoot.Position).Magnitude or 0
-		local distB = playerRoot and rootB and (rootB.Position - playerRoot.Position).Magnitude or 0
-		return distA < distB
-	end)
-
-	local seen = {}
-	local shown = 0
-	for _, box in ipairs(boxes) do
-		if shown >= MAX_BOX_OBJECTS then break end
+	local function CreateBoxESP(box)
 		local root = BoxRoot(box)
-		if root then
-			seen[box] = true
-			shown += 1
-			local entry = state.BoxObjects[box]
-			if not entry or not entry.Holder or not entry.Holder.Parent then
-				entry = CreateBoxESP(box)
-				state.BoxObjects[box] = entry
-			end
-		end
+		if not root then return nil end
+		local boxColor = BoxColor(box)
+		local holder = Instance.new("Folder")
+		holder.Name = "BoxESP_" .. tostring(box.Name)
+		holder.Parent = boxEspFolder
+
+		local highlight = Instance.new("Highlight")
+		highlight.Name = "BoxHighlight"
+		highlight.Adornee = BoxHighlightTarget(box, root)
+		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		highlight.FillColor = boxColor
+		highlight.OutlineColor = boxColor
+		highlight.FillTransparency = 0.9
+		highlight.OutlineTransparency = 0.03
+		highlight.Parent = holder
+
+		local billboard = Instance.new("BillboardGui")
+		billboard.Name = "BoxBillboard"
+		billboard.Adornee = root
+		billboard.Size = UDim2.new(0, 150, 0, 28)
+		billboard.StudsOffset = Vector3.new(0, 3.15, 0)
+		billboard.AlwaysOnTop = true
+		billboard.LightInfluence = 0
+		billboard.MaxDistance = 1200
+		billboard.Parent = holder
+
+		local label = Instance.new("TextLabel")
+		label.Name = "BoxLabel"
+		label.Size = UDim2.new(1, 0, 1, 0)
+		label.BackgroundTransparency = 1
+		label.Text = BoxType(box) or "Box"
+		label.Font = Enum.Font.GothamBold
+		label.TextSize = 10
+		label.TextColor3 = boxColor
+		label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+		label.TextStrokeTransparency = 0.1
+		label.TextWrapped = true
+		label.Parent = billboard
+
+		return {Holder = holder, Highlight = highlight, Billboard = billboard, Label = label}
 	end
-	for box in pairs(state.BoxObjects) do
-		if not seen[box] then RemoveBoxESP(box) end
+
+	local function UpdateBoxEntryVisual(entry, box, root, playerRoot)
+		if not entry or not box or not root then return end
+		entry.Billboard.Adornee = root
+		entry.Billboard.Enabled = true
+		entry.Highlight.Adornee = BoxHighlightTarget(box, root)
+		local boxColor = BoxColor(box)
+		entry.Highlight.FillColor = boxColor
+		entry.Highlight.OutlineColor = boxColor
+		entry.Label.TextColor3 = boxColor
+		local distance = playerRoot and math.floor((root.Position - playerRoot.Position).Magnitude) or 0
+		entry.Label.Text = ("%s [%d Studs]"):format(BoxDisplayName(box), distance)
 	end
-	state.LastBoxCount = #boxes
-	state.LastBoxShownCount = shown
-	RefreshBoxDistances()
-end
 
-local function CreateGenericESPEntry(folder, root, color, text)
-	local holder = Instance.new("Folder")
-	holder.Parent = folder
-
-	local highlight = Instance.new("Highlight")
-	highlight.Name = "ESPHighlight"
-	highlight.Adornee = root
-	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-	highlight.FillColor = color
-	highlight.OutlineColor = color
-	highlight.FillTransparency = 0.9
-	highlight.OutlineTransparency = 0.03
-	highlight.Parent = holder
-
-	local billboard = Instance.new("BillboardGui")
-	billboard.Name = "ESPBillboard"
-	billboard.Adornee = root
-	billboard.Size = UDim2.new(0, 150, 0, 28)
-	billboard.StudsOffset = Vector3.new(0, 3.15, 0)
-	billboard.AlwaysOnTop = true
-	billboard.LightInfluence = 0
-	billboard.MaxDistance = 1500
-	billboard.Parent = holder
-
-	local label = Instance.new("TextLabel")
-	label.Name = "ESPLabel"
-	label.Size = UDim2.new(1, 0, 1, 0)
-	label.BackgroundTransparency = 1
-	label.Text = text
-	label.Font = Enum.Font.GothamBold
-	label.TextSize = 10
-	label.TextColor3 = color
-	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-	label.TextStrokeTransparency = 0.1
-	label.TextWrapped = true
-	label.Parent = billboard
-
-	return {Holder = holder, Highlight = highlight, Billboard = billboard, Label = label}
-end
-
-local function RunESPCategory(objects, config)
-	if not config.IsEnabled() then
-		for target in pairs(objects) do
-			if objects[target].Holder then objects[target].Holder:Destroy() end
-			objects[target] = nil
-		end
-		return
-	end
-	local playerRoot = PlayerRoot()
-	local ok, targets = pcall(config.GetTargets)
-	if not ok or type(targets) ~= "table" then targets = {} end
-	local seen = {}
-	for _, target in ipairs(targets) do
-		local root = config.GetRoot(target)
-		if root then
-			seen[target] = true
-			local color = config.GetColor(target)
-			local text = config.GetLabel(target, root, playerRoot)
-			local entry = objects[target]
-			if not entry or not entry.Holder or not entry.Holder.Parent then
-				entry = CreateGenericESPEntry(config.Folder, root, color, text)
-				objects[target] = entry
+	RefreshBoxDistances = function()
+		if not state.BoxESP then return end
+		local playerRoot = PlayerRoot()
+		for box, entry in pairs(state.BoxObjects) do
+			local root = BoxRoot(box)
+			if root and entry and entry.Holder and entry.Holder.Parent then
+				UpdateBoxEntryVisual(entry, box, root, playerRoot)
 			else
-				entry.Highlight.Adornee = root
-				entry.Billboard.Adornee = root
-				entry.Highlight.FillColor = color
-				entry.Highlight.OutlineColor = color
-				entry.Label.TextColor3 = color
-				entry.Label.Text = text
+				RemoveBoxESP(box)
 			end
 		end
 	end
-	for target in pairs(objects) do
-		if not seen[target] then
-			if objects[target].Holder then objects[target].Holder:Destroy() end
-			objects[target] = nil
-		end
-	end
-end
 
-local function GetAllGroundItems()
-	local items = {}
-	for _, inst in ipairs(workspace:GetDescendants()) do
-		if inst:IsA("ProximityPrompt") and inst.Enabled then
-			local action = string.lower(tostring(inst.ActionText or ""))
-			if action:find("claim", 1, true) then
-				local part = inst.Parent
-				if part and part:IsA("BasePart") then
-					table.insert(items, part)
+	UpdateBoxESP = function()
+		if not state.BoxESP then
+			state.LastBoxCount = 0
+			state.LastBoxShownCount = 0
+			ClearBoxESP()
+			return
+		end
+		local playerRoot = PlayerRoot()
+		local boxes = CollectLootBoxes()
+		table.sort(boxes, function(a, b)
+			local rootA = BoxRoot(a)
+			local rootB = BoxRoot(b)
+			local distA = playerRoot and rootA and (rootA.Position - playerRoot.Position).Magnitude or 0
+			local distB = playerRoot and rootB and (rootB.Position - playerRoot.Position).Magnitude or 0
+			return distA < distB
+		end)
+
+		local seen = {}
+		local shown = 0
+		for _, box in ipairs(boxes) do
+			if shown >= MAX_BOX_OBJECTS then break end
+			local root = BoxRoot(box)
+			if root then
+				seen[box] = true
+				shown += 1
+				local entry = state.BoxObjects[box]
+				if not entry or not entry.Holder or not entry.Holder.Parent then
+					entry = CreateBoxESP(box)
+					state.BoxObjects[box] = entry
 				end
 			end
 		end
-	end
-	return items
-end
-
-local function GetAllMobs()
-	local enemiesFolder = workspace:FindFirstChild("Enemies")
-	if not enemiesFolder then return {} end
-	local mobs = {}
-	for _, child in ipairs(enemiesFolder:GetChildren()) do
-		local humanoid = child:FindFirstChildOfClass("Humanoid")
-		if humanoid and humanoid.Health > 0 then
-			table.insert(mobs, child)
+		for box in pairs(state.BoxObjects) do
+			if not seen[box] then RemoveBoxESP(box) end
 		end
+		state.LastBoxCount = #boxes
+		state.LastBoxShownCount = shown
+		RefreshBoxDistances()
 	end
-	return mobs
 end
 
-local function GetMobRoot(mob)
-	if not mob then return nil end
-	return mob.PrimaryPart or mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChildWhichIsA("BasePart", true)
-end
+local UpdateStructuresESP, UpdateItemsESP, UpdateMobsESP
+do
+	local function CreateGenericESPEntry(folder, root, color, text)
+		local holder = Instance.new("Folder")
+		holder.Parent = folder
 
-local function UpdateStructuresESP()
-	RunESPCategory(state.StructuresESPObjects, {
-		IsEnabled = function() return true end,
-		Folder = structuresEspFolder,
-		GetTargets = function()
-			local folder = StructuresFolder()
-			if not folder then return {} end
-			local filtered = {}
-			for _, structure in ipairs(folder:GetChildren()) do
-				local name = StructureDisplayName(structure)
-				if state.SelectedStructureTypes[name] == true then
-					table.insert(filtered, structure)
+		local highlight = Instance.new("Highlight")
+		highlight.Name = "ESPHighlight"
+		highlight.Adornee = root
+		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		highlight.FillColor = color
+		highlight.OutlineColor = color
+		highlight.FillTransparency = 0.9
+		highlight.OutlineTransparency = 0.03
+		highlight.Parent = holder
+
+		local billboard = Instance.new("BillboardGui")
+		billboard.Name = "ESPBillboard"
+		billboard.Adornee = root
+		billboard.Size = UDim2.new(0, 150, 0, 28)
+		billboard.StudsOffset = Vector3.new(0, 3.15, 0)
+		billboard.AlwaysOnTop = true
+		billboard.LightInfluence = 0
+		billboard.MaxDistance = 1500
+		billboard.Parent = holder
+
+		local label = Instance.new("TextLabel")
+		label.Name = "ESPLabel"
+		label.Size = UDim2.new(1, 0, 1, 0)
+		label.BackgroundTransparency = 1
+		label.Text = text
+		label.Font = Enum.Font.GothamBold
+		label.TextSize = 10
+		label.TextColor3 = color
+		label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+		label.TextStrokeTransparency = 0.1
+		label.TextWrapped = true
+		label.Parent = billboard
+
+		return {Holder = holder, Highlight = highlight, Billboard = billboard, Label = label}
+	end
+
+	local function RunESPCategory(objects, config)
+		if not config.IsEnabled() then
+			for target in pairs(objects) do
+				if objects[target].Holder then objects[target].Holder:Destroy() end
+				objects[target] = nil
+			end
+			return
+		end
+		local playerRoot = PlayerRoot()
+		local ok, targets = pcall(config.GetTargets)
+		if not ok or type(targets) ~= "table" then targets = {} end
+		local seen = {}
+		for _, target in ipairs(targets) do
+			local root = config.GetRoot(target)
+			if root then
+				seen[target] = true
+				local color = config.GetColor(target)
+				local text = config.GetLabel(target, root, playerRoot)
+				local entry = objects[target]
+				if not entry or not entry.Holder or not entry.Holder.Parent then
+					entry = CreateGenericESPEntry(config.Folder, root, color, text)
+					objects[target] = entry
+				else
+					entry.Highlight.Adornee = root
+					entry.Billboard.Adornee = root
+					entry.Highlight.FillColor = color
+					entry.Highlight.OutlineColor = color
+					entry.Label.TextColor3 = color
+					entry.Label.Text = text
 				end
 			end
-			return filtered
-		end,
-		GetRoot = StructureRoot,
-		GetColor = function() return AccentColor end,
-		GetLabel = function(structure, root, playerRoot)
-			local distance = playerRoot and math.floor((root.Position - playerRoot.Position).Magnitude) or 0
-			return ("%s [%d Studs]"):format(StructureDisplayName(structure), distance)
-		end,
-	})
-end
+		end
+		for target in pairs(objects) do
+			if not seen[target] then
+				if objects[target].Holder then objects[target].Holder:Destroy() end
+				objects[target] = nil
+			end
+		end
+	end
 
-local function UpdateItemsESP()
-	RunESPCategory(state.ItemsESPObjects, {
-		IsEnabled = function() return true end,
-		Folder = itemsEspFolder,
-		GetTargets = function()
-			local filtered = {}
-			for _, part in ipairs(GetAllGroundItems()) do
+	local function GetAllGroundItems()
+		local items = {}
+		for _, inst in ipairs(workspace:GetDescendants()) do
+			if inst:IsA("ProximityPrompt") and inst.Enabled then
+				local action = string.lower(tostring(inst.ActionText or ""))
+				if action:find("claim", 1, true) then
+					local part = inst.Parent
+					if part and part:IsA("BasePart") then
+						table.insert(items, part)
+					end
+				end
+			end
+		end
+		return items
+	end
+
+	local function GetAllMobs()
+		local enemiesFolder = workspace:FindFirstChild("Enemies")
+		if not enemiesFolder then return {} end
+		local mobs = {}
+		for _, child in ipairs(enemiesFolder:GetChildren()) do
+			local humanoid = child:FindFirstChildOfClass("Humanoid")
+			if humanoid and humanoid.Health > 0 then
+				table.insert(mobs, child)
+			end
+		end
+		return mobs
+	end
+
+	local function GetMobRoot(mob)
+		if not mob then return nil end
+		return mob.PrimaryPart or mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChildWhichIsA("BasePart", true)
+	end
+
+	UpdateStructuresESP = function()
+		RunESPCategory(state.StructuresESPObjects, {
+			IsEnabled = function() return true end,
+			Folder = structuresEspFolder,
+			GetTargets = function()
+				local folder = StructuresFolder()
+				if not folder then return {} end
+				local filtered = {}
+				for _, structure in ipairs(folder:GetChildren()) do
+					local name = StructureDisplayName(structure)
+					if state.SelectedStructureTypes[name] == true then
+						table.insert(filtered, structure)
+					end
+				end
+				return filtered
+			end,
+			GetRoot = StructureRoot,
+			GetColor = function() return AccentColor end,
+			GetLabel = function(structure, root, playerRoot)
+				local distance = playerRoot and math.floor((root.Position - playerRoot.Position).Magnitude) or 0
+				return ("%s [%d Studs]"):format(StructureDisplayName(structure), distance)
+			end,
+		})
+	end
+
+	UpdateItemsESP = function()
+		RunESPCategory(state.ItemsESPObjects, {
+			IsEnabled = function() return true end,
+			Folder = itemsEspFolder,
+			GetTargets = function()
+				local filtered = {}
+				for _, part in ipairs(GetAllGroundItems()) do
+					local rarity = GetDropRarity(part)
+					if rarity and state.ESPSelectedRarities[rarity] == true then
+						table.insert(filtered, part)
+					end
+				end
+				return filtered
+			end,
+			GetRoot = function(part) return part end,
+			GetColor = function(part) return GetRarityColor(GetDropRarity(part)) end,
+			GetLabel = function(part, root, playerRoot)
+				local distance = playerRoot and math.floor((root.Position - playerRoot.Position).Magnitude) or 0
 				local rarity = GetDropRarity(part)
-				if rarity and state.ESPSelectedRarities[rarity] == true then
-					table.insert(filtered, part)
-				end
-			end
-			return filtered
-		end,
-		GetRoot = function(part) return part end,
-		GetColor = function(part) return GetRarityColor(GetDropRarity(part)) end,
-		GetLabel = function(part, root, playerRoot)
-			local distance = playerRoot and math.floor((root.Position - playerRoot.Position).Magnitude) or 0
-			local rarity = GetDropRarity(part)
-			return ("%s%s [%d Studs]"):format(part.Name, rarity and (" (" .. rarity .. ")") or "", distance)
-		end,
-	})
-end
+				return ("%s%s [%d Studs]"):format(part.Name, rarity and (" (" .. rarity .. ")") or "", distance)
+			end,
+		})
+	end
 
-local function UpdateMobsESP()
-	RunESPCategory(state.MobsESPObjects, {
-		IsEnabled = function() return state.ESPMobsEnabled end,
-		Folder = mobsEspFolder,
-		GetTargets = GetAllMobs,
-		GetRoot = GetMobRoot,
-		GetColor = function() return Color3.fromRGB(220, 60, 60) end,
-		GetLabel = function(mob, root, playerRoot)
-			local distance = playerRoot and math.floor((root.Position - playerRoot.Position).Magnitude) or 0
-			return ("%s [%d Studs]"):format(mob.Name, distance)
-		end,
-	})
+	UpdateMobsESP = function()
+		RunESPCategory(state.MobsESPObjects, {
+			IsEnabled = function() return state.ESPMobsEnabled end,
+			Folder = mobsEspFolder,
+			GetTargets = GetAllMobs,
+			GetRoot = GetMobRoot,
+			GetColor = function() return Color3.fromRGB(220, 60, 60) end,
+			GetLabel = function(mob, root, playerRoot)
+				local distance = playerRoot and math.floor((root.Position - playerRoot.Position).Magnitude) or 0
+				return ("%s [%d Studs]"):format(mob.Name, distance)
+			end,
+		})
+	end
 end
 
 local function FindOpenPrompt(box)
@@ -1825,134 +1835,137 @@ local function ClaimNearbyDrop(boxPosition, options)
 end
 
 
-local lightingEffectProperties = {
-	Atmosphere = {"Density", "Offset", "Color", "Decay", "Glare", "Haze"},
-	ColorCorrectionEffect = {"Enabled", "Brightness", "Contrast", "Saturation", "TintColor"},
-	BloomEffect = {"Enabled", "Intensity", "Size", "Threshold"},
-	BlurEffect = {"Enabled", "Size"},
-	DepthOfFieldEffect = {"Enabled", "FarIntensity", "FocusDistance", "InFocusRadius", "NearIntensity"},
-	SunRaysEffect = {"Enabled", "Intensity", "Spread"},
-}
-
-local function LightingEffectClass(instance)
-	for className in pairs(lightingEffectProperties) do
-		if instance:IsA(className) then return className end
-	end
-	return nil
-end
-
-local function CaptureLightingEffectDefaults(effect, original)
-	local className = LightingEffectClass(effect)
-	if not className then return end
-	original.Effects = original.Effects or {}
-	if original.Effects[effect] then return end
-	local saved = {}
-	for _, property in ipairs(lightingEffectProperties[className]) do
-		local value = SafeGet(effect, property)
-		if value ~= nil then saved[property] = value end
-	end
-	original.Effects[effect] = saved
-end
-
-local function IsNoDarknessLighting()
-	return Lighting.Brightness >= 3.8
-		and Lighting.FogEnd >= 900000
-		and Lighting.Ambient.R > 0.95
-		and Lighting.OutdoorAmbient.R > 0.95
-end
-
-local function BuildLightingSnapshot()
-	local snapshot = {
-		ClockTime = Lighting.ClockTime,
-		TimeOfDay = SafeGet(Lighting, "TimeOfDay"),
-		Brightness = Lighting.Brightness,
-		FogEnd = Lighting.FogEnd,
-		FogStart = Lighting.FogStart,
-		FogColor = Lighting.FogColor,
-		Ambient = Lighting.Ambient,
-		OutdoorAmbient = Lighting.OutdoorAmbient,
-		ExposureCompensation = Lighting.ExposureCompensation,
-		GlobalShadows = SafeGet(Lighting, "GlobalShadows"),
-		Effects = {},
+local SetNoDarkness, ApplyNoDarkness
+do
+	local lightingEffectProperties = {
+		Atmosphere = {"Density", "Offset", "Color", "Decay", "Glare", "Haze"},
+		ColorCorrectionEffect = {"Enabled", "Brightness", "Contrast", "Saturation", "TintColor"},
+		BloomEffect = {"Enabled", "Intensity", "Size", "Threshold"},
+		BlurEffect = {"Enabled", "Size"},
+		DepthOfFieldEffect = {"Enabled", "FarIntensity", "FocusDistance", "InFocusRadius", "NearIntensity"},
+		SunRaysEffect = {"Enabled", "Intensity", "Spread"},
 	}
-	for _, child in ipairs(Lighting:GetChildren()) do
-		CaptureLightingEffectDefaults(child, snapshot)
-	end
-	return snapshot
-end
 
-local function SaveLightingDefaults()
-	if not IsNoDarknessLighting() then
-		state.OriginalLighting = BuildLightingSnapshot()
+	local function LightingEffectClass(instance)
+		for className in pairs(lightingEffectProperties) do
+			if instance:IsA(className) then return className end
+		end
+		return nil
 	end
-end
 
-local function ApplyNoDarkness()
-	SaveLightingDefaults()
-	SafeSet(Lighting, "ClockTime", 14)
-	SafeSet(Lighting, "TimeOfDay", "14:00:00")
-	SafeSet(Lighting, "Brightness", 4)
-	SafeSet(Lighting, "FogStart", 0)
-	SafeSet(Lighting, "FogEnd", 1000000)
-	SafeSet(Lighting, "FogColor", Color3.fromRGB(255, 255, 255))
-	SafeSet(Lighting, "Ambient", Color3.fromRGB(255, 255, 255))
-	SafeSet(Lighting, "OutdoorAmbient", Color3.fromRGB(255, 255, 255))
-	SafeSet(Lighting, "ExposureCompensation", 0.45)
-	SafeSet(Lighting, "GlobalShadows", false)
-	for _, child in ipairs(Lighting:GetChildren()) do
-		CaptureLightingEffectDefaults(child, state.OriginalLighting)
-		if child:IsA("Atmosphere") then
-			SafeSet(child, "Density", 0)
-			SafeSet(child, "Haze", 0)
-			SafeSet(child, "Glare", 0)
-			SafeSet(child, "Offset", 0)
-			SafeSet(child, "Color", Color3.fromRGB(255, 255, 255))
-			SafeSet(child, "Decay", Color3.fromRGB(255, 255, 255))
-		elseif child:IsA("ColorCorrectionEffect") then
-			SafeSet(child, "Enabled", false)
-			SafeSet(child, "Brightness", 0)
-			SafeSet(child, "Contrast", 0)
-			SafeSet(child, "Saturation", 0)
-			SafeSet(child, "TintColor", Color3.fromRGB(255, 255, 255))
-		elseif child:IsA("BloomEffect") or child:IsA("BlurEffect") or child:IsA("DepthOfFieldEffect") or child:IsA("SunRaysEffect") then
-			SafeSet(child, "Enabled", false)
+	local function CaptureLightingEffectDefaults(effect, original)
+		local className = LightingEffectClass(effect)
+		if not className then return end
+		original.Effects = original.Effects or {}
+		if original.Effects[effect] then return end
+		local saved = {}
+		for _, property in ipairs(lightingEffectProperties[className]) do
+			local value = SafeGet(effect, property)
+			if value ~= nil then saved[property] = value end
+		end
+		original.Effects[effect] = saved
+	end
+
+	local function IsNoDarknessLighting()
+		return Lighting.Brightness >= 3.8
+			and Lighting.FogEnd >= 900000
+			and Lighting.Ambient.R > 0.95
+			and Lighting.OutdoorAmbient.R > 0.95
+	end
+
+	local function BuildLightingSnapshot()
+		local snapshot = {
+			ClockTime = Lighting.ClockTime,
+			TimeOfDay = SafeGet(Lighting, "TimeOfDay"),
+			Brightness = Lighting.Brightness,
+			FogEnd = Lighting.FogEnd,
+			FogStart = Lighting.FogStart,
+			FogColor = Lighting.FogColor,
+			Ambient = Lighting.Ambient,
+			OutdoorAmbient = Lighting.OutdoorAmbient,
+			ExposureCompensation = Lighting.ExposureCompensation,
+			GlobalShadows = SafeGet(Lighting, "GlobalShadows"),
+			Effects = {},
+		}
+		for _, child in ipairs(Lighting:GetChildren()) do
+			CaptureLightingEffectDefaults(child, snapshot)
+		end
+		return snapshot
+	end
+
+	local function SaveLightingDefaults()
+		if not IsNoDarknessLighting() then
+			state.OriginalLighting = BuildLightingSnapshot()
 		end
 	end
-end
 
-local function RestoreLighting()
-	local original = state.OriginalLighting
-	if not original then
-		SafeSet(Lighting, "ClockTime", 12)
-		SafeSet(Lighting, "TimeOfDay", "12:00:00")
-		SafeSet(Lighting, "Brightness", 2)
+	ApplyNoDarkness = function()
+		SaveLightingDefaults()
+		SafeSet(Lighting, "ClockTime", 14)
+		SafeSet(Lighting, "TimeOfDay", "14:00:00")
+		SafeSet(Lighting, "Brightness", 4)
 		SafeSet(Lighting, "FogStart", 0)
-		SafeSet(Lighting, "FogEnd", 100000)
-		SafeSet(Lighting, "Ambient", Color3.fromRGB(128, 128, 128))
-		SafeSet(Lighting, "OutdoorAmbient", Color3.fromRGB(128, 128, 128))
-		SafeSet(Lighting, "ExposureCompensation", 0)
-		SafeSet(Lighting, "GlobalShadows", true)
-		return
-	end
-	for property, value in pairs(original) do
-		if property ~= "Effects" then SafeSet(Lighting, property, value) end
-	end
-	for effect, properties in pairs(original.Effects or {}) do
-		if typeof(effect) == "Instance" and effect.Parent then
-			for property, value in pairs(properties) do
-				SafeSet(effect, property, value)
+		SafeSet(Lighting, "FogEnd", 1000000)
+		SafeSet(Lighting, "FogColor", Color3.fromRGB(255, 255, 255))
+		SafeSet(Lighting, "Ambient", Color3.fromRGB(255, 255, 255))
+		SafeSet(Lighting, "OutdoorAmbient", Color3.fromRGB(255, 255, 255))
+		SafeSet(Lighting, "ExposureCompensation", 0.45)
+		SafeSet(Lighting, "GlobalShadows", false)
+		for _, child in ipairs(Lighting:GetChildren()) do
+			CaptureLightingEffectDefaults(child, state.OriginalLighting)
+			if child:IsA("Atmosphere") then
+				SafeSet(child, "Density", 0)
+				SafeSet(child, "Haze", 0)
+				SafeSet(child, "Glare", 0)
+				SafeSet(child, "Offset", 0)
+				SafeSet(child, "Color", Color3.fromRGB(255, 255, 255))
+				SafeSet(child, "Decay", Color3.fromRGB(255, 255, 255))
+			elseif child:IsA("ColorCorrectionEffect") then
+				SafeSet(child, "Enabled", false)
+				SafeSet(child, "Brightness", 0)
+				SafeSet(child, "Contrast", 0)
+				SafeSet(child, "Saturation", 0)
+				SafeSet(child, "TintColor", Color3.fromRGB(255, 255, 255))
+			elseif child:IsA("BloomEffect") or child:IsA("BlurEffect") or child:IsA("DepthOfFieldEffect") or child:IsA("SunRaysEffect") then
+				SafeSet(child, "Enabled", false)
 			end
 		end
 	end
-end
 
-local function SetNoDarkness(enabled)
-	state.NoDarkness = enabled == true
-	if state.NoDarkness then
-		ApplyNoDarkness()
-	else
-		RestoreLighting()
-		state.OriginalLighting = nil
+	local function RestoreLighting()
+		local original = state.OriginalLighting
+		if not original then
+			SafeSet(Lighting, "ClockTime", 12)
+			SafeSet(Lighting, "TimeOfDay", "12:00:00")
+			SafeSet(Lighting, "Brightness", 2)
+			SafeSet(Lighting, "FogStart", 0)
+			SafeSet(Lighting, "FogEnd", 100000)
+			SafeSet(Lighting, "Ambient", Color3.fromRGB(128, 128, 128))
+			SafeSet(Lighting, "OutdoorAmbient", Color3.fromRGB(128, 128, 128))
+			SafeSet(Lighting, "ExposureCompensation", 0)
+			SafeSet(Lighting, "GlobalShadows", true)
+			return
+		end
+		for property, value in pairs(original) do
+			if property ~= "Effects" then SafeSet(Lighting, property, value) end
+		end
+		for effect, properties in pairs(original.Effects or {}) do
+			if typeof(effect) == "Instance" and effect.Parent then
+				for property, value in pairs(properties) do
+					SafeSet(effect, property, value)
+				end
+			end
+		end
+	end
+
+	SetNoDarkness = function(enabled)
+		state.NoDarkness = enabled == true
+		if state.NoDarkness then
+			ApplyNoDarkness()
+		else
+			RestoreLighting()
+			state.OriginalLighting = nil
+		end
 	end
 end
 
@@ -1960,474 +1973,477 @@ local function TeleportToBase()
 	return StableTeleport(CFrame.new(BASE_POSITION + Vector3.new(0, 4, 0)))
 end
 
-local function FindNamedTriggerPart(structure, partName)
-	local direct = structure:FindFirstChild(partName)
-	if direct and direct:IsA("BasePart") then return direct end
-	local lowerName = string.lower(partName)
-	for _, child in ipairs(structure:GetDescendants()) do
-		if child:IsA("BasePart") and string.lower(child.Name) == lowerName then
-			return child
-		end
-	end
-	return StructureRoot(structure)
-end
-
-local ENCOUNTERS = {
-	{
-		Id = "Hunter Trap",
-		Matches = function(structure)
-			return HasHunterTrapText(StructureDisplayName(structure)) or HasHunterTrapText(structure.Name)
-		end,
-		GetTriggerPosition = function(structure)
-			local isTrap2 = string.lower(StructureDisplayName(structure)):find("2", 1, true) ~= nil
-				or string.lower(structure.Name):find("2", 1, true) ~= nil
-			local part = FindNamedTriggerPart(structure, isTrap2 and "Trap" or "string")
-			if not part then return nil end
-			local position = part.Position
-			if isTrap2 then position = position + TRAP2_LAND_OFFSET end
-			return position
-		end,
-		EnemyNames = {"hunter"},
-		LootAttempts = 1,
-	},
-	{
-		Id = "Graveyard",
-		Matches = function(structure)
-			return string.lower(StructureDisplayName(structure)):find("graveyard", 1, true) ~= nil
-		end,
-		GetTriggerPosition = function(structure)
-			local part = FindNamedTriggerPart(structure, "Trap")
-			return part and part.Position
-		end,
-		EnemyNames = {"grounder"},
-		LootAttempts = 6,
-	},
-	{
-		Id = "Ancient Ruins",
-		Matches = function(structure)
-			return string.lower(StructureDisplayName(structure)):find("ancient", 1, true) ~= nil
-		end,
-		GetTriggerPosition = function(structure)
-			local part = FindNamedTriggerPart(structure, "Trap")
-			return part and part.Position
-		end,
-		EnemyNames = {"pharaon", "mummy"},
-		LootAttempts = 6,
-	},
-}
-
-local function FindMatchingEncounter(structure)
-	for _, encounter in ipairs(ENCOUNTERS) do
-		if encounter.Matches(structure) then
-			return encounter
-		end
-	end
-	return nil
-end
-
-local function IsMatchingEnemy(instance, nameFilters)
-	local lowerName = string.lower(instance.Name)
-	for _, filter in ipairs(nameFilters) do
-		if lowerName:find(filter, 1, true) then return true end
-	end
-	return false
-end
-
-local function EnemyRoot(enemy)
-	if not enemy then return nil end
-	return enemy.PrimaryPart or enemy:FindFirstChild("HumanoidRootPart") or enemy:FindFirstChildWhichIsA("BasePart", true)
-end
-
-local function GetActiveEnemies(nameFilters)
-	local enemiesFolder = workspace:FindFirstChild("Enemies")
-	if not enemiesFolder then return {} end
-	local enemies = {}
-	for _, child in ipairs(enemiesFolder:GetChildren()) do
-		if IsMatchingEnemy(child, nameFilters) then
-			local humanoid = child:FindFirstChildOfClass("Humanoid")
-			if humanoid and humanoid.Health > 0 then
-				table.insert(enemies, child)
+local ToggleAutoTrap
+do
+	local function FindNamedTriggerPart(structure, partName)
+		local direct = structure:FindFirstChild(partName)
+		if direct and direct:IsA("BasePart") then return direct end
+		local lowerName = string.lower(partName)
+		for _, child in ipairs(structure:GetDescendants()) do
+			if child:IsA("BasePart") and string.lower(child.Name) == lowerName then
+				return child
 			end
 		end
+		return StructureRoot(structure)
 	end
-	return enemies
-end
 
-local function EquipAnyWeapon()
-	local character = Player and Player.Character
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if not humanoid then return nil end
-	local equipped = character:FindFirstChildOfClass("Tool")
-	if equipped and not KEY_TOOL_NAMES[equipped.Name] then return equipped end
-	local backpack = Player and Player:FindFirstChildOfClass("Backpack")
-	if backpack then
-		for _, tool in ipairs(backpack:GetChildren()) do
-			if tool:IsA("Tool") and not KEY_TOOL_NAMES[tool.Name] then
-				humanoid:EquipTool(tool)
-				return tool
+	local ENCOUNTERS = {
+		{
+			Id = "Hunter Trap",
+			Matches = function(structure)
+				return HasHunterTrapText(StructureDisplayName(structure)) or HasHunterTrapText(structure.Name)
+			end,
+			GetTriggerPosition = function(structure)
+				local isTrap2 = string.lower(StructureDisplayName(structure)):find("2", 1, true) ~= nil
+					or string.lower(structure.Name):find("2", 1, true) ~= nil
+				local part = FindNamedTriggerPart(structure, isTrap2 and "Trap" or "string")
+				if not part then return nil end
+				local position = part.Position
+				if isTrap2 then position = position + TRAP2_LAND_OFFSET end
+				return position
+			end,
+			EnemyNames = {"hunter"},
+			LootAttempts = 1,
+		},
+		{
+			Id = "Graveyard",
+			Matches = function(structure)
+				return string.lower(StructureDisplayName(structure)):find("graveyard", 1, true) ~= nil
+			end,
+			GetTriggerPosition = function(structure)
+				local part = FindNamedTriggerPart(structure, "Trap")
+				return part and part.Position
+			end,
+			EnemyNames = {"grounder"},
+			LootAttempts = 6,
+		},
+		{
+			Id = "Ancient Ruins",
+			Matches = function(structure)
+				return string.lower(StructureDisplayName(structure)):find("ancient", 1, true) ~= nil
+			end,
+			GetTriggerPosition = function(structure)
+				local part = FindNamedTriggerPart(structure, "Trap")
+				return part and part.Position
+			end,
+			EnemyNames = {"pharaon", "mummy"},
+			LootAttempts = 6,
+		},
+	}
+
+	local function FindMatchingEncounter(structure)
+		for _, encounter in ipairs(ENCOUNTERS) do
+			if encounter.Matches(structure) then
+				return encounter
 			end
 		end
+		return nil
 	end
-	return nil
-end
 
-local function FightEnemies(trapPosition, nameFilters)
-	local mouseClick = game.ReplicatedStorage:FindFirstChild("MouseClick")
-	if not mouseClick then
-		warn("[UE Auto Trap] MouseClick remote not found; cannot attack enemies")
+	local function IsMatchingEnemy(instance, nameFilters)
+		local lowerName = string.lower(instance.Name)
+		for _, filter in ipairs(nameFilters) do
+			if lowerName:find(filter, 1, true) then return true end
+		end
+		return false
 	end
-	local hadRoot = true
-	local emptySince = nil
-	while state.AutoTrapEnabled and uePage.Parent do
-		local enemies = GetActiveEnemies(nameFilters)
-		if #enemies == 0 then
-			if not emptySince then
-				emptySince = os.clock()
-			elseif os.clock() - emptySince >= TRAP_WAVE_CLEAR_GRACE then
-				return true
+
+	local function EnemyRoot(enemy)
+		if not enemy then return nil end
+		return enemy.PrimaryPart or enemy:FindFirstChild("HumanoidRootPart") or enemy:FindFirstChildWhichIsA("BasePart", true)
+	end
+
+	local function GetActiveEnemies(nameFilters)
+		local enemiesFolder = workspace:FindFirstChild("Enemies")
+		if not enemiesFolder then return {} end
+		local enemies = {}
+		for _, child in ipairs(enemiesFolder:GetChildren()) do
+			if IsMatchingEnemy(child, nameFilters) then
+				local humanoid = child:FindFirstChildOfClass("Humanoid")
+				if humanoid and humanoid.Health > 0 then
+					table.insert(enemies, child)
+				end
 			end
-			task.wait(0.5)
-		else
-			emptySince = nil
-			local root = PlayerRoot()
-			if not root then
-				hadRoot = false
-				task.wait(TRAP_RESPAWN_WAIT)
+		end
+		return enemies
+	end
+
+	local function EquipAnyWeapon()
+		local character = Player and Player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if not humanoid then return nil end
+		local equipped = character:FindFirstChildOfClass("Tool")
+		if equipped and not KEY_TOOL_NAMES[equipped.Name] then return equipped end
+		local backpack = Player and Player:FindFirstChildOfClass("Backpack")
+		if backpack then
+			for _, tool in ipairs(backpack:GetChildren()) do
+				if tool:IsA("Tool") and not KEY_TOOL_NAMES[tool.Name] then
+					humanoid:EquipTool(tool)
+					return tool
+				end
+			end
+		end
+		return nil
+	end
+
+	local function FightEnemies(trapPosition, nameFilters)
+		local mouseClick = game.ReplicatedStorage:FindFirstChild("MouseClick")
+		if not mouseClick then
+			warn("[UE Auto Trap] MouseClick remote not found; cannot attack enemies")
+		end
+		local hadRoot = true
+		local emptySince = nil
+		while state.AutoTrapEnabled and uePage.Parent do
+			local enemies = GetActiveEnemies(nameFilters)
+			if #enemies == 0 then
+				if not emptySince then
+					emptySince = os.clock()
+				elseif os.clock() - emptySince >= TRAP_WAVE_CLEAR_GRACE then
+					return true
+				end
+				task.wait(0.5)
 			else
-				if not hadRoot then
-					hadRoot = true
+				emptySince = nil
+				local root = PlayerRoot()
+				if not root then
+					hadRoot = false
 					task.wait(TRAP_RESPAWN_WAIT)
-					root = PlayerRoot()
-					if root then
-						warn("[UE Auto Trap] respawned, returning to trap site")
-						StableTeleport(CFrame.new(trapPosition + Vector3.new(0, 4, 0)))
-						task.wait(0.2)
+				else
+					if not hadRoot then
+						hadRoot = true
+						task.wait(TRAP_RESPAWN_WAIT)
 						root = PlayerRoot()
-					end
-				end
-				if root then
-					table.sort(enemies, function(a, b)
-						local rootA, rootB = EnemyRoot(a), EnemyRoot(b)
-						if not rootA then return false end
-						if not rootB then return true end
-						return (root.Position - rootA.Position).Magnitude < (root.Position - rootB.Position).Magnitude
-					end)
-					local target = enemies[1]
-					local targetRoot = EnemyRoot(target)
-					if targetRoot then
-						local flatOffset = Vector3.new(root.Position.X - targetRoot.Position.X, 0, root.Position.Z - targetRoot.Position.Z)
-						if flatOffset.Magnitude < 0.1 then flatOffset = Vector3.new(TRAP_COMBAT_STANDOFF, 0, 0) end
-						local standPosition = targetRoot.Position + flatOffset.Unit * TRAP_COMBAT_STANDOFF
-						local facePosition = Vector3.new(standPosition.X, targetRoot.Position.Y, standPosition.Z)
-						local lookAt = Vector3.new(targetRoot.Position.X, facePosition.Y, targetRoot.Position.Z)
-						if (lookAt - facePosition).Magnitude > 0.05 then
-							root.CFrame = CFrame.new(facePosition, lookAt)
-						else
-							root.CFrame = CFrame.new(facePosition)
-						end
-						root.AssemblyLinearVelocity = Vector3.zero
-						root.AssemblyAngularVelocity = Vector3.zero
-						local tool = EquipAnyWeapon()
-						if tool and mouseClick then
-							pcall(function()
-								mouseClick:FireServer(tool.Name, CFrame.new(targetRoot.Position))
-							end)
-						elseif not tool then
-							warn("[UE Auto Trap] no weapon Tool available to attack with")
+						if root then
+							warn("[UE Auto Trap] respawned, returning to trap site")
+							StableTeleport(CFrame.new(trapPosition + Vector3.new(0, 4, 0)))
+							task.wait(0.2)
+							root = PlayerRoot()
 						end
 					end
-				end
-				task.wait(TRAP_COMBAT_FIRE_INTERVAL)
-			end
-		end
-	end
-	return false
-end
-
-local function ClaimDropsNearArea(fallbackPosition, attempts)
-	task.wait(0.75)
-	local consecutiveMisses = 0
-	for _ = 1, (attempts or 6) do
-		if not (state.AutoTrapEnabled and uePage.Parent) then break end
-		local root = PlayerRoot()
-		local searchPosition = root and root.Position or fallbackPosition
-		local claimed = ClaimNearbyDrop(searchPosition, {IsEnabled = function() return state.AutoTrapEnabled end})
-		if claimed then
-			consecutiveMisses = 0
-		else
-			consecutiveMisses = consecutiveMisses + 1
-			if consecutiveMisses >= 2 then break end
-		end
-	end
-end
-
-local function GetIdleSweepBoxTargets()
-	local folder = StructuresFolder()
-	if not folder then return {} end
-	local targets = {}
-	for _, structure in ipairs(folder:GetChildren()) do
-		local isUnhandledEncounter = FindMatchingEncounter(structure) and not state.AutoTrapHandled[structure]
-		if not isUnhandledEncounter then
-			local lootFolder = structure:FindFirstChild("Loot")
-			if lootFolder then
-				for _, box in ipairs(lootFolder:GetChildren()) do
-					if BoxRoot(box) and BoxType(box) ~= "Hunter Trap" then
-						table.insert(targets, box)
-					end
-				end
-			end
-			for _, child in ipairs(structure:GetChildren()) do
-				if child.Name ~= "Loot" and BoxTypeFromName(child.Name) and BoxType(child) ~= "Hunter Trap" then
-					table.insert(targets, child)
-				end
-			end
-		end
-	end
-	return targets
-end
-
-local function RunIdleCrateSweepStep()
-	local root = PlayerRoot()
-	if not root then return end
-
-	local now = os.clock()
-	local available = {}
-	for _, box in ipairs(GetIdleSweepBoxTargets()) do
-		local skipUntil = state.AutoTrapSweepSkipped[box]
-		if not skipUntil or now >= skipUntil then
-			table.insert(available, box)
-		end
-	end
-	if #available == 0 then return end
-
-	table.sort(available, function(a, b)
-		local rootA, rootB = BoxRoot(a), BoxRoot(b)
-		return (root.Position - rootA.Position).Magnitude < (root.Position - rootB.Position).Magnitude
-	end)
-
-	local target = available[1]
-	local targetRoot = BoxRoot(target)
-	if not targetRoot then return end
-
-	state.AutoTrapPhase = "Clearing crates"
-	RefreshButtons()
-	local boxPosition = targetRoot.Position
-	local opened = HoldOnBox(target, targetRoot, {
-		StatusLabel = trapStatus,
-		LogPrefix = "[UE Auto Trap]",
-		IsEnabled = function() return state.AutoTrapEnabled end,
-	})
-	if opened then
-		if state.AutoTrapEnabled and uePage.Parent then
-			ClaimDropsNearArea(boxPosition, 6)
-		end
-	else
-		state.AutoTrapSweepSkipped[target] = os.clock() + FARM_SKIP_COOLDOWN
-	end
-	if state.AutoTrapEnabled and #state.AutoTrapQueue == 0 then
-		state.AutoTrapPhase = "Idle"
-		RefreshButtons()
-	end
-end
-
-local function RunAutoTrapStep()
-	if #state.AutoTrapQueue == 0 then
-		RunIdleCrateSweepStep()
-		return
-	end
-	local entry = table.remove(state.AutoTrapQueue, 1)
-	if not entry then return end
-	local structure, encounter = entry.Structure, entry.Encounter
-	state.AutoTrapHandled[structure] = true
-	if not structure.Parent then return end
-
-	local targetPosition = encounter.GetTriggerPosition(structure)
-	if not targetPosition then
-		warn("[UE Auto Trap] could not find a trigger part on " .. tostring(structure.Name) .. " (" .. encounter.Id .. ")")
-		return
-	end
-
-	local enemiesFound = false
-	for attempt = 1, TRAP_TRIGGER_ATTEMPTS do
-		if not state.AutoTrapEnabled then break end
-		state.AutoTrapPhase = "Triggering " .. encounter.Id
-		RefreshButtons()
-		local root = PlayerRoot()
-		if not root then break end
-		StableTeleport(CFrame.new(targetPosition + Vector3.new(0, 4, 0)))
-		task.wait(TRAP_TRIGGER_WAIT)
-
-		state.AutoTrapPhase = "Waiting for enemies"
-		RefreshButtons()
-		local waveDeadline = os.clock() + TRAP_HUNTER_SCAN_WINDOW
-		while #GetActiveEnemies(encounter.EnemyNames) == 0 and os.clock() < waveDeadline and state.AutoTrapEnabled do
-			task.wait(0.25)
-		end
-		if #GetActiveEnemies(encounter.EnemyNames) > 0 then
-			enemiesFound = true
-			break
-		end
-		warn("[UE Auto Trap] no enemies spawned after triggering " .. tostring(structure.Name) .. " (" .. encounter.Id .. "), attempt " .. attempt .. "/" .. TRAP_TRIGGER_ATTEMPTS)
-	end
-
-	if not enemiesFound then
-		warn("[UE Auto Trap] giving up on " .. tostring(structure.Name) .. " (" .. encounter.Id .. ") after " .. TRAP_TRIGGER_ATTEMPTS .. " attempts")
-		state.AutoTrapPhase = "Idle"
-		RefreshButtons()
-		return
-	end
-
-	state.AutoTrapPhase = "Fighting"
-	RefreshButtons()
-	FightEnemies(targetPosition, encounter.EnemyNames)
-
-	if encounter.LootAttempts and encounter.LootAttempts > 0 then
-		state.AutoTrapPhase = "Collecting drops"
-		RefreshButtons()
-		ClaimDropsNearArea(targetPosition, encounter.LootAttempts)
-
-		state.AutoTrapPhase = "Opening " .. encounter.Id .. " crate"
-		RefreshButtons()
-		local lootFolder = structure:FindFirstChild("Loot")
-		if lootFolder then
-			for _, box in ipairs(lootFolder:GetChildren()) do
-				if BOX_TYPE_REQUIRED_KEY[BoxType(box)] then
-					local boxRoot = BoxRoot(box)
-					if boxRoot then
-						local boxPosition = boxRoot.Position
-						local opened = HoldOnBox(box, boxRoot, {
-							StatusLabel = trapStatus,
-							LogPrefix = "[UE Auto Trap]",
-							IsEnabled = function() return state.AutoTrapEnabled end,
-						})
-						if opened then
-							ClaimDropsNearArea(boxPosition, 6)
-						end
-					end
-				end
-			end
-		end
-	end
-
-	state.AutoTrapPhase = "Returning to base"
-	RefreshButtons()
-	local root2 = PlayerRoot()
-	if root2 then TeleportToBase() end
-	state.AutoTrapKilled = (tonumber(state.AutoTrapKilled) or 0) + 1
-	state.AutoTrapPhase = "Idle"
-	RefreshButtons()
-end
-
-local function SetAutoTrapEnabled(enabled)
-	state.AutoTrapEnabled = enabled == true
-	if not state.AutoTrapEnabled then
-		state.AutoTrapPhase = "Idle"
-	end
-	RefreshButtons()
-	UpdateTheme(true)
-end
-
-local function ToggleAutoTrap()
-	SetAutoTrapEnabled(not state.AutoTrapEnabled)
-end
-
-local function IsQueuedForAutoTrap(structure)
-	for _, entry in ipairs(state.AutoTrapQueue) do
-		if entry.Structure == structure then return true end
-	end
-	return false
-end
-
-HandleTrapStructureSpawn = function(structure)
-	if state.AutoTrapHandled[structure] or IsQueuedForAutoTrap(structure) then return end
-	local encounter = FindMatchingEncounter(structure)
-	if encounter then
-		table.insert(state.AutoTrapQueue, {Structure = structure, Encounter = encounter})
-	end
-end
-
-local function ScanForExistingTrapStructures()
-	local folder = StructuresFolder()
-	if not folder then return end
-	for _, structure in ipairs(folder:GetChildren()) do
-		if not state.AutoTrapHandled[structure] and not IsQueuedForAutoTrap(structure) then
-			local encounter = FindMatchingEncounter(structure)
-			if encounter then
-				table.insert(state.AutoTrapQueue, {Structure = structure, Encounter = encounter})
-			end
-		end
-	end
-end
-
-task.spawn(function()
-	while uePage.Parent do
-		if state.AutoTrapEnabled then
-			ScanForExistingTrapStructures()
-			RunAutoTrapStep()
-		end
-		task.wait(TRAP_IDLE_WAIT)
-	end
-end)
-
-local SELF_DEFENSE_RADIUS = 12
-local SELF_DEFENSE_FIRE_INTERVAL = 0.3
-
-local function GetNearbyHostileEnemies(radius)
-	local root = PlayerRoot()
-	if not root then return {} end
-	local enemiesFolder = workspace:FindFirstChild("Enemies")
-	if not enemiesFolder then return {} end
-	local nearby = {}
-	for _, child in ipairs(enemiesFolder:GetChildren()) do
-		local humanoid = child:FindFirstChildOfClass("Humanoid")
-		if humanoid and humanoid.Health > 0 then
-			local enemyRoot = EnemyRoot(child)
-			if enemyRoot and (enemyRoot.Position - root.Position).Magnitude <= radius then
-				table.insert(nearby, child)
-			end
-		end
-	end
-	return nearby
-end
-
-task.spawn(function()
-	local lastFire = 0
-	while uePage.Parent do
-		if state.AutoTrapEnabled and not state.ToolInteractionActive then
-			local now = os.clock()
-			if now - lastFire >= SELF_DEFENSE_FIRE_INTERVAL then
-				local nearby = GetNearbyHostileEnemies(SELF_DEFENSE_RADIUS)
-				if #nearby > 0 then
-					local root = PlayerRoot()
-					local mouseClick = game.ReplicatedStorage:FindFirstChild("MouseClick")
-					if root and mouseClick then
-						table.sort(nearby, function(a, b)
+					if root then
+						table.sort(enemies, function(a, b)
 							local rootA, rootB = EnemyRoot(a), EnemyRoot(b)
 							if not rootA then return false end
 							if not rootB then return true end
 							return (root.Position - rootA.Position).Magnitude < (root.Position - rootB.Position).Magnitude
 						end)
-						local closestRoot = EnemyRoot(nearby[1])
-						if closestRoot then
-							lastFire = now
-							local lookAt = Vector3.new(closestRoot.Position.X, root.Position.Y, closestRoot.Position.Z)
-							if (lookAt - root.Position).Magnitude > 0.05 then
-								root.CFrame = CFrame.new(root.Position, lookAt)
+						local target = enemies[1]
+						local targetRoot = EnemyRoot(target)
+						if targetRoot then
+							local flatOffset = Vector3.new(root.Position.X - targetRoot.Position.X, 0, root.Position.Z - targetRoot.Position.Z)
+							if flatOffset.Magnitude < 0.1 then flatOffset = Vector3.new(TRAP_COMBAT_STANDOFF, 0, 0) end
+							local standPosition = targetRoot.Position + flatOffset.Unit * TRAP_COMBAT_STANDOFF
+							local facePosition = Vector3.new(standPosition.X, targetRoot.Position.Y, standPosition.Z)
+							local lookAt = Vector3.new(targetRoot.Position.X, facePosition.Y, targetRoot.Position.Z)
+							if (lookAt - facePosition).Magnitude > 0.05 then
+								root.CFrame = CFrame.new(facePosition, lookAt)
+							else
+								root.CFrame = CFrame.new(facePosition)
 							end
+							root.AssemblyLinearVelocity = Vector3.zero
+							root.AssemblyAngularVelocity = Vector3.zero
 							local tool = EquipAnyWeapon()
-							if tool then
+							if tool and mouseClick then
 								pcall(function()
-									mouseClick:FireServer(tool.Name, CFrame.new(closestRoot.Position))
+									mouseClick:FireServer(tool.Name, CFrame.new(targetRoot.Position))
 								end)
+							elseif not tool then
+								warn("[UE Auto Trap] no weapon Tool available to attack with")
+							end
+						end
+					end
+					task.wait(TRAP_COMBAT_FIRE_INTERVAL)
+				end
+			end
+		end
+		return false
+	end
+
+	local function ClaimDropsNearArea(fallbackPosition, attempts)
+		task.wait(0.75)
+		local consecutiveMisses = 0
+		for _ = 1, (attempts or 6) do
+			if not (state.AutoTrapEnabled and uePage.Parent) then break end
+			local root = PlayerRoot()
+			local searchPosition = root and root.Position or fallbackPosition
+			local claimed = ClaimNearbyDrop(searchPosition, {IsEnabled = function() return state.AutoTrapEnabled end})
+			if claimed then
+				consecutiveMisses = 0
+			else
+				consecutiveMisses = consecutiveMisses + 1
+				if consecutiveMisses >= 2 then break end
+			end
+		end
+	end
+
+	local function GetIdleSweepBoxTargets()
+		local folder = StructuresFolder()
+		if not folder then return {} end
+		local targets = {}
+		for _, structure in ipairs(folder:GetChildren()) do
+			local isUnhandledEncounter = FindMatchingEncounter(structure) and not state.AutoTrapHandled[structure]
+			if not isUnhandledEncounter then
+				local lootFolder = structure:FindFirstChild("Loot")
+				if lootFolder then
+					for _, box in ipairs(lootFolder:GetChildren()) do
+						if BoxRoot(box) and BoxType(box) ~= "Hunter Trap" then
+							table.insert(targets, box)
+						end
+					end
+				end
+				for _, child in ipairs(structure:GetChildren()) do
+					if child.Name ~= "Loot" and BoxTypeFromName(child.Name) and BoxType(child) ~= "Hunter Trap" then
+						table.insert(targets, child)
+					end
+				end
+			end
+		end
+		return targets
+	end
+
+	local function RunIdleCrateSweepStep()
+		local root = PlayerRoot()
+		if not root then return end
+
+		local now = os.clock()
+		local available = {}
+		for _, box in ipairs(GetIdleSweepBoxTargets()) do
+			local skipUntil = state.AutoTrapSweepSkipped[box]
+			if not skipUntil or now >= skipUntil then
+				table.insert(available, box)
+			end
+		end
+		if #available == 0 then return end
+
+		table.sort(available, function(a, b)
+			local rootA, rootB = BoxRoot(a), BoxRoot(b)
+			return (root.Position - rootA.Position).Magnitude < (root.Position - rootB.Position).Magnitude
+		end)
+
+		local target = available[1]
+		local targetRoot = BoxRoot(target)
+		if not targetRoot then return end
+
+		state.AutoTrapPhase = "Clearing crates"
+		RefreshButtons()
+		local boxPosition = targetRoot.Position
+		local opened = HoldOnBox(target, targetRoot, {
+			StatusLabel = trapStatus,
+			LogPrefix = "[UE Auto Trap]",
+			IsEnabled = function() return state.AutoTrapEnabled end,
+		})
+		if opened then
+			if state.AutoTrapEnabled and uePage.Parent then
+				ClaimDropsNearArea(boxPosition, 6)
+			end
+		else
+			state.AutoTrapSweepSkipped[target] = os.clock() + FARM_SKIP_COOLDOWN
+		end
+		if state.AutoTrapEnabled and #state.AutoTrapQueue == 0 then
+			state.AutoTrapPhase = "Idle"
+			RefreshButtons()
+		end
+	end
+
+	local function RunAutoTrapStep()
+		if #state.AutoTrapQueue == 0 then
+			RunIdleCrateSweepStep()
+			return
+		end
+		local entry = table.remove(state.AutoTrapQueue, 1)
+		if not entry then return end
+		local structure, encounter = entry.Structure, entry.Encounter
+		state.AutoTrapHandled[structure] = true
+		if not structure.Parent then return end
+
+		local targetPosition = encounter.GetTriggerPosition(structure)
+		if not targetPosition then
+			warn("[UE Auto Trap] could not find a trigger part on " .. tostring(structure.Name) .. " (" .. encounter.Id .. ")")
+			return
+		end
+
+		local enemiesFound = false
+		for attempt = 1, TRAP_TRIGGER_ATTEMPTS do
+			if not state.AutoTrapEnabled then break end
+			state.AutoTrapPhase = "Triggering " .. encounter.Id
+			RefreshButtons()
+			local root = PlayerRoot()
+			if not root then break end
+			StableTeleport(CFrame.new(targetPosition + Vector3.new(0, 4, 0)))
+			task.wait(TRAP_TRIGGER_WAIT)
+
+			state.AutoTrapPhase = "Waiting for enemies"
+			RefreshButtons()
+			local waveDeadline = os.clock() + TRAP_HUNTER_SCAN_WINDOW
+			while #GetActiveEnemies(encounter.EnemyNames) == 0 and os.clock() < waveDeadline and state.AutoTrapEnabled do
+				task.wait(0.25)
+			end
+			if #GetActiveEnemies(encounter.EnemyNames) > 0 then
+				enemiesFound = true
+				break
+			end
+			warn("[UE Auto Trap] no enemies spawned after triggering " .. tostring(structure.Name) .. " (" .. encounter.Id .. "), attempt " .. attempt .. "/" .. TRAP_TRIGGER_ATTEMPTS)
+		end
+
+		if not enemiesFound then
+			warn("[UE Auto Trap] giving up on " .. tostring(structure.Name) .. " (" .. encounter.Id .. ") after " .. TRAP_TRIGGER_ATTEMPTS .. " attempts")
+			state.AutoTrapPhase = "Idle"
+			RefreshButtons()
+			return
+		end
+
+		state.AutoTrapPhase = "Fighting"
+		RefreshButtons()
+		FightEnemies(targetPosition, encounter.EnemyNames)
+
+		if encounter.LootAttempts and encounter.LootAttempts > 0 then
+			state.AutoTrapPhase = "Collecting drops"
+			RefreshButtons()
+			ClaimDropsNearArea(targetPosition, encounter.LootAttempts)
+
+			state.AutoTrapPhase = "Opening " .. encounter.Id .. " crate"
+			RefreshButtons()
+			local lootFolder = structure:FindFirstChild("Loot")
+			if lootFolder then
+				for _, box in ipairs(lootFolder:GetChildren()) do
+					if BOX_TYPE_REQUIRED_KEY[BoxType(box)] then
+						local boxRoot = BoxRoot(box)
+						if boxRoot then
+							local boxPosition = boxRoot.Position
+							local opened = HoldOnBox(box, boxRoot, {
+								StatusLabel = trapStatus,
+								LogPrefix = "[UE Auto Trap]",
+								IsEnabled = function() return state.AutoTrapEnabled end,
+							})
+							if opened then
+								ClaimDropsNearArea(boxPosition, 6)
 							end
 						end
 					end
 				end
 			end
 		end
-		task.wait(0.25)
+
+		state.AutoTrapPhase = "Returning to base"
+		RefreshButtons()
+		local root2 = PlayerRoot()
+		if root2 then TeleportToBase() end
+		state.AutoTrapKilled = (tonumber(state.AutoTrapKilled) or 0) + 1
+		state.AutoTrapPhase = "Idle"
+		RefreshButtons()
 	end
-end)
+
+	local function SetAutoTrapEnabled(enabled)
+		state.AutoTrapEnabled = enabled == true
+		if not state.AutoTrapEnabled then
+			state.AutoTrapPhase = "Idle"
+		end
+		RefreshButtons()
+		UpdateTheme(true)
+	end
+
+	ToggleAutoTrap = function()
+		SetAutoTrapEnabled(not state.AutoTrapEnabled)
+	end
+
+	local function IsQueuedForAutoTrap(structure)
+		for _, entry in ipairs(state.AutoTrapQueue) do
+			if entry.Structure == structure then return true end
+		end
+		return false
+	end
+
+	HandleTrapStructureSpawn = function(structure)
+		if state.AutoTrapHandled[structure] or IsQueuedForAutoTrap(structure) then return end
+		local encounter = FindMatchingEncounter(structure)
+		if encounter then
+			table.insert(state.AutoTrapQueue, {Structure = structure, Encounter = encounter})
+		end
+	end
+
+	local function ScanForExistingTrapStructures()
+		local folder = StructuresFolder()
+		if not folder then return end
+		for _, structure in ipairs(folder:GetChildren()) do
+			if not state.AutoTrapHandled[structure] and not IsQueuedForAutoTrap(structure) then
+				local encounter = FindMatchingEncounter(structure)
+				if encounter then
+					table.insert(state.AutoTrapQueue, {Structure = structure, Encounter = encounter})
+				end
+			end
+		end
+	end
+
+	task.spawn(function()
+		while uePage.Parent do
+			if state.AutoTrapEnabled then
+				ScanForExistingTrapStructures()
+				RunAutoTrapStep()
+			end
+			task.wait(TRAP_IDLE_WAIT)
+		end
+	end)
+
+	local SELF_DEFENSE_RADIUS = 12
+	local SELF_DEFENSE_FIRE_INTERVAL = 0.3
+
+	local function GetNearbyHostileEnemies(radius)
+		local root = PlayerRoot()
+		if not root then return {} end
+		local enemiesFolder = workspace:FindFirstChild("Enemies")
+		if not enemiesFolder then return {} end
+		local nearby = {}
+		for _, child in ipairs(enemiesFolder:GetChildren()) do
+			local humanoid = child:FindFirstChildOfClass("Humanoid")
+			if humanoid and humanoid.Health > 0 then
+				local enemyRoot = EnemyRoot(child)
+				if enemyRoot and (enemyRoot.Position - root.Position).Magnitude <= radius then
+					table.insert(nearby, child)
+				end
+			end
+		end
+		return nearby
+	end
+
+	task.spawn(function()
+		local lastFire = 0
+		while uePage.Parent do
+			if state.AutoTrapEnabled and not state.ToolInteractionActive then
+				local now = os.clock()
+				if now - lastFire >= SELF_DEFENSE_FIRE_INTERVAL then
+					local nearby = GetNearbyHostileEnemies(SELF_DEFENSE_RADIUS)
+					if #nearby > 0 then
+						local root = PlayerRoot()
+						local mouseClick = game.ReplicatedStorage:FindFirstChild("MouseClick")
+						if root and mouseClick then
+							table.sort(nearby, function(a, b)
+								local rootA, rootB = EnemyRoot(a), EnemyRoot(b)
+								if not rootA then return false end
+								if not rootB then return true end
+								return (root.Position - rootA.Position).Magnitude < (root.Position - rootB.Position).Magnitude
+							end)
+							local closestRoot = EnemyRoot(nearby[1])
+							if closestRoot then
+								lastFire = now
+								local lookAt = Vector3.new(closestRoot.Position.X, root.Position.Y, closestRoot.Position.Z)
+								if (lookAt - root.Position).Magnitude > 0.05 then
+									root.CFrame = CFrame.new(root.Position, lookAt)
+								end
+								local tool = EquipAnyWeapon()
+								if tool then
+									pcall(function()
+										mouseClick:FireServer(tool.Name, CFrame.new(closestRoot.Position))
+									end)
+								end
+							end
+						end
+					end
+				end
+			end
+			task.wait(0.25)
+		end
+	end)
+end
 
 RefreshButtons = function()
 	structureStatus.Text = state.LastStructureMessage or "Waiting for structure..."
