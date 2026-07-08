@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v28-trap-mobfarm-removed"
+local ModuleVersion = "UE-Utility-v29-loot-farm-added"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -87,6 +87,12 @@ state.LastStructureMessage = state.LastStructureMessage or "STRUCTURE: N/A"
 state.LastStructureMessage = tostring(state.LastStructureMessage):gsub(" Has Spawned", "")
 state.SelectedBoxTypes = type(state.SelectedBoxTypes) == "table" and state.SelectedBoxTypes or {}
 state.BoxObjects = {}
+state.LootFarmEnabled = state.LootFarmEnabled == true
+state.LootFarmCollected = tonumber(state.LootFarmCollected) or 0
+state.LootFarmCurrentBox = nil
+state.LootFarmCurrentPrompt = nil
+state.LootFarmSkipped = {}
+state.CachedFarmTargets = {}
 
 local function DisconnectTableConnections(connections)
 	if type(connections) ~= "table" then return end
@@ -112,7 +118,7 @@ state.BoxObjects = {}
 if type(ThemeObjects.FeatureKeybindEntries) == "table" then
 	for index = #ThemeObjects.FeatureKeybindEntries, 1, -1 do
 		local entry = ThemeObjects.FeatureKeybindEntries[index]
-		if entry and (entry.Storage == "UEEnemyESP" or entry.Storage == "UELootESP" or entry.Storage == "UEBoxESP" or entry.Storage == "UEBoxFilters" or entry.Storage == "UENoDarkness" or entry.Storage == "UEBaseTP" or entry.Storage == "UEStructureNotifications" or entry.Storage == "UEAutoHunterTrap" or entry.Storage == "UEAutoMobFarm") then
+		if entry and (entry.Storage == "UEEnemyESP" or entry.Storage == "UELootESP" or entry.Storage == "UEBoxESP" or entry.Storage == "UEBoxFilters" or entry.Storage == "UENoDarkness" or entry.Storage == "UEBaseTP" or entry.Storage == "UEStructureNotifications" or entry.Storage == "UEAutoHunterTrap" or entry.Storage == "UEAutoMobFarm" or entry.Storage == "UELootFarm") then
 			table.remove(ThemeObjects.FeatureKeybindEntries, index)
 		end
 	end
@@ -134,6 +140,10 @@ local MAX_BOX_OBJECTS = 40
 local BOX_SCAN_INTERVAL = 0.75
 local STRUCTURE_TIMER_SCAN_INTERVAL = 1.25
 local STRUCTURE_TIMER_FORCE_SCAN_INTERVAL = 0.4
+local FARM_TICK_MIN_INTERVAL = 0.05
+local FARM_TARGET_CACHE_INTERVAL = 0.2
+local FARM_COLLECTION_TIMEOUT = 1.5
+local FARM_SKIP_COOLDOWN = 5
 for _, boxType in ipairs(BOX_TYPES) do
 	if state.SelectedBoxTypes[boxType] == nil then state.SelectedBoxTypes[boxType] = true end
 end
@@ -152,7 +162,7 @@ uePage.ScrollBarImageColor3 = AccentColor
 uePage.ScrollingDirection = Enum.ScrollingDirection.Y
 uePage.ElasticBehavior = Enum.ElasticBehavior.Never
 uePage.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-uePage.CanvasSize = UDim2.new(0, 0, 0, 190)
+uePage.CanvasSize = UDim2.new(0, 0, 0, 240)
 uePage.Visible = false
 uePage:SetAttribute("ModuleVersion", ModuleVersion)
 uePage.Parent = MainFrame
@@ -323,6 +333,23 @@ local baseButton = CreateButton(baseRow, "UndeadExpeditionBaseTPButton", "TP", -
 local structureAlertsRow = CreateRow("UndeadExpeditionStructureAlertsRow", 142)
 local structureAlertsTitle = CreateTitle(structureAlertsRow, "Structure Alerts:")
 local structureAlertsToggle = CreateButton(structureAlertsRow, "UndeadExpeditionStructureAlertsToggle", "On", -98, 44)
+
+local farmRow = CreateRow("UndeadExpeditionLootFarmRow", 188)
+local farmTitle = CreateTitle(farmRow, "Auto Loot Farm:")
+local farmStatus = Instance.new("TextLabel")
+farmStatus.Name = "UndeadExpeditionLootFarmStatus"
+farmStatus.Size = UDim2.new(0, 110, 0, 18)
+farmStatus.Position = UDim2.new(1, -220, 0, 10)
+farmStatus.BackgroundTransparency = 1
+farmStatus.ZIndex = 4
+farmStatus.Text = "0 farmed"
+farmStatus.Font = Enum.Font.GothamBold
+farmStatus.TextSize = 8
+farmStatus.TextXAlignment = Enum.TextXAlignment.Right
+farmStatus.TextTruncate = Enum.TextTruncate.AtEnd
+farmStatus.Parent = farmRow
+AddText(farmStatus)
+local farmToggle = CreateButton(farmRow, "UndeadExpeditionLootFarmToggle", "Off", -98, 44)
 
 local filterDock = Instance.new("Frame")
 filterDock.Name = "UndeadExpeditionFilterDock"
@@ -924,6 +951,119 @@ local function UpdateBoxESP()
 	RefreshBoxDistances()
 end
 
+local function SetCharacterCollision(enabled)
+	local character = Player and Player.Character
+	if not character then return end
+	for _, part in ipairs(character:GetDescendants()) do
+		if part:IsA("BasePart") then part.CanCollide = enabled end
+	end
+end
+
+local function GetFarmTargets()
+	local now = os.clock()
+	if now - (state.LastFarmTargetScan or 0) < FARM_TARGET_CACHE_INTERVAL then
+		return state.CachedFarmTargets or {}
+	end
+	state.LastFarmTargetScan = now
+	local targets = {}
+	for _, box in ipairs(CollectLootBoxes()) do
+		if BoxType(box) ~= "Hunter Trap" and BoxRoot(box) then
+			table.insert(targets, box)
+		end
+	end
+	state.CachedFarmTargets = targets
+	return targets
+end
+
+local function TickLootFarm()
+	if not state.LootFarmEnabled then return end
+	if state.LootFarmCurrentBox and not (state.LootFarmCurrentBox.Parent and BoxRoot(state.LootFarmCurrentBox)) then
+		state.LootFarmCollected = (tonumber(state.LootFarmCollected) or 0) + 1
+		state.LootFarmCurrentBox = nil
+		state.LootFarmCurrentPrompt = nil
+	end
+
+	local now = os.clock()
+	if now - (state.LastFarmMove or 0) < FARM_TICK_MIN_INTERVAL then return end
+	state.LastFarmMove = now
+
+	local root = PlayerRoot()
+	if not root then return end
+
+	local targets = GetFarmTargets()
+	local available = {}
+	for _, box in ipairs(targets) do
+		local skipUntil = state.LootFarmSkipped[box]
+		if not skipUntil or now >= skipUntil then
+			state.LootFarmSkipped[box] = nil
+			table.insert(available, box)
+		end
+	end
+
+	if #available == 0 then
+		state.LootFarmCurrentBox = nil
+		state.LootFarmCurrentPrompt = nil
+		return
+	end
+
+	table.sort(available, function(a, b)
+		local rootA, rootB = BoxRoot(a), BoxRoot(b)
+		return (root.Position - rootA.Position).Magnitude < (root.Position - rootB.Position).Magnitude
+	end)
+
+	local target = available[1]
+	local targetRoot = BoxRoot(target)
+	if not targetRoot then return end
+
+	if state.LootFarmCurrentBox ~= target then
+		state.LootFarmCurrentBox = target
+		state.LootFarmCurrentBoxSince = now
+		state.LootFarmCurrentPrompt = nil
+		for _, child in ipairs(target:GetDescendants()) do
+			if child:IsA("ProximityPrompt") then
+				state.LootFarmCurrentPrompt = child
+				break
+			end
+		end
+	elseif now - state.LootFarmCurrentBoxSince >= FARM_COLLECTION_TIMEOUT then
+		state.LootFarmSkipped[target] = now + FARM_SKIP_COOLDOWN
+		state.LootFarmCurrentBox = nil
+		state.LootFarmCurrentPrompt = nil
+		return
+	end
+
+	ThemeObjects.SetRootUpright(root, root.CFrame, targetRoot.Position + Vector3.new(0, 1, 0))
+	root.AssemblyLinearVelocity = Vector3.zero
+	root.AssemblyAngularVelocity = Vector3.zero
+
+	if state.LootFarmCurrentPrompt and state.LootFarmCurrentPrompt.Parent and type(fireproximityprompt) == "function" then
+		pcall(fireproximityprompt, state.LootFarmCurrentPrompt)
+	end
+
+	farmStatus.Text = ("%d farmed"):format(state.LootFarmCollected)
+end
+
+local function SetLootFarmEnabled(enabled)
+	state.LootFarmEnabled = enabled == true
+	if state.LootFarmEnabled then
+		state.LootFarmSkipped = {}
+		state.LootFarmCurrentBox = nil
+		state.LootFarmCurrentPrompt = nil
+		state.LastFarmTargetScan = 0
+		SetCharacterCollision(false)
+	else
+		SetCharacterCollision(true)
+		state.LootFarmCurrentBox = nil
+		state.LootFarmCurrentPrompt = nil
+	end
+	RefreshButtons()
+	UpdateTheme(true)
+end
+
+local function ToggleLootFarm()
+	SetLootFarmEnabled(not state.LootFarmEnabled)
+end
+
 local lightingEffectProperties = {
 	Atmosphere = {"Density", "Offset", "Color", "Decay", "Glare", "Haze"},
 	ColorCorrectionEffect = {"Enabled", "Brightness", "Contrast", "Saturation", "TintColor"},
@@ -1101,9 +1241,12 @@ RefreshButtons = function()
 	boxStatus.Text = state.BoxESP and ("%d/%d"):format(boxShown, boxFound) or "0/0"
 	darknessToggle.Text = state.NoDarkness and "On" or "Off"
 	structureAlertsToggle.Text = state.StructureNotifications and "On" or "Off"
+	farmToggle.Text = state.LootFarmEnabled and "On" or "Off"
+	farmStatus.Text = ("%d farmed"):format(tonumber(state.LootFarmCollected) or 0)
 	boxTitle.TextColor3 = state.BoxESP and AccentColor or InactiveTextColor()
 	darknessTitle.TextColor3 = state.NoDarkness and AccentColor or InactiveTextColor()
 	structureAlertsTitle.TextColor3 = state.StructureNotifications and AccentColor or InactiveTextColor()
+	farmTitle.TextColor3 = state.LootFarmEnabled and AccentColor or InactiveTextColor()
 	baseTitle.TextColor3 = InactiveTextColor()
 	filterDock.Visible = state.LootFiltersOpen and IsUEPageActive()
 	for _, entry in ipairs(filterButtons) do
@@ -1201,14 +1344,21 @@ structureAlertsToggle.MouseButton1Click:Connect(function()
 	ToggleStructureNotifications()
 end)
 
+farmToggle.MouseButton1Click:Connect(function()
+	PlayClick()
+	ToggleLootFarm()
+end)
+
 table.insert(ThemeObjects.StateTexts, {Object = boxTitle, IsEnabled = function() return state.BoxESP end})
 table.insert(ThemeObjects.StateTexts, {Object = darknessTitle, IsEnabled = function() return state.NoDarkness end})
 table.insert(ThemeObjects.StateTexts, {Object = structureAlertsTitle, IsEnabled = function() return state.StructureNotifications end})
+table.insert(ThemeObjects.StateTexts, {Object = farmTitle, IsEnabled = function() return state.LootFarmEnabled end})
 ThemeObjects.AddFeatureKeybind({Name = "Box ESP", Storage = "UEBoxESP", Parent = boxRow, Toggle = boxToggle, Get = function() return LoadGameKeybind("UEBoxESP") end, Set = function(key) SaveGameKeybind("UEBoxESP", key) end, Action = ToggleBoxESP})
 ThemeObjects.AddFeatureKeybind({Name = "Box Filters", Storage = "UEBoxFilters", Get = function() return LoadGameKeybind("UEBoxFilters") end, Set = function(key) SaveGameKeybind("UEBoxFilters", key) end, Action = ToggleBoxFilters})
 ThemeObjects.AddFeatureKeybind({Name = "No Darkness", Storage = "UENoDarkness", Parent = darknessRow, Toggle = darknessToggle, Get = function() return LoadGameKeybind("UENoDarkness") end, Set = function(key) SaveGameKeybind("UENoDarkness", key) end, Action = ToggleNoDarkness})
 ThemeObjects.AddFeatureKeybind({Name = "Base TP", Storage = "UEBaseTP", Parent = baseRow, Toggle = baseButton, Get = function() return LoadGameKeybind("UEBaseTP") end, Set = function(key) SaveGameKeybind("UEBaseTP", key) end, Action = TeleportToBase})
 ThemeObjects.AddFeatureKeybind({Name = "Structure Alerts", Storage = "UEStructureNotifications", Parent = structureAlertsRow, Toggle = structureAlertsToggle, Get = function() return LoadGameKeybind("UEStructureNotifications") end, Set = function(key) SaveGameKeybind("UEStructureNotifications", key) end, Action = ToggleStructureNotifications})
+ThemeObjects.AddFeatureKeybind({Name = "Loot Farm", Storage = "UELootFarm", Parent = farmRow, Toggle = farmToggle, Get = function() return LoadGameKeybind("UELootFarm") end, Set = function(key) SaveGameKeybind("UELootFarm", key) end, Action = ToggleLootFarm})
 
 TrackConnection("UndeadExpeditionContainerAdded", workspace.ChildAdded:Connect(function(child)
 	if child.Name == "Structures" then
@@ -1235,6 +1385,7 @@ TrackConnection("UndeadExpeditionLightingHeartbeat", RunService.Heartbeat:Connec
 		UpdateBoxESP()
 		RefreshButtons()
 	end
+	TickLootFarm()
 end))
 
 task.spawn(function()
