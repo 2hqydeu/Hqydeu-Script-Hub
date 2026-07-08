@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v34"
+local ModuleVersion = "UE-Utility-v35"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -166,6 +166,7 @@ local MOB_FARM_HITBOX_SIZE = Vector3.new(18, 18, 18)
 local MOB_FARM_STRONG_ATTACK_INTERVAL = 0.28
 local STRUCTURE_TIMER_SCAN_INTERVAL = 1.25
 local STRUCTURE_TIMER_FORCE_SCAN_INTERVAL = 0.4
+local STRUCTURE_TIMER_WORKSPACE_SCAN_INTERVAL = 2.5
 for _, boxType in ipairs(BOX_TYPES) do
 	if state.SelectedBoxTypes[boxType] == nil then state.SelectedBoxTypes[boxType] = true end
 end
@@ -481,8 +482,11 @@ local function ReadStructureTimerFromLabel(label)
 	if not LooksLikeStructureTimerText(ownText) then return nil end
 	local text = NormalizeStructureTimerText(ownText)
 	if text then return text end
+	local visited = {}
 	local parent = label.Parent
-	if parent then
+	for _ = 1, 2 do
+		if not parent or visited[parent] then break end
+		visited[parent] = true
 		local pieces = {ownText}
 		for _, child in ipairs(parent:GetChildren()) do
 			if child:IsA("TextLabel") or child:IsA("TextButton") or child:IsA("TextBox") then
@@ -490,7 +494,27 @@ local function ReadStructureTimerFromLabel(label)
 				if childText ~= "" then table.insert(pieces, childText) end
 			end
 		end
-		return NormalizeStructureTimerText(table.concat(pieces, " "))
+		text = NormalizeStructureTimerText(table.concat(pieces, " "))
+		if text then return text end
+		parent = parent.Parent
+	end
+	return nil
+end
+
+local function ScanStructureTimerRoot(root)
+	if not root then return nil end
+	for _, obj in ipairs(root:GetDescendants()) do
+		if (obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox")) and (not ScreenGui or not obj:IsDescendantOf(ScreenGui)) then
+			local rawText = tostring(obj.Text or "")
+			if LooksLikeStructureTimerText(rawText) then
+				local text = ReadStructureTimerFromLabel(obj)
+				if text then
+					state.StructureTimerTextLabel = obj
+					state.LastStructureTimerText = text
+					return text
+				end
+			end
+		end
 	end
 	return nil
 end
@@ -511,20 +535,12 @@ local function FindStructureTimerText(force)
 	end
 	state.LastStructureTimerTextScan = now
 	local playerGui = Player and Player:FindFirstChildOfClass("PlayerGui")
-	if playerGui then
-		for _, obj in ipairs(playerGui:GetDescendants()) do
-			if (obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox")) and (not ScreenGui or not obj:IsDescendantOf(ScreenGui)) then
-				local rawText = tostring(obj.Text or "")
-				if LooksLikeStructureTimerText(rawText) then
-					local text = ReadStructureTimerFromLabel(obj)
-					if text then
-						state.StructureTimerTextLabel = obj
-						state.LastStructureTimerText = text
-						return text
-					end
-				end
-			end
-		end
+	local text = ScanStructureTimerRoot(playerGui)
+	if text then return text end
+	if force or now - (state.LastStructureTimerWorkspaceScan or 0) >= STRUCTURE_TIMER_WORKSPACE_SCAN_INTERVAL then
+		state.LastStructureTimerWorkspaceScan = now
+		text = ScanStructureTimerRoot(workspace)
+		if text then return text end
 	end
 	state.StructureTimerTextLabel = nil
 	state.LastStructureTimerText = nil
@@ -730,6 +746,23 @@ local function PlayerRoot()
 	return character and character:FindFirstChild("HumanoidRootPart")
 end
 
+local function StabilizePlayerCharacter()
+	local character = Player and Player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.AutoRotate = true
+		humanoid.Sit = false
+		humanoid.PlatformStand = false
+	end
+	if root then
+		pcall(function()
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.AssemblyAngularVelocity = Vector3.zero
+		end)
+	end
+end
+
 local function NextAutoTrapRunId()
 	state.AutoTrapRunId = (tonumber(state.AutoTrapRunId) or 0) + 1
 	return state.AutoTrapRunId
@@ -753,17 +786,45 @@ local function HasHunterTrapText(value)
 	return lower:find("hunter", 1, true) ~= nil and lower:find("trap", 1, true) ~= nil
 end
 
-local function HunterTrapPart(box)
+local function HasHunterTrap2Text(value)
+	local lower = string.lower(tostring(value or "")):gsub("[%s_%-%#]+", "")
+	return lower:find("huntertrap2", 1, true) ~= nil
+end
+
+local function InstanceOrAncestorHasHunterTrap2Text(instance)
+	local current = instance
+	while current and current ~= workspace do
+		if HasHunterTrap2Text(current.Name) then return true end
+		current = current.Parent
+	end
+	return false
+end
+
+local function FindNamedTrapPart(box, names)
 	if not box then return nil end
-	if box:IsA("BasePart") and string.lower(box.Name) == "string" then return box end
-	local direct = box:FindFirstChild("string")
-	if direct and direct:IsA("BasePart") then return direct end
+	local function matches(part)
+		local lower = string.lower(tostring(part and part.Name or ""))
+		for _, name in ipairs(names) do
+			if lower == name or lower:find(name, 1, true) then return true end
+		end
+		return false
+	end
+	if box:IsA("BasePart") and matches(box) then return box end
 	for _, child in ipairs(box:GetDescendants()) do
-		if child:IsA("BasePart") and string.lower(child.Name) == "string" then
+		if child:IsA("BasePart") and matches(child) then
 			return child
 		end
 	end
 	return nil
+end
+
+local function HunterTrapPart(box)
+	if not box then return nil end
+	if InstanceOrAncestorHasHunterTrap2Text(box) then
+		return FindNamedTrapPart(box, {"checker", "check", "trigger", "touch"})
+			or FindNamedTrapPart(box, {"string"})
+	end
+	return FindNamedTrapPart(box, {"string"})
 end
 
 local function BoxRoot(box)
@@ -1519,6 +1580,21 @@ local function RestoreMobFarmHitboxes()
 	end
 end
 
+local function ClearAutoMobFarmState(stabilize)
+	state.AutoMobTarget = nil
+	state.AutoMobPhase = nil
+	state.LastMobFarmMove = 0
+	state.LastMobFarmUseAt = 0
+	state.LastMobFarmStrafeAt = 0
+	state.LastMobFarmStrongAttackAt = 0
+	state.MobFarmStrafeDirection = 1
+	state.MobFarmRangedEnemy = nil
+	state.MobFarmRangedValue = nil
+	RestoreMobFarmHitboxes()
+	RestoreAutoTrapFacing()
+	if stabilize then StabilizePlayerCharacter() end
+end
+
 local function ExpandMobFarmTargetHitbox(enemy)
 	state.MobFarmHitboxOriginals = state.MobFarmHitboxOriginals or {}
 	local root = EnemyRoot(enemy)
@@ -2043,6 +2119,11 @@ end
 
 local function TeleportToHunterTrapRoot(trapRoot)
 	if not trapRoot then return false end
+	local rootName = string.lower(tostring(trapRoot.Name or ""))
+	if rootName == "string" or rootName:find("checker", 1, true) or rootName:find("trigger", 1, true) or rootName:find("touch", 1, true) then
+		local targetPosition = trapRoot.Position + Vector3.new(0, 5, 0)
+		return StableTeleport(CFrame.new(targetPosition, trapRoot.Position))
+	end
 	local playerRoot = PlayerRoot()
 	local offset = playerRoot and (playerRoot.Position - trapRoot.Position) or -trapRoot.CFrame.LookVector
 	local flatOffset = Vector3.new(offset.X, 0, offset.Z)
@@ -2306,15 +2387,7 @@ local function ToggleAutoHunterTrap()
 		if state.AutoMobFarm then
 			state.AutoMobFarm = false
 			NextAutoMobRunId()
-			state.AutoMobTarget = nil
-			state.AutoMobPhase = nil
-			state.LastMobFarmUseAt = 0
-			state.LastMobFarmStrafeAt = 0
-			state.LastMobFarmStrongAttackAt = 0
-			state.MobFarmStrafeDirection = 1
-			state.MobFarmRangedEnemy = nil
-			state.MobFarmRangedValue = nil
-			RestoreMobFarmHitboxes()
+			ClearAutoMobFarmState(true)
 		end
 		state.AutoTrapVisited = {}
 		state.AutoTrapTarget = nil
@@ -2371,29 +2444,11 @@ local function ToggleAutoMobFarm()
 			RestoreHunterTrapHitboxes()
 		end
 		state.AutoMobTarget = nil
+		ClearAutoMobFarmState(true)
 		state.AutoMobPhase = "seeking"
-		state.LastMobFarmMove = 0
-		state.LastMobFarmUseAt = 0
-		state.LastMobFarmStrafeAt = 0
-		state.LastMobFarmStrongAttackAt = 0
-		state.MobFarmStrafeDirection = 1
-		state.MobFarmRangedEnemy = nil
-		state.MobFarmRangedValue = nil
-		RestoreMobFarmHitboxes()
-		RestoreAutoTrapFacing()
 		AutoMobFarmStep()
 	else
-		state.AutoMobTarget = nil
-		state.AutoMobPhase = nil
-		state.LastMobFarmMove = 0
-		state.LastMobFarmUseAt = 0
-		state.LastMobFarmStrafeAt = 0
-		state.LastMobFarmStrongAttackAt = 0
-		state.MobFarmStrafeDirection = 1
-		state.MobFarmRangedEnemy = nil
-		state.MobFarmRangedValue = nil
-		RestoreMobFarmHitboxes()
-		RestoreAutoTrapFacing()
+		ClearAutoMobFarmState(true)
 	end
 	RefreshButtons()
 	UpdateTheme(true)
@@ -2486,6 +2541,9 @@ TrackConnection("UndeadExpeditionLightingHeartbeat", RunService.Heartbeat:Connec
 	if state.AutoHunterTrap and now - (state.LastHunterTrapMove or 0) >= HUNTER_TRAP_INTERVAL then
 		state.LastHunterTrapMove = now
 		AutoHunterTrapStep()
+	end
+	if not state.AutoMobFarm and (state.AutoMobTarget ~= nil or state.AutoMobPhase ~= nil) then
+		ClearAutoMobFarmState(true)
 	end
 	if state.AutoMobFarm and now - (state.LastMobFarmMove or 0) >= MOB_FARM_INTERVAL then
 		state.LastMobFarmMove = now
