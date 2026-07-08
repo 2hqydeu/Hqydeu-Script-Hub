@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v35-auto-trap-existing-scan"
+local ModuleVersion = "UE-Utility-v36-auto-trap-idle-crate-sweep"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -96,6 +96,7 @@ state.AutoTrapKilled = tonumber(state.AutoTrapKilled) or 0
 state.AutoTrapPhase = "Idle"
 state.AutoTrapQueue = {}
 state.AutoTrapHandled = {}
+state.AutoTrapSweepSkipped = {}
 
 local function DisconnectTableConnections(connections)
 	if type(connections) ~= "table" then return end
@@ -1042,11 +1043,16 @@ local function FindNearbyClaimPrompt(position, radius)
 	return bestPrompt, bestPart
 end
 
-local function HoldOnBox(target, targetRoot)
+local function HoldOnBox(target, targetRoot, options)
+	options = options or {}
+	local statusLabel = options.StatusLabel
+	local logPrefix = options.LogPrefix or "[UE Loot Farm]"
+	local isEnabled = options.IsEnabled or function() return true end
+
 	local openPrompt = FindOpenPrompt(target)
 	if not openPrompt then
-		warn("[UE Loot Farm] no ProximityPrompt found on " .. tostring(target.Name))
-		farmStatus.Text = "No prompt found"
+		warn(logPrefix .. " no ProximityPrompt found on " .. tostring(target.Name))
+		if statusLabel then statusLabel.Text = "No prompt found" end
 		return false
 	end
 
@@ -1055,21 +1061,21 @@ local function HoldOnBox(target, targetRoot)
 		task.wait(0.05)
 	end
 	if not openPrompt.Enabled then
-		warn("[UE Loot Farm] prompt on " .. tostring(target.Name) .. " never became Enabled (out of range?)")
+		warn(logPrefix .. " prompt on " .. tostring(target.Name) .. " never became Enabled (out of range?)")
 	end
 
-	farmStatus.Text = "Opening..."
+	if statusLabel then statusLabel.Text = "Opening..." end
 	if type(fireproximityprompt) == "function" then
 		local ok, err = pcall(fireproximityprompt, openPrompt)
 		if not ok then
-			warn("[UE Loot Farm] fireproximityprompt errored: " .. tostring(err))
+			warn(logPrefix .. " fireproximityprompt errored: " .. tostring(err))
 		end
 	else
-		warn("[UE Loot Farm] fireproximityprompt is not available in this executor")
+		warn(logPrefix .. " fireproximityprompt is not available in this executor")
 	end
 
 	local deadline = os.clock() + BOX_OPEN_HOLD_DURATION + FARM_OPEN_SAFETY_BUFFER
-	while state.LootFarmEnabled and uePage.Parent and target.Parent and BoxRoot(target) and os.clock() < deadline do
+	while isEnabled() and uePage.Parent and target.Parent and BoxRoot(target) and os.clock() < deadline do
 		local root = PlayerRoot()
 		if not root then break end
 		ThemeObjects.SetRootUpright(root, root.CFrame, targetRoot.Position + Vector3.new(0, 1, 0))
@@ -1079,7 +1085,7 @@ local function HoldOnBox(target, targetRoot)
 	end
 	local success = not (target.Parent and BoxRoot(target))
 	if not success then
-		warn("[UE Loot Farm] " .. tostring(target.Name) .. " did not open after firing the prompt")
+		warn(logPrefix .. " " .. tostring(target.Name) .. " did not open after firing the prompt")
 	end
 	return success
 end
@@ -1129,7 +1135,11 @@ local function RunLootFarmStep()
 	if not targetRoot then return end
 
 	local boxPosition = targetRoot.Position
-	local opened = HoldOnBox(target, targetRoot)
+	local opened = HoldOnBox(target, targetRoot, {
+		StatusLabel = farmStatus,
+		LogPrefix = "[UE Loot Farm]",
+		IsEnabled = function() return state.LootFarmEnabled end,
+	})
 	if opened then
 		state.LootFarmCollected = state.LootFarmCollected + 1
 		farmStatus.Text = ("%d farmed"):format(state.LootFarmCollected)
@@ -1444,8 +1454,75 @@ local function FightHunters(trapPosition)
 	return false
 end
 
+local function GetIdleSweepBoxTargets()
+	local folder = StructuresFolder()
+	if not folder then return {} end
+	local targets = {}
+	for _, structure in ipairs(folder:GetChildren()) do
+		local isTrapStructure = HasHunterTrapText(StructureDisplayName(structure)) or HasHunterTrapText(structure.Name)
+		if not isTrapStructure then
+			local lootFolder = structure:FindFirstChild("Loot")
+			if lootFolder then
+				for _, box in ipairs(lootFolder:GetChildren()) do
+					if BoxRoot(box) and BoxType(box) ~= "Hunter Trap" then
+						table.insert(targets, box)
+					end
+				end
+			end
+			for _, child in ipairs(structure:GetChildren()) do
+				if child.Name ~= "Loot" and BoxTypeFromName(child.Name) and BoxType(child) ~= "Hunter Trap" then
+					table.insert(targets, child)
+				end
+			end
+		end
+	end
+	return targets
+end
+
+local function RunIdleCrateSweepStep()
+	local root = PlayerRoot()
+	if not root then return end
+
+	local now = os.clock()
+	local available = {}
+	for _, box in ipairs(GetIdleSweepBoxTargets()) do
+		local skipUntil = state.AutoTrapSweepSkipped[box]
+		if not skipUntil or now >= skipUntil then
+			table.insert(available, box)
+		end
+	end
+	if #available == 0 then return end
+
+	table.sort(available, function(a, b)
+		local rootA, rootB = BoxRoot(a), BoxRoot(b)
+		return (root.Position - rootA.Position).Magnitude < (root.Position - rootB.Position).Magnitude
+	end)
+
+	local target = available[1]
+	local targetRoot = BoxRoot(target)
+	if not targetRoot then return end
+
+	state.AutoTrapPhase = "Clearing crates"
+	RefreshButtons()
+	local opened = HoldOnBox(target, targetRoot, {
+		StatusLabel = trapStatus,
+		LogPrefix = "[UE Auto Trap]",
+		IsEnabled = function() return state.AutoTrapEnabled end,
+	})
+	if not opened then
+		state.AutoTrapSweepSkipped[target] = os.clock() + FARM_SKIP_COOLDOWN
+	end
+	if state.AutoTrapEnabled and #state.AutoTrapQueue == 0 then
+		state.AutoTrapPhase = "Idle"
+		RefreshButtons()
+	end
+end
+
 local function RunAutoTrapStep()
-	if #state.AutoTrapQueue == 0 then return end
+	if #state.AutoTrapQueue == 0 then
+		RunIdleCrateSweepStep()
+		return
+	end
 	local structure = table.remove(state.AutoTrapQueue, 1)
 	if not structure then return end
 	state.AutoTrapHandled[structure] = true
