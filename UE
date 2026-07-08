@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v28-trap-counter-and-defense"
+local ModuleVersion = "UE-Utility-v28-hug-fix-permanent-visited"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -146,7 +146,7 @@ local BOX_SCAN_INTERVAL = 0.75
 local HUNTER_TRAP_INTERVAL = 0.1
 local HUNTER_TRAP_BASE_WAIT_INTERVAL = 1.25
 local HUNTER_TRAP_ENEMY_RADIUS = 85
-local STRUCTURE_TRAP_ENEMY_RADIUS = 125
+local STRUCTURE_TRAP_ENEMY_RADIUS = 55
 local STRUCTURE_TRAP_ENEMY_TERMS = {"mummy", "pharon", "pharaoh", "pharson", "phar", "grounder"}
 local HUNTER_TRAP_SPAWN_TIMEOUT = 10
 local HUNTER_TRAP_CLEAR_TIMEOUT = 26
@@ -161,7 +161,6 @@ local HUNTER_TRAP_HITBOX_SIZE = Vector3.new(24, 24, 24)
 local STRUCTURE_TRAP_HITBOX_SIZE = Vector3.new(34, 34, 34)
 local HUNTER_TRAP_APPROACH_INTERVAL = 1.15
 local HUNTER_TRAP_STRAFE_INTERVAL = 0.45
-local STRUCTURE_TRAP_STRAFE_INTERVAL = 4
 local HUNTER_TRAP_STRAFE_DISTANCE = 9
 local HUNTER_TRAP_SEEK_INTERVAL = 0.55
 local HUNTER_TRAP_BASE_SCAN_INTERVAL = 10
@@ -739,15 +738,12 @@ local function WatchStructures()
 	end
 	state.StructuresFolder = folder
 
-	local function WakeAutoTrapForStructureChange(clearVisited)
+	local function WakeAutoTrapForStructureChange()
 		state.LastBoxScan = 0
 		state.LastHunterTrapSearchAt = 0
 		state.AutoTrapBaseWaitTeleported = false
 		if state.AutoHunterTrap and state.AutoTrapPhase == "base_wait" then
 			state.AutoTrapPhase = "seeking"
-		end
-		if clearVisited and state.AutoHunterTrap then
-			state.AutoTrapVisited = {}
 		end
 	end
 
@@ -762,11 +758,11 @@ local function WatchStructures()
 	TrackConnection("UndeadExpeditionStructureAdded", folder.ChildAdded:Connect(function(child)
 		SetStructureMessage(StructureDisplayName(child))
 		ShowStructureMarker(child)
-		WakeAutoTrapForStructureChange(true)
+		WakeAutoTrapForStructureChange()
 	end))
 	TrackConnection("UndeadExpeditionStructureDescendantAdded", folder.DescendantAdded:Connect(function(child)
 		if IsRelevantStructureChange(child) then
-			WakeAutoTrapForStructureChange(true)
+			WakeAutoTrapForStructureChange()
 		end
 	end))
 end
@@ -1383,7 +1379,7 @@ local function StrafeNearestHunterNear(position, radius, runId, includeAll)
 	if not hunterRoot then return nil end
 	local now = os.clock()
 	local strafeKey = includeAll and "LastStructureTrapStrafeAt" or "LastHunterTrapStrafeAt"
-	local strafeInterval = includeAll and STRUCTURE_TRAP_STRAFE_INTERVAL or HUNTER_TRAP_STRAFE_INTERVAL
+	local strafeInterval = HUNTER_TRAP_STRAFE_INTERVAL
 	if now - (state[strafeKey] or 0) < strafeInterval then
 		return hunterRoot
 	end
@@ -2059,17 +2055,12 @@ local function FindNearestHunterTrapRoot(skipVisited)
 	local function isDirectStructureTrap(structure)
 		if not structure then return false end
 		local lowerName = string.lower(tostring(structure.Name or ""))
-		local isGraveyardOrAncient = lowerName == "graveyard" or lowerName:find("graveyard", 1, true) or lowerName:find("ancient", 1, true)
-		if not isGraveyardOrAncient then return false end
-		local loot = structure:FindFirstChild("Loot")
-		return loot ~= nil and #loot:GetChildren() > 0
+		return lowerName == "graveyard" or lowerName:find("graveyard", 1, true) ~= nil or lowerName:find("ancient", 1, true) ~= nil
 	end
 	local function considerRoot(root, needsAllEnemies)
 		if not root then return end
-		if skipVisited and state.AutoTrapVisited then
-			local visitedAt = state.AutoTrapVisited[root]
-			if visitedAt and (os.clock() - visitedAt) < 45 then return end
-		end
+		if skipVisited and state.AutoTrapVisited and state.AutoTrapVisited[root] then return end
+		availableCount += 1
 		local distance = (root.Position - playerRoot.Position).Magnitude
 		if distance < closestDistance then
 			closestDistance = distance
@@ -2079,17 +2070,11 @@ local function FindNearestHunterTrapRoot(skipVisited)
 	end
 	local function consider(candidate)
 		if not candidate or BoxType(candidate) ~= "Hunter Trap" then return end
-		local root = BoxRoot(candidate)
-		if not root then return end
-		availableCount += 1
-		considerRoot(root, false)
+		considerRoot(BoxRoot(candidate), false)
 	end
 	local function considerDirectStructure(structure)
 		if not isDirectStructureTrap(structure) then return end
-		local root = directTrapPart(structure:FindFirstChild("Trap"))
-		if not root then return end
-		availableCount += 1
-		considerRoot(root, true)
+		considerRoot(directTrapPart(structure:FindFirstChild("Trap")), true)
 	end
 	for _, structure in ipairs(folder:GetChildren()) do
 		consider(structure)
@@ -2109,13 +2094,6 @@ end
 local function TeleportToHunterTrapRoot(trapRoot, directTouch)
 	if not trapRoot then return false end
 	local playerRoot = PlayerRoot()
-	if directTouch then
-		local targetPosition = trapRoot.Position + Vector3.new(0, 3, 0)
-		local ok = StableTeleport(CFrame.new(targetPosition, trapRoot.Position + trapRoot.CFrame.LookVector))
-		playerRoot = PlayerRoot()
-		if playerRoot then FireTouch(playerRoot, trapRoot) end
-		return ok
-	end
 	local offset = playerRoot and (playerRoot.Position - trapRoot.Position) or -trapRoot.CFrame.LookVector
 	local flatOffset = Vector3.new(offset.X, 0, offset.Z)
 	if flatOffset.Magnitude < 1 then
@@ -2128,7 +2106,12 @@ local function TeleportToHunterTrapRoot(trapRoot, directTouch)
 		sideDistance = math.clamp((math.max(trapRoot.Size.X, trapRoot.Size.Z) * 0.5) + 4, HUNTER_TRAP_SIDE_DISTANCE, 10)
 	end
 	local targetPosition = trapRoot.Position + flatOffset.Unit * sideDistance + Vector3.new(0, 3, 0)
-	return StableTeleport(CFrame.new(targetPosition, trapRoot.Position))
+	local ok = StableTeleport(CFrame.new(targetPosition, trapRoot.Position))
+	if directTouch then
+		playerRoot = PlayerRoot()
+		if playerRoot then FireTouch(playerRoot, trapRoot) end
+	end
+	return ok
 end
 
 local function AutoHunterTrapStep()
@@ -2221,7 +2204,7 @@ local function AutoHunterTrapStep()
 			state.LastAutoTrapCombatClickAt = 0
 		elseif now - (state.AutoTrapStartedAt or now) >= HUNTER_TRAP_SPAWN_TIMEOUT then
 			state.AutoTrapVisited = state.AutoTrapVisited or {}
-			state.AutoTrapVisited[target] = os.clock()
+			state.AutoTrapVisited[target] = true
 			state.AutoTrapTarget = nil
 			state.AutoTrapTargetAnyEnemies = false
 			state.AutoTrapPhase = "seeking"
@@ -2251,7 +2234,7 @@ local function AutoHunterTrapStep()
 		local lastEnemyChangeAt = state.AutoTrapLastEnemyChangeAt or combatStartedAt
 		if enemies > 0 and (now - combatStartedAt >= clearTimeout or now - lastEnemyChangeAt >= AUTO_TRAP_STUCK_ENEMY_TIMEOUT) then
 			state.AutoTrapVisited = state.AutoTrapVisited or {}
-			state.AutoTrapVisited[target] = os.clock()
+			state.AutoTrapVisited[target] = true
 			state.AutoTrapTarget = nil
 			state.AutoTrapTargetAnyEnemies = false
 			state.AutoTrapPhase = "seeking"
@@ -2274,7 +2257,7 @@ local function AutoHunterTrapStep()
 		end
 		if enemies <= 0 then
 			state.AutoTrapVisited = state.AutoTrapVisited or {}
-			state.AutoTrapVisited[target] = os.clock()
+			state.AutoTrapVisited[target] = true
 			state.AutoTrapTarget = nil
 			state.AutoTrapTargetAnyEnemies = false
 			state.AutoTrapPhase = "seeking"
