@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v23-direct-structure-traps"
+local ModuleVersion = "UE-Utility-v24-structure-mob-combat"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -145,12 +145,14 @@ local BOX_SCAN_INTERVAL = 0.75
 local HUNTER_TRAP_INTERVAL = 0.1
 local HUNTER_TRAP_ENEMY_RADIUS = 85
 local STRUCTURE_TRAP_ENEMY_RADIUS = 125
+local STRUCTURE_TRAP_ENEMY_TERMS = {"mummy", "pharon", "pharaoh", "pharson", "phar", "grounder"}
 local HUNTER_TRAP_SPAWN_TIMEOUT = 10
 local HUNTER_TRAP_ATTACK_INTERVAL = 0.09
 local HUNTER_TRAP_LOOT_RADIUS = 95
 local HUNTER_TRAP_LOOT_INTERVAL = 0.22
 local HUNTER_TRAP_LOOT_SWEEP_TIME = 1.75
 local HUNTER_TRAP_HITBOX_SIZE = Vector3.new(24, 24, 24)
+local STRUCTURE_TRAP_HITBOX_SIZE = Vector3.new(34, 34, 34)
 local HUNTER_TRAP_APPROACH_INTERVAL = 1.15
 local HUNTER_TRAP_STRAFE_INTERVAL = 0.45
 local HUNTER_TRAP_STRAFE_DISTANCE = 9
@@ -1187,6 +1189,27 @@ local function IsHunterEnemy(enemy)
 	return false
 end
 
+local function HasStructureTrapEnemyText(value)
+	local lower = string.lower(tostring(value or ""))
+	for _, term in ipairs(STRUCTURE_TRAP_ENEMY_TERMS) do
+		if lower:find(term, 1, true) then return true end
+	end
+	return false
+end
+
+local function IsStructureTrapEnemy(enemy)
+	if not enemy then return false end
+	if HasStructureTrapEnemyText(enemy.Name) then return true end
+	for _, attributeName in ipairs({"EnemyType", "Type", "MobType", "MonsterType", "DisplayName"}) do
+		if HasStructureTrapEnemyText(enemy:GetAttribute(attributeName)) then return true end
+	end
+	for _, child in ipairs(enemy:GetDescendants()) do
+		if child:IsA("StringValue") and HasStructureTrapEnemyText(child.Value) then return true end
+		if (child:IsA("TextLabel") or child:IsA("TextButton") or child:IsA("TextBox")) and HasStructureTrapEnemyText(child.Text) then return true end
+	end
+	return false
+end
+
 local function IsLiveEnemyNear(enemy, position, radius)
 	local root = EnemyRoot(enemy)
 	local humanoid = EnemyHumanoid(enemy)
@@ -1196,10 +1219,11 @@ local function IsLiveEnemyNear(enemy, position, radius)
 		and (root.Position - position).Magnitude <= radius
 end
 
-local function IsLiveAnyEnemyNear(enemy, position, radius)
+local function IsLiveStructureTrapEnemyNear(enemy, position, radius)
 	local root = EnemyRoot(enemy)
 	local humanoid = EnemyHumanoid(enemy)
-	return root ~= nil
+	return IsStructureTrapEnemy(enemy)
+		and root ~= nil
 		and (not humanoid or humanoid.Health > 0)
 		and (root.Position - position).Magnitude <= radius
 end
@@ -1215,7 +1239,7 @@ local function CountEnemiesNear(position, radius, includeAll)
 	if not folder then return 0 end
 	local count = 0
 	for _, enemy in ipairs(folder:GetChildren()) do
-		if (includeAll and IsLiveAnyEnemyNear(enemy, position, radius)) or ((not includeAll) and IsLiveEnemyNear(enemy, position, radius)) then
+		if (includeAll and IsLiveStructureTrapEnemyNear(enemy, position, radius)) or ((not includeAll) and IsLiveEnemyNear(enemy, position, radius)) then
 			count += 1
 		end
 	end
@@ -1227,7 +1251,7 @@ local function CollectEnemiesNear(position, radius, includeAll)
 	local enemies = {}
 	if not folder then return enemies end
 	for _, enemy in ipairs(folder:GetChildren()) do
-		if (includeAll and IsLiveAnyEnemyNear(enemy, position, radius)) or ((not includeAll) and IsLiveEnemyNear(enemy, position, radius)) then
+		if (includeAll and IsLiveStructureTrapEnemyNear(enemy, position, radius)) or ((not includeAll) and IsLiveEnemyNear(enemy, position, radius)) then
 			table.insert(enemies, enemy)
 		end
 	end
@@ -1468,9 +1492,10 @@ local function RestoreHunterTrapHitboxes()
 	end
 end
 
-local function ExpandHunterTrapEnemyHitboxes(enemies)
+local function ExpandHunterTrapEnemyHitboxes(enemies, hitboxSize)
 	state.HunterTrapHitboxOriginals = state.HunterTrapHitboxOriginals or {}
 	local active = {}
+	local size = hitboxSize or HUNTER_TRAP_HITBOX_SIZE
 	for _, enemy in ipairs(enemies or {}) do
 		local root = EnemyRoot(enemy)
 		if root and root:IsA("BasePart") then
@@ -1486,7 +1511,7 @@ local function ExpandHunterTrapEnemyHitboxes(enemies)
 				}
 			end
 			pcall(function()
-				root.Size = HUNTER_TRAP_HITBOX_SIZE
+				root.Size = size
 				root.Transparency = 1
 				root.CanCollide = false
 				root.CanTouch = true
@@ -1891,7 +1916,7 @@ local function TryClearHunterTrapEnemies(position, runId, includeAll, radius)
 		RestoreHunterTrapHitboxes()
 		return 0
 	end
-	ExpandHunterTrapEnemyHitboxes(enemies)
+	ExpandHunterTrapEnemyHitboxes(enemies, includeAll and STRUCTURE_TRAP_HITBOX_SIZE or HUNTER_TRAP_HITBOX_SIZE)
 	local now = os.clock()
 	if not state.HunterTrapAttackBusy and now - (state.LastHunterTrapAttack or 0) >= HUNTER_TRAP_ATTACK_INTERVAL then
 		state.LastHunterTrapAttack = now
@@ -2191,8 +2216,12 @@ local function AutoHunterTrapStep()
 			if IsAutoTrapRunActive(runId) then AutoHunterTrapStep() end
 		elseif now - (state.LastHunterTrapUseAt or 0) >= HUNTER_TRAP_ATTACK_INTERVAL then
 			state.LastHunterTrapUseAt = now
-			StrafeNearestHunterNear(target.Position, enemyRadius, runId, targetAnyEnemies)
-			UseCurrentEquippedTool()
+			if targetAnyEnemies then
+				TryClearHunterTrapEnemies(target.Position, runId, true, enemyRadius)
+			else
+				StrafeNearestHunterNear(target.Position, enemyRadius, runId, false)
+				UseCurrentEquippedTool()
+			end
 		else
 			FaceNearestHunterNear(target.Position, enemyRadius, targetAnyEnemies)
 		end
