@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v47-explicit-key-crate-open"
+local ModuleVersion = "UE-Utility-v48-universal-drop-pickup"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -1504,7 +1504,7 @@ local ENCOUNTERS = {
 			return position
 		end,
 		EnemyNames = {"hunter"},
-		Loot = false,
+		LootAttempts = 1,
 	},
 	{
 		Id = "Graveyard",
@@ -1516,7 +1516,7 @@ local ENCOUNTERS = {
 			return part and part.Position
 		end,
 		EnemyNames = {"grounder"},
-		Loot = true,
+		LootAttempts = 4,
 	},
 	{
 		Id = "Ancient Ruins",
@@ -1528,7 +1528,7 @@ local ENCOUNTERS = {
 			return part and part.Position
 		end,
 		EnemyNames = {"pharaon", "mummy"},
-		Loot = true,
+		LootAttempts = 4,
 	},
 }
 
@@ -1719,12 +1719,17 @@ local function RunIdleCrateSweepStep()
 
 	state.AutoTrapPhase = "Clearing crates"
 	RefreshButtons()
+	local boxPosition = targetRoot.Position
 	local opened = HoldOnBox(target, targetRoot, {
 		StatusLabel = trapStatus,
 		LogPrefix = "[UE Auto Trap]",
 		IsEnabled = function() return state.AutoTrapEnabled end,
 	})
-	if not opened then
+	if opened then
+		if state.AutoTrapEnabled and uePage.Parent then
+			ClaimDropsNearArea(boxPosition, 4)
+		end
+	else
 		state.AutoTrapSweepSkipped[target] = os.clock() + FARM_SKIP_COOLDOWN
 	end
 	if state.AutoTrapEnabled and #state.AutoTrapQueue == 0 then
@@ -1774,10 +1779,10 @@ local function RunAutoTrapStep()
 	RefreshButtons()
 	FightEnemies(targetPosition, encounter.EnemyNames)
 
-	if encounter.Loot then
+	if encounter.LootAttempts and encounter.LootAttempts > 0 then
 		state.AutoTrapPhase = "Collecting drops"
 		RefreshButtons()
-		ClaimDropsNearArea(targetPosition, 4)
+		ClaimDropsNearArea(targetPosition, encounter.LootAttempts)
 
 		state.AutoTrapPhase = "Opening " .. encounter.Id .. " crate"
 		RefreshButtons()
@@ -1787,11 +1792,15 @@ local function RunAutoTrapStep()
 				if BOX_TYPE_REQUIRED_KEY[BoxType(box)] then
 					local boxRoot = BoxRoot(box)
 					if boxRoot then
-						HoldOnBox(box, boxRoot, {
+						local boxPosition = boxRoot.Position
+						local opened = HoldOnBox(box, boxRoot, {
 							StatusLabel = trapStatus,
 							LogPrefix = "[UE Auto Trap]",
 							IsEnabled = function() return state.AutoTrapEnabled end,
 						})
+						if opened then
+							ClaimDropsNearArea(boxPosition, 4)
+						end
 					end
 				end
 			end
