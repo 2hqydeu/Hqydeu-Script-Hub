@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v31-loot-farm-simplified"
+local ModuleVersion = "UE-Utility-v32-loot-farm-diagnostics"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -1013,9 +1013,30 @@ end
 
 local function HoldOnBox(target, targetRoot)
 	local openPrompt = FindOpenPrompt(target)
-	if openPrompt and type(fireproximityprompt) == "function" then
-		fireproximityprompt(openPrompt)
+	if not openPrompt then
+		warn("[UE Loot Farm] no ProximityPrompt found on " .. tostring(target.Name))
+		farmStatus.Text = "No prompt found"
+		return false
 	end
+
+	local waitDeadline = os.clock() + 1
+	while os.clock() < waitDeadline and openPrompt.Parent and not openPrompt.Enabled do
+		task.wait(0.05)
+	end
+	if not openPrompt.Enabled then
+		warn("[UE Loot Farm] prompt on " .. tostring(target.Name) .. " never became Enabled (out of range?)")
+	end
+
+	farmStatus.Text = "Opening..."
+	if type(fireproximityprompt) == "function" then
+		local ok, err = pcall(fireproximityprompt, openPrompt)
+		if not ok then
+			warn("[UE Loot Farm] fireproximityprompt errored: " .. tostring(err))
+		end
+	else
+		warn("[UE Loot Farm] fireproximityprompt is not available in this executor")
+	end
+
 	local deadline = os.clock() + BOX_OPEN_HOLD_DURATION + FARM_OPEN_SAFETY_BUFFER
 	while state.LootFarmEnabled and uePage.Parent and target.Parent and BoxRoot(target) and os.clock() < deadline do
 		local root = PlayerRoot()
@@ -1025,7 +1046,11 @@ local function HoldOnBox(target, targetRoot)
 		root.AssemblyAngularVelocity = Vector3.zero
 		task.wait(FARM_MOVE_HOLD_INTERVAL)
 	end
-	return not (target.Parent and BoxRoot(target))
+	local success = not (target.Parent and BoxRoot(target))
+	if not success then
+		warn("[UE Loot Farm] " .. tostring(target.Name) .. " did not open after firing the prompt")
+	end
+	return success
 end
 
 local function ClaimNearbyDrop(boxPosition)
