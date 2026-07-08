@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v32"
+local ModuleVersion = "UE-Utility-v33"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -160,6 +160,9 @@ local MOB_FARM_STRAFE_DISTANCE = 4.5
 local MOB_FARM_RANGED_DISTANCE = 3.5
 local MOB_FARM_NUDGE_DISTANCE = 1.15
 local MOB_FARM_HITBOX_SIZE = Vector3.new(18, 18, 18)
+local MOB_FARM_STRONG_ATTACK_INTERVAL = 0.28
+local STRUCTURE_TIMER_SCAN_INTERVAL = 1.25
+local STRUCTURE_TIMER_FORCE_SCAN_INTERVAL = 0.4
 for _, boxType in ipairs(BOX_TYPES) do
 	if state.SelectedBoxTypes[boxType] == nil then state.SelectedBoxTypes[boxType] = true end
 end
@@ -450,20 +453,35 @@ local function NormalizeStructureTimerText(text)
 	text = tostring(text or ""):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
 	local upper = string.upper(text)
 	local clock = text:match("%d+:%d%d:%d%d") or text:match("%d+:%d%d")
-	if clock and upper:find("GUARANTEED", 1, true) and upper:find("SPECIAL", 1, true) and upper:find("STRUCTURE", 1, true) then
-		return "SPECIAL: " .. clock
+	if clock and upper:find("GUARANTEED", 1, true) and upper:find("STRUCTURE", 1, true) then
+		if upper:find("BOSS", 1, true) then
+			return "BOSS: " .. clock
+		elseif upper:find("SPECIAL", 1, true) then
+			return "SPECIAL: " .. clock
+		end
 	end
 	return nil
 end
 
+local function LooksLikeStructureTimerText(text)
+	local upper = string.upper(tostring(text or ""))
+	return upper:find("GUARANTEED", 1, true) ~= nil
+		or upper:find("STRUCTURE", 1, true) ~= nil
+		or upper:find("SPECIAL", 1, true) ~= nil
+		or upper:find("BOSS", 1, true) ~= nil
+		or upper:find("%d+:%d%d") ~= nil
+end
+
 local function ReadStructureTimerFromLabel(label)
 	if not label or not (label:IsA("TextLabel") or label:IsA("TextButton") or label:IsA("TextBox")) then return nil end
-	local text = NormalizeStructureTimerText(label.Text)
+	local ownText = tostring(label.Text or "")
+	if not LooksLikeStructureTimerText(ownText) then return nil end
+	local text = NormalizeStructureTimerText(ownText)
 	if text then return text end
 	local parent = label.Parent
 	if parent then
-		local pieces = {}
-		for _, child in ipairs(parent:GetDescendants()) do
+		local pieces = {ownText}
+		for _, child in ipairs(parent:GetChildren()) do
 			if child:IsA("TextLabel") or child:IsA("TextButton") or child:IsA("TextBox") then
 				local childText = tostring(child.Text or "")
 				if childText ~= "" then table.insert(pieces, childText) end
@@ -484,22 +502,23 @@ local function FindStructureTimerText(force)
 			return text
 		end
 	end
-	if not force and now - (state.LastStructureTimerTextScan or 0) < 0.25 then
+	local scanInterval = force and STRUCTURE_TIMER_FORCE_SCAN_INTERVAL or STRUCTURE_TIMER_SCAN_INTERVAL
+	if now - (state.LastStructureTimerTextScan or 0) < scanInterval then
 		return state.LastStructureTimerText
 	end
 	state.LastStructureTimerTextScan = now
-	local roots = {}
 	local playerGui = Player and Player:FindFirstChildOfClass("PlayerGui")
-	if playerGui then table.insert(roots, playerGui) end
-	table.insert(roots, workspace)
-	for _, root in ipairs(roots) do
-		for _, obj in ipairs(root:GetDescendants()) do
+	if playerGui then
+		for _, obj in ipairs(playerGui:GetDescendants()) do
 			if (obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox")) and (not ScreenGui or not obj:IsDescendantOf(ScreenGui)) then
-				local text = ReadStructureTimerFromLabel(obj)
-				if text then
-					state.StructureTimerTextLabel = obj
-					state.LastStructureTimerText = text
-					return text
+				local rawText = tostring(obj.Text or "")
+				if LooksLikeStructureTimerText(rawText) then
+					local text = ReadStructureTimerFromLabel(obj)
+					if text then
+						state.StructureTimerTextLabel = obj
+						state.LastStructureTimerText = text
+						return text
+					end
 				end
 			end
 		end
@@ -519,7 +538,7 @@ local function RefreshStructureTimerDisplay(force)
 		structureTimerDisplay.Text = timerText
 	else
 		structureTimerDisplay.TextColor3 = Color3.fromRGB(255, 255, 255)
-		structureTimerDisplay.Text = "SPECIAL: N/A"
+		structureTimerDisplay.Text = "STRUCTURE: N/A"
 	end
 end
 
@@ -1337,7 +1356,13 @@ local function MobHasText(enemy, terms)
 end
 
 local function IsRangedMob(enemy)
-	return MobHasText(enemy, {"throw", "ranged", "archer", "shooter", "caster", "mage", "spitter"})
+	if state.MobFarmRangedEnemy == enemy and state.MobFarmRangedValue ~= nil then
+		return state.MobFarmRangedValue == true
+	end
+	local ranged = MobHasText(enemy, {"throw", "ranged", "archer", "shooter", "caster", "mage", "spitter"})
+	state.MobFarmRangedEnemy = enemy
+	state.MobFarmRangedValue = ranged
+	return ranged
 end
 
 local function MobFarmAttackDistance(enemy, mobRoot)
@@ -1718,12 +1743,15 @@ local function CollectToolHitParts(tool)
 			add(weapon:FindFirstChild(name, true))
 		end
 		for _, part in ipairs(weapon:GetDescendants()) do
+			if #parts >= 24 then break end
 			if part:IsA("BasePart") then add(part) end
 		end
+		if #parts >= 24 then break end
 	end
 	local character = Player and Player.Character
 	if character then
 		for _, name in ipairs({"RightHand", "Right Arm", "RightLowerArm", "RightUpperArm", "HumanoidRootPart"}) do
+			if #parts >= 28 then break end
 			add(character:FindFirstChild(name))
 		end
 	end
@@ -1745,6 +1773,7 @@ local function CollectEnemyHitParts(enemy)
 			add(enemy:FindFirstChild(name, true))
 		end
 		for _, part in ipairs(enemy:GetDescendants()) do
+			if #parts >= 24 then break end
 			if part:IsA("BasePart") then add(part) end
 		end
 	end
@@ -1778,8 +1807,10 @@ local function FireToolCombatRemotes(tool, enemy)
 	local enemyRoot = EnemyRoot(enemy)
 	local humanoid = EnemyHumanoid(enemy)
 	for _, weapon in ipairs(CollectActiveWeaponObjects(tool)) do
+		local sent = 0
 		for _, remote in ipairs(weapon:GetDescendants()) do
 			if remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction") then
+				sent += 1
 				local function send(...)
 					if remote:IsA("RemoteEvent") then
 						remote:FireServer(...)
@@ -1796,6 +1827,7 @@ local function FireToolCombatRemotes(tool, enemy)
 					pcall(send, enemyRoot and enemyRoot.Position, enemyRoot)
 					pcall(send, enemy, enemyRoot and enemyRoot.Position)
 				end
+				if sent >= 8 then break end
 			end
 		end
 	end
@@ -2118,6 +2150,8 @@ local function AutoMobFarmStep()
 		RestoreMobFarmHitboxes()
 		state.AutoMobTarget = nil
 		state.AutoMobPhase = "seeking"
+		state.MobFarmRangedEnemy = nil
+		state.MobFarmRangedValue = nil
 		target = nil
 	end
 	if not target then
@@ -2132,6 +2166,9 @@ local function AutoMobFarmStep()
 		state.AutoMobPhase = "attacking"
 		state.LastMobFarmUseAt = 0
 		state.LastMobFarmStrafeAt = 0
+		state.LastMobFarmStrongAttackAt = 0
+		state.MobFarmRangedEnemy = nil
+		state.MobFarmRangedValue = nil
 		if not IsAutoMobRunActive(runId) then return end
 		ExpandMobFarmTargetHitbox(mob)
 		TeleportNearMobRoot(mob, root)
@@ -2142,6 +2179,8 @@ local function AutoMobFarmStep()
 		RestoreMobFarmHitboxes()
 		state.AutoMobTarget = nil
 		state.AutoMobPhase = "seeking"
+		state.MobFarmRangedEnemy = nil
+		state.MobFarmRangedValue = nil
 		return
 	end
 	if state.AutoMobPhase == "attacking" then
@@ -2151,8 +2190,11 @@ local function AutoMobFarmStep()
 			state.LastMobFarmUseAt = now
 			local tool = EquipCombatWeapon()
 			UseCombatWeapon(tool)
-			TouchWeaponToEnemy(tool, target)
-			FireToolCombatRemotes(tool, target)
+			if now - (state.LastMobFarmStrongAttackAt or 0) >= MOB_FARM_STRONG_ATTACK_INTERVAL then
+				state.LastMobFarmStrongAttackAt = now
+				TouchWeaponToEnemy(tool, target)
+				FireToolCombatRemotes(tool, target)
+			end
 		end
 	else
 		state.AutoMobPhase = "seeking"
@@ -2242,7 +2284,10 @@ local function ToggleAutoHunterTrap()
 			state.AutoMobPhase = nil
 			state.LastMobFarmUseAt = 0
 			state.LastMobFarmStrafeAt = 0
+			state.LastMobFarmStrongAttackAt = 0
 			state.MobFarmStrafeDirection = 1
+			state.MobFarmRangedEnemy = nil
+			state.MobFarmRangedValue = nil
 			RestoreMobFarmHitboxes()
 		end
 		state.AutoTrapVisited = {}
@@ -2300,7 +2345,10 @@ local function ToggleAutoMobFarm()
 		state.LastMobFarmMove = 0
 		state.LastMobFarmUseAt = 0
 		state.LastMobFarmStrafeAt = 0
+		state.LastMobFarmStrongAttackAt = 0
 		state.MobFarmStrafeDirection = 1
+		state.MobFarmRangedEnemy = nil
+		state.MobFarmRangedValue = nil
 		RestoreMobFarmHitboxes()
 		RestoreAutoTrapFacing()
 		AutoMobFarmStep()
@@ -2310,7 +2358,10 @@ local function ToggleAutoMobFarm()
 		state.LastMobFarmMove = 0
 		state.LastMobFarmUseAt = 0
 		state.LastMobFarmStrafeAt = 0
+		state.LastMobFarmStrongAttackAt = 0
 		state.MobFarmStrafeDirection = 1
+		state.MobFarmRangedEnemy = nil
+		state.MobFarmRangedValue = nil
 		RestoreMobFarmHitboxes()
 		RestoreAutoTrapFacing()
 	end
