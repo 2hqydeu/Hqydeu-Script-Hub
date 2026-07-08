@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v28-same-strafe-structure"
+local ModuleVersion = "UE-Utility-v28-structure-combat-fix"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -739,13 +739,11 @@ local function WatchStructures()
 	end
 
 	local function IsRelevantStructureChange(instance)
-		local lower = string.lower(tostring(instance and instance.Name or ""))
-		return lower:find("trap", 1, true) ~= nil
-			or lower:find("hunter", 1, true) ~= nil
-			or lower:find("graveyard", 1, true) ~= nil
-			or lower:find("ancient", 1, true) ~= nil
-			or lower:find("chest", 1, true) ~= nil
-			or lower:find("loot", 1, true) ~= nil
+		if not instance then return false end
+		local parent = instance.Parent
+		if parent and parent.Name == "Loot" then return true end
+		local lower = string.lower(tostring(instance.Name or ""))
+		return lower:find("hunter", 1, true) ~= nil and lower:find("trap", 1, true) ~= nil
 	end
 
 	TrackConnection("UndeadExpeditionStructureAdded", folder.ChildAdded:Connect(function(child)
@@ -1392,10 +1390,10 @@ local function StrafeNearestHunterNear(position, radius, runId, includeAll)
 	local tangent = Vector3.new(-radial.Z, 0, radial.X) * state.HunterTrapStrafeDirection
 	local distance = flatOffset.Magnitude
 	local desired
-	local targetDistance = HUNTER_TRAP_STRAFE_DISTANCE
-	local minDistance = 7
-	local maxDistance = 13
-	local nudgeDistance = 3.5
+	local targetDistance = includeAll and 5.5 or HUNTER_TRAP_STRAFE_DISTANCE
+	local minDistance = includeAll and 3.75 or 7
+	local maxDistance = includeAll and 8 or 13
+	local nudgeDistance = includeAll and 1.2 or 3.5
 	if distance < minDistance or distance > maxDistance then
 		desired = hunterRoot.Position + radial * targetDistance
 	else
@@ -2092,22 +2090,6 @@ local function SweepHunterTrapDrops(position, runId)
 	end
 end
 
-local function DirectTrapPart(trap)
-	if not trap then return nil end
-	if trap:IsA("BasePart") then return trap end
-	if trap:IsA("Model") then return trap.PrimaryPart or trap:FindFirstChildWhichIsA("BasePart", true) end
-	return trap:FindFirstChildWhichIsA("BasePart", true)
-end
-
-local function IsDirectStructureTrap(structure)
-	if not structure then return false end
-	local lowerName = string.lower(tostring(structure.Name or ""))
-	if lowerName == "graveyard" or lowerName:find("graveyard", 1, true) then return true end
-	if lowerName:find("ancient", 1, true) then return true end
-	local loot = structure:FindFirstChild("Loot")
-	return loot and loot:FindFirstChild("AncientChest") ~= nil
-end
-
 local function FindNearestHunterTrapRoot(skipVisited)
 	local folder = StructuresFolder()
 	local playerRoot = PlayerRoot()
@@ -2115,6 +2097,20 @@ local function FindNearestHunterTrapRoot(skipVisited)
 	local closestRoot
 	local closestDistance = math.huge
 	local closestNeedsAllEnemies = false
+	local function directTrapPart(trap)
+		if not trap then return nil end
+		if trap:IsA("BasePart") then return trap end
+		if trap:IsA("Model") then return trap.PrimaryPart or trap:FindFirstChildWhichIsA("BasePart", true) end
+		return trap:FindFirstChildWhichIsA("BasePart", true)
+	end
+	local function isDirectStructureTrap(structure)
+		if not structure then return false end
+		local lowerName = string.lower(tostring(structure.Name or ""))
+		local isGraveyardOrAncient = lowerName == "graveyard" or lowerName:find("graveyard", 1, true) or lowerName:find("ancient", 1, true)
+		if not isGraveyardOrAncient then return false end
+		local loot = structure:FindFirstChild("Loot")
+		return loot ~= nil and #loot:GetChildren() > 0
+	end
 	local function considerRoot(root, needsAllEnemies)
 		if not root then return end
 		if skipVisited and state.AutoTrapVisited and state.AutoTrapVisited[root] then return end
@@ -2131,8 +2127,8 @@ local function FindNearestHunterTrapRoot(skipVisited)
 		considerRoot(root, false)
 	end
 	local function considerDirectStructure(structure)
-		if not IsDirectStructureTrap(structure) then return end
-		considerRoot(DirectTrapPart(structure:FindFirstChild("Trap")), true)
+		if not isDirectStructureTrap(structure) then return end
+		considerRoot(directTrapPart(structure:FindFirstChild("Trap")), true)
 	end
 	for _, structure in ipairs(folder:GetChildren()) do
 		consider(structure)
@@ -2326,8 +2322,17 @@ local function AutoHunterTrapStep()
 		elseif now - (state.LastHunterTrapUseAt or 0) >= HUNTER_TRAP_ATTACK_INTERVAL then
 			state.LastHunterTrapUseAt = now
 			if targetAnyEnemies then
+				local structureEnemies = CollectEnemiesNear(target.Position, enemyRadius, true)
+				ExpandHunterTrapEnemyHitboxes(structureEnemies, STRUCTURE_TRAP_HITBOX_SIZE)
 				StrafeNearestHunterNear(target.Position, enemyRadius, runId, true)
+				local tool = EquipCombatWeapon()
+				UseCombatWeapon(tool, true)
 				UseCurrentEquippedTool(true)
+				if structureEnemies[1] and now - (state.LastStructureTrapTouchAt or 0) >= 0.35 then
+					state.LastStructureTrapTouchAt = now
+					TouchWeaponToEnemy(tool, structureEnemies[1])
+					FireToolCombatRemotes(tool, structureEnemies[1])
+				end
 			else
 				StrafeNearestHunterNear(target.Position, enemyRadius, runId, false)
 				UseCurrentEquippedTool(true)
