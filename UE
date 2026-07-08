@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v34-auto-trap-trigger-fix"
+local ModuleVersion = "UE-Utility-v35-auto-trap-existing-scan"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -95,6 +95,7 @@ state.AutoTrapEnabled = state.AutoTrapEnabled == true
 state.AutoTrapKilled = tonumber(state.AutoTrapKilled) or 0
 state.AutoTrapPhase = "Idle"
 state.AutoTrapQueue = {}
+state.AutoTrapHandled = {}
 
 local function DisconnectTableConnections(connections)
 	if type(connections) ~= "table" then return end
@@ -1446,7 +1447,9 @@ end
 local function RunAutoTrapStep()
 	if #state.AutoTrapQueue == 0 then return end
 	local structure = table.remove(state.AutoTrapQueue, 1)
-	if not structure or not structure.Parent then return end
+	if not structure then return end
+	state.AutoTrapHandled[structure] = true
+	if not structure.Parent then return end
 
 	local displayName = StructureDisplayName(structure)
 	local isTrap2 = string.lower(displayName):find("2", 1, true) ~= nil or string.lower(structure.Name):find("2", 1, true) ~= nil
@@ -1507,15 +1510,33 @@ local function ToggleAutoTrap()
 	SetAutoTrapEnabled(not state.AutoTrapEnabled)
 end
 
+local function IsQueuedForAutoTrap(structure)
+	return table.find(state.AutoTrapQueue, structure) ~= nil
+end
+
 HandleTrapStructureSpawn = function(structure)
+	if state.AutoTrapHandled[structure] or IsQueuedForAutoTrap(structure) then return end
 	if HasHunterTrapText(StructureDisplayName(structure)) or HasHunterTrapText(structure.Name) then
 		table.insert(state.AutoTrapQueue, structure)
+	end
+end
+
+local function ScanForExistingTrapStructures()
+	local folder = StructuresFolder()
+	if not folder then return end
+	for _, structure in ipairs(folder:GetChildren()) do
+		if not state.AutoTrapHandled[structure] and not IsQueuedForAutoTrap(structure) then
+			if HasHunterTrapText(StructureDisplayName(structure)) or HasHunterTrapText(structure.Name) then
+				table.insert(state.AutoTrapQueue, structure)
+			end
+		end
 	end
 end
 
 task.spawn(function()
 	while uePage.Parent do
 		if state.AutoTrapEnabled then
+			ScanForExistingTrapStructures()
 			RunAutoTrapStep()
 		end
 		task.wait(TRAP_IDLE_WAIT)
