@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v42-crate-camera-lock"
+local ModuleVersion = "UE-Utility-v43-graveyard-ancient-encounters"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -1095,11 +1095,53 @@ local function ReleaseInteractKey(keyCode)
 	end)
 end
 
+local BOX_TYPE_REQUIRED_KEY = {
+	Grounder = "Grounder Key",
+	Ancient = "Ancient Key",
+}
+local KEY_TOOL_NAMES = {}
+for _, keyName in pairs(BOX_TYPE_REQUIRED_KEY) do
+	KEY_TOOL_NAMES[keyName] = true
+end
+
+local function FindKeyTool(keyName)
+	local character = Player and Player.Character
+	if character then
+		local tool = character:FindFirstChild(keyName)
+		if tool and tool:IsA("Tool") then return tool, true end
+	end
+	local backpack = Player and Player:FindFirstChildOfClass("Backpack")
+	if backpack then
+		local tool = backpack:FindFirstChild(keyName)
+		if tool and tool:IsA("Tool") then return tool, false end
+	end
+	return nil, false
+end
+
+local function EquipKeyTool(keyName)
+	local character = Player and Player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return false end
+	local tool, alreadyEquipped = FindKeyTool(keyName)
+	if not tool then return false end
+	if not alreadyEquipped then
+		humanoid:EquipTool(tool)
+	end
+	return true
+end
+
 local function HoldOnBox(target, targetRoot, options)
 	options = options or {}
 	local statusLabel = options.StatusLabel
 	local logPrefix = options.LogPrefix or "[UE Loot Farm]"
 	local isEnabled = options.IsEnabled or function() return true end
+
+	local requiredKey = BOX_TYPE_REQUIRED_KEY[BoxType(target)]
+	if requiredKey and not EquipKeyTool(requiredKey) then
+		warn(logPrefix .. " missing " .. requiredKey .. " for " .. tostring(target.Name))
+		if statusLabel then statusLabel.Text = "Need " .. requiredKey end
+		return false
+	end
 
 	local openPrompt = FindOpenPrompt(target)
 	if not openPrompt then
@@ -1189,19 +1231,26 @@ local function HoldOnBox(target, targetRoot, options)
 	return success
 end
 
-local function ClaimNearbyDrop(boxPosition)
+local function ClaimNearbyDrop(boxPosition, options)
+	options = options or {}
+	local isEnabled = options.IsEnabled or function() return true end
 	local claimDeadline = os.clock() + FARM_CLAIM_SEARCH_TIMEOUT
-	while state.LootFarmEnabled and uePage.Parent and os.clock() < claimDeadline do
+	while isEnabled() and uePage.Parent and os.clock() < claimDeadline do
 		local claimPrompt, claimPart = FindNearbyClaimPrompt(boxPosition, FARM_CLAIM_SEARCH_RADIUS)
 		if claimPrompt and claimPart then
-			local root = PlayerRoot()
-			if not root then return end
-			ThemeObjects.SetRootUpright(root, root.CFrame, claimPart.Position + Vector3.new(0, 1, 0))
-			root.AssemblyLinearVelocity = Vector3.zero
-			root.AssemblyAngularVelocity = Vector3.zero
-			if type(fireproximityprompt) == "function" then
-				fireproximityprompt(claimPrompt)
+			local anchorPosition = claimPart.Position + Vector3.new(0, 1, 0)
+			if not StableTeleport(CFrame.new(anchorPosition)) then return end
+			task.wait(0.1)
+
+			local keyCode = claimPrompt.KeyboardKeyCode
+			if not keyCode or keyCode == Enum.KeyCode.Unknown then keyCode = Enum.KeyCode.E end
+			if PressInteractKey(keyCode) then
+				task.wait(0.3)
+				ReleaseInteractKey(keyCode)
+			elseif type(fireproximityprompt) == "function" then
+				pcall(fireproximityprompt, claimPrompt)
 			end
+
 			task.wait(FARM_CLAIM_POST_FIRE_WAIT)
 			if not claimPrompt.Parent then return end
 		else
@@ -1243,7 +1292,7 @@ local function RunLootFarmStep()
 		state.LootFarmCollected = state.LootFarmCollected + 1
 		farmStatus.Text = ("%d farmed"):format(state.LootFarmCollected)
 		if state.LootFarmEnabled and uePage.Parent then
-			ClaimNearbyDrop(boxPosition)
+			ClaimNearbyDrop(boxPosition, {IsEnabled = function() return state.LootFarmEnabled end})
 		end
 	else
 		state.LootFarmSkipped[target] = os.clock() + FARM_SKIP_COOLDOWN
@@ -1411,21 +1460,74 @@ local function TeleportToBase()
 	return StableTeleport(CFrame.new(BASE_POSITION + Vector3.new(0, 4, 0)))
 end
 
-local function FindTrapTriggerPart(structure, isTrap2)
-	local direct = isTrap2 and structure:FindFirstChild("Trap") or structure:FindFirstChild("string")
+local function FindNamedTriggerPart(structure, partName)
+	local direct = structure:FindFirstChild(partName)
 	if direct and direct:IsA("BasePart") then return direct end
-
-	local fallbackName = isTrap2 and "trap" or "string"
+	local lowerName = string.lower(partName)
 	for _, child in ipairs(structure:GetDescendants()) do
-		if child:IsA("BasePart") and string.lower(child.Name) == fallbackName then
+		if child:IsA("BasePart") and string.lower(child.Name) == lowerName then
 			return child
 		end
 	end
 	return StructureRoot(structure)
 end
 
-local function IsHunterInstance(instance)
-	return instance ~= nil and string.find(string.lower(instance.Name), "hunter", 1, true) ~= nil
+local ENCOUNTERS = {
+	{
+		Id = "Hunter Trap",
+		Matches = function(structure)
+			return HasHunterTrapText(StructureDisplayName(structure)) or HasHunterTrapText(structure.Name)
+		end,
+		GetTriggerPosition = function(structure)
+			local isTrap2 = string.lower(StructureDisplayName(structure)):find("2", 1, true) ~= nil
+				or string.lower(structure.Name):find("2", 1, true) ~= nil
+			local part = FindNamedTriggerPart(structure, isTrap2 and "Trap" or "string")
+			if not part then return nil end
+			local position = part.Position
+			if isTrap2 then position = position + TRAP2_LAND_OFFSET end
+			return position
+		end,
+		EnemyNames = {"hunter"},
+	},
+	{
+		Id = "Graveyard",
+		Matches = function(structure)
+			return string.lower(StructureDisplayName(structure)):find("graveyard", 1, true) ~= nil
+		end,
+		GetTriggerPosition = function(structure)
+			local part = FindNamedTriggerPart(structure, "Trap")
+			return part and part.Position
+		end,
+		EnemyNames = {"grounder"},
+	},
+	{
+		Id = "Ancient Ruins",
+		Matches = function(structure)
+			return string.lower(StructureDisplayName(structure)):find("ancient", 1, true) ~= nil
+		end,
+		GetTriggerPosition = function(structure)
+			local part = FindNamedTriggerPart(structure, "Trap")
+			return part and part.Position
+		end,
+		EnemyNames = {"pharaon", "mummy"},
+	},
+}
+
+local function FindMatchingEncounter(structure)
+	for _, encounter in ipairs(ENCOUNTERS) do
+		if encounter.Matches(structure) then
+			return encounter
+		end
+	end
+	return nil
+end
+
+local function IsMatchingEnemy(instance, nameFilters)
+	local lowerName = string.lower(instance.Name)
+	for _, filter in ipairs(nameFilters) do
+		if lowerName:find(filter, 1, true) then return true end
+	end
+	return false
 end
 
 local function EnemyRoot(enemy)
@@ -1433,19 +1535,19 @@ local function EnemyRoot(enemy)
 	return enemy.PrimaryPart or enemy:FindFirstChild("HumanoidRootPart") or enemy:FindFirstChildWhichIsA("BasePart", true)
 end
 
-local function GetActiveHunters()
+local function GetActiveEnemies(nameFilters)
 	local enemiesFolder = workspace:FindFirstChild("Enemies")
 	if not enemiesFolder then return {} end
-	local hunters = {}
+	local enemies = {}
 	for _, child in ipairs(enemiesFolder:GetChildren()) do
-		if IsHunterInstance(child) then
+		if IsMatchingEnemy(child, nameFilters) then
 			local humanoid = child:FindFirstChildOfClass("Humanoid")
 			if humanoid and humanoid.Health > 0 then
-				table.insert(hunters, child)
+				table.insert(enemies, child)
 			end
 		end
 	end
-	return hunters
+	return enemies
 end
 
 local function EquipAnyWeapon()
@@ -1453,25 +1555,28 @@ local function EquipAnyWeapon()
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if not humanoid then return nil end
 	local equipped = character:FindFirstChildOfClass("Tool")
-	if equipped then return equipped end
+	if equipped and not KEY_TOOL_NAMES[equipped.Name] then return equipped end
 	local backpack = Player and Player:FindFirstChildOfClass("Backpack")
-	local backpackTool = backpack and backpack:FindFirstChildOfClass("Tool")
-	if backpackTool then
-		humanoid:EquipTool(backpackTool)
-		return backpackTool
+	if backpack then
+		for _, tool in ipairs(backpack:GetChildren()) do
+			if tool:IsA("Tool") and not KEY_TOOL_NAMES[tool.Name] then
+				humanoid:EquipTool(tool)
+				return tool
+			end
+		end
 	end
 	return nil
 end
 
-local function FightHunters(trapPosition)
+local function FightEnemies(trapPosition, nameFilters)
 	local mouseClick = game.ReplicatedStorage:FindFirstChild("MouseClick")
 	if not mouseClick then
-		warn("[UE Auto Trap] MouseClick remote not found; cannot attack Hunters")
+		warn("[UE Auto Trap] MouseClick remote not found; cannot attack enemies")
 	end
 	local hadRoot = true
 	while state.AutoTrapEnabled and uePage.Parent do
-		local hunters = GetActiveHunters()
-		if #hunters == 0 then return true end
+		local enemies = GetActiveEnemies(nameFilters)
+		if #enemies == 0 then return true end
 
 		local root = PlayerRoot()
 		if not root then
@@ -1490,13 +1595,13 @@ local function FightHunters(trapPosition)
 				end
 			end
 			if root then
-				table.sort(hunters, function(a, b)
+				table.sort(enemies, function(a, b)
 					local rootA, rootB = EnemyRoot(a), EnemyRoot(b)
 					if not rootA then return false end
 					if not rootB then return true end
 					return (root.Position - rootA.Position).Magnitude < (root.Position - rootB.Position).Magnitude
 				end)
-				local target = hunters[1]
+				local target = enemies[1]
 				local targetRoot = EnemyRoot(target)
 				if targetRoot then
 					local flatOffset = Vector3.new(root.Position.X - targetRoot.Position.X, 0, root.Position.Z - targetRoot.Position.Z)
@@ -1521,13 +1626,19 @@ local function FightHunters(trapPosition)
 	return false
 end
 
+local function ClaimDropsNearArea(position, attempts)
+	for _ = 1, (attempts or 4) do
+		if not (state.AutoTrapEnabled and uePage.Parent) then break end
+		ClaimNearbyDrop(position, {IsEnabled = function() return state.AutoTrapEnabled end})
+	end
+end
+
 local function GetIdleSweepBoxTargets()
 	local folder = StructuresFolder()
 	if not folder then return {} end
 	local targets = {}
 	for _, structure in ipairs(folder:GetChildren()) do
-		local isTrapStructure = HasHunterTrapText(StructureDisplayName(structure)) or HasHunterTrapText(structure.Name)
-		if not isTrapStructure then
+		if not FindMatchingEncounter(structure) then
 			local lootFolder = structure:FindFirstChild("Loot")
 			if lootFolder then
 				for _, box in ipairs(lootFolder:GetChildren()) do
@@ -1590,39 +1701,33 @@ local function RunAutoTrapStep()
 		RunIdleCrateSweepStep()
 		return
 	end
-	local structure = table.remove(state.AutoTrapQueue, 1)
-	if not structure then return end
+	local entry = table.remove(state.AutoTrapQueue, 1)
+	if not entry then return end
+	local structure, encounter = entry.Structure, entry.Encounter
 	state.AutoTrapHandled[structure] = true
 	if not structure.Parent then return end
 
-	local displayName = StructureDisplayName(structure)
-	local isTrap2 = string.lower(displayName):find("2", 1, true) ~= nil or string.lower(structure.Name):find("2", 1, true) ~= nil
-	local triggerPart = FindTrapTriggerPart(structure, isTrap2)
-	if not triggerPart then
-		warn("[UE Auto Trap] could not find a trigger part on " .. tostring(structure.Name))
+	local targetPosition = encounter.GetTriggerPosition(structure)
+	if not targetPosition then
+		warn("[UE Auto Trap] could not find a trigger part on " .. tostring(structure.Name) .. " (" .. encounter.Id .. ")")
 		return
 	end
 
-	local targetPosition = triggerPart.Position
-	if isTrap2 then
-		targetPosition = targetPosition + TRAP2_LAND_OFFSET
-	end
-
-	state.AutoTrapPhase = "Triggering"
+	state.AutoTrapPhase = "Triggering " .. encounter.Id
 	RefreshButtons()
 	local root = PlayerRoot()
 	if not root then return end
 	StableTeleport(CFrame.new(targetPosition + Vector3.new(0, 4, 0)))
 	task.wait(TRAP_TRIGGER_WAIT)
 
-	state.AutoTrapPhase = "Waiting for Hunters"
+	state.AutoTrapPhase = "Waiting for enemies"
 	RefreshButtons()
 	local waveDeadline = os.clock() + TRAP_HUNTER_SCAN_WINDOW
-	while #GetActiveHunters() == 0 and os.clock() < waveDeadline and state.AutoTrapEnabled do
+	while #GetActiveEnemies(encounter.EnemyNames) == 0 and os.clock() < waveDeadline and state.AutoTrapEnabled do
 		task.wait(0.25)
 	end
-	if #GetActiveHunters() == 0 then
-		warn("[UE Auto Trap] no Hunters spawned after triggering " .. tostring(structure.Name))
+	if #GetActiveEnemies(encounter.EnemyNames) == 0 then
+		warn("[UE Auto Trap] no enemies spawned after triggering " .. tostring(structure.Name) .. " (" .. encounter.Id .. ")")
 		state.AutoTrapPhase = "Idle"
 		RefreshButtons()
 		return
@@ -1630,7 +1735,11 @@ local function RunAutoTrapStep()
 
 	state.AutoTrapPhase = "Fighting"
 	RefreshButtons()
-	FightHunters(targetPosition)
+	FightEnemies(targetPosition, encounter.EnemyNames)
+
+	state.AutoTrapPhase = "Collecting drops"
+	RefreshButtons()
+	ClaimDropsNearArea(targetPosition, 4)
 
 	state.AutoTrapPhase = "Returning to base"
 	RefreshButtons()
@@ -1655,13 +1764,17 @@ local function ToggleAutoTrap()
 end
 
 local function IsQueuedForAutoTrap(structure)
-	return table.find(state.AutoTrapQueue, structure) ~= nil
+	for _, entry in ipairs(state.AutoTrapQueue) do
+		if entry.Structure == structure then return true end
+	end
+	return false
 end
 
 HandleTrapStructureSpawn = function(structure)
 	if state.AutoTrapHandled[structure] or IsQueuedForAutoTrap(structure) then return end
-	if HasHunterTrapText(StructureDisplayName(structure)) or HasHunterTrapText(structure.Name) then
-		table.insert(state.AutoTrapQueue, structure)
+	local encounter = FindMatchingEncounter(structure)
+	if encounter then
+		table.insert(state.AutoTrapQueue, {Structure = structure, Encounter = encounter})
 	end
 end
 
@@ -1670,8 +1783,9 @@ local function ScanForExistingTrapStructures()
 	if not folder then return end
 	for _, structure in ipairs(folder:GetChildren()) do
 		if not state.AutoTrapHandled[structure] and not IsQueuedForAutoTrap(structure) then
-			if HasHunterTrapText(StructureDisplayName(structure)) or HasHunterTrapText(structure.Name) then
-				table.insert(state.AutoTrapQueue, structure)
+			local encounter = FindMatchingEncounter(structure)
+			if encounter then
+				table.insert(state.AutoTrapQueue, {Structure = structure, Encounter = encounter})
 			end
 		end
 	end
