@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v28-structure-combat-fix"
+local ModuleVersion = "UE-Utility-v28-trap-counter-and-defense"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -369,6 +369,19 @@ local structureAlertsToggle = CreateButton(structureAlertsRow, "UndeadExpedition
 
 local autoTrapRow = CreateRow("UndeadExpeditionAutoTrapRow", 188)
 local autoTrapTitle = CreateTitle(autoTrapRow, "Auto Trap TP:")
+local autoTrapCountLabel = Instance.new("TextLabel")
+autoTrapCountLabel.Name = "UndeadExpeditionAutoTrapCount"
+autoTrapCountLabel.Size = UDim2.new(0, 40, 0, 18)
+autoTrapCountLabel.Position = UDim2.new(1, -148, 0, 10)
+autoTrapCountLabel.BackgroundTransparency = 1
+autoTrapCountLabel.ZIndex = 4
+autoTrapCountLabel.Text = "0"
+autoTrapCountLabel.Font = Enum.Font.GothamBold
+autoTrapCountLabel.TextSize = 11
+autoTrapCountLabel.TextXAlignment = Enum.TextXAlignment.Right
+autoTrapCountLabel.TextTruncate = Enum.TextTruncate.AtEnd
+autoTrapCountLabel.Parent = autoTrapRow
+AddText(autoTrapCountLabel)
 local autoTrapToggle = CreateButton(autoTrapRow, "UndeadExpeditionAutoTrapToggle", "Off", -98, 44)
 
 local autoMobRow = CreateRow("UndeadExpeditionAutoMobRow", 234)
@@ -1915,67 +1928,6 @@ local function FireToolCombatRemotes(tool, enemy)
 	end
 end
 
-local function AttackHunterTrapEnemy(enemy, trapPosition, runId)
-	if not IsAutoTrapRunActive(runId) then return false end
-	local enemyRoot = EnemyRoot(enemy)
-	local playerRoot = PlayerRoot()
-	if not enemyRoot or not playerRoot then return false end
-	local tool = EquipCombatWeapon()
-	local distance = (playerRoot.Position - enemyRoot.Position).Magnitude
-	if distance > 14 and os.clock() - (state.LastHunterTrapApproachAt or 0) >= HUNTER_TRAP_APPROACH_INTERVAL then
-		state.LastHunterTrapApproachAt = os.clock()
-		local approach = enemyRoot.CFrame.LookVector
-		if approach.Magnitude < 0.5 then approach = Vector3.new(0, 0, -1) end
-		local attackPosition = enemyRoot.Position - approach.Unit * 8 + Vector3.new(0, 2, 0)
-		if not IsAutoTrapRunActive(runId) then return false end
-		StableTeleport(CFrame.new(attackPosition, enemyRoot.Position))
-		playerRoot = PlayerRoot()
-	end
-	tool = tool and tool.Parent and tool or EquipCombatWeapon()
-	for _ = 1, 3 do
-		if not IsAutoTrapRunActive(runId) or not enemyRoot.Parent then break end
-		UseCombatWeapon(tool)
-		TouchWeaponToEnemy(tool, enemy)
-		FireToolCombatRemotes(tool, enemy)
-		task.wait(0.04)
-	end
-	playerRoot = PlayerRoot()
-	if playerRoot then
-		pcall(function()
-			playerRoot.AssemblyAngularVelocity = Vector3.zero
-			if playerRoot.AssemblyLinearVelocity.Magnitude > 80 then
-				playerRoot.AssemblyLinearVelocity = playerRoot.AssemblyLinearVelocity.Unit * 18
-			end
-		end)
-	end
-	return true
-end
-
-local function TryClearHunterTrapEnemies(position, runId, includeAll, radius)
-	if not IsAutoTrapRunActive(runId) then return 0 end
-	local enemies = CollectEnemiesNear(position, radius or HUNTER_TRAP_ENEMY_RADIUS, includeAll)
-	if #enemies <= 0 then
-		RestoreHunterTrapHitboxes()
-		return 0
-	end
-	ExpandHunterTrapEnemyHitboxes(enemies, includeAll and STRUCTURE_TRAP_HITBOX_SIZE or HUNTER_TRAP_HITBOX_SIZE)
-	local now = os.clock()
-	if not state.HunterTrapAttackBusy and now - (state.LastHunterTrapAttack or 0) >= HUNTER_TRAP_ATTACK_INTERVAL then
-		state.LastHunterTrapAttack = now
-		state.HunterTrapAttackBusy = true
-		local targetEnemy = enemies[1]
-		task.spawn(function()
-			pcall(function()
-				AttackHunterTrapEnemy(targetEnemy, position, runId)
-			end)
-			if runId == state.AutoTrapRunId then
-				state.HunterTrapAttackBusy = false
-			end
-		end)
-	end
-	return #enemies
-end
-
 local function PickupRoot(instance)
 	if not instance then return nil end
 	if instance:IsA("BasePart") then return instance end
@@ -2097,6 +2049,7 @@ local function FindNearestHunterTrapRoot(skipVisited)
 	local closestRoot
 	local closestDistance = math.huge
 	local closestNeedsAllEnemies = false
+	local availableCount = 0
 	local function directTrapPart(trap)
 		if not trap then return nil end
 		if trap:IsA("BasePart") then return trap end
@@ -2113,7 +2066,10 @@ local function FindNearestHunterTrapRoot(skipVisited)
 	end
 	local function considerRoot(root, needsAllEnemies)
 		if not root then return end
-		if skipVisited and state.AutoTrapVisited and state.AutoTrapVisited[root] then return end
+		if skipVisited and state.AutoTrapVisited then
+			local visitedAt = state.AutoTrapVisited[root]
+			if visitedAt and (os.clock() - visitedAt) < 45 then return end
+		end
 		local distance = (root.Position - playerRoot.Position).Magnitude
 		if distance < closestDistance then
 			closestDistance = distance
@@ -2124,11 +2080,16 @@ local function FindNearestHunterTrapRoot(skipVisited)
 	local function consider(candidate)
 		if not candidate or BoxType(candidate) ~= "Hunter Trap" then return end
 		local root = BoxRoot(candidate)
+		if not root then return end
+		availableCount += 1
 		considerRoot(root, false)
 	end
 	local function considerDirectStructure(structure)
 		if not isDirectStructureTrap(structure) then return end
-		considerRoot(directTrapPart(structure:FindFirstChild("Trap")), true)
+		local root = directTrapPart(structure:FindFirstChild("Trap"))
+		if not root then return end
+		availableCount += 1
+		considerRoot(root, true)
 	end
 	for _, structure in ipairs(folder:GetChildren()) do
 		consider(structure)
@@ -2140,6 +2101,8 @@ local function FindNearestHunterTrapRoot(skipVisited)
 		considerDirectStructure(structure)
 	end
 	state.AutoTrapTargetAnyEnemies = closestNeedsAllEnemies
+	state.AutoTrapAvailableCount = availableCount
+	if autoTrapCountLabel then autoTrapCountLabel.Text = tostring(availableCount) end
 	return closestRoot
 end
 
@@ -2173,6 +2136,17 @@ local function AutoHunterTrapStep()
 	local runId = state.AutoTrapRunId
 	if not IsAutoTrapRunActive(runId) then return end
 	local now = os.clock()
+	local function DefendAgainstNearbyMobs()
+		if now - (state.LastAutoTrapDefenseAt or 0) < 0.4 then return end
+		state.LastAutoTrapDefenseAt = now
+		local playerRoot = PlayerRoot()
+		if not playerRoot then return end
+		local nearbyMob = CollectMobsNear(playerRoot.Position, 12)[1]
+		if not nearbyMob then return end
+		local tool = EquipCombatWeapon()
+		TouchWeaponToEnemy(tool, nearbyMob)
+		FireToolCombatRemotes(tool, nearbyMob)
+	end
 	local target = state.AutoTrapTarget
 	if target and (not target.Parent) then
 		state.AutoTrapTarget = nil
@@ -2247,7 +2221,7 @@ local function AutoHunterTrapStep()
 			state.LastAutoTrapCombatClickAt = 0
 		elseif now - (state.AutoTrapStartedAt or now) >= HUNTER_TRAP_SPAWN_TIMEOUT then
 			state.AutoTrapVisited = state.AutoTrapVisited or {}
-			state.AutoTrapVisited[target] = true
+			state.AutoTrapVisited[target] = os.clock()
 			state.AutoTrapTarget = nil
 			state.AutoTrapTargetAnyEnemies = false
 			state.AutoTrapPhase = "seeking"
@@ -2277,7 +2251,7 @@ local function AutoHunterTrapStep()
 		local lastEnemyChangeAt = state.AutoTrapLastEnemyChangeAt or combatStartedAt
 		if enemies > 0 and (now - combatStartedAt >= clearTimeout or now - lastEnemyChangeAt >= AUTO_TRAP_STUCK_ENEMY_TIMEOUT) then
 			state.AutoTrapVisited = state.AutoTrapVisited or {}
-			state.AutoTrapVisited[target] = true
+			state.AutoTrapVisited[target] = os.clock()
 			state.AutoTrapTarget = nil
 			state.AutoTrapTargetAnyEnemies = false
 			state.AutoTrapPhase = "seeking"
@@ -2300,7 +2274,7 @@ local function AutoHunterTrapStep()
 		end
 		if enemies <= 0 then
 			state.AutoTrapVisited = state.AutoTrapVisited or {}
-			state.AutoTrapVisited[target] = true
+			state.AutoTrapVisited[target] = os.clock()
 			state.AutoTrapTarget = nil
 			state.AutoTrapTargetAnyEnemies = false
 			state.AutoTrapPhase = "seeking"
@@ -2334,9 +2308,19 @@ local function AutoHunterTrapStep()
 					FireToolCombatRemotes(tool, structureEnemies[1])
 				end
 			else
+				local hunterEnemies = CollectEnemiesNear(target.Position, enemyRadius, false)
+				ExpandHunterTrapEnemyHitboxes(hunterEnemies, HUNTER_TRAP_HITBOX_SIZE)
 				StrafeNearestHunterNear(target.Position, enemyRadius, runId, false)
+				local tool = EquipCombatWeapon()
+				UseCombatWeapon(tool, true)
 				UseCurrentEquippedTool(true)
+				if hunterEnemies[1] and now - (state.LastHunterTrapTouchAt or 0) >= 0.35 then
+					state.LastHunterTrapTouchAt = now
+					TouchWeaponToEnemy(tool, hunterEnemies[1])
+					FireToolCombatRemotes(tool, hunterEnemies[1])
+				end
 			end
+			DefendAgainstNearbyMobs()
 		else
 			FaceNearestHunterNear(target.Position, enemyRadius, targetAnyEnemies)
 		end
@@ -2770,6 +2754,7 @@ ThemeObjects.OpenUndeadExpeditionPage = function()
 	HubState.ActiveContentPage = uePage
 	RefreshStructureTimerDisplay(false)
 	WatchStructures()
+	FindNearestHunterTrapRoot(true)
 	if state.NoDarkness then ApplyNoDarkness() end
 	RefreshButtons()
 	UpdateTheme(true)
