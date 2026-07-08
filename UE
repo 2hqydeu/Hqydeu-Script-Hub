@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v24-structure-mob-combat"
+local ModuleVersion = "UE-Utility-v25-calm-structure-combat"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -143,6 +143,7 @@ local BOX_TYPE_COLORS = {
 local MAX_BOX_OBJECTS = 40
 local BOX_SCAN_INTERVAL = 0.75
 local HUNTER_TRAP_INTERVAL = 0.1
+local HUNTER_TRAP_BASE_WAIT_INTERVAL = 1.25
 local HUNTER_TRAP_ENEMY_RADIUS = 85
 local STRUCTURE_TRAP_ENEMY_RADIUS = 125
 local STRUCTURE_TRAP_ENEMY_TERMS = {"mummy", "pharon", "pharaoh", "pharson", "phar", "grounder"}
@@ -155,9 +156,11 @@ local HUNTER_TRAP_HITBOX_SIZE = Vector3.new(24, 24, 24)
 local STRUCTURE_TRAP_HITBOX_SIZE = Vector3.new(34, 34, 34)
 local HUNTER_TRAP_APPROACH_INTERVAL = 1.15
 local HUNTER_TRAP_STRAFE_INTERVAL = 0.45
+local STRUCTURE_TRAP_STRAFE_INTERVAL = 1.15
 local HUNTER_TRAP_STRAFE_DISTANCE = 9
+local STRUCTURE_TRAP_STRAFE_DISTANCE = 5.5
 local HUNTER_TRAP_SEEK_INTERVAL = 0.55
-local HUNTER_TRAP_BASE_SCAN_INTERVAL = 2.25
+local HUNTER_TRAP_BASE_SCAN_INTERVAL = 10
 local HUNTER_TRAP_SIDE_DISTANCE = 8
 local MOB_FARM_INTERVAL = 0.1
 local MOB_FARM_ATTACK_INTERVAL = 0.09
@@ -1340,10 +1343,12 @@ local function StrafeNearestHunterNear(position, radius, runId, includeAll)
 	local hunterRoot = FaceNearestHunterNear(position, radius, includeAll)
 	if not hunterRoot then return nil end
 	local now = os.clock()
-	if now - (state.LastHunterTrapStrafeAt or 0) < HUNTER_TRAP_STRAFE_INTERVAL then
+	local strafeKey = includeAll and "LastStructureTrapStrafeAt" or "LastHunterTrapStrafeAt"
+	local strafeInterval = includeAll and STRUCTURE_TRAP_STRAFE_INTERVAL or HUNTER_TRAP_STRAFE_INTERVAL
+	if now - (state[strafeKey] or 0) < strafeInterval then
 		return hunterRoot
 	end
-	state.LastHunterTrapStrafeAt = now
+	state[strafeKey] = now
 	local character = Player and Player.Character
 	local playerRoot = PlayerRoot()
 	if not character or not playerRoot then return hunterRoot end
@@ -1359,10 +1364,14 @@ local function StrafeNearestHunterNear(position, radius, runId, includeAll)
 	local tangent = Vector3.new(-radial.Z, 0, radial.X) * state.HunterTrapStrafeDirection
 	local distance = flatOffset.Magnitude
 	local desired
-	if distance < 7 or distance > 13 then
-		desired = hunterRoot.Position + radial * HUNTER_TRAP_STRAFE_DISTANCE
+	local targetDistance = includeAll and STRUCTURE_TRAP_STRAFE_DISTANCE or HUNTER_TRAP_STRAFE_DISTANCE
+	local minDistance = includeAll and 3.75 or 7
+	local maxDistance = includeAll and 8 or 13
+	local nudgeDistance = includeAll and 1.2 or 3.5
+	if distance < minDistance or distance > maxDistance then
+		desired = hunterRoot.Position + radial * targetDistance
 	else
-		desired = playerRoot.Position + tangent * 3.5
+		desired = playerRoot.Position + tangent * nudgeDistance
 	end
 	desired = Vector3.new(desired.X, playerRoot.Position.Y, desired.Z)
 	local lookAt = Vector3.new(hunterRoot.Position.X, desired.Y, hunterRoot.Position.Z)
@@ -2162,6 +2171,8 @@ local function AutoHunterTrapStep()
 			state.AutoTrapBaseWaitTeleported = false
 			state.LastHunterTrapUseAt = 0
 			state.LastHunterTrapStrafeAt = 0
+			state.LastStructureTrapStrafeAt = 0
+			state.LastStructureTrapTouchAt = 0
 			state.HunterTrapAttackBusy = false
 			state.LastHunterTrapSearchAt = 0
 			RestoreHunterTrapHitboxes()
@@ -2190,6 +2201,8 @@ local function AutoHunterTrapStep()
 			state.AutoTrapLootStartedAt = nil
 			state.LastHunterTrapUseAt = 0
 			state.LastHunterTrapStrafeAt = 0
+			state.LastStructureTrapStrafeAt = 0
+			state.LastStructureTrapTouchAt = 0
 		elseif now - (state.AutoTrapStartedAt or now) >= HUNTER_TRAP_SPAWN_TIMEOUT then
 			state.AutoTrapVisited = state.AutoTrapVisited or {}
 			state.AutoTrapVisited[target] = true
@@ -2198,6 +2211,8 @@ local function AutoHunterTrapStep()
 			state.AutoTrapPhase = "seeking"
 			state.AutoTrapLootStartedAt = nil
 			state.LastHunterTrapSearchAt = 0
+			state.LastStructureTrapStrafeAt = 0
+			state.LastStructureTrapTouchAt = 0
 			RestoreHunterTrapHitboxes()
 			RestoreAutoTrapFacing()
 			if IsAutoTrapRunActive(runId) then AutoHunterTrapStep() end
@@ -2217,7 +2232,17 @@ local function AutoHunterTrapStep()
 		elseif now - (state.LastHunterTrapUseAt or 0) >= HUNTER_TRAP_ATTACK_INTERVAL then
 			state.LastHunterTrapUseAt = now
 			if targetAnyEnemies then
-				TryClearHunterTrapEnemies(target.Position, runId, true, enemyRadius)
+				local structureEnemies = CollectEnemiesNear(target.Position, enemyRadius, true)
+				ExpandHunterTrapEnemyHitboxes(structureEnemies, STRUCTURE_TRAP_HITBOX_SIZE)
+				StrafeNearestHunterNear(target.Position, enemyRadius, runId, true)
+				local tool = EquipCombatWeapon()
+				UseCombatWeapon(tool)
+				UseCurrentEquippedTool()
+				if structureEnemies[1] and now - (state.LastStructureTrapTouchAt or 0) >= 0.35 then
+					state.LastStructureTrapTouchAt = now
+					TouchWeaponToEnemy(tool, structureEnemies[1])
+					FireToolCombatRemotes(tool, structureEnemies[1])
+				end
 			else
 				StrafeNearestHunterNear(target.Position, enemyRadius, runId, false)
 				UseCurrentEquippedTool()
@@ -2229,6 +2254,8 @@ local function AutoHunterTrapStep()
 		state.AutoTrapPhase = "seeking"
 		state.AutoTrapLootStartedAt = nil
 		state.AutoTrapTargetAnyEnemies = false
+		state.LastStructureTrapStrafeAt = 0
+		state.LastStructureTrapTouchAt = 0
 		RestoreHunterTrapHitboxes()
 		RestoreAutoTrapFacing()
 	end
@@ -2410,6 +2437,8 @@ local function ToggleAutoHunterTrap()
 		state.LastHunterTrapApproachAt = 0
 		state.LastHunterTrapUseAt = 0
 		state.LastHunterTrapStrafeAt = 0
+		state.LastStructureTrapStrafeAt = 0
+		state.LastStructureTrapTouchAt = 0
 		state.HunterTrapStrafeDirection = 1
 		state.AutoTrapBaseWaitTeleported = false
 		state.LastHunterTrapSearchAt = 0
@@ -2425,6 +2454,8 @@ local function ToggleAutoHunterTrap()
 		state.LastHunterTrapApproachAt = 0
 		state.LastHunterTrapUseAt = 0
 		state.LastHunterTrapStrafeAt = 0
+		state.LastStructureTrapStrafeAt = 0
+		state.LastStructureTrapTouchAt = 0
 		state.HunterTrapStrafeDirection = 1
 		state.AutoTrapBaseWaitTeleported = false
 		state.LastHunterTrapSearchAt = 0
@@ -2567,7 +2598,8 @@ TrackConnection("UndeadExpeditionLightingHeartbeat", RunService.Heartbeat:Connec
 	if state.BoxESP then
 		RefreshBoxDistances()
 	end
-	if state.AutoHunterTrap and now - (state.LastHunterTrapMove or 0) >= HUNTER_TRAP_INTERVAL then
+	local autoTrapInterval = state.AutoTrapPhase == "base_wait" and HUNTER_TRAP_BASE_WAIT_INTERVAL or HUNTER_TRAP_INTERVAL
+	if state.AutoHunterTrap and now - (state.LastHunterTrapMove or 0) >= autoTrapInterval then
 		state.LastHunterTrapMove = now
 		AutoHunterTrapStep()
 	end
