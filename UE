@@ -710,28 +710,6 @@ local function StructuresFolder()
 	return workspace:FindFirstChild("Structures")
 end
 
-local function WakeAutoTrapForStructureChange(clearVisited)
-	state.LastBoxScan = 0
-	state.LastHunterTrapSearchAt = 0
-	state.AutoTrapBaseWaitTeleported = false
-	if state.AutoHunterTrap and state.AutoTrapPhase == "base_wait" then
-		state.AutoTrapPhase = "seeking"
-	end
-	if clearVisited and state.AutoHunterTrap then
-		state.AutoTrapVisited = {}
-	end
-end
-
-local function IsRelevantStructureChange(instance)
-	local lower = string.lower(tostring(instance and instance.Name or ""))
-	return lower:find("trap", 1, true) ~= nil
-		or lower:find("hunter", 1, true) ~= nil
-		or lower:find("graveyard", 1, true) ~= nil
-		or lower:find("ancient", 1, true) ~= nil
-		or lower:find("chest", 1, true) ~= nil
-		or lower:find("loot", 1, true) ~= nil
-end
-
 local function WatchStructures()
 	local folder = StructuresFolder()
 	if not folder then return end
@@ -747,6 +725,29 @@ local function WatchStructures()
 		HubState.Connections.UndeadExpeditionStructureDescendantAdded = nil
 	end
 	state.StructuresFolder = folder
+
+	local function WakeAutoTrapForStructureChange(clearVisited)
+		state.LastBoxScan = 0
+		state.LastHunterTrapSearchAt = 0
+		state.AutoTrapBaseWaitTeleported = false
+		if state.AutoHunterTrap and state.AutoTrapPhase == "base_wait" then
+			state.AutoTrapPhase = "seeking"
+		end
+		if clearVisited and state.AutoHunterTrap then
+			state.AutoTrapVisited = {}
+		end
+	end
+
+	local function IsRelevantStructureChange(instance)
+		local lower = string.lower(tostring(instance and instance.Name or ""))
+		return lower:find("trap", 1, true) ~= nil
+			or lower:find("hunter", 1, true) ~= nil
+			or lower:find("graveyard", 1, true) ~= nil
+			or lower:find("ancient", 1, true) ~= nil
+			or lower:find("chest", 1, true) ~= nil
+			or lower:find("loot", 1, true) ~= nil
+	end
+
 	TrackConnection("UndeadExpeditionStructureAdded", folder.ChildAdded:Connect(function(child)
 		SetStructureMessage(StructureDisplayName(child))
 		ShowStructureMarker(child)
