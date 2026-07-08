@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v35"
+local ModuleVersion = "UE-Utility-v36"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -82,8 +82,10 @@ state.NoDarkness = state.NoDarkness == true
 state.AutoHunterTrap = false
 state.AutoTrapRunId = (tonumber(state.AutoTrapRunId) or 0) + 1
 state.AutoTrapTarget = nil
+state.AutoTrapTargetInfo = nil
 state.AutoTrapPhase = nil
 state.AutoTrapLootStartedAt = nil
+state.AutoTrapChestStartedAt = nil
 state.HunterTrapAttackBusy = false
 state.AutoMobFarm = false
 state.AutoMobRunId = (tonumber(state.AutoMobRunId) or 0) + 1
@@ -155,6 +157,10 @@ local HUNTER_TRAP_STRAFE_DISTANCE = 9
 local HUNTER_TRAP_SEEK_INTERVAL = 0.55
 local HUNTER_TRAP_BASE_SCAN_INTERVAL = 2.25
 local HUNTER_TRAP_SIDE_DISTANCE = 8
+local STRUCTURE_TRAP_ENEMY_RADIUS = 125
+local STRUCTURE_TRAP_CHEST_WAIT_TIME = 1.4
+local STRUCTURE_TRAP_LOOT_SWEEP_TIME = 2.2
+local STRUCTURE_TRAP_CHEST_RADIUS = 140
 local MOB_FARM_INTERVAL = 0.1
 local MOB_FARM_ATTACK_INTERVAL = 0.09
 local MOB_FARM_SCAN_RADIUS = 3000
@@ -866,6 +872,52 @@ local function BoxColor(box)
 	return BOX_TYPE_COLORS[BoxType(box) or ""] or AccentColor
 end
 
+local function TrapRootFromStructure(structure)
+	if not structure then return nil end
+	local trap = structure:FindFirstChild("Trap")
+	if not trap then return nil end
+	if trap:IsA("BasePart") then return trap end
+	if trap:IsA("Model") then return trap.PrimaryPart or trap:FindFirstChildWhichIsA("BasePart", true) end
+	return trap:FindFirstChildWhichIsA("BasePart", true)
+end
+
+local function AutoTrapStructureInfo(structure)
+	if not structure then return nil end
+	local trapRoot = TrapRootFromStructure(structure)
+	local loot = structure:FindFirstChild("Loot")
+	if not trapRoot or not loot then return nil end
+	local grounderChest = loot:FindFirstChild("GrounderChest", true)
+	local ancientChest = loot:FindFirstChild("AncientChest", true)
+	if grounderChest then
+		return {Kind = "Grounder Trap", Root = trapRoot, Structure = structure, ChestNames = {"GrounderChest"}, Chest = grounderChest}
+	elseif ancientChest then
+		return {Kind = "Ancient Trap", Root = trapRoot, Structure = structure, ChestNames = {"AncientChest"}, Chest = ancientChest}
+	end
+	return nil
+end
+
+local function FindAutoTrapChest(info)
+	if not info then return nil end
+	if info.Chest and info.Chest.Parent then return info.Chest end
+	local structure = info.Structure
+	local loot = structure and structure:FindFirstChild("Loot")
+	if not loot then return nil end
+	for _, chestName in ipairs(info.ChestNames or {}) do
+		local chest = loot:FindFirstChild(chestName, true)
+		if chest then
+			info.Chest = chest
+			return chest
+		end
+	end
+	for _, child in ipairs(loot:GetDescendants()) do
+		if string.lower(tostring(child.Name or "")):find("chest", 1, true) then
+			info.Chest = child
+			return child
+		end
+	end
+	return nil
+end
+
 local function BoxHighlightTarget(box, root)
 	if BoxType(box) == "Hunter Trap" and root then
 		return root
@@ -1255,30 +1307,38 @@ local function IsLiveEnemyNear(enemy, position, radius)
 		and (root.Position - position).Magnitude <= radius
 end
 
+local function IsLiveAnyEnemyNear(enemy, position, radius)
+	local root = EnemyRoot(enemy)
+	local humanoid = EnemyHumanoid(enemy)
+	return root ~= nil
+		and (not humanoid or humanoid.Health > 0)
+		and (root.Position - position).Magnitude <= radius
+end
+
 local function IsLiveMob(enemy)
 	local root = EnemyRoot(enemy)
 	local humanoid = EnemyHumanoid(enemy)
 	return root ~= nil and (not humanoid or humanoid.Health > 0)
 end
 
-local function CountEnemiesNear(position, radius)
+local function CountEnemiesNear(position, radius, includeAll)
 	local folder = workspace:FindFirstChild("Enemies")
 	if not folder then return 0 end
 	local count = 0
 	for _, enemy in ipairs(folder:GetChildren()) do
-		if IsLiveEnemyNear(enemy, position, radius) then
+		if (includeAll and IsLiveAnyEnemyNear(enemy, position, radius)) or ((not includeAll) and IsLiveEnemyNear(enemy, position, radius)) then
 			count += 1
 		end
 	end
 	return count
 end
 
-local function CollectEnemiesNear(position, radius)
+local function CollectEnemiesNear(position, radius, includeAll)
 	local folder = workspace:FindFirstChild("Enemies")
 	local enemies = {}
 	if not folder then return enemies end
 	for _, enemy in ipairs(folder:GetChildren()) do
-		if IsLiveEnemyNear(enemy, position, radius) then
+		if (includeAll and IsLiveAnyEnemyNear(enemy, position, radius)) or ((not includeAll) and IsLiveEnemyNear(enemy, position, radius)) then
 			table.insert(enemies, enemy)
 		end
 	end
@@ -1950,9 +2010,9 @@ local function AttackHunterTrapEnemy(enemy, trapPosition, runId)
 	return true
 end
 
-local function TryClearHunterTrapEnemies(position, runId)
+local function TryClearHunterTrapEnemies(position, runId, includeAll, radius)
 	if not IsAutoTrapRunActive(runId) then return 0 end
-	local enemies = CollectEnemiesNear(position, HUNTER_TRAP_ENEMY_RADIUS)
+	local enemies = CollectEnemiesNear(position, radius or HUNTER_TRAP_ENEMY_RADIUS, includeAll)
 	if #enemies <= 0 then
 		RestoreHunterTrapHitboxes()
 		return 0
@@ -1996,7 +2056,7 @@ end
 
 local function HasPickupText(value)
 	local lower = string.lower(tostring(value or ""))
-	for _, term in ipairs({"drop", "loot", "item", "coin", "gold", "cash", "gem", "crystal", "scrap", "bone", "fang", "essence", "shard", "reward", "bag", "pouch"}) do
+	for _, term in ipairs({"key", "drop", "loot", "item", "coin", "gold", "cash", "gem", "crystal", "scrap", "bone", "fang", "essence", "shard", "reward", "bag", "pouch"}) do
 		if lower:find(term, 1, true) then return true end
 	end
 	return false
@@ -2074,12 +2134,12 @@ local function TriggerPickupObject(object, runId)
 	return true
 end
 
-local function SweepHunterTrapDrops(position, runId)
+local function SweepHunterTrapDrops(position, runId, radius)
 	if not IsAutoTrapRunActive(runId) then return end
 	local now = os.clock()
 	if now - (state.LastHunterTrapLootSweep or 0) < HUNTER_TRAP_LOOT_INTERVAL then return end
 	state.LastHunterTrapLootSweep = now
-	local drops = CollectHunterDropsNear(position, HUNTER_TRAP_LOOT_RADIUS)
+	local drops = CollectHunterDropsNear(position, radius or HUNTER_TRAP_LOOT_RADIUS)
 	local picked = 0
 	for _, drop in ipairs(drops) do
 		if not IsAutoTrapRunActive(runId) then return end
@@ -2089,38 +2149,108 @@ local function SweepHunterTrapDrops(position, runId)
 	end
 end
 
-local function FindNearestHunterTrapRoot(skipVisited)
+local function OpenAutoTrapChest(info, runId)
+	local chest = FindAutoTrapChest(info)
+	if not chest then return false end
+	return TriggerPickupObject(chest, runId)
+end
+
+local function LooksLikeSellAction(value)
+	local lower = string.lower(tostring(value or ""))
+	return lower:find("sell", 1, true) ~= nil
+		or lower:find("shop", 1, true) ~= nil
+		or lower:find("confirm", 1, true) ~= nil
+end
+
+local function DialogRootCandidates()
+	local roots = {}
+	local starterGui = game:GetService("StarterGui")
+	local playerGui = Player and Player:FindFirstChildOfClass("PlayerGui")
+	local directStarter = starterGui and starterGui:FindFirstChild("dialog", true)
+	local directPlayer = playerGui and playerGui:FindFirstChild("dialog", true)
+	if directStarter then table.insert(roots, directStarter) end
+	if directPlayer and directPlayer ~= directStarter then table.insert(roots, directPlayer) end
+	if starterGui then table.insert(roots, starterGui) end
+	if playerGui then table.insert(roots, playerGui) end
+	return roots
+end
+
+local function TryAutoSellLoot(runId)
+	if not IsAutoTrapRunActive(runId) then return false end
+	local didSell = false
+	for _, root in ipairs(DialogRootCandidates()) do
+		if not IsAutoTrapRunActive(runId) then return didSell end
+		local rootName = string.lower(tostring(root.Name or ""))
+		for _, obj in ipairs(root:GetDescendants()) do
+			if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+				if rootName == "dialog" or LooksLikeSellAction(obj.Name) or LooksLikeSellAction(root.Name) then
+					local function send(...)
+						if obj:IsA("RemoteEvent") then
+							obj:FireServer(...)
+						else
+							obj:InvokeServer(...)
+						end
+					end
+					pcall(send)
+					pcall(send, "Sell")
+					pcall(send, "SellAll")
+					pcall(send, "sell")
+					pcall(send, {Action = "Sell", Mode = "All"})
+					didSell = true
+				end
+			elseif obj:IsA("TextButton") then
+				local text = tostring(obj.Text or obj.Name or "")
+				if LooksLikeSellAction(text) and typeof(firesignal) == "function" then
+					pcall(function() firesignal(obj.MouseButton1Click) end)
+					pcall(function() firesignal(obj.Activated) end)
+					didSell = true
+				end
+			end
+		end
+	end
+	return didSell
+end
+
+local function FindNearestHunterTrapTarget(skipVisited)
 	local folder = StructuresFolder()
 	local playerRoot = PlayerRoot()
 	if not folder or not playerRoot then return nil end
-	local closestRoot
+	local closestInfo
 	local closestDistance = math.huge
-	local function consider(candidate)
-		if not candidate or BoxType(candidate) ~= "Hunter Trap" then return end
-		local root = BoxRoot(candidate)
+	local function considerRoot(root, info)
 		if not root then return end
 		if skipVisited and state.AutoTrapVisited and state.AutoTrapVisited[root] then return end
 		local distance = (root.Position - playerRoot.Position).Magnitude
 		if distance < closestDistance then
 			closestDistance = distance
-			closestRoot = root
+			info.Root = root
+			closestInfo = info
 		end
 	end
+	local function considerHunter(candidate)
+		if not candidate or BoxType(candidate) ~= "Hunter Trap" then return end
+		local root = BoxRoot(candidate)
+		considerRoot(root, {Kind = "Hunter Trap", Root = root, Source = candidate})
+	end
 	for _, structure in ipairs(folder:GetChildren()) do
-		consider(structure)
+		local structureInfo = AutoTrapStructureInfo(structure)
+		if structureInfo then
+			considerRoot(structureInfo.Root, structureInfo)
+		end
+		considerHunter(structure)
 		for _, candidate in ipairs(structure:GetDescendants()) do
 			if HasHunterTrapText(candidate.Name) then
-				consider(candidate)
+				considerHunter(candidate)
 			end
 		end
 	end
-	return closestRoot
+	return closestInfo
 end
 
 local function TeleportToHunterTrapRoot(trapRoot)
 	if not trapRoot then return false end
 	local rootName = string.lower(tostring(trapRoot.Name or ""))
-	if rootName == "string" or rootName:find("checker", 1, true) or rootName:find("trigger", 1, true) or rootName:find("touch", 1, true) then
+	if rootName == "string" or rootName == "trap" or rootName:find("checker", 1, true) or rootName:find("trigger", 1, true) or rootName:find("touch", 1, true) then
 		local targetPosition = trapRoot.Position + Vector3.new(0, 5, 0)
 		return StableTeleport(CFrame.new(targetPosition, trapRoot.Position))
 	end
@@ -2148,8 +2278,10 @@ local function AutoHunterTrapStep()
 	local target = state.AutoTrapTarget
 	if target and (not target.Parent) then
 		state.AutoTrapTarget = nil
+		state.AutoTrapTargetInfo = nil
 		state.AutoTrapPhase = "seeking"
 		state.AutoTrapLootStartedAt = nil
+		state.AutoTrapChestStartedAt = nil
 		state.LastHunterTrapSearchAt = 0
 		RestoreHunterTrapHitboxes()
 		RestoreAutoTrapFacing()
@@ -2162,12 +2294,15 @@ local function AutoHunterTrapStep()
 			return
 		end
 		state.LastHunterTrapSearchAt = now
-		local nextTrap = FindNearestHunterTrapRoot(true)
-		if nextTrap then
-			state.AutoTrapTarget = nextTrap
+		local nextTrap = FindNearestHunterTrapTarget(true)
+		local nextRoot = nextTrap and nextTrap.Root
+		if nextRoot then
+			state.AutoTrapTarget = nextRoot
+			state.AutoTrapTargetInfo = nextTrap
 			state.AutoTrapPhase = "waiting_spawn"
 			state.AutoTrapStartedAt = now
 			state.AutoTrapLootStartedAt = nil
+			state.AutoTrapChestStartedAt = nil
 			state.AutoTrapBaseWaitTeleported = false
 			state.LastHunterTrapUseAt = 0
 			state.LastHunterTrapStrafeAt = 0
@@ -2175,10 +2310,15 @@ local function AutoHunterTrapStep()
 			state.LastHunterTrapSearchAt = 0
 			RestoreHunterTrapHitboxes()
 			if not IsAutoTrapRunActive(runId) then return end
-			TeleportToHunterTrapRoot(nextTrap)
+			TeleportToHunterTrapRoot(nextRoot)
+			if nextTrap.Kind ~= "Hunter Trap" then
+				local playerRoot = PlayerRoot()
+				if playerRoot then FireTouch(playerRoot, nextRoot) end
+			end
 		else
 			state.AutoTrapPhase = "base_wait"
 			state.AutoTrapLootStartedAt = nil
+			state.AutoTrapChestStartedAt = nil
 			RestoreHunterTrapHitboxes()
 			RestoreAutoTrapFacing()
 			if not state.AutoTrapBaseWaitTeleported then
@@ -2189,19 +2329,25 @@ local function AutoHunterTrapStep()
 		return
 	end
 
-	local enemies = CountEnemiesNear(target.Position, HUNTER_TRAP_ENEMY_RADIUS)
+	local info = state.AutoTrapTargetInfo or {Kind = "Hunter Trap", Root = target}
+	local isStructureTrap = info.Kind ~= "Hunter Trap"
+	local enemyRadius = isStructureTrap and STRUCTURE_TRAP_ENEMY_RADIUS or HUNTER_TRAP_ENEMY_RADIUS
+	local enemies = CountEnemiesNear(target.Position, enemyRadius, isStructureTrap)
 	if state.AutoTrapPhase == "waiting_spawn" then
 		if enemies > 0 then
 			state.AutoTrapPhase = "activating_tool"
 			state.AutoTrapLootStartedAt = nil
+			state.AutoTrapChestStartedAt = nil
 			state.LastHunterTrapUseAt = 0
 			state.LastHunterTrapStrafeAt = 0
 		elseif now - (state.AutoTrapStartedAt or now) >= HUNTER_TRAP_SPAWN_TIMEOUT then
 			state.AutoTrapVisited = state.AutoTrapVisited or {}
 			state.AutoTrapVisited[target] = true
 			state.AutoTrapTarget = nil
+			state.AutoTrapTargetInfo = nil
 			state.AutoTrapPhase = "seeking"
 			state.AutoTrapLootStartedAt = nil
+			state.AutoTrapChestStartedAt = nil
 			state.LastHunterTrapSearchAt = 0
 			RestoreHunterTrapHitboxes()
 			RestoreAutoTrapFacing()
@@ -2209,15 +2355,28 @@ local function AutoHunterTrapStep()
 		end
 	elseif state.AutoTrapPhase == "activating_tool" then
 		if enemies <= 0 then
-			state.AutoTrapVisited = state.AutoTrapVisited or {}
-			state.AutoTrapVisited[target] = true
-			state.AutoTrapTarget = nil
-			state.AutoTrapPhase = "seeking"
-			state.AutoTrapLootStartedAt = nil
-			state.LastHunterTrapSearchAt = 0
-			RestoreHunterTrapHitboxes()
-			RestoreAutoTrapFacing()
-			if IsAutoTrapRunActive(runId) then AutoHunterTrapStep() end
+			if isStructureTrap then
+				state.AutoTrapPhase = "opening_chest"
+				state.AutoTrapChestStartedAt = now
+				state.AutoTrapLootStartedAt = nil
+				state.LastHunterTrapLootSweep = 0
+				RestoreHunterTrapHitboxes()
+				RestoreAutoTrapFacing()
+			else
+				state.AutoTrapVisited = state.AutoTrapVisited or {}
+				state.AutoTrapVisited[target] = true
+				state.AutoTrapTarget = nil
+				state.AutoTrapTargetInfo = nil
+				state.AutoTrapPhase = "seeking"
+				state.AutoTrapLootStartedAt = nil
+				state.AutoTrapChestStartedAt = nil
+				state.LastHunterTrapSearchAt = 0
+				RestoreHunterTrapHitboxes()
+				RestoreAutoTrapFacing()
+				if IsAutoTrapRunActive(runId) then AutoHunterTrapStep() end
+			end
+		elseif isStructureTrap then
+			TryClearHunterTrapEnemies(target.Position, runId, true, enemyRadius)
 		elseif now - (state.LastHunterTrapUseAt or 0) >= HUNTER_TRAP_ATTACK_INTERVAL then
 			state.LastHunterTrapUseAt = now
 			StrafeNearestHunterNear(target.Position, HUNTER_TRAP_ENEMY_RADIUS, runId)
@@ -2225,9 +2384,36 @@ local function AutoHunterTrapStep()
 		else
 			FaceNearestHunterNear(target.Position, HUNTER_TRAP_ENEMY_RADIUS)
 		end
+	elseif state.AutoTrapPhase == "opening_chest" then
+		SweepHunterTrapDrops(target.Position, runId, STRUCTURE_TRAP_CHEST_RADIUS)
+		if now - (state.AutoTrapChestStartedAt or now) >= STRUCTURE_TRAP_CHEST_WAIT_TIME then
+			OpenAutoTrapChest(info, runId)
+			state.AutoTrapPhase = "collecting_chest_loot"
+			state.AutoTrapLootStartedAt = now
+			state.LastHunterTrapLootSweep = 0
+		end
+	elseif state.AutoTrapPhase == "collecting_chest_loot" then
+		local chest = FindAutoTrapChest(info)
+		local chestRoot = PickupRoot(chest)
+		SweepHunterTrapDrops((chestRoot and chestRoot.Position) or target.Position, runId, STRUCTURE_TRAP_CHEST_RADIUS)
+		if now - (state.AutoTrapLootStartedAt or now) >= STRUCTURE_TRAP_LOOT_SWEEP_TIME then
+			TryAutoSellLoot(runId)
+			state.AutoTrapVisited = state.AutoTrapVisited or {}
+			state.AutoTrapVisited[target] = true
+			state.AutoTrapTarget = nil
+			state.AutoTrapTargetInfo = nil
+			state.AutoTrapPhase = "seeking"
+			state.AutoTrapLootStartedAt = nil
+			state.AutoTrapChestStartedAt = nil
+			state.LastHunterTrapSearchAt = 0
+			RestoreHunterTrapHitboxes()
+			RestoreAutoTrapFacing()
+			if IsAutoTrapRunActive(runId) then AutoHunterTrapStep() end
+		end
 	else
 		state.AutoTrapPhase = "seeking"
 		state.AutoTrapLootStartedAt = nil
+		state.AutoTrapChestStartedAt = nil
 		RestoreHunterTrapHitboxes()
 		RestoreAutoTrapFacing()
 	end
@@ -2391,8 +2577,10 @@ local function ToggleAutoHunterTrap()
 		end
 		state.AutoTrapVisited = {}
 		state.AutoTrapTarget = nil
+		state.AutoTrapTargetInfo = nil
 		state.AutoTrapPhase = "seeking"
 		state.AutoTrapLootStartedAt = nil
+		state.AutoTrapChestStartedAt = nil
 		state.LastHunterTrapAttack = 0
 		state.LastHunterTrapLootSweep = 0
 		state.HunterTrapAttackBusy = false
@@ -2408,8 +2596,10 @@ local function ToggleAutoHunterTrap()
 		AutoHunterTrapStep()
 	else
 		state.AutoTrapTarget = nil
+		state.AutoTrapTargetInfo = nil
 		state.AutoTrapPhase = nil
 		state.AutoTrapLootStartedAt = nil
+		state.AutoTrapChestStartedAt = nil
 		state.HunterTrapAttackBusy = false
 		state.LastHunterTrapApproachAt = 0
 		state.LastHunterTrapUseAt = 0
@@ -2432,8 +2622,10 @@ local function ToggleAutoMobFarm()
 			state.AutoHunterTrap = false
 			NextAutoTrapRunId()
 			state.AutoTrapTarget = nil
+			state.AutoTrapTargetInfo = nil
 			state.AutoTrapPhase = nil
 			state.AutoTrapLootStartedAt = nil
+			state.AutoTrapChestStartedAt = nil
 			state.HunterTrapAttackBusy = false
 			state.LastHunterTrapApproachAt = 0
 			state.LastHunterTrapUseAt = 0
