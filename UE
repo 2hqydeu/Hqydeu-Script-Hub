@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v50-trigger-retry-patience"
+local ModuleVersion = "UE-Utility-v51-rarity-pickup-filters"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -86,6 +86,8 @@ state.LastStructureCount = tonumber(state.LastStructureCount) or 0
 state.LastStructureMessage = state.LastStructureMessage or "STRUCTURE: N/A"
 state.LastStructureMessage = tostring(state.LastStructureMessage):gsub(" Has Spawned", "")
 state.SelectedBoxTypes = type(state.SelectedBoxTypes) == "table" and state.SelectedBoxTypes or {}
+state.SelectedRarities = type(state.SelectedRarities) == "table" and state.SelectedRarities or {}
+state.PickupFiltersOpen = state.PickupFiltersOpen == true
 state.BoxObjects = {}
 state.LootFarmEnabled = state.LootFarmEnabled == true
 state.LootFarmCollected = tonumber(state.LootFarmCollected) or 0
@@ -123,7 +125,7 @@ state.BoxObjects = {}
 if type(ThemeObjects.FeatureKeybindEntries) == "table" then
 	for index = #ThemeObjects.FeatureKeybindEntries, 1, -1 do
 		local entry = ThemeObjects.FeatureKeybindEntries[index]
-		if entry and (entry.Storage == "UEEnemyESP" or entry.Storage == "UELootESP" or entry.Storage == "UEBoxESP" or entry.Storage == "UEBoxFilters" or entry.Storage == "UENoDarkness" or entry.Storage == "UEBaseTP" or entry.Storage == "UEStructureNotifications" or entry.Storage == "UEAutoHunterTrap" or entry.Storage == "UEAutoMobFarm" or entry.Storage == "UELootFarm" or entry.Storage == "UEAutoTrap") then
+		if entry and (entry.Storage == "UEEnemyESP" or entry.Storage == "UELootESP" or entry.Storage == "UEBoxESP" or entry.Storage == "UEBoxFilters" or entry.Storage == "UENoDarkness" or entry.Storage == "UEBaseTP" or entry.Storage == "UEStructureNotifications" or entry.Storage == "UEAutoHunterTrap" or entry.Storage == "UEAutoMobFarm" or entry.Storage == "UELootFarm" or entry.Storage == "UEAutoTrap" or entry.Storage == "UEPickupFilters") then
 			table.remove(ThemeObjects.FeatureKeybindEntries, index)
 		end
 	end
@@ -150,7 +152,7 @@ local FARM_MOVE_HOLD_INTERVAL = 0.05
 local BOX_OPEN_HOLD_DURATION = 3
 local FARM_OPEN_SAFETY_BUFFER = 1.5
 local FARM_CLAIM_SEARCH_RADIUS = 35
-local FARM_CLAIM_SEARCH_TIMEOUT = 2
+local FARM_CLAIM_SEARCH_TIMEOUT = 3
 local FARM_CLAIM_POST_FIRE_WAIT = 0.5
 local FARM_SKIP_COOLDOWN = 6
 local FARM_IDLE_WAIT = 0.35
@@ -167,6 +169,41 @@ for _, boxType in ipairs(BOX_TYPES) do
 	if state.SelectedBoxTypes[boxType] == nil then state.SelectedBoxTypes[boxType] = true end
 end
 
+local function DiscoverRarityTiers()
+	local tiers = {}
+	local itemsFolder = game.ReplicatedStorage:FindFirstChild("Items")
+	local dropsFolder = itemsFolder and itemsFolder:FindFirstChild("Drops")
+	if dropsFolder then
+		for _, child in ipairs(dropsFolder:GetChildren()) do
+			if child:IsA("Folder") then
+				table.insert(tiers, child.Name)
+			end
+		end
+	end
+	return tiers
+end
+
+local RARITY_TIERS = DiscoverRarityTiers()
+local KNOWN_RARITY_SET = {}
+for _, tier in ipairs(RARITY_TIERS) do
+	KNOWN_RARITY_SET[tier] = true
+	if state.SelectedRarities[tier] == nil then state.SelectedRarities[tier] = true end
+end
+
+local function GetDropRarity(part)
+	for _, descendant in ipairs(part:GetDescendants()) do
+		if (descendant:IsA("TextLabel") or descendant:IsA("TextButton")) and KNOWN_RARITY_SET[tostring(descendant.Text)] then
+			return tostring(descendant.Text)
+		end
+	end
+	return nil
+end
+
+local function IsRarityAllowed(rarity)
+	if not rarity then return true end
+	return state.SelectedRarities[rarity] ~= false
+end
+
 local uePage = Instance.new("ScrollingFrame")
 uePage.Name = "UndeadExpeditionPage"
 uePage.Size = UDim2.new(0, 346, 1, -54)
@@ -181,7 +218,7 @@ uePage.ScrollBarImageColor3 = AccentColor
 uePage.ScrollingDirection = Enum.ScrollingDirection.Y
 uePage.ElasticBehavior = Enum.ElasticBehavior.Never
 uePage.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
-uePage.CanvasSize = UDim2.new(0, 0, 0, 286)
+uePage.CanvasSize = UDim2.new(0, 0, 0, 306)
 uePage.Visible = false
 uePage:SetAttribute("ModuleVersion", ModuleVersion)
 uePage.Parent = MainFrame
@@ -371,21 +408,23 @@ AddText(farmStatus)
 local farmToggle = CreateButton(farmRow, "UndeadExpeditionLootFarmToggle", "Off", -98, 44)
 
 local trapRow = CreateRow("UndeadExpeditionAutoTrapRow", 234)
+trapRow.Size = UDim2.new(1, -24, 0, 54)
 local trapTitle = CreateTitle(trapRow, "Auto Trap:")
+local pickupButton = CreateButton(trapRow, "UndeadExpeditionPickupFilters", "Pickup", -152, 46)
+local trapToggle = CreateButton(trapRow, "UndeadExpeditionAutoTrapToggle", "Off", -98, 44)
 local trapStatus = Instance.new("TextLabel")
 trapStatus.Name = "UndeadExpeditionAutoTrapStatus"
-trapStatus.Size = UDim2.new(0, 110, 0, 18)
-trapStatus.Position = UDim2.new(1, -220, 0, 10)
+trapStatus.Size = UDim2.new(0, 220, 0, 16)
+trapStatus.Position = UDim2.new(0, 12, 0, 32)
 trapStatus.BackgroundTransparency = 1
 trapStatus.ZIndex = 4
 trapStatus.Text = "0 cleared"
 trapStatus.Font = Enum.Font.GothamBold
 trapStatus.TextSize = 8
-trapStatus.TextXAlignment = Enum.TextXAlignment.Right
+trapStatus.TextXAlignment = Enum.TextXAlignment.Left
 trapStatus.TextTruncate = Enum.TextTruncate.AtEnd
 trapStatus.Parent = trapRow
 AddText(trapStatus)
-local trapToggle = CreateButton(trapRow, "UndeadExpeditionAutoTrapToggle", "Off", -98, 44)
 
 local filterDock = Instance.new("Frame")
 filterDock.Name = "UndeadExpeditionFilterDock"
@@ -607,6 +646,123 @@ for index, boxType in ipairs(BOX_TYPES) do
 	local column = (index - 1) % 3
 	local row = math.floor((index - 1) / 3)
 	CreateFilterButton(boxType, column * 82, 16 + row * 23)
+end
+
+local pickupRows = math.max(1, math.ceil(#RARITY_TIERS / 3))
+local pickupScrollHeight = 16 + pickupRows * 23
+local pickupDockHeight = math.max(80, pickupScrollHeight + 46)
+
+local pickupDock = Instance.new("Frame")
+pickupDock.Name = "UndeadExpeditionPickupDock"
+pickupDock.Size = UDim2.new(0, 256, 0, pickupDockHeight)
+pickupDock.BackgroundColor3 = FrameThemeColor
+pickupDock.BackgroundTransparency = 0
+pickupDock.BorderSizePixel = 0
+pickupDock.ZIndex = 80
+pickupDock.Visible = false
+pickupDock.Parent = ScreenGui or MainFrame
+AddBackground(pickupDock)
+Instance.new("UICorner", pickupDock).CornerRadius = UDim.new(0, 9)
+local pickupDockStroke = Instance.new("UIStroke")
+pickupDockStroke.Color = AccentColor
+pickupDockStroke.Thickness = 1.5
+pickupDockStroke.Transparency = 0.08
+pickupDockStroke.Parent = pickupDock
+if ThemeObjects.Accents then table.insert(ThemeObjects.Accents, pickupDockStroke) end
+local pickupDockGradient = Instance.new("UIGradient")
+pickupDockGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, FrameThemeColor:Lerp(Color3.fromRGB(255, 255, 255), 0.04)),
+	ColorSequenceKeypoint.new(1, FrameThemeColor:Lerp(Color3.fromRGB(0, 0, 0), 0.14)),
+})
+pickupDockGradient.Rotation = 35
+pickupDockGradient.Parent = pickupDock
+local pickupDockScale = Instance.new("UIScale")
+pickupDockScale.Scale = GuiScaleFromValue(GuiSizeValue)
+pickupDockScale.Parent = pickupDock
+
+local function UpdatePickupDockPosition()
+	local scale = pickupDockScale.Scale
+	pickupDock.Position = UDim2.fromOffset(MainFrame.AbsolutePosition.X - ((256 + 7) * scale), MainFrame.AbsolutePosition.Y + ((54 + 122 + 7) * scale))
+end
+TrackConnection("UndeadExpeditionPickupDockPosition", MainFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(UpdatePickupDockPosition))
+TrackConnection("UndeadExpeditionPickupDockSize", MainFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdatePickupDockPosition))
+UpdatePickupDockPosition()
+
+local pickupHeader = Instance.new("TextLabel")
+pickupHeader.Size = UDim2.new(1, -40, 0, 14)
+pickupHeader.Position = UDim2.new(0, 8, 0, 6)
+pickupHeader.BackgroundTransparency = 1
+pickupHeader.Text = "Pickup Filters"
+pickupHeader.Font = Enum.Font.GothamBold
+pickupHeader.TextSize = 10
+pickupHeader.TextXAlignment = Enum.TextXAlignment.Center
+pickupHeader.ZIndex = 81
+pickupHeader.Parent = pickupDock
+AddText(pickupHeader)
+
+local pickupCloseButton = Instance.new("TextButton")
+pickupCloseButton.Name = "UndeadExpeditionPickupClose"
+pickupCloseButton.Size = UDim2.new(0, 18, 0, 18)
+pickupCloseButton.Position = UDim2.new(1, -24, 0, 5)
+pickupCloseButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+pickupCloseButton.BackgroundTransparency = 0.35
+pickupCloseButton.BorderSizePixel = 0
+pickupCloseButton.Text = "x"
+pickupCloseButton.Font = Enum.Font.GothamBold
+pickupCloseButton.TextSize = 9
+pickupCloseButton.ZIndex = 82
+pickupCloseButton.Parent = pickupDock
+AddBackground(pickupCloseButton)
+AddText(pickupCloseButton)
+Instance.new("UICorner", pickupCloseButton).CornerRadius = UDim.new(0, 5)
+EnsureControlOutline(pickupCloseButton)
+
+local pickupScroll = Instance.new("ScrollingFrame")
+pickupScroll.Name = "UndeadExpeditionPickupScroll"
+pickupScroll.Size = UDim2.new(1, -16, 1, -36)
+pickupScroll.Position = UDim2.new(0, 8, 0, 30)
+pickupScroll.BackgroundTransparency = 1
+pickupScroll.BorderSizePixel = 0
+pickupScroll.ScrollBarThickness = 3
+pickupScroll.ScrollBarImageColor3 = AccentColor
+pickupScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+pickupScroll.ElasticBehavior = Enum.ElasticBehavior.Never
+pickupScroll.CanvasSize = UDim2.new(0, 0, 0, pickupScrollHeight)
+pickupScroll.ZIndex = 81
+pickupScroll.Parent = pickupDock
+
+local pickupFilterButtons = {}
+
+local function CreatePickupFilterButton(value, x, y)
+	local button = Instance.new("TextButton")
+	button.Name = "UndeadExpeditionPickupFilter" .. tostring(value):gsub("%W+", "")
+	button.Size = UDim2.new(0, 76, 0, 20)
+	button.Position = UDim2.new(0, x, 0, y)
+	button.BackgroundColor3 = Green
+	button.BackgroundTransparency = 0
+	button.BorderSizePixel = 0
+	button.Font = Enum.Font.GothamBold
+	button.TextSize = 7
+	button.TextColor3 = Color3.fromRGB(255, 255, 255)
+	button.TextTruncate = Enum.TextTruncate.AtEnd
+	button.ZIndex = 82
+	button.Parent = pickupScroll
+	AddText(button)
+	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 5)
+	EnsureControlOutline(button)
+	table.insert(pickupFilterButtons, {Button = button, Value = value})
+	button.MouseButton1Click:Connect(function()
+		PlayClick()
+		state.SelectedRarities[value] = not (state.SelectedRarities[value] ~= false)
+		RefreshButtons()
+		UpdateTheme(true)
+	end)
+end
+
+for index, tier in ipairs(RARITY_TIERS) do
+	local column = (index - 1) % 3
+	local row = math.floor((index - 1) / 3)
+	CreatePickupFilterButton(tier, column * 82, 16 + row * 23)
 end
 
 local function SafeGet(instance, property)
@@ -1034,7 +1190,7 @@ local function FindNearbyClaimPrompt(position, radius)
 				local part = inst.Parent
 				if part and part:IsA("BasePart") then
 					local dist = (part.Position - position).Magnitude
-					if dist <= radius and (not bestDist or dist < bestDist) then
+					if dist <= radius and (not bestDist or dist < bestDist) and IsRarityAllowed(GetDropRarity(part)) then
 						bestDist = dist
 						bestPrompt = inst
 						bestPart = part
@@ -1518,7 +1674,7 @@ local ENCOUNTERS = {
 			return part and part.Position
 		end,
 		EnemyNames = {"grounder"},
-		LootAttempts = 4,
+		LootAttempts = 6,
 	},
 	{
 		Id = "Ancient Ruins",
@@ -1530,7 +1686,7 @@ local ENCOUNTERS = {
 			return part and part.Position
 		end,
 		EnemyNames = {"pharaon", "mummy"},
-		LootAttempts = 4,
+		LootAttempts = 6,
 	},
 }
 
@@ -1663,13 +1819,19 @@ local function FightEnemies(trapPosition, nameFilters)
 end
 
 local function ClaimDropsNearArea(fallbackPosition, attempts)
-	task.wait(0.5)
-	for _ = 1, (attempts or 4) do
+	task.wait(0.75)
+	local consecutiveMisses = 0
+	for _ = 1, (attempts or 6) do
 		if not (state.AutoTrapEnabled and uePage.Parent) then break end
 		local root = PlayerRoot()
 		local searchPosition = root and root.Position or fallbackPosition
 		local claimed = ClaimNearbyDrop(searchPosition, {IsEnabled = function() return state.AutoTrapEnabled end})
-		if not claimed then break end
+		if claimed then
+			consecutiveMisses = 0
+		else
+			consecutiveMisses = consecutiveMisses + 1
+			if consecutiveMisses >= 2 then break end
+		end
 	end
 end
 
@@ -1731,7 +1893,7 @@ local function RunIdleCrateSweepStep()
 	})
 	if opened then
 		if state.AutoTrapEnabled and uePage.Parent then
-			ClaimDropsNearArea(boxPosition, 4)
+			ClaimDropsNearArea(boxPosition, 6)
 		end
 	else
 		state.AutoTrapSweepSkipped[target] = os.clock() + FARM_SKIP_COOLDOWN
@@ -1813,7 +1975,7 @@ local function RunAutoTrapStep()
 							IsEnabled = function() return state.AutoTrapEnabled end,
 						})
 						if opened then
-							ClaimDropsNearArea(boxPosition, 4)
+							ClaimDropsNearArea(boxPosition, 6)
 						end
 					end
 				end
@@ -1968,6 +2130,15 @@ RefreshButtons = function()
 		entry.Button.BackgroundTransparency = 0
 	end
 	UpdateFilterDockPosition()
+	pickupButton.Text = state.PickupFiltersOpen and "Close" or "Pickup"
+	pickupDock.Visible = state.PickupFiltersOpen and IsUEPageActive()
+	for _, entry in ipairs(pickupFilterButtons) do
+		local selected = state.SelectedRarities[entry.Value] ~= false
+		entry.Button.Text = (selected and "GET " or "NO ") .. entry.Value
+		entry.Button.BackgroundColor3 = selected and Green or Red
+		entry.Button.BackgroundTransparency = 0
+	end
+	UpdatePickupDockPosition()
 	for _, obj in ipairs(uePage:GetDescendants()) do
 		if obj:IsA("TextButton") then
 			obj.ZIndex = 4
@@ -1993,6 +2164,12 @@ end
 
 local function ToggleBoxFilters()
 	state.LootFiltersOpen = not state.LootFiltersOpen
+	RefreshButtons()
+	UpdateTheme(true)
+end
+
+local function TogglePickupFilters()
+	state.PickupFiltersOpen = not state.PickupFiltersOpen
 	RefreshButtons()
 	UpdateTheme(true)
 end
@@ -2032,10 +2209,24 @@ filterCloseButton.MouseButton1Click:Connect(function()
 	UpdateTheme(true)
 end)
 
+pickupButton.MouseButton1Click:Connect(function()
+	PlayClick()
+	TogglePickupFilters()
+end)
+
+pickupCloseButton.MouseButton1Click:Connect(function()
+	PlayClick()
+	state.PickupFiltersOpen = false
+	RefreshButtons()
+	UpdateTheme(true)
+end)
+
 local previousCloseTransientPopups = ThemeObjects.CloseTransientPopups
 ThemeObjects.CloseTransientPopups = function(...)
 	state.LootFiltersOpen = false
+	state.PickupFiltersOpen = false
 	if filterDock then filterDock.Visible = false end
+	if pickupDock then pickupDock.Visible = false end
 	if previousCloseTransientPopups then
 		return previousCloseTransientPopups(...)
 	end
@@ -2073,6 +2264,7 @@ table.insert(ThemeObjects.StateTexts, {Object = farmTitle, IsEnabled = function(
 table.insert(ThemeObjects.StateTexts, {Object = trapTitle, IsEnabled = function() return state.AutoTrapEnabled end})
 ThemeObjects.AddFeatureKeybind({Name = "Box ESP", Storage = "UEBoxESP", Parent = boxRow, Toggle = boxToggle, Get = function() return LoadGameKeybind("UEBoxESP") end, Set = function(key) SaveGameKeybind("UEBoxESP", key) end, Action = ToggleBoxESP})
 ThemeObjects.AddFeatureKeybind({Name = "Box Filters", Storage = "UEBoxFilters", Get = function() return LoadGameKeybind("UEBoxFilters") end, Set = function(key) SaveGameKeybind("UEBoxFilters", key) end, Action = ToggleBoxFilters})
+ThemeObjects.AddFeatureKeybind({Name = "Pickup Filters", Storage = "UEPickupFilters", Get = function() return LoadGameKeybind("UEPickupFilters") end, Set = function(key) SaveGameKeybind("UEPickupFilters", key) end, Action = TogglePickupFilters})
 ThemeObjects.AddFeatureKeybind({Name = "No Darkness", Storage = "UENoDarkness", Parent = darknessRow, Toggle = darknessToggle, Get = function() return LoadGameKeybind("UENoDarkness") end, Set = function(key) SaveGameKeybind("UENoDarkness", key) end, Action = ToggleNoDarkness})
 ThemeObjects.AddFeatureKeybind({Name = "Base TP", Storage = "UEBaseTP", Parent = baseRow, Toggle = baseButton, Get = function() return LoadGameKeybind("UEBaseTP") end, Set = function(key) SaveGameKeybind("UEBaseTP", key) end, Action = TeleportToBase})
 ThemeObjects.AddFeatureKeybind({Name = "Structure Alerts", Storage = "UEStructureNotifications", Parent = structureAlertsRow, Toggle = structureAlertsToggle, Get = function() return LoadGameKeybind("UEStructureNotifications") end, Set = function(key) SaveGameKeybind("UEStructureNotifications", key) end, Action = ToggleStructureNotifications})
@@ -2112,6 +2304,8 @@ task.spawn(function()
 		if not active then
 			state.LootFiltersOpen = false
 			filterDock.Visible = false
+			state.PickupFiltersOpen = false
+			pickupDock.Visible = false
 			if structureNotification then structureNotification.Visible = false end
 		end
 		task.wait(active and 0.5 or 0.35)
