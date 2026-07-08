@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v43-graveyard-ancient-encounters"
+local ModuleVersion = "UE-Utility-v44-facing-and-loot-skip"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -1488,6 +1488,7 @@ local ENCOUNTERS = {
 			return position
 		end,
 		EnemyNames = {"hunter"},
+		Loot = false,
 	},
 	{
 		Id = "Graveyard",
@@ -1499,6 +1500,7 @@ local ENCOUNTERS = {
 			return part and part.Position
 		end,
 		EnemyNames = {"grounder"},
+		Loot = true,
 	},
 	{
 		Id = "Ancient Ruins",
@@ -1510,6 +1512,7 @@ local ENCOUNTERS = {
 			return part and part.Position
 		end,
 		EnemyNames = {"pharaon", "mummy"},
+		Loot = true,
 	},
 }
 
@@ -1607,7 +1610,13 @@ local function FightEnemies(trapPosition, nameFilters)
 					local flatOffset = Vector3.new(root.Position.X - targetRoot.Position.X, 0, root.Position.Z - targetRoot.Position.Z)
 					if flatOffset.Magnitude < 0.1 then flatOffset = Vector3.new(TRAP_COMBAT_STANDOFF, 0, 0) end
 					local standPosition = targetRoot.Position + flatOffset.Unit * TRAP_COMBAT_STANDOFF
-					ThemeObjects.SetRootUpright(root, root.CFrame, Vector3.new(standPosition.X, targetRoot.Position.Y, standPosition.Z))
+					local facePosition = Vector3.new(standPosition.X, targetRoot.Position.Y, standPosition.Z)
+					local lookAt = Vector3.new(targetRoot.Position.X, facePosition.Y, targetRoot.Position.Z)
+					if (lookAt - facePosition).Magnitude > 0.05 then
+						root.CFrame = CFrame.new(facePosition, lookAt)
+					else
+						root.CFrame = CFrame.new(facePosition)
+					end
 					root.AssemblyLinearVelocity = Vector3.zero
 					root.AssemblyAngularVelocity = Vector3.zero
 					local tool = EquipAnyWeapon()
@@ -1737,9 +1746,11 @@ local function RunAutoTrapStep()
 	RefreshButtons()
 	FightEnemies(targetPosition, encounter.EnemyNames)
 
-	state.AutoTrapPhase = "Collecting drops"
-	RefreshButtons()
-	ClaimDropsNearArea(targetPosition, 4)
+	if encounter.Loot then
+		state.AutoTrapPhase = "Collecting drops"
+		RefreshButtons()
+		ClaimDropsNearArea(targetPosition, 4)
+	end
 
 	state.AutoTrapPhase = "Returning to base"
 	RefreshButtons()
