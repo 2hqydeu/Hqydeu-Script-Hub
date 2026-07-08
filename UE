@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v29-loot-farm-added"
+local ModuleVersion = "UE-Utility-v30-loot-farm-sequenced"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -89,8 +89,6 @@ state.SelectedBoxTypes = type(state.SelectedBoxTypes) == "table" and state.Selec
 state.BoxObjects = {}
 state.LootFarmEnabled = state.LootFarmEnabled == true
 state.LootFarmCollected = tonumber(state.LootFarmCollected) or 0
-state.LootFarmCurrentBox = nil
-state.LootFarmCurrentPrompt = nil
 state.LootFarmSkipped = {}
 state.CachedFarmTargets = {}
 
@@ -140,10 +138,14 @@ local MAX_BOX_OBJECTS = 40
 local BOX_SCAN_INTERVAL = 0.75
 local STRUCTURE_TIMER_SCAN_INTERVAL = 1.25
 local STRUCTURE_TIMER_FORCE_SCAN_INTERVAL = 0.4
-local FARM_TICK_MIN_INTERVAL = 0.05
 local FARM_TARGET_CACHE_INTERVAL = 0.2
-local FARM_COLLECTION_TIMEOUT = 1.5
-local FARM_SKIP_COOLDOWN = 5
+local FARM_MOVE_HOLD_INTERVAL = 0.05
+local FARM_OPEN_SAFETY_BUFFER = 1.5
+local FARM_CLAIM_SEARCH_RADIUS = 20
+local FARM_CLAIM_SEARCH_TIMEOUT = 3
+local FARM_CLAIM_POST_FIRE_WAIT = 0.5
+local FARM_SKIP_COOLDOWN = 6
+local FARM_IDLE_WAIT = 0.35
 for _, boxType in ipairs(BOX_TYPES) do
 	if state.SelectedBoxTypes[boxType] == nil then state.SelectedBoxTypes[boxType] = true end
 end
@@ -975,36 +977,93 @@ local function GetFarmTargets()
 	return targets
 end
 
-local function TickLootFarm()
-	if not state.LootFarmEnabled then return end
-	if state.LootFarmCurrentBox and not (state.LootFarmCurrentBox.Parent and BoxRoot(state.LootFarmCurrentBox)) then
-		state.LootFarmCollected = (tonumber(state.LootFarmCollected) or 0) + 1
-		state.LootFarmCurrentBox = nil
-		state.LootFarmCurrentPrompt = nil
+local function FindOpenPrompt(box)
+	local fallback
+	for _, child in ipairs(box:GetDescendants()) do
+		if child:IsA("ProximityPrompt") then
+			local action = string.lower(tostring(child.ActionText or ""))
+			if action:find("open", 1, true) then return child end
+			fallback = fallback or child
+		end
 	end
+	return fallback
+end
 
-	local now = os.clock()
-	if now - (state.LastFarmMove or 0) < FARM_TICK_MIN_INTERVAL then return end
-	state.LastFarmMove = now
+local function FindNearbyClaimPrompt(position, radius)
+	local bestPrompt, bestPart, bestDist
+	for _, inst in ipairs(workspace:GetDescendants()) do
+		if inst:IsA("ProximityPrompt") and inst.Enabled then
+			local action = string.lower(tostring(inst.ActionText or ""))
+			if action:find("claim", 1, true) then
+				local part = inst.Parent
+				if part and part:IsA("BasePart") then
+					local dist = (part.Position - position).Magnitude
+					if dist <= radius and (not bestDist or dist < bestDist) then
+						bestDist = dist
+						bestPrompt = inst
+						bestPart = part
+					end
+				end
+			end
+		end
+	end
+	return bestPrompt, bestPart
+end
 
+local function HoldOnBox(target, targetRoot)
+	local openPrompt = FindOpenPrompt(target)
+	local holdDuration = (openPrompt and openPrompt.HoldDuration) or 0
+	local deadline = os.clock() + holdDuration + FARM_OPEN_SAFETY_BUFFER
+	local fired = false
+	while state.LootFarmEnabled and uePage.Parent and target.Parent and BoxRoot(target) and os.clock() < deadline do
+		local root = PlayerRoot()
+		if not root then break end
+		ThemeObjects.SetRootUpright(root, root.CFrame, targetRoot.Position + Vector3.new(0, 1, 0))
+		root.AssemblyLinearVelocity = Vector3.zero
+		root.AssemblyAngularVelocity = Vector3.zero
+		if not fired and openPrompt and openPrompt.Parent and type(fireproximityprompt) == "function" then
+			fired = true
+			pcall(fireproximityprompt, openPrompt, holdDuration)
+		end
+		task.wait(FARM_MOVE_HOLD_INTERVAL)
+	end
+	return not (target.Parent and BoxRoot(target))
+end
+
+local function ClaimNearbyDrop(boxPosition)
+	local claimDeadline = os.clock() + FARM_CLAIM_SEARCH_TIMEOUT
+	while state.LootFarmEnabled and uePage.Parent and os.clock() < claimDeadline do
+		local claimPrompt, claimPart = FindNearbyClaimPrompt(boxPosition, FARM_CLAIM_SEARCH_RADIUS)
+		if claimPrompt and claimPart then
+			local root = PlayerRoot()
+			if not root then return end
+			ThemeObjects.SetRootUpright(root, root.CFrame, claimPart.Position + Vector3.new(0, 1, 0))
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.AssemblyAngularVelocity = Vector3.zero
+			if type(fireproximityprompt) == "function" then
+				pcall(fireproximityprompt, claimPrompt)
+			end
+			task.wait(FARM_CLAIM_POST_FIRE_WAIT)
+			if not claimPrompt.Parent then return end
+		else
+			task.wait(0.15)
+		end
+	end
+end
+
+local function RunLootFarmStep()
 	local root = PlayerRoot()
 	if not root then return end
 
-	local targets = GetFarmTargets()
+	local now = os.clock()
 	local available = {}
-	for _, box in ipairs(targets) do
+	for _, box in ipairs(GetFarmTargets()) do
 		local skipUntil = state.LootFarmSkipped[box]
 		if not skipUntil or now >= skipUntil then
-			state.LootFarmSkipped[box] = nil
 			table.insert(available, box)
 		end
 	end
-
-	if #available == 0 then
-		state.LootFarmCurrentBox = nil
-		state.LootFarmCurrentPrompt = nil
-		return
-	end
+	if #available == 0 then return end
 
 	table.sort(available, function(a, b)
 		local rootA, rootB = BoxRoot(a), BoxRoot(b)
@@ -1015,46 +1074,27 @@ local function TickLootFarm()
 	local targetRoot = BoxRoot(target)
 	if not targetRoot then return end
 
-	if state.LootFarmCurrentBox ~= target then
-		state.LootFarmCurrentBox = target
-		state.LootFarmCurrentBoxSince = now
-		state.LootFarmCurrentPrompt = nil
-		for _, child in ipairs(target:GetDescendants()) do
-			if child:IsA("ProximityPrompt") then
-				state.LootFarmCurrentPrompt = child
-				break
-			end
+	local boxPosition = targetRoot.Position
+	local opened = HoldOnBox(target, targetRoot)
+	if opened then
+		state.LootFarmCollected = state.LootFarmCollected + 1
+		farmStatus.Text = ("%d farmed"):format(state.LootFarmCollected)
+		if state.LootFarmEnabled and uePage.Parent then
+			ClaimNearbyDrop(boxPosition)
 		end
-	elseif now - state.LootFarmCurrentBoxSince >= FARM_COLLECTION_TIMEOUT then
-		state.LootFarmSkipped[target] = now + FARM_SKIP_COOLDOWN
-		state.LootFarmCurrentBox = nil
-		state.LootFarmCurrentPrompt = nil
-		return
+	else
+		state.LootFarmSkipped[target] = os.clock() + FARM_SKIP_COOLDOWN
 	end
-
-	ThemeObjects.SetRootUpright(root, root.CFrame, targetRoot.Position + Vector3.new(0, 1, 0))
-	root.AssemblyLinearVelocity = Vector3.zero
-	root.AssemblyAngularVelocity = Vector3.zero
-
-	if state.LootFarmCurrentPrompt and state.LootFarmCurrentPrompt.Parent and type(fireproximityprompt) == "function" then
-		pcall(fireproximityprompt, state.LootFarmCurrentPrompt)
-	end
-
-	farmStatus.Text = ("%d farmed"):format(state.LootFarmCollected)
 end
 
 local function SetLootFarmEnabled(enabled)
 	state.LootFarmEnabled = enabled == true
 	if state.LootFarmEnabled then
 		state.LootFarmSkipped = {}
-		state.LootFarmCurrentBox = nil
-		state.LootFarmCurrentPrompt = nil
 		state.LastFarmTargetScan = 0
 		SetCharacterCollision(false)
 	else
 		SetCharacterCollision(true)
-		state.LootFarmCurrentBox = nil
-		state.LootFarmCurrentPrompt = nil
 	end
 	RefreshButtons()
 	UpdateTheme(true)
@@ -1063,6 +1103,15 @@ end
 local function ToggleLootFarm()
 	SetLootFarmEnabled(not state.LootFarmEnabled)
 end
+
+task.spawn(function()
+	while uePage.Parent do
+		if state.LootFarmEnabled then
+			RunLootFarmStep()
+		end
+		task.wait(FARM_IDLE_WAIT)
+	end
+end)
 
 local lightingEffectProperties = {
 	Atmosphere = {"Density", "Offset", "Color", "Decay", "Glare", "Haze"},
@@ -1385,7 +1434,6 @@ TrackConnection("UndeadExpeditionLightingHeartbeat", RunService.Heartbeat:Connec
 		UpdateBoxESP()
 		RefreshButtons()
 	end
-	TickLootFarm()
 end))
 
 task.spawn(function()
