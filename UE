@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v46-crate-unlock-and-self-defense"
+local ModuleVersion = "UE-Utility-v47-explicit-key-crate-open"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -1778,6 +1778,24 @@ local function RunAutoTrapStep()
 		state.AutoTrapPhase = "Collecting drops"
 		RefreshButtons()
 		ClaimDropsNearArea(targetPosition, 4)
+
+		state.AutoTrapPhase = "Opening " .. encounter.Id .. " crate"
+		RefreshButtons()
+		local lootFolder = structure:FindFirstChild("Loot")
+		if lootFolder then
+			for _, box in ipairs(lootFolder:GetChildren()) do
+				if BOX_TYPE_REQUIRED_KEY[BoxType(box)] then
+					local boxRoot = BoxRoot(box)
+					if boxRoot then
+						HoldOnBox(box, boxRoot, {
+							StatusLabel = trapStatus,
+							LogPrefix = "[UE Auto Trap]",
+							IsEnabled = function() return state.AutoTrapEnabled end,
+						})
+					end
+				end
+			end
+		end
 	end
 
 	state.AutoTrapPhase = "Returning to base"
