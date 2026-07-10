@@ -37,7 +37,7 @@ if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu pa
 HubState.Connections = HubState.Connections or {}
 ScreenGui = ScreenGui or MainFrame:FindFirstAncestorOfClass("ScreenGui")
 
-local ModuleVersion = "UE-Utility-v60-structure-colors-alerts"
+local ModuleVersion = "UE-Utility-v62-key-fix-watchdog"
 local existingPage = MainFrame:FindFirstChild("UndeadExpeditionPage")
 local existingEspFolder = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionESP")
 local existingFilterDock = ScreenGui and ScreenGui:FindFirstChild("UndeadExpeditionFilterDock")
@@ -1551,7 +1551,7 @@ do
 	end
 end
 
-local UpdateStructuresESP, UpdateItemsESP, UpdateMobsESP
+local UpdateStructuresESP, UpdateItemsESP, UpdateMobsESP, GetAllGroundItems
 do
 	local function CreateGenericESPEntry(folder, root, color, text)
 		local holder = Instance.new("Folder")
@@ -1633,7 +1633,7 @@ do
 		end
 	end
 
-	local function GetAllGroundItems()
+	GetAllGroundItems = function()
 		local items = {}
 		for _, inst in ipairs(workspace:GetDescendants()) do
 			if inst:IsA("ProximityPrompt") and inst.Enabled then
@@ -1745,6 +1745,24 @@ do
 	end
 end
 
+local BOX_TYPE_REQUIRED_KEY = {
+	Grounder = "Grounder Key",
+	Ancient = "Ancient Key",
+}
+local KEY_TOOL_NAMES = {}
+for _, keyName in pairs(BOX_TYPE_REQUIRED_KEY) do
+	KEY_TOOL_NAMES[keyName] = true
+end
+
+local function IsKeyDrop(part)
+	for _, descendant in ipairs(part:GetDescendants()) do
+		if (descendant:IsA("TextLabel") or descendant:IsA("TextButton")) and KEY_TOOL_NAMES[tostring(descendant.Text)] then
+			return true
+		end
+	end
+	return false
+end
+
 local function FindOpenPrompt(box)
 	local fallback
 	for _, child in ipairs(box:GetDescendants()) do
@@ -1766,7 +1784,8 @@ local function FindNearbyClaimPrompt(position, radius)
 				local part = inst.Parent
 				if part and part:IsA("BasePart") then
 					local dist = (part.Position - position).Magnitude
-					if dist <= radius and (not bestDist or dist < bestDist) and IsRarityAllowed(GetDropRarity(part)) then
+					local allowed = IsKeyDrop(part) or IsRarityAllowed(GetDropRarity(part))
+					if dist <= radius and (not bestDist or dist < bestDist) and allowed then
 						bestDist = dist
 						bestPrompt = inst
 						bestPart = part
@@ -1828,15 +1847,6 @@ local function ReleaseInteractKey(keyCode)
 	pcall(function()
 		game:GetService("VirtualInputManager"):SendKeyEvent(false, keyCode, false, game)
 	end)
-end
-
-local BOX_TYPE_REQUIRED_KEY = {
-	Grounder = "Grounder Key",
-	Ancient = "Ancient Key",
-}
-local KEY_TOOL_NAMES = {}
-for _, keyName in pairs(BOX_TYPE_REQUIRED_KEY) do
-	KEY_TOOL_NAMES[keyName] = true
 end
 
 local function FindKeyTool(keyName)
@@ -2178,7 +2188,7 @@ do
 				return position
 			end,
 			EnemyNames = {"hunter"},
-			LootAttempts = 1,
+			LootAttempts = 4,
 		},
 		{
 			Id = "Graveyard",
@@ -2563,50 +2573,98 @@ do
 		return count
 	end
 
+	local MAX_SWEEP_TARGETS = 10
+
+	local function RunMissedItemSweep()
+		local ok = pcall(function()
+			local candidates = {}
+			for _, part in ipairs(GetAllGroundItems()) do
+				if part and part.Parent and (IsKeyDrop(part) or IsRarityAllowed(GetDropRarity(part))) then
+					table.insert(candidates, part)
+				end
+			end
+			if #candidates == 0 then return end
+
+			local root = PlayerRoot()
+			if root then
+				table.sort(candidates, function(a, b)
+					return (a.Position - root.Position).Magnitude < (b.Position - root.Position).Magnitude
+				end)
+			end
+
+			state.AutoTrapPhase = "Sweeping missed items"
+			state.AutoTrapPhaseStartedAt = os.clock()
+			RefreshButtons()
+
+			for index, part in ipairs(candidates) do
+				if index > MAX_SWEEP_TARGETS then break end
+				if not (state.AutoTrapEnabled and uePage.Parent) then break end
+				if part and part.Parent then
+					StableTeleport(CFrame.new(part.Position + Vector3.new(0, 3, 0)))
+					task.wait(0.2)
+					ClaimNearbyDrop(part.Position, {IsEnabled = function() return state.AutoTrapEnabled end})
+				end
+			end
+		end)
+		if not ok then
+			warn("[UE Auto Trap] missed-item sweep failed, continuing")
+		end
+	end
+
 	local function RunAutoSellStep()
 		local backpack = Player and Player:FindFirstChildOfClass("Backpack")
 		if not backpack then return end
 
 		state.ToolInteractionActive = true
 		state.AutoTrapPhase = "Selling inventory"
+		state.AutoTrapPhaseStartedAt = os.clock()
 		RefreshButtons()
 
-		-- protect the currently equipped weapon and any quest keys from being swept up by the "sell everything" remote
-		local protectedTools = {}
-		local character = Player and Player.Character
-		local equipped = character and character:FindFirstChildOfClass("Tool")
-		if equipped then
-			table.insert(protectedTools, {Tool = equipped, Parent = equipped.Parent})
-			equipped.Parent = nil
-		end
-		for _, tool in ipairs(backpack:GetChildren()) do
-			if tool:IsA("Tool") and KEY_TOOL_NAMES[tool.Name] then
-				table.insert(protectedTools, {Tool = tool, Parent = tool.Parent})
-				tool.Parent = nil
+		local ok = pcall(function()
+			-- protect the currently equipped weapon and any quest keys from being swept up by the "sell everything" remote
+			local protectedTools = {}
+			local character = Player and Player.Character
+			local equipped = character and character:FindFirstChildOfClass("Tool")
+			if equipped then
+				table.insert(protectedTools, {Tool = equipped, WasEquipped = true})
+				equipped.Parent = nil
 			end
-		end
+			for _, tool in ipairs(backpack:GetChildren()) do
+				if tool:IsA("Tool") and KEY_TOOL_NAMES[tool.Name] then
+					table.insert(protectedTools, {Tool = tool, WasEquipped = false})
+					tool.Parent = nil
+				end
+			end
 
-		StableTeleport(CFrame.new(SELLER_POSITION))
-		task.wait(0.3)
-
-		local base = workspace:FindFirstChild("Base")
-		local seller = base and base:FindFirstChild("Seller")
-		local prompt = seller and seller:FindFirstChildOfClass("ProximityPrompt")
-		if prompt then
-			pcall(function() fireproximityprompt(prompt) end)
+			StableTeleport(CFrame.new(SELLER_POSITION))
 			task.wait(0.3)
-		end
 
-		local sellRemote = game.ReplicatedStorage:FindFirstChild("SellRemote")
-		if sellRemote then
-			pcall(function() sellRemote:FireServer("AllItems") end)
-		end
-		task.wait(AUTO_SELL_SETTLE_WAIT)
-
-		for _, entry in ipairs(protectedTools) do
-			if entry.Tool and entry.Tool.Parent == nil then
-				entry.Tool.Parent = entry.Parent
+			local base = workspace:FindFirstChild("Base")
+			local seller = base and base:FindFirstChild("Seller")
+			local prompt = seller and seller:FindFirstChildOfClass("ProximityPrompt")
+			if prompt then
+				pcall(function() fireproximityprompt(prompt) end)
+				task.wait(0.3)
 			end
+
+			local sellRemote = game.ReplicatedStorage:FindFirstChild("SellRemote")
+			if sellRemote then
+				pcall(function() sellRemote:FireServer("AllItems") end)
+			end
+			task.wait(AUTO_SELL_SETTLE_WAIT)
+
+			for _, entry in ipairs(protectedTools) do
+				pcall(function()
+					if entry.Tool and entry.Tool.Parent == nil then
+						local currentCharacter = Player and Player.Character
+						local currentBackpack = Player and Player:FindFirstChildOfClass("Backpack")
+						entry.Tool.Parent = (entry.WasEquipped and currentCharacter) or currentBackpack or currentCharacter
+					end
+				end)
+			end
+		end)
+		if not ok then
+			warn("[UE Auto Trap] auto-sell step failed, resuming normal operation")
 		end
 
 		state.ToolInteractionActive = false
@@ -2617,14 +2675,42 @@ do
 	task.spawn(function()
 		while uePage.Parent do
 			if state.AutoTrapEnabled then
-				if GetBackpackItemCount() >= AUTO_SELL_THRESHOLD then
-					RunAutoSellStep()
-				else
-					ScanForExistingTrapStructures()
-					RunAutoTrapStep()
+				local ok, err = pcall(function()
+					if GetBackpackItemCount() >= AUTO_SELL_THRESHOLD then
+						RunMissedItemSweep()
+						RunAutoSellStep()
+					else
+						ScanForExistingTrapStructures()
+						RunAutoTrapStep()
+					end
+				end)
+				if not ok then
+					warn("[UE Auto Trap] step error: " .. tostring(err))
+					state.ToolInteractionActive = false
+					state.AutoTrapPhase = "Idle"
+					RefreshButtons()
 				end
 			end
 			task.wait(TRAP_IDLE_WAIT)
+		end
+	end)
+
+	-- safety net: if a sell/sweep step ever hangs instead of erroring, force back to Idle after 20s so it can't get stuck forever
+	task.spawn(function()
+		while uePage.Parent do
+			if state.AutoTrapEnabled then
+				local phase = tostring(state.AutoTrapPhase or "")
+				if phase == "Selling inventory" or phase == "Sweeping missed items" then
+					local startedAt = tonumber(state.AutoTrapPhaseStartedAt) or 0
+					if startedAt > 0 and os.clock() - startedAt > 20 then
+						warn("[UE Auto Trap] watchdog: phase stuck on \"" .. phase .. "\" for 20s+, forcing reset")
+						state.ToolInteractionActive = false
+						state.AutoTrapPhase = "Idle"
+						RefreshButtons()
+					end
+				end
+			end
+			task.wait(5)
 		end
 	end)
 
