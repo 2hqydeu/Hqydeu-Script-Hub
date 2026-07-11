@@ -14,7 +14,7 @@ local HubState = Runtime.HubState
 local ThemeObjects = Runtime.ThemeObjects
 local MainFrame = Runtime.MainFrame
 local ScreenGui = Runtime.ScreenGui
-local RunService = Runtime.RunService or game:GetService("RunService")
+local Player = Runtime.Player or game:GetService("Players").LocalPlayer
 local SavedKeybinds = Runtime.SavedKeybinds or {}
 local AccentColor = Runtime.GetAccentColor and Runtime.GetAccentColor() or Color3.fromRGB(0, 210, 255)
 local FrameThemeColor = Runtime.GetFrameThemeColor and Runtime.GetFrameThemeColor() or Color3.fromRGB(28, 28, 38)
@@ -131,7 +131,6 @@ local state = HubState.GrowABeehiveState or {
 	FiltersOpen = false,
 	SellBeesOpen = false,
 	LastPromptRefresh = 0,
-	LastBuyAttempt = 0,
 	RollCount = 0,
 	LastRollSummary = "Rolls: 0",
 	PromptCache = {Roll = nil, Buy = {}},
@@ -211,7 +210,6 @@ local function EnsureControlOutline(obj)
 	return obj
 end
 
-local dataClientCache = nil
 local seasonMathCache = nil
 local beeConfigCache = nil
 local rarityConfigCache = nil
@@ -228,19 +226,6 @@ local function SafeRequire(pathParts)
 	end
 	local ok, result = pcall(require, current)
 	return ok and result or nil
-end
-
-local function GetDataClient()
-	if dataClientCache ~= nil and dataClientCache ~= false then return dataClientCache end
-	if dataClientCache == false and os.clock() - (state.LastDataClientRequire or 0) < 3 then return nil end
-	state.LastDataClientRequire = os.clock()
-	local packages = game:GetService("ReplicatedStorage"):FindFirstChild("Packages")
-	local dataService = packages and packages:FindFirstChild("DataService")
-	local ok, result = pcall(function()
-		return dataService and require(dataService).client
-	end)
-	dataClientCache = ok and result or false
-	return dataClientCache ~= false and dataClientCache or nil
 end
 
 local function GetSeasonMath()
@@ -295,34 +280,6 @@ local function GetRarityInfo(rarity)
 	end
 end
 
-local function FormatCompactNumber(value)
-	value = tonumber(value) or 0
-	local absValue = math.abs(value)
-	local suffixes = {
-		{1e12, "T"},
-		{1e9, "B"},
-		{1e6, "M"},
-		{1e3, "K"},
-	}
-	for _, suffix in ipairs(suffixes) do
-		if absValue >= suffix[1] then
-			return ("$%.1f%s"):format(value / suffix[1], suffix[2]):gsub("%.0", "")
-		end
-	end
-	return "$" .. tostring(math.floor(value))
-end
-
-local function FormatWholeNumber(value)
-	value = tonumber(value) or 0
-	local formatted = tostring(math.floor(value + 0.5))
-	while true do
-		local nextFormatted, count = formatted:gsub("^(-?%d+)(%d%d%d)", "%1,%2")
-		formatted = nextFormatted
-		if count == 0 then break end
-	end
-	return formatted
-end
-
 local function FormatClock(seconds)
 	seconds = math.max(0, math.floor(tonumber(seconds) or 0))
 	local hours = math.floor(seconds / 3600)
@@ -357,11 +314,6 @@ end
 local function MutationText(mutation)
 	if mutation == nil or mutation == "" or mutation == "None" then return "" end
 	return " [" .. tostring(mutation) .. "]"
-end
-
-local function ChanceText(info)
-	local odds = BeeOdds(info)
-	return odds and ("1/" .. FormatWholeNumber(odds)) or "1/?"
 end
 
 local function NormalizeSeasonText(text)
@@ -455,7 +407,7 @@ local function FindSeasonTextFallback(force)
 			end
 		end
 	end
-	local localPlayer = game:GetService("Players").LocalPlayer
+	local localPlayer = Player
 	local roots = {}
 	local playerGui = localPlayer and localPlayer:FindFirstChildOfClass("PlayerGui")
 	if playerGui then table.insert(roots, playerGui) end
@@ -737,12 +689,7 @@ beeSellKeybindButton.Parent = beeSellPanel
 AddBackground(beeSellKeybindButton)
 table.insert(ThemeObjects.Accents, beeSellKeybindButton)
 Instance.new("UICorner", beeSellKeybindButton).CornerRadius = UDim.new(0, 5)
-local beeSellKeybindStroke = Instance.new("UIStroke")
-beeSellKeybindStroke.Name = "ControlOutline"
-beeSellKeybindStroke.Color = Color3.fromRGB(0, 0, 0)
-beeSellKeybindStroke.Thickness = 1
-beeSellKeybindStroke.Transparency = 0
-beeSellKeybindStroke.Parent = beeSellKeybindButton
+-- ControlOutline is (re)built by EnsureControlOutline(beeSellKeybindButton) below.
 
 local beeSellCloseButton = Instance.new("TextButton")
 beeSellCloseButton.Name = "GrowABeehiveSellBeesClose"
@@ -987,9 +934,6 @@ for i, season in ipairs(SeasonOptions) do
 end
 filterScroll.CanvasSize = UDim2.new(0, 0, 0, y + math.ceil(#SeasonOptions / 3) * 23 + 6)
 
-local function SetStatus(_)
-end
-
 local function IsGrowPageActive()
 	return ThemeObjects.ActiveTabName == "Games" and HubState.SelectedGame == "Grow a Beehive" and growPage.Parent ~= nil and growPage.Visible == true
 end
@@ -1134,15 +1078,21 @@ end
 
 local packetsCache = nil
 local function GetPackets()
-	if packetsCache then return packetsCache end
+	if packetsCache ~= nil and packetsCache ~= false then return packetsCache end
+	if packetsCache == false and os.clock() - (state.LastPacketsRequire or 0) < 3 then
+		return nil, "Packets not found"
+	end
+	state.LastPacketsRequire = os.clock()
 	local replicatedStorage = game:GetService("ReplicatedStorage")
 	local packages = replicatedStorage:FindFirstChild("Packages")
 	local packetsModule = packages and packages:FindFirstChild("Packets")
 	if not packetsModule then
+		packetsCache = false
 		return nil, "Packets not found"
 	end
 	local ok, result = pcall(require, packetsModule)
 	if not ok then
+		packetsCache = false
 		return nil, tostring(result)
 	end
 	packetsCache = result
@@ -1174,18 +1124,6 @@ local function FireTrashBee()
 	end)
 end
 
-local function ParseHiveKey(key)
-	local floor, index = tostring(key):match("^f(%d+)_(%d+)$")
-	if floor then
-		return tonumber(floor), tonumber(index)
-	end
-	local numberIndex = tonumber(key)
-	if numberIndex then
-		return 1, numberIndex
-	end
-	return nil, nil
-end
-
 local function BeeMetaMatches(beeId, mutation, kind, value)
 	local info = GetBeeInfo(beeId)
 	if not info then return false end
@@ -1210,7 +1148,7 @@ local function BeeToolMatches(tool, kind, value)
 end
 
 local function FindMatchingBeeTool(kind, value)
-	local player = game:GetService("Players").LocalPlayer
+	local player = Player
 	local character = player and player.Character
 	if character then
 		for _, child in ipairs(character:GetChildren()) do
@@ -1233,7 +1171,7 @@ local function TrashMatchingBeeTools(kind, value)
 	if state.BeeTrashBusy then return end
 	state.BeeTrashBusy = true
 	beeSellStatus.Text = "Checking inventory..."
-	local player = game:GetService("Players").LocalPlayer
+	local player = Player
 	local character = player and player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if not humanoid then
