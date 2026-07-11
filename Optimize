@@ -7,6 +7,7 @@ local ThemeObjects = Runtime.ThemeObjects
 local MainFrame = Runtime.MainFrame
 local ScreenGui = Runtime.ScreenGui or (MainFrame and MainFrame:FindFirstAncestorOfClass("ScreenGui"))
 local Player = Runtime.Player or game:GetService("Players").LocalPlayer
+local Lighting = game:GetService("Lighting")
 local PlayClick = Runtime.PlayClick or function() end
 local TrackConnection = Runtime.TrackConnection or function(name, connection) HubState.Connections[name] = connection; return connection end
 local UpdateTheme = Runtime.UpdateTheme or function() end
@@ -225,7 +226,7 @@ end
 
 local function OptimizerApplyLighting()
 	local states = ThemeObjects.Optimizer.States
-	local lighting = game:GetService("Lighting")
+	local lighting = Lighting
 	if states.LowGraphics then
 		OptimizerSet(lighting, "GlobalShadows", false)
 		OptimizerSet(lighting, "FogEnd", 100000)
@@ -286,9 +287,8 @@ local function OptimizerApplyActiveAsync(token)
 	OptimizeStatus.Text = "Applying..."
 	task.spawn(function()
 		local processed = 0
-		local localPlayer = game:GetService("Players").LocalPlayer
-		local playerGui = localPlayer and localPlayer:FindFirstChildOfClass("PlayerGui")
-		local roots = {workspace, game:GetService("Lighting"), playerGui}
+		local playerGui = Player and Player:FindFirstChildOfClass("PlayerGui")
+		local roots = {workspace, Lighting, playerGui}
 		for _, root in ipairs(roots) do
 			if token ~= ThemeObjects.Optimizer.ApplyToken then return end
 			if root then
@@ -329,6 +329,11 @@ local function RefreshOptimizeButtons()
 	end
 end
 
+local function FinishOptimizerChange()
+	RefreshOptimizeButtons()
+	UpdateTheme(true)
+end
+
 local function SetOptimizerFeature(kind, enabled)
 	ThemeObjects.Optimizer.States[kind] = enabled
 	local token = NextOptimizeToken()
@@ -340,8 +345,7 @@ local function SetOptimizerFeature(kind, enabled)
 			OptimizerApplyActiveAsync(token)
 		end)
 	end
-	RefreshOptimizeButtons()
-	UpdateTheme(true)
+	FinishOptimizerChange()
 end
 
 local function RestoreOptimizer()
@@ -353,8 +357,7 @@ local function RestoreOptimizer()
 	OptimizerRestoreAllAsync(token, function()
 		OptimizeStatus.Text = "Restored"
 	end)
-	RefreshOptimizeButtons()
-	UpdateTheme(true)
+	FinishOptimizerChange()
 end
 
 local function ApplyFpsBoost()
@@ -363,8 +366,7 @@ local function ApplyFpsBoost()
 	end
 	local token = NextOptimizeToken()
 	OptimizerApplyActiveAsync(token)
-	RefreshOptimizeButtons()
-	UpdateTheme(true)
+	FinishOptimizerChange()
 end
 
 local function CreateOptimizeOption(kind, label, y)
