@@ -1150,19 +1150,22 @@ table.insert(ThemeObjects.Backgrounds, HubState.MiniButton)
 table.insert(ThemeObjects.Texts, HubState.MiniButton)
 Instance.new("UICorner", HubState.MiniButton).CornerRadius = UDim.new(0, 5)
 
-HubState.MinimizeKeybindLabel = Instance.new("TextLabel")
+HubState.MinimizeKeybindLabel = Instance.new("TextButton")
 HubState.MinimizeKeybindLabel.Name = "MinimizeKeybindLabel"
-HubState.MinimizeKeybindLabel.Size = UDim2.new(0, 36, 0, 14)
-HubState.MinimizeKeybindLabel.Position = UDim2.new(1, -66, 0, 10)
-HubState.MinimizeKeybindLabel.BackgroundTransparency = 1
+HubState.MinimizeKeybindLabel.Size = UDim2.new(0, 46, 0, 22)
+HubState.MinimizeKeybindLabel.Position = UDim2.new(1, -76, 0, 6)
+HubState.MinimizeKeybindLabel.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+HubState.MinimizeKeybindLabel.BackgroundTransparency = 0.8
 HubState.MinimizeKeybindLabel.BorderSizePixel = 0
 HubState.MinimizeKeybindLabel.Text = KeybindText(HubState.MinimizeKeybind)
 HubState.MinimizeKeybindLabel.Font = Enum.Font.GothamBold
-HubState.MinimizeKeybindLabel.TextSize = 7
-HubState.MinimizeKeybindLabel.TextXAlignment = Enum.TextXAlignment.Right
+HubState.MinimizeKeybindLabel.TextSize = 9
 HubState.MinimizeKeybindLabel.TextColor3 = AccentColor
 HubState.MinimizeKeybindLabel.Parent = MainFrame
+table.insert(ThemeObjects.Backgrounds, HubState.MinimizeKeybindLabel)
 table.insert(ThemeObjects.Accents, HubState.MinimizeKeybindLabel)
+Instance.new("UICorner", HubState.MinimizeKeybindLabel).CornerRadius = UDim.new(0, 5)
+ThemeObjects.EnsureKeybindOutline(HubState.MinimizeKeybindLabel)
 
 HubState.SettingsBtn = Instance.new("TextButton")
 HubState.SettingsBtn.Size = UDim2.new(0, 18, 0, 18)
@@ -1242,7 +1245,7 @@ HubState.MovementPage.ClipsDescendants = true
 HubState.MovementPage.Visible = true
 HubState.MovementPage.Parent = MainFrame
 
-HubState.CombatPage = Instance.new("Frame")
+HubState.CombatPage = Instance.new("ScrollingFrame")
 HubState.CombatPage.Name = "CombatPage"
 HubState.CombatPage.Size = UDim2.new(0, 336, 1, -54)
 HubState.CombatPage.Position = UDim2.new(1.1, 0, 0, 54)
@@ -1250,6 +1253,12 @@ HubState.CombatPage.BackgroundTransparency = 1
 HubState.CombatPage.Visible = false
 HubState.CombatPage.BorderSizePixel = 0
 HubState.CombatPage.ClipsDescendants = true
+HubState.CombatPage.ScrollBarThickness = 3
+HubState.CombatPage.ScrollBarImageColor3 = AccentColor
+HubState.CombatPage.ScrollingDirection = Enum.ScrollingDirection.Y
+HubState.CombatPage.ElasticBehavior = Enum.ElasticBehavior.Never
+HubState.CombatPage.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+HubState.CombatPage.CanvasSize = UDim2.new(0, 0, 0, 264)
 HubState.CombatPage.Parent = MainFrame
 
 ThemeObjects.CameraPage = Instance.new("Frame")
@@ -2350,18 +2359,20 @@ table.insert(ThemeObjects.Texts, HubState.AutoLockToggleBtn)
 Instance.new("UICorner", HubState.AutoLockToggleBtn).CornerRadius = UDim.new(0, 4)
 
 HubState.AutoLockBindBtn = Instance.new("TextButton")
-HubState.AutoLockBindBtn.Size = UDim2.new(0, 40, 0, 23)
+HubState.AutoLockBindBtn.Size = UDim2.new(0, 46, 0, 22)
 HubState.AutoLockBindBtn.Position = UDim2.new(0, 160, 0, 8)
-HubState.AutoLockBindBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+HubState.AutoLockBindBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 HubState.AutoLockBindBtn.BackgroundTransparency = 0.8
 HubState.AutoLockBindBtn.BorderSizePixel = 0
 HubState.AutoLockBindBtn.Text = KeybindText(HubState.AutoLockKeybind)
 HubState.AutoLockBindBtn.Font = Enum.Font.GothamBold
+HubState.AutoLockBindBtn.TextSize = 9
 HubState.AutoLockBindBtn.TextColor3 = AccentColor
 HubState.AutoLockBindBtn.Parent = HubState.CombatPage
 table.insert(ThemeObjects.Backgrounds, HubState.AutoLockBindBtn)
 table.insert(ThemeObjects.Accents, HubState.AutoLockBindBtn)
-Instance.new("UICorner", HubState.AutoLockBindBtn).CornerRadius = UDim.new(0, 4)
+Instance.new("UICorner", HubState.AutoLockBindBtn).CornerRadius = UDim.new(0, 5)
+ThemeObjects.EnsureKeybindOutline(HubState.AutoLockBindBtn)
 
 HubState.ESPTitle = Instance.new("TextLabel")
 HubState.ESPTitle.Size = UDim2.new(0, 84, 0, 23)
@@ -2390,18 +2401,20 @@ table.insert(ThemeObjects.Texts, HubState.ESPToggleBtn)
 Instance.new("UICorner", HubState.ESPToggleBtn).CornerRadius = UDim.new(0, 4)
 
 HubState.ESPBindBtn = Instance.new("TextButton")
-HubState.ESPBindBtn.Size = UDim2.new(0, 40, 0, 23)
+HubState.ESPBindBtn.Size = UDim2.new(0, 46, 0, 22)
 HubState.ESPBindBtn.Position = UDim2.new(0, 160, 0, 38)
-HubState.ESPBindBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+HubState.ESPBindBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 HubState.ESPBindBtn.BackgroundTransparency = 0.8
 HubState.ESPBindBtn.BorderSizePixel = 0
 HubState.ESPBindBtn.Text = KeybindText(HubState.ESPKeybind)
 HubState.ESPBindBtn.Font = Enum.Font.GothamBold
+HubState.ESPBindBtn.TextSize = 9
 HubState.ESPBindBtn.TextColor3 = AccentColor
 HubState.ESPBindBtn.Parent = HubState.CombatPage
 table.insert(ThemeObjects.Backgrounds, HubState.ESPBindBtn)
 table.insert(ThemeObjects.Accents, HubState.ESPBindBtn)
-Instance.new("UICorner", HubState.ESPBindBtn).CornerRadius = UDim.new(0, 4)
+Instance.new("UICorner", HubState.ESPBindBtn).CornerRadius = UDim.new(0, 5)
+ThemeObjects.EnsureKeybindOutline(HubState.ESPBindBtn)
 
 HubState.ColorContainer = Instance.new("Frame")
 HubState.ColorContainer.Size = UDim2.new(0, 68, 0, 22)
@@ -2474,7 +2487,7 @@ ThemeObjects.DeepESP.Toggle.MouseButton1Click:Connect(function()
 	PlayClick()
 	ThemeObjects.SetQODESP(not ThemeObjects.DeepESP.Enabled)
 end)
-ThemeObjects.AddFeatureKeybind({Name = "Body ESP", Category = "Quiet or Die", Storage = "QODESP", Parent = ThemeObjects.DeepESP.Row, Toggle = ThemeObjects.DeepESP.Toggle, Get = function() return LoadGameKeybind("QODESP") end, Set = function(key) SaveGameKeybind("QODESP", key) end, Action = function()
+ThemeObjects.AddFeatureKeybind({Name = "Body ESP", Category = "Main Features", Storage = "QODESP", Parent = ThemeObjects.DeepESP.Row, Toggle = ThemeObjects.DeepESP.Toggle, Get = function() return LoadGameKeybind("QODESP") end, Set = function(key) SaveGameKeybind("QODESP", key) end, Action = function()
 	ThemeObjects.SetQODESP(not ThemeObjects.DeepESP.Enabled)
 end})
 
@@ -2611,18 +2624,20 @@ table.insert(ThemeObjects.Texts, HubState.FlingTargetBtn)
 Instance.new("UICorner", HubState.FlingTargetBtn).CornerRadius = UDim.new(0, 4)
 
 HubState.FlingBindBtn = Instance.new("TextButton")
-HubState.FlingBindBtn.Size = UDim2.new(0, 30, 0, 23)
-HubState.FlingBindBtn.Position = UDim2.new(0, 290, 0, 8)
-HubState.FlingBindBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+HubState.FlingBindBtn.Size = UDim2.new(0, 46, 0, 22)
+HubState.FlingBindBtn.Position = UDim2.new(0, 274, 0, 8)
+HubState.FlingBindBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 HubState.FlingBindBtn.BackgroundTransparency = 0.8
 HubState.FlingBindBtn.BorderSizePixel = 0
 HubState.FlingBindBtn.Text = KeybindText(HubState.FlingTargetKeybind)
 HubState.FlingBindBtn.Font = Enum.Font.GothamBold
+HubState.FlingBindBtn.TextSize = 9
 HubState.FlingBindBtn.TextColor3 = AccentColor
 HubState.FlingBindBtn.Parent = HubState.CombatPage
 table.insert(ThemeObjects.Backgrounds, HubState.FlingBindBtn)
 table.insert(ThemeObjects.Accents, HubState.FlingBindBtn)
-Instance.new("UICorner", HubState.FlingBindBtn).CornerRadius = UDim.new(0, 4)
+Instance.new("UICorner", HubState.FlingBindBtn).CornerRadius = UDim.new(0, 5)
+ThemeObjects.EnsureKeybindOutline(HubState.FlingBindBtn)
 
 HubState.FlingToggleBtn = Instance.new("TextButton")
 HubState.FlingToggleBtn.Size = UDim2.new(0, 58, 0, 23)
@@ -3564,9 +3579,9 @@ Instance.new("UICorner", ThemeObjects.PlayerTP.OpenButton).CornerRadius = UDim.n
 
 ThemeObjects.PlayerTP.BindButton = Instance.new("TextButton")
 ThemeObjects.PlayerTP.BindButton.Name = "PlayerTPBindButton"
-ThemeObjects.PlayerTP.BindButton.Size = UDim2.new(0, 44, 0, 28)
-ThemeObjects.PlayerTP.BindButton.Position = UDim2.new(0, 76, 0, 4)
-ThemeObjects.PlayerTP.BindButton.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
+ThemeObjects.PlayerTP.BindButton.Size = UDim2.new(0, 46, 0, 22)
+ThemeObjects.PlayerTP.BindButton.Position = UDim2.new(0, 76, 0, 7)
+ThemeObjects.PlayerTP.BindButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 ThemeObjects.PlayerTP.BindButton.BackgroundTransparency = 0.8
 ThemeObjects.PlayerTP.BindButton.BorderSizePixel = 0
 ThemeObjects.PlayerTP.BindButton.Text = KeybindText(ThemeObjects.PlayerTP.Keybind)
@@ -3577,6 +3592,7 @@ ThemeObjects.PlayerTP.BindButton.Parent = HubState.TeleportPage
 table.insert(ThemeObjects.Backgrounds, ThemeObjects.PlayerTP.BindButton)
 table.insert(ThemeObjects.Accents, ThemeObjects.PlayerTP.BindButton)
 Instance.new("UICorner", ThemeObjects.PlayerTP.BindButton).CornerRadius = UDim.new(0, 5)
+ThemeObjects.EnsureKeybindOutline(ThemeObjects.PlayerTP.BindButton)
 
 ThemeObjects.TeleportSearchButton = Instance.new("TextButton")
 ThemeObjects.TeleportSearchButton.Name = "TeleportSearchButton"
@@ -4225,18 +4241,20 @@ HubState.SpeedInput.FocusLost:Connect(function()
 end)
 
 HubState.SpeedBindBtn = Instance.new("TextButton")
-HubState.SpeedBindBtn.Size = UDim2.new(0, 56, 0, 22)
-HubState.SpeedBindBtn.Position = UDim2.new(0, 254, 0, 16)
-HubState.SpeedBindBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+HubState.SpeedBindBtn.Size = UDim2.new(0, 46, 0, 22)
+HubState.SpeedBindBtn.Position = UDim2.new(0, 264, 0, 16)
+HubState.SpeedBindBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 HubState.SpeedBindBtn.BackgroundTransparency = 0.8
 HubState.SpeedBindBtn.BorderSizePixel = 0
 HubState.SpeedBindBtn.Text = KeybindText(HubState.SpeedKeybind)
 HubState.SpeedBindBtn.Font = Enum.Font.GothamBold
+HubState.SpeedBindBtn.TextSize = 9
 HubState.SpeedBindBtn.TextColor3 = AccentColor
 HubState.SpeedBindBtn.Parent = HubState.MovementPage
 table.insert(ThemeObjects.Backgrounds, HubState.SpeedBindBtn)
 table.insert(ThemeObjects.Accents, HubState.SpeedBindBtn)
-Instance.new("UICorner", HubState.SpeedBindBtn).CornerRadius = UDim.new(0, 4)
+Instance.new("UICorner", HubState.SpeedBindBtn).CornerRadius = UDim.new(0, 5)
+ThemeObjects.EnsureKeybindOutline(HubState.SpeedBindBtn)
 
 HubState.SpeedToggleBtn = Instance.new("TextButton")
 HubState.SpeedToggleBtn.Size = UDim2.new(0, 44, 0, 22)
@@ -4279,18 +4297,20 @@ table.insert(ThemeObjects.Texts, HubState.NoclipToggleBtn)
 Instance.new("UICorner", HubState.NoclipToggleBtn).CornerRadius = UDim.new(0, 4)
 
 HubState.NoclipBindBtn = Instance.new("TextButton")
-HubState.NoclipBindBtn.Size = UDim2.new(0, 56, 0, 22)
-HubState.NoclipBindBtn.Position = UDim2.new(0, 254, 0, 104)
-HubState.NoclipBindBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+HubState.NoclipBindBtn.Size = UDim2.new(0, 46, 0, 22)
+HubState.NoclipBindBtn.Position = UDim2.new(0, 264, 0, 104)
+HubState.NoclipBindBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 HubState.NoclipBindBtn.BackgroundTransparency = 0.8
 HubState.NoclipBindBtn.BorderSizePixel = 0
 HubState.NoclipBindBtn.Text = KeybindText(HubState.NoclipKeybind)
 HubState.NoclipBindBtn.Font = Enum.Font.GothamBold
+HubState.NoclipBindBtn.TextSize = 9
 HubState.NoclipBindBtn.TextColor3 = AccentColor
 HubState.NoclipBindBtn.Parent = HubState.MovementPage
 table.insert(ThemeObjects.Backgrounds, HubState.NoclipBindBtn)
 table.insert(ThemeObjects.Accents, HubState.NoclipBindBtn)
-Instance.new("UICorner", HubState.NoclipBindBtn).CornerRadius = UDim.new(0, 4)
+Instance.new("UICorner", HubState.NoclipBindBtn).CornerRadius = UDim.new(0, 5)
+ThemeObjects.EnsureKeybindOutline(HubState.NoclipBindBtn)
 
 ThemeObjects.FreeCam.Title = Instance.new("TextLabel")
 ThemeObjects.FreeCam.Title.Size = UDim2.new(0, 70, 0, 20)
@@ -4316,18 +4336,19 @@ table.insert(ThemeObjects.Texts, ThemeObjects.FreeCam.Toggle)
 Instance.new("UICorner", ThemeObjects.FreeCam.Toggle).CornerRadius = UDim.new(0, 4)
 
 ThemeObjects.FreeCam.Bind = Instance.new("TextButton")
-ThemeObjects.FreeCam.Bind.Size = UDim2.new(0, 86, 0, 20)
-ThemeObjects.FreeCam.Bind.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+ThemeObjects.FreeCam.Bind.Size = UDim2.new(0, 46, 0, 22)
+ThemeObjects.FreeCam.Bind.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 ThemeObjects.FreeCam.Bind.BackgroundTransparency = 0.8
 ThemeObjects.FreeCam.Bind.BorderSizePixel = 0
 ThemeObjects.FreeCam.Bind.Text = KeybindText(ThemeObjects.FreeCam.Keybind)
 ThemeObjects.FreeCam.Bind.Font = Enum.Font.GothamBold
-ThemeObjects.FreeCam.Bind.TextSize = 8
+ThemeObjects.FreeCam.Bind.TextSize = 9
 ThemeObjects.FreeCam.Bind.TextColor3 = AccentColor
 ThemeObjects.FreeCam.Bind.Parent = HubState.MovementPage
 table.insert(ThemeObjects.Backgrounds, ThemeObjects.FreeCam.Bind)
 table.insert(ThemeObjects.Accents, ThemeObjects.FreeCam.Bind)
-Instance.new("UICorner", ThemeObjects.FreeCam.Bind).CornerRadius = UDim.new(0, 4)
+Instance.new("UICorner", ThemeObjects.FreeCam.Bind).CornerRadius = UDim.new(0, 5)
+ThemeObjects.EnsureKeybindOutline(ThemeObjects.FreeCam.Bind)
 
 HubState.FlyTitle = Instance.new("TextLabel")
 HubState.FlyTitle.Size = UDim2.new(0, 48, 0, 22) 
@@ -4365,18 +4386,20 @@ HubState.FlyInput.FocusLost:Connect(function()
 end)
 
 HubState.FlyBindBtn = Instance.new("TextButton")
-HubState.FlyBindBtn.Size = UDim2.new(0, 56, 0, 22)
-HubState.FlyBindBtn.Position = UDim2.new(0, 254, 0, 60)
-HubState.FlyBindBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+HubState.FlyBindBtn.Size = UDim2.new(0, 46, 0, 22)
+HubState.FlyBindBtn.Position = UDim2.new(0, 264, 0, 60)
+HubState.FlyBindBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 HubState.FlyBindBtn.BackgroundTransparency = 0.8
 HubState.FlyBindBtn.BorderSizePixel = 0
 HubState.FlyBindBtn.Text = KeybindText(HubState.FlyKeybind)
 HubState.FlyBindBtn.Font = Enum.Font.GothamBold
+HubState.FlyBindBtn.TextSize = 9
 HubState.FlyBindBtn.TextColor3 = AccentColor
 HubState.FlyBindBtn.Parent = HubState.MovementPage
 table.insert(ThemeObjects.Backgrounds, HubState.FlyBindBtn)
 table.insert(ThemeObjects.Accents, HubState.FlyBindBtn)
-Instance.new("UICorner", HubState.FlyBindBtn).CornerRadius = UDim.new(0, 4)
+Instance.new("UICorner", HubState.FlyBindBtn).CornerRadius = UDim.new(0, 5)
+ThemeObjects.EnsureKeybindOutline(HubState.FlyBindBtn)
 
 HubState.FlyToggleBtn = Instance.new("TextButton")
 HubState.FlyToggleBtn.Size = UDim2.new(0, 44, 0, 22)
@@ -6049,12 +6072,10 @@ KeybindEditorLayout.SortOrder = Enum.SortOrder.LayoutOrder
 KeybindEditorLayout.Parent = KeybindEditorScroll
 
 ThemeObjects.KeybindEditorRows = {}
-ThemeObjects.KeybindEditorExpandedCategories = ThemeObjects.KeybindEditorExpandedCategories or {}
-local KeybindCategoryOrder = {"Main Features", "Murder Mystery 2", "Quiet or Die", "Grow a Beehive", "Undead Expedition", "Optimize"}
 
 ThemeObjects.BuildKeybindEditorEntries = function()
 	local entries = {
-		{Name = "Minimize GUI", Category = "Main Features", Storage = "MinimizeGUI", Get = function() return HubState.MinimizeKeybind end, Set = function(key)
+		{Name = "Minimize GUI", Category = "Main Features", Storage = "MinimizeGUI", Button = HubState.MinimizeKeybindLabel, Get = function() return HubState.MinimizeKeybind end, Set = function(key)
 			HubState.MinimizeKeybind = key
 			SaveKeybind("MinimizeGUI", key)
 			if HubState.MinimizeKeybindLabel then HubState.MinimizeKeybindLabel.Text = KeybindText(key) end
@@ -6073,38 +6094,6 @@ ThemeObjects.BuildKeybindEditorEntries = function()
 	return entries
 end
 
--- Groups the flat entry list by Category (each AddFeatureKeybind entry defaults to
--- "Main Features" if it never set one), ordered per KeybindCategoryOrder with any
--- unrecognized category appended alphabetically at the end so nothing is ever dropped.
-ThemeObjects.BuildKeybindEditorGroups = function()
-	local byCategory = {}
-	local categoryNames = {}
-	for _, entry in ipairs(ThemeObjects.BuildKeybindEditorEntries()) do
-		local category = type(entry.Category) == "string" and entry.Category or "Main Features"
-		if not byCategory[category] then
-			byCategory[category] = {}
-			table.insert(categoryNames, category)
-		end
-		table.insert(byCategory[category], entry)
-	end
-	local function OrderIndex(name)
-		for index, knownName in ipairs(KeybindCategoryOrder) do
-			if knownName == name then return index end
-		end
-		return #KeybindCategoryOrder + 1
-	end
-	table.sort(categoryNames, function(a, b)
-		local indexA, indexB = OrderIndex(a), OrderIndex(b)
-		if indexA == indexB then return a < b end
-		return indexA < indexB
-	end)
-	local groups = {}
-	for _, category in ipairs(categoryNames) do
-		table.insert(groups, {Category = category, Entries = byCategory[category]})
-	end
-	return groups
-end
-
 ThemeObjects.RunFeatureKeybind = function(keyCode)
 	if keyCode == Enum.KeyCode.Unknown then return false end
 	local ranAny = false
@@ -6117,155 +6106,77 @@ ThemeObjects.RunFeatureKeybind = function(keyCode)
 	return ranAny
 end
 
-local function AddKeybindEditorEntryRow(entry, layoutOrder)
-	local row = Instance.new("Frame")
-	row.Name = "KeybindEditorRow"
-	row.Size = UDim2.new(1, -22, 0, 26)
-	row.Position = UDim2.new(0, 18, 0, 0)
-	row.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
-	row.BackgroundTransparency = 0.92
-	row.BorderSizePixel = 0
-	row.LayoutOrder = layoutOrder
-	row.ZIndex = 91
-	row.Parent = KeybindEditorScroll
-	table.insert(ThemeObjects.Backgrounds, row)
-	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
-	local rowStroke = Instance.new("UIStroke")
-	rowStroke.Name = "ControlOutline"
-	rowStroke.Color = Color3.fromRGB(0, 0, 0)
-	rowStroke.Thickness = 1
-	rowStroke.Transparency = 0.18
-	rowStroke.Parent = row
-
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, -60, 1, 0)
-	label.Position = UDim2.new(0, 8, 0, 0)
-	label.BackgroundTransparency = 1
-	label.Text = entry.Name
-	label.Font = Enum.Font.GothamBold
-	label.TextSize = 9
-	label.TextColor3 = Color3.fromRGB(255, 255, 255)
-	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-	label.TextStrokeTransparency = 0.5
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.ZIndex = 92
-	label.Parent = row
-	table.insert(ThemeObjects.Texts, label)
-
-	local button = Instance.new("TextButton")
-	button.Size = UDim2.new(0, 46, 0, 20)
-	button.Position = UDim2.new(1, -50, 0.5, -10)
-	button.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-	button.BackgroundTransparency = 0.8
-	button.BorderSizePixel = 0
-	button.Text = KeybindText(entry.Get())
-	button.Font = Enum.Font.GothamBold
-	button.TextSize = 8
-	button.TextColor3 = AccentColor
-	button.ZIndex = 92
-	button.Parent = row
-	table.insert(ThemeObjects.Backgrounds, button)
-	table.insert(ThemeObjects.Accents, button)
-	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 5)
-	local buttonStroke = Instance.new("UIStroke")
-	buttonStroke.Name = "ControlOutline"
-	buttonStroke.Color = Color3.fromRGB(0, 0, 0)
-	buttonStroke.Thickness = 1
-	buttonStroke.Transparency = 0
-	buttonStroke.Parent = button
-	table.insert(ThemeObjects.KeybindEditorRows, {Entry = entry, Button = button, Row = row})
-	if entry.InlineButton then entry.InlineButton.Text = KeybindText(entry.Get()) end
-	button.MouseButton1Click:Connect(function()
-		ThemeObjects.BeginFeatureKeybind(entry, button)
-	end)
-	ThemeObjects.AttachKeybindClearPrompt(entry, button)
-end
-
-local function AddKeybindEditorCategoryHeader(group, layoutOrder)
-	local expanded = ThemeObjects.KeybindEditorExpandedCategories[group.Category] == true
-	local header = Instance.new("TextButton")
-	header.Name = "KeybindEditorCategoryHeader"
-	header.AutoButtonColor = false
-	header.Size = UDim2.new(1, -8, 0, 27)
-	header.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-	header.BackgroundTransparency = 0.55
-	header.BorderSizePixel = 0
-	header.Text = ""
-	header.LayoutOrder = layoutOrder
-	header.ZIndex = 91
-	header.Parent = KeybindEditorScroll
-	table.insert(ThemeObjects.Backgrounds, header)
-	Instance.new("UICorner", header).CornerRadius = UDim.new(0, 6)
-	local headerStroke = Instance.new("UIStroke")
-	headerStroke.Name = "ControlOutline"
-	headerStroke.Color = Color3.fromRGB(0, 0, 0)
-	headerStroke.Thickness = 1
-	headerStroke.Transparency = 0.1
-	headerStroke.Parent = header
-
-	local arrow = Instance.new("TextLabel")
-	arrow.Size = UDim2.new(0, 16, 1, 0)
-	arrow.Position = UDim2.new(0, 6, 0, 0)
-	arrow.BackgroundTransparency = 1
-	arrow.Text = expanded and "▾" or "▸"
-	arrow.Font = Enum.Font.GothamBold
-	arrow.TextSize = 11
-	arrow.TextColor3 = AccentColor
-	arrow.ZIndex = 92
-	arrow.Parent = header
-	table.insert(ThemeObjects.Accents, arrow)
-
-	local headerLabel = Instance.new("TextLabel")
-	headerLabel.Size = UDim2.new(1, -80, 1, 0)
-	headerLabel.Position = UDim2.new(0, 24, 0, 0)
-	headerLabel.BackgroundTransparency = 1
-	headerLabel.Text = group.Category
-	headerLabel.Font = Enum.Font.GothamBold
-	headerLabel.TextSize = 10
-	headerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-	headerLabel.TextXAlignment = Enum.TextXAlignment.Left
-	headerLabel.ZIndex = 92
-	headerLabel.Parent = header
-	table.insert(ThemeObjects.Texts, headerLabel)
-
-	local countLabel = Instance.new("TextLabel")
-	countLabel.Size = UDim2.new(0, 44, 1, 0)
-	countLabel.Position = UDim2.new(1, -52, 0, 0)
-	countLabel.BackgroundTransparency = 1
-	countLabel.Text = tostring(#group.Entries)
-	countLabel.Font = Enum.Font.GothamBold
-	countLabel.TextSize = 9
-	countLabel.TextColor3 = Color3.fromRGB(190, 190, 198)
-	countLabel.TextXAlignment = Enum.TextXAlignment.Right
-	countLabel.ZIndex = 92
-	countLabel.Parent = header
-	table.insert(ThemeObjects.Texts, countLabel)
-
-	table.insert(ThemeObjects.KeybindEditorRows, {Row = header})
-	header.MouseButton1Click:Connect(function()
-		PlayClick()
-		ThemeObjects.KeybindEditorExpandedCategories[group.Category] = not expanded
-		ThemeObjects.RefreshKeybindEditor()
-	end)
-end
-
+-- The editor only lists Main Features: game-specific keybinds only ever exist while
+-- that one game's page is loaded, so a game section besides "the game you're currently
+-- in" is always empty. Those entries still have their own inline bind button on their
+-- feature row, so nothing is lost by leaving them out of this popup.
 ThemeObjects.RefreshKeybindEditor = function()
 	for _, row in ipairs(ThemeObjects.KeybindEditorRows) do
 		if row.Row then row.Row:Destroy() end
 	end
 	ThemeObjects.KeybindEditorRows = {}
 	local layoutOrder = 0
-	for _, group in ipairs(ThemeObjects.BuildKeybindEditorGroups()) do
-		layoutOrder += 1
-		AddKeybindEditorCategoryHeader(group, layoutOrder)
-		if ThemeObjects.KeybindEditorExpandedCategories[group.Category] == true then
-			for _, entry in ipairs(group.Entries) do
-				layoutOrder += 1
-				AddKeybindEditorEntryRow(entry, layoutOrder)
-			end
+	for _, entry in ipairs(ThemeObjects.BuildKeybindEditorEntries()) do
+		if entry.Category == "Main Features" then
+			layoutOrder += 1
+			local row = Instance.new("Frame")
+			row.Name = "KeybindEditorRow"
+			row.Size = UDim2.new(1, -8, 0, 28)
+			row.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
+			row.BackgroundTransparency = 0.92
+			row.BorderSizePixel = 0
+			row.LayoutOrder = layoutOrder
+			row.ZIndex = 91
+			row.Parent = KeybindEditorScroll
+			table.insert(ThemeObjects.Backgrounds, row)
+			Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+			local rowStroke = Instance.new("UIStroke")
+			rowStroke.Name = "ControlOutline"
+			rowStroke.Color = Color3.fromRGB(0, 0, 0)
+			rowStroke.Thickness = 1
+			rowStroke.Transparency = 0.18
+			rowStroke.Parent = row
+
+			local label = Instance.new("TextLabel")
+			label.Size = UDim2.new(1, -62, 1, 0)
+			label.Position = UDim2.new(0, 8, 0, 0)
+			label.BackgroundTransparency = 1
+			label.Text = entry.Name
+			label.Font = Enum.Font.GothamBold
+			label.TextSize = 9
+			label.TextColor3 = Color3.fromRGB(255, 255, 255)
+			label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+			label.TextStrokeTransparency = 0.5
+			label.TextXAlignment = Enum.TextXAlignment.Left
+			label.ZIndex = 92
+			label.Parent = row
+			table.insert(ThemeObjects.Texts, label)
+
+			local button = Instance.new("TextButton")
+			button.Size = UDim2.new(0, 46, 0, 22)
+			button.Position = UDim2.new(1, -52, 0.5, -11)
+			button.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+			button.BackgroundTransparency = 0.8
+			button.BorderSizePixel = 0
+			button.Text = KeybindText(entry.Get())
+			button.Font = Enum.Font.GothamBold
+			button.TextSize = 9
+			button.TextColor3 = AccentColor
+			button.ZIndex = 92
+			button.Parent = row
+			table.insert(ThemeObjects.Backgrounds, button)
+			table.insert(ThemeObjects.Accents, button)
+			Instance.new("UICorner", button).CornerRadius = UDim.new(0, 5)
+			ThemeObjects.EnsureKeybindOutline(button)
+			table.insert(ThemeObjects.KeybindEditorRows, {Entry = entry, Button = button, Row = row})
+			if entry.InlineButton then entry.InlineButton.Text = KeybindText(entry.Get()) end
+			button.MouseButton1Click:Connect(function()
+				ThemeObjects.BeginFeatureKeybind(entry, button)
+			end)
+			ThemeObjects.AttachKeybindClearPrompt(entry, button)
 		end
 	end
-	KeybindEditorScroll.CanvasSize = UDim2.new(0, 0, 0, math.max(KeybindEditorLayout.AbsoluteContentSize.Y + 6, layoutOrder * 30))
+	KeybindEditorScroll.CanvasSize = UDim2.new(0, 0, 0, math.max(KeybindEditorLayout.AbsoluteContentSize.Y + 6, layoutOrder * 32))
 end
 ThemeObjects.RefreshKeybindEditor()
 
