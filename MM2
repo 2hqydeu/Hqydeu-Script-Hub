@@ -13,11 +13,9 @@ local ScreenGui = Runtime.ScreenGui
 local Player = Runtime.Player
 local Players = Runtime.Players or game:GetService("Players")
 local RunService = Runtime.RunService or game:GetService("RunService")
-local TweenService = Runtime.TweenService or game:GetService("TweenService")
 local UserInputService = Runtime.UserInputService or game:GetService("UserInputService")
 local CoreGui = Runtime.CoreGui or game:GetService("CoreGui")
-local HttpService = Runtime.HttpService or game:GetService("HttpService")
-local SavedKeybinds = Runtime.SavedKeybinds or {}
+local ReplicatedStorage = Runtime.ReplicatedStorage or game:GetService("ReplicatedStorage")
 local AccentColor = Runtime.GetAccentColor and Runtime.GetAccentColor() or Color3.fromRGB(0, 210, 255)
 local FrameThemeColor = Runtime.GetFrameThemeColor and Runtime.GetFrameThemeColor() or Color3.fromRGB(28, 28, 38)
 local InactiveTextColor = Runtime.InactiveTextColor or function() return Color3.fromRGB(255, 255, 255) end
@@ -26,14 +24,12 @@ local LoadKeybind = Runtime.LoadKeybind or function() return Enum.KeyCode.Unknow
 local SaveKeybind = Runtime.SaveKeybind or function() end
 local LoadGameKeybind = Runtime.LoadGameKeybind or LoadKeybind
 local SaveGameKeybind = Runtime.SaveGameKeybind or SaveKeybind
-local SavePersistentSettings = Runtime.SavePersistentSettings or function() end
 local GuiSizeValue = Runtime.GuiSizeValue or 50
 local GuiScaleFromValue = Runtime.GuiScaleFromValue or function(value) return 1 end
 local PlayClick = Runtime.PlayClick or function() end
 local PlaySwoosh = Runtime.PlaySwoosh or function() end
 local TrackConnection = Runtime.TrackConnection or function(name, connection) HubState.Connections[name] = connection; return connection end
 local UpdateTheme = Runtime.UpdateTheme or function() end
-local CompactGuiText = Runtime.CompactGuiText or function() end
 local ToggleAutoLock = Runtime.ToggleAutoLock or function() end
 if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu page module: runtime is incomplete") end
 HubState.Connections = HubState.Connections or {}
@@ -462,9 +458,16 @@ local function SetAutoGunPickupEnabled(enabled)
 	end
 end
 
+HubState.LastGunDropSearch = 0
 HubState.Connections.AutoGunPickup = RunService.Heartbeat:Connect(function()
 	if not HubState.AutoGunPickupEnabled or HubState.AutoGunPickupBusy then return end
-	local gunDrop = FindGunDrop()
+	-- The recursive workspace search in FindGunDrop is expensive to run every frame;
+	-- the gun drop's identity is stable within a round, so a short cache is safe.
+	if os.clock() - HubState.LastGunDropSearch >= 0.15 then
+		HubState.LastGunDropSearch = os.clock()
+		HubState.CachedGunDrop = FindGunDrop()
+	end
+	local gunDrop = HubState.CachedGunDrop
 	if not gunDrop then
 		HubState.LastGunDrop = nil
 		return
@@ -1109,8 +1112,7 @@ ThemeObjects.RefreshMM2RolesFromCurrentRound = function()
 	local requestCooldown = HubState.MM2RoleRevealBurstActive and 0.25 or 0.75
 	if now - (HubState.LastMM2CurrentPlayerDataRequest or 0) < requestCooldown then return false end
 	HubState.LastMM2CurrentPlayerDataRequest = now
-	local replicatedStorage = game:GetService("ReplicatedStorage")
-	local remotes = replicatedStorage:FindFirstChild("Remotes")
+	local remotes = ReplicatedStorage:FindFirstChild("Remotes")
 	local gameplay = remotes and remotes:FindFirstChild("Gameplay")
 	local getCurrentPlayerData = gameplay and gameplay:FindFirstChild("GetCurrentPlayerData")
 	if not getCurrentPlayerData or not getCurrentPlayerData:IsA("RemoteFunction") then return false end
@@ -1130,8 +1132,7 @@ end
 
 ThemeObjects.EnsureMM2RoleClueListeners = function()
 	if HubState.MM2RoleClueListenersStarted then return end
-	local replicatedStorage = game:GetService("ReplicatedStorage")
-	local remotes = replicatedStorage:FindFirstChild("Remotes")
+	local remotes = ReplicatedStorage:FindFirstChild("Remotes")
 	local extras = remotes and remotes:FindFirstChild("Extras")
 	local setMurderer = extras and extras:FindFirstChild("SetMurderer")
 	local setSheriff = extras and extras:FindFirstChild("SetSheriff")
@@ -1285,7 +1286,7 @@ end
 
 HubState.Connections.MM2ToolRoleScanner = RunService.Heartbeat:Connect(function()
 	local mm2PageActive = HubState.SelectedGame == "MM2" or (HubState.MM2Page and HubState.MM2Page.Visible)
-	local needsScan = mm2PageActive or HubState.MM2ESPEnabled or HubState.MurdererRoleESPEnabled or HubState.SheriffRoleESPEnabled or HubState.KillEnabled or HubState.AutoShootEnabled or HubState.ESPEnabled or ThemeObjects.DeepESP.Enabled
+	local needsScan = mm2PageActive or HubState.MM2ESPEnabled or HubState.MurdererRoleESPEnabled or HubState.SheriffRoleESPEnabled or HubState.KillEnabled or HubState.AutoShootEnabled or HubState.ESPEnabled or (ThemeObjects.DeepESP and ThemeObjects.DeepESP.Enabled)
 	if not needsScan then return end
 	local now = os.clock()
 	if now - (HubState.LastMM2ToolRoleScan or 0) < 0.25 then return end
