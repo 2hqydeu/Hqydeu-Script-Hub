@@ -649,9 +649,9 @@ Instance.new("UICorner", HubState.MM2RoleDetailsButton).CornerRadius = UDim.new(
 
 HubState.MM2RoleDetailsBindButton = Instance.new("TextButton")
 HubState.MM2RoleDetailsBindButton.Name = "MM2RoleDetailsBindButton"
-HubState.MM2RoleDetailsBindButton.Size = UDim2.new(0, 30, 0, 23)
+HubState.MM2RoleDetailsBindButton.Size = UDim2.new(0, 46, 0, 22)
 HubState.MM2RoleDetailsBindButton.Position = UDim2.new(0, 0, 0, 0)
-HubState.MM2RoleDetailsBindButton.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+HubState.MM2RoleDetailsBindButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 HubState.MM2RoleDetailsBindButton.BackgroundTransparency = 0.8
 HubState.MM2RoleDetailsBindButton.BorderSizePixel = 0
 HubState.MM2RoleDetailsBindButton.Text = KeybindText(ThemeObjects.MM2RoleDetails.Keybind)
@@ -661,7 +661,8 @@ HubState.MM2RoleDetailsBindButton.TextColor3 = AccentColor
 HubState.MM2RoleDetailsBindButton.Parent = HubState.MM2Page
 table.insert(ThemeObjects.Backgrounds, HubState.MM2RoleDetailsBindButton)
 table.insert(ThemeObjects.Accents, HubState.MM2RoleDetailsBindButton)
-Instance.new("UICorner", HubState.MM2RoleDetailsBindButton).CornerRadius = UDim.new(0, 4)
+Instance.new("UICorner", HubState.MM2RoleDetailsBindButton).CornerRadius = UDim.new(0, 5)
+ThemeObjects.EnsureKeybindOutline(HubState.MM2RoleDetailsBindButton)
 
 HubState.MM2RoleDetailsPanel = Instance.new("Frame")
 HubState.MM2RoleDetailsPanel.Name = "MM2RoleDetailsPanel"
@@ -822,7 +823,7 @@ TrackConnection("MM2RoleDetailsDragMove", UserInputService.InputChanged:Connect(
 	end
 end))
 
-HubState.MM2RoleDetailsKeybindEntry = {Name = "MM2 Role Popup", Storage = "MM2RoleDetails", Button = HubState.MM2RoleDetailsBindButton, Get = function() return ThemeObjects.MM2RoleDetails.Keybind end, Set = function(key)
+HubState.MM2RoleDetailsKeybindEntry = {Name = "MM2 Role Popup", Category = "Murder Mystery 2", Storage = "MM2RoleDetails", Button = HubState.MM2RoleDetailsBindButton, Get = function() return ThemeObjects.MM2RoleDetails.Keybind end, Set = function(key)
 	ThemeObjects.MM2RoleDetails.Keybind = key
 	SaveGameKeybind("MM2RoleDetails", key)
 	if HubState.MM2RoleDetailsBindButton then HubState.MM2RoleDetailsBindButton.Text = KeybindText(key) end
@@ -1539,9 +1540,9 @@ do
 	HubState.MM2RoleDetailsButton.Text = "Open"
 	HubState.MM2RoleDetailsButton.TextSize = 9
 	HubState.MM2RoleDetailsButton.Parent = roleInfoRow
-	HubState.MM2RoleDetailsBindButton.Size = UDim2.new(0, 44, 0, 20)
-	HubState.MM2RoleDetailsBindButton.Position = UDim2.new(1, -48, 0, 8)
-	HubState.MM2RoleDetailsBindButton.TextSize = 8
+	HubState.MM2RoleDetailsBindButton.Size = UDim2.new(0, 46, 0, 22)
+	HubState.MM2RoleDetailsBindButton.Position = UDim2.new(1, -50, 0, 7)
+	HubState.MM2RoleDetailsBindButton.TextSize = 9
 	HubState.MM2RoleDetailsBindButton.Parent = roleInfoRow
 	PlaceMM2Control(HubState.KillTitle, HubState.KillToggle, stabRow)
 	PlaceMM2Control(autoShootTitle, autoShootToggle, shootRow)
@@ -1549,13 +1550,13 @@ do
 	PlaceMM2Control(HubState.CoinFarmTitle, HubState.CoinFarmToggle, coinRow)
 	HubState.CoinFarmStatus.Visible = false
 	HubState.CoinFarmStatus.Parent = coinRow
-	ThemeObjects.AddFeatureKeybind({Name = "Auto Gun", Storage = "MM2AutoGun", Parent = gunRow, Toggle = HubState.AutoGunToggle, Get = function() return LoadGameKeybind("MM2AutoGun") end, Set = function(key) SaveGameKeybind("MM2AutoGun", key) end, Action = function()
+	ThemeObjects.AddFeatureKeybind({Name = "Auto Gun", Category = "Murder Mystery 2", Storage = "MM2AutoGun", Parent = gunRow, Toggle = HubState.AutoGunToggle, Get = function() return LoadGameKeybind("MM2AutoGun") end, Set = function(key) SaveGameKeybind("MM2AutoGun", key) end, Action = function()
 		SetAutoGunPickupEnabled(not HubState.AutoGunPickupEnabled)
 	end})
-	ThemeObjects.AddFeatureKeybind({Name = "Auto Stab", Storage = "MM2AutoStab", Parent = stabRow, Toggle = HubState.KillToggle, Get = function() return LoadGameKeybind("MM2AutoStab") end, Set = function(key) SaveGameKeybind("MM2AutoStab", key) end, Action = function()
+	ThemeObjects.AddFeatureKeybind({Name = "Auto Stab", Category = "Murder Mystery 2", Storage = "MM2AutoStab", Parent = stabRow, Toggle = HubState.KillToggle, Get = function() return LoadGameKeybind("MM2AutoStab") end, Set = function(key) SaveGameKeybind("MM2AutoStab", key) end, Action = function()
 		SetKillEnabled(not HubState.KillEnabled)
 	end})
-	ThemeObjects.AddFeatureKeybind({Name = "Coin Farm", Storage = "MM2CoinFarm", Parent = coinRow, Toggle = HubState.CoinFarmToggle, Get = function() return LoadGameKeybind("MM2CoinFarm") end, Set = function(key) SaveGameKeybind("MM2CoinFarm", key) end, Action = ToggleCoinFarm})
+	ThemeObjects.AddFeatureKeybind({Name = "Coin Farm", Category = "Murder Mystery 2", Storage = "MM2CoinFarm", Parent = coinRow, Toggle = HubState.CoinFarmToggle, Get = function() return LoadGameKeybind("MM2CoinFarm") end, Set = function(key) SaveGameKeybind("MM2CoinFarm", key) end, Action = ToggleCoinFarm})
 
 	local autoShootEnabled = false
 	local lastGunFired = 0
@@ -1711,7 +1712,7 @@ do
 	end)
 
 	table.insert(ThemeObjects.StateTexts, {Object = autoShootTitle, IsEnabled = function() return autoShootEnabled end})
-	ThemeObjects.AddFeatureKeybind({Name = "Auto Shoot", Storage = "MM2AutoShoot", Parent = shootRow, Toggle = autoShootToggle, Get = function() return LoadGameKeybind("MM2AutoShoot") end, Set = function(key) SaveGameKeybind("MM2AutoShoot", key) end, Action = function()
+	ThemeObjects.AddFeatureKeybind({Name = "Auto Shoot", Category = "Murder Mystery 2", Storage = "MM2AutoShoot", Parent = shootRow, Toggle = autoShootToggle, Get = function() return LoadGameKeybind("MM2AutoShoot") end, Set = function(key) SaveGameKeybind("MM2AutoShoot", key) end, Action = function()
 		SetAutoShootEnabled(not autoShootEnabled)
 	end})
 
