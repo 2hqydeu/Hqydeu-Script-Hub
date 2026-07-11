@@ -2998,55 +2998,11 @@ local function FlingPlayer(targetPlayer)
 	local originalAngularVelocity = root.AssemblyAngularVelocity
 	local originalLinearVelocity = root.AssemblyLinearVelocity
 	local wasFlingEnabled = HubState.FlingEnabled
-	local targetPartStates = {}
-	local targetCollisionStates = {}
-	local targetFlyVelocity = Instance.new("BodyVelocity")
-	targetFlyVelocity.Name = "TargetFlingFlyVelocity"
-	targetFlyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-	targetFlyVelocity.P = 220000
-	targetFlyVelocity.Velocity = Vector3.zero
-	targetFlyVelocity.Parent = root
-	local targetFlyGyro = Instance.new("BodyGyro")
-	targetFlyGyro.Name = "TargetFlingFlyGyro"
-	targetFlyGyro.P = 160000
-	targetFlyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-	targetFlyGyro.CFrame = root.CFrame
-	targetFlyGyro.Parent = root
 	humanoid.AutoRotate = false
 	RestoreAntiFlingCollisions()
 	SetIYFling(true)
-	for _, part in ipairs(character:GetDescendants()) do
-		if part:IsA("BasePart") then
-			targetPartStates[part] = {
-				CanCollide = part.CanCollide,
-				Massless = part.Massless,
-				CustomPhysicalProperties = part.CustomPhysicalProperties,
-			}
-			part.CanCollide = true
-			part.Massless = false
-			part.CustomPhysicalProperties = PhysicalProperties.new(100, 0.3, 0.5)
-		end
-	end
-	for _, part in ipairs(targetCharacter:GetDescendants()) do
-		if part:IsA("BasePart") then
-			targetCollisionStates[part] = part.CanCollide
-			part.CanCollide = true
-		end
-	end
 
 	local function cleanup()
-		if targetFlyVelocity and targetFlyVelocity.Parent then targetFlyVelocity:Destroy() end
-		if targetFlyGyro and targetFlyGyro.Parent then targetFlyGyro:Destroy() end
-		for part, state in pairs(targetPartStates) do
-			if part and part.Parent then
-				part.CanCollide = state.CanCollide
-				part.Massless = state.Massless
-				part.CustomPhysicalProperties = state.CustomPhysicalProperties
-			end
-		end
-		for part, canCollide in pairs(targetCollisionStates) do
-			if part and part.Parent then part.CanCollide = canCollide end
-		end
 		if not wasFlingEnabled then SetIYFling(false) end
 		if root and root.Parent then
 			root.AssemblyAngularVelocity = originalAngularVelocity
@@ -3065,37 +3021,38 @@ local function FlingPlayer(targetPlayer)
 			or targetCharacter:FindFirstChild("LowerTorso")
 			or targetRoot
 		local hitOffsets = {
-			Vector3.new(0, 0, -1.15),
-			Vector3.new(0, 0.95, -0.85),
-			Vector3.new(0, -0.65, -0.85),
-			Vector3.new(1.05, 0, 0),
-			Vector3.new(-1.05, 0, 0),
-			Vector3.new(0, 0, 1.05),
+			Vector3.new(0, 0, -0.65),
+			Vector3.new(0.65, 0.15, 0),
+			Vector3.new(-0.65, 0.15, 0),
+			Vector3.new(0, 0.7, -0.25),
+			Vector3.new(0, -0.45, -0.25),
+			Vector3.new(0, 0, 0.65),
 		}
 		local startedAt = os.clock()
 		local step = 0
-		local lastBurst = 0
 		while os.clock() - startedAt < 5.0 and targetRoot.Parent and targetHumanoid.Health > 0 and root.Parent and humanoid.Health > 0 do
 			step += 1
+			character = Player.Character
+			humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			root = character and character:FindFirstChild("HumanoidRootPart")
+			targetCharacter = targetPlayer.Character
+			targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
+			targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+			if not character or not humanoid or humanoid.Health <= 0 or not root or not targetCharacter or not targetHumanoid or targetHumanoid.Health <= 0 or not targetRoot then break end
 			targetContactPart = targetCharacter:FindFirstChild("UpperTorso")
 				or targetCharacter:FindFirstChild("Torso")
 				or targetCharacter:FindFirstChild("LowerTorso")
 				or targetRoot
-			local targetPosition = targetContactPart.Position + (targetRoot.AssemblyLinearVelocity * 0.14)
+			local targetPosition = targetContactPart.Position + (targetRoot.AssemblyLinearVelocity * 0.12)
 			local offset = hitOffsets[((step - 1) % #hitOffsets) + 1]
-			local passPosition = (targetRoot.CFrame * CFrame.new(offset)).Position + (targetRoot.AssemblyLinearVelocity * 0.08)
+			local passPosition = (targetRoot.CFrame * CFrame.new(offset)).Position + (targetRoot.AssemblyLinearVelocity * 0.06)
 			root.CFrame = CFrame.new(passPosition, targetPosition) * CFrame.Angles(math.rad(90), 0, 0)
 			root.AssemblyAngularVelocity = Vector3.new(99999, 99999, 99999)
-			local pushDirection = (targetRoot.Position - passPosition)
-			if pushDirection.Magnitude < 0.05 then pushDirection = Vector3.new(0, 1, 0) end
-			local pushVelocity = pushDirection.Unit * 780 + targetRoot.AssemblyLinearVelocity
-			if os.clock() - lastBurst > 0.09 then
-				lastBurst = os.clock()
-				pushVelocity = pushVelocity + Vector3.new(0, 430, 0)
+			local chaseDirection = targetPosition - passPosition
+			if chaseDirection.Magnitude < 0.05 then
+				chaseDirection = Vector3.new(0, 1, 0)
 			end
-			if targetFlyVelocity and targetFlyVelocity.Parent then targetFlyVelocity.Velocity = pushVelocity end
-			if targetFlyGyro and targetFlyGyro.Parent then targetFlyGyro.CFrame = root.CFrame end
-			root.AssemblyLinearVelocity = pushVelocity
+			root.AssemblyLinearVelocity = targetRoot.AssemblyLinearVelocity + (chaseDirection.Unit * 95) + Vector3.new(0, 30, 0)
 			if os.clock() - startedAt > 0.9 and targetRoot.AssemblyLinearVelocity.Magnitude > 185 then break end
 			RunService.Heartbeat:Wait()
 		end
