@@ -2,41 +2,32 @@
 local Runtime = (type(getgenv) == "function" and getgenv().HqydeuLoader_Runtime) or shared.HqydeuLoader_Runtime
 if not Runtime then return warn("Hqydeu page module: main hub runtime was not found") end
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
 local function IsCurrentGamePage()
-	local replicatedStorage = game:GetService("ReplicatedStorage")
-	return replicatedStorage:FindFirstChild("AbilityEvent") ~= nil
-		or replicatedStorage:FindFirstChild("ResetCooldownEvent") ~= nil
+	return ReplicatedStorage:FindFirstChild("AbilityEvent") ~= nil
+		or ReplicatedStorage:FindFirstChild("ResetCooldownEvent") ~= nil
 end
 
 local HubState = Runtime.HubState
 local ThemeObjects = Runtime.ThemeObjects
 local MainFrame = Runtime.MainFrame
-local ScreenGui = Runtime.ScreenGui
 local Player = Runtime.Player
 local Players = Runtime.Players or game:GetService("Players")
 local RunService = Runtime.RunService or game:GetService("RunService")
-local TweenService = Runtime.TweenService or game:GetService("TweenService")
-local UserInputService = Runtime.UserInputService or game:GetService("UserInputService")
-local CoreGui = Runtime.CoreGui or game:GetService("CoreGui")
-local HttpService = Runtime.HttpService or game:GetService("HttpService")
 local SavedKeybinds = Runtime.SavedKeybinds or {}
 local AccentColor = Runtime.GetAccentColor and Runtime.GetAccentColor() or Color3.fromRGB(0, 210, 255)
 local FrameThemeColor = Runtime.GetFrameThemeColor and Runtime.GetFrameThemeColor() or Color3.fromRGB(28, 28, 38)
 local InactiveTextColor = Runtime.InactiveTextColor or function() return Color3.fromRGB(255, 255, 255) end
-local KeybindText = Runtime.KeybindText or function(keyCode) return keyCode and keyCode.Name or "..." end
 local LoadKeybind = Runtime.LoadKeybind or function() return Enum.KeyCode.Unknown end
 local SaveKeybind = Runtime.SaveKeybind or function() end
 local LoadGameKeybind = Runtime.LoadGameKeybind or LoadKeybind
 local SaveGameKeybind = Runtime.SaveGameKeybind or SaveKeybind
 local SavePersistentSettings = Runtime.SavePersistentSettings or function() end
-local GuiSizeValue = Runtime.GuiSizeValue or 50
-local GuiScaleFromValue = Runtime.GuiScaleFromValue or function(value) return 1 end
 local PlayClick = Runtime.PlayClick or function() end
 local PlaySwoosh = Runtime.PlaySwoosh or function() end
 local TrackConnection = Runtime.TrackConnection or function(name, connection) HubState.Connections[name] = connection; return connection end
 local UpdateTheme = Runtime.UpdateTheme or function() end
-local CompactGuiText = Runtime.CompactGuiText or function() end
-local ToggleAutoLock = Runtime.ToggleAutoLock or function() end
 if not HubState or not ThemeObjects or not MainFrame then return warn("Hqydeu page module: runtime is incomplete") end
 HubState.Connections = HubState.Connections or {}
 
@@ -513,17 +504,7 @@ do
 
 	local function RefreshExecutionHistory()
 		local lines = {}
-		local bestEntry = executionHistory[1] or {Coins = 0, Wins = 0}
-		for _, entry in ipairs(executionHistory) do
-			local entryCoins = tonumber(entry.Coins) or 0
-			local bestCoins = tonumber(bestEntry.Coins) or 0
-			local entryWins = tonumber(entry.Wins) or 0
-			local bestWins = tonumber(bestEntry.Wins) or 0
-			if entryCoins > bestCoins or (entryCoins == bestCoins and entryWins > bestWins) then
-				bestEntry = entry
-			end
-		end
-		bestEntry = {Coins = farmState.AllTime.BestCoins, Wins = farmState.AllTime.BestWins}
+		local bestEntry = {Coins = farmState.AllTime.BestCoins, Wins = farmState.AllTime.BestWins}
 		historyBest.Text = string.format("Best  |  +%s Coins  |  +%s Wins", FormatCompactNumber(bestEntry.Coins or 0), FormatCompactNumber(bestEntry.Wins or 0))
 		for index, entry in ipairs(executionHistory) do
 			local useNumber = #executionHistory - index + 1
@@ -550,9 +531,8 @@ do
 	HubState.Connections.QuietOrDieCoinsDisplay = RunService.Heartbeat:Connect(function()
 		if os.clock() - coinsDisplayState.LastUpdate < 0.2 then return end
 		coinsDisplayState.LastUpdate = os.clock()
-		local replicatedStorage = game:GetService("ReplicatedStorage")
 		local playerGui = Player:FindFirstChildOfClass("PlayerGui")
-		local isQuietOrDie = replicatedStorage:FindFirstChild("AbilityEvent") ~= nil
+		local isQuietOrDie = ReplicatedStorage:FindFirstChild("AbilityEvent") ~= nil
 			and playerGui ~= nil and playerGui:FindFirstChild("InGameGui") ~= nil
 		if not isQuietOrDie then
 			coinsDisplay.Text = "Coins: N/A"
@@ -812,7 +792,7 @@ do
 				end)
 			end)
 		end
-		local abilityEvent = game:GetService("ReplicatedStorage"):FindFirstChild("AbilityEvent")
+		local abilityEvent = ReplicatedStorage:FindFirstChild("AbilityEvent")
 		if not abilityEvent or not abilityEvent:IsA("RemoteEvent") then return end
 		if pcall(function() abilityEvent:FireServer(3) end) then
 			ThemeObjects.QODReveal.LastFire = os.clock()
@@ -863,12 +843,12 @@ do
 	end)
 
 	HubState.Connections.QuietOrDieAutoKill = RunService.Heartbeat:Connect(function()
-		if not killState.Enabled or not IsQuietOrDieKiller() or os.clock() - killState.LastAttack < 0.1 then return end
+		if not killState.Enabled or os.clock() - killState.LastAttack < 0.1 or not IsQuietOrDieKiller() then return end
 		local character = Player.Character
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		local root = character and character:FindFirstChild("HumanoidRootPart")
 		local playersFolder = workspace:FindFirstChild("PlayersFolder")
-		local attackRemote = game:GetService("ReplicatedStorage"):FindFirstChild("PlayerTouchedOrClicked")
+		local attackRemote = ReplicatedStorage:FindFirstChild("PlayerTouchedOrClicked")
 		if not humanoid or humanoid.Health <= 0 or not root or not playersFolder or not attackRemote or not attackRemote:IsA("RemoteEvent") then return end
 
 		local targets = {}
@@ -969,13 +949,13 @@ do
 	ThemeObjects.RestoreQuietClutter = function() farmState.SetUnclutter(false) end
 
 	local function TriggerQuietOrDieTaunt()
-		local abilityEvent = game:GetService("ReplicatedStorage"):FindFirstChild("AbilityEvent")
+		local abilityEvent = ReplicatedStorage:FindFirstChild("AbilityEvent")
 		if not abilityEvent or not abilityEvent:IsA("RemoteEvent") then return false end
 		local fired = pcall(function() abilityEvent:FireServer(1) end)
 		return fired
 	end
 
-	local resetCooldownEvent = game:GetService("ReplicatedStorage"):FindFirstChild("ResetCooldownEvent")
+	local resetCooldownEvent = ReplicatedStorage:FindFirstChild("ResetCooldownEvent")
 	if resetCooldownEvent and resetCooldownEvent:IsA("RemoteEvent") then
 		HubState.Connections.QuietOrDieResetCooldown = resetCooldownEvent.OnClientEvent:Connect(function()
 			farmState.LastEmote = 0
