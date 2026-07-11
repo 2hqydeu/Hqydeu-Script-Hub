@@ -161,7 +161,10 @@ local function SaveThemeColors()
 end
 
 local function KeybindText(keyCode)
-	return keyCode == Enum.KeyCode.Unknown and "..." or keyCode.Name
+	if keyCode == Enum.KeyCode.Unknown then return "..." end
+	if keyCode == Enum.KeyCode.LeftControl then return "L Ctrl" end
+	if keyCode == Enum.KeyCode.RightControl then return "R Ctrl" end
+	return keyCode.Name
 end
 
 -- Main Container
@@ -359,7 +362,7 @@ end
 ThemeObjects.FeatureKeybindEntries = {}
 ThemeObjects.AddFeatureKeybind = function(entry)
 	if type(entry) ~= "table" or type(entry.Name) ~= "string" or type(entry.Get) ~= "function" or type(entry.Set) ~= "function" then return end
-	entry.Category = type(entry.Category) == "string" and entry.Category or "Main Features"
+	entry.Category = type(entry.Category) == "string" and entry.Category or "Game Features"
 	if entry.Storage then
 		for index = #ThemeObjects.FeatureKeybindEntries, 1, -1 do
 			if ThemeObjects.FeatureKeybindEntries[index].Storage == entry.Storage then
@@ -553,12 +556,9 @@ ThemeObjects.AttachFeatureKeybindButton = function(entry, parent, toggle)
 	table.insert(ThemeObjects.Backgrounds, button)
 	table.insert(ThemeObjects.Accents, button)
 	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 5)
-	local stroke = Instance.new("UIStroke")
-	stroke.Name = "ControlOutline"
-	stroke.Color = Color3.fromRGB(0, 0, 0)
-	stroke.Thickness = 1
-	stroke.Transparency = 0
-	stroke.Parent = button
+	if ThemeObjects.EnsureKeybindOutline then
+		ThemeObjects.EnsureKeybindOutline(button)
+	end
 	entry.InlineButton = button
 	button.MouseButton1Click:Connect(function()
 		ThemeObjects.BeginFeatureKeybind(entry, button)
@@ -6083,7 +6083,9 @@ ThemeObjects.BuildKeybindEditorEntries = function()
 	}
 	local featureEntries = {}
 	for _, entry in ipairs(ThemeObjects.FeatureKeybindEntries) do
-		table.insert(featureEntries, entry)
+		if entry.Category == "Main Features" then
+			table.insert(featureEntries, entry)
+		end
 	end
 	table.sort(featureEntries, function(a, b)
 		return tostring(a.Name):lower() < tostring(b.Name):lower()
@@ -6097,7 +6099,13 @@ end
 ThemeObjects.RunFeatureKeybind = function(keyCode)
 	if keyCode == Enum.KeyCode.Unknown then return false end
 	local ranAny = false
-	for _, entry in ipairs(ThemeObjects.BuildKeybindEditorEntries()) do
+	local runnableEntries = ThemeObjects.BuildKeybindEditorEntries()
+	for _, entry in ipairs(ThemeObjects.FeatureKeybindEntries) do
+		if entry.Category ~= "Main Features" then
+			table.insert(runnableEntries, entry)
+		end
+	end
+	for _, entry in ipairs(runnableEntries) do
 		if entry.Action and entry.Get and entry.Get() == keyCode then
 			ranAny = true
 			pcall(entry.Action)
