@@ -1066,6 +1066,10 @@ HubState.FlyEnabled = false
 HubState.FlySpeed = 10
 HubState.FlyKeybind = LoadKeybind("Fly")
 HubState.IsBindingFly = false
+HubState.VehicleFlyEnabled = false
+HubState.VehicleFlySpeed = 10
+HubState.VehicleFlyKeybind = LoadKeybind("VehicleFly")
+HubState.IsBindingVehicleFly = false
 
 HubState.AutoLockEnabled = false
 HubState.AutoLockKeybind = LoadKeybind("AutoLock")
@@ -1920,6 +1924,65 @@ table.insert(ThemeObjects.Backgrounds, ThemeObjects.ExtrasFeature.PartToggle)
 table.insert(ThemeObjects.Texts, ThemeObjects.ExtrasFeature.PartToggle)
 Instance.new("UICorner", ThemeObjects.ExtrasFeature.PartToggle).CornerRadius = UDim.new(0, 5)
 table.insert(ThemeObjects.StateTexts, {Object = ThemeObjects.ExtrasFeature.PartTitle, IsEnabled = function() return ThemeObjects.ExtrasFeature.Selecting end})
+
+HubState.VehicleFlyRow = Instance.new("Frame")
+HubState.VehicleFlyRow.Name = "VehicleFlyRow"
+HubState.VehicleFlyRow.Size = UDim2.new(1, -8, 0, 38)
+HubState.VehicleFlyRow.Position = UDim2.new(0, 4, 0, 88)
+HubState.VehicleFlyRow.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
+HubState.VehicleFlyRow.BackgroundTransparency = 0.92
+HubState.VehicleFlyRow.BorderSizePixel = 0
+HubState.VehicleFlyRow.Parent = ThemeObjects.ExtrasFeature.Page
+table.insert(ThemeObjects.Backgrounds, HubState.VehicleFlyRow)
+Instance.new("UICorner", HubState.VehicleFlyRow).CornerRadius = UDim.new(0, 6)
+
+HubState.VehicleFlyTitle = Instance.new("TextLabel")
+HubState.VehicleFlyTitle.Size = UDim2.new(0, 92, 0, 24)
+HubState.VehicleFlyTitle.Position = UDim2.new(0, 8, 0, 7)
+HubState.VehicleFlyTitle.BackgroundTransparency = 1
+HubState.VehicleFlyTitle.Text = "Vehicle Fly:"
+HubState.VehicleFlyTitle.Font = Enum.Font.GothamBold
+HubState.VehicleFlyTitle.TextSize = 11
+HubState.VehicleFlyTitle.TextXAlignment = Enum.TextXAlignment.Left
+HubState.VehicleFlyTitle.Parent = HubState.VehicleFlyRow
+table.insert(ThemeObjects.Texts, HubState.VehicleFlyTitle)
+
+HubState.VehicleFlyInput = Instance.new("TextBox")
+HubState.VehicleFlyInput.Size = UDim2.new(0, 46, 0, 22)
+HubState.VehicleFlyInput.Position = UDim2.new(0, 104, 0, 8)
+HubState.VehicleFlyInput.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+HubState.VehicleFlyInput.BackgroundTransparency = 0.8
+HubState.VehicleFlyInput.BorderSizePixel = 0
+HubState.VehicleFlyInput.Text = tostring(HubState.VehicleFlySpeed)
+HubState.VehicleFlyInput.Font = Enum.Font.GothamBold
+HubState.VehicleFlyInput.TextSize = 9
+HubState.VehicleFlyInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+HubState.VehicleFlyInput.PlaceholderColor3 = Color3.fromRGB(255, 255, 255)
+HubState.VehicleFlyInput.Parent = HubState.VehicleFlyRow
+table.insert(ThemeObjects.Backgrounds, HubState.VehicleFlyInput)
+table.insert(ThemeObjects.Texts, HubState.VehicleFlyInput)
+Instance.new("UICorner", HubState.VehicleFlyInput).CornerRadius = UDim.new(0, 4)
+ThemeObjects.StyleControlOutline(HubState.VehicleFlyInput)
+HubState.VehicleFlyInput.FocusLost:Connect(function()
+	local val = tonumber(HubState.VehicleFlyInput.Text)
+	if val then HubState.VehicleFlySpeed = val end
+	HubState.VehicleFlyInput.Text = tostring(HubState.VehicleFlySpeed)
+end)
+
+HubState.VehicleFlyToggle = Instance.new("TextButton")
+HubState.VehicleFlyToggle.Size = UDim2.new(0, 38, 0, 22)
+HubState.VehicleFlyToggle.Position = UDim2.new(1, -46, 0, 8)
+HubState.VehicleFlyToggle.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+HubState.VehicleFlyToggle.BackgroundTransparency = 0.8
+HubState.VehicleFlyToggle.BorderSizePixel = 0
+HubState.VehicleFlyToggle.Text = "Off"
+HubState.VehicleFlyToggle.Font = Enum.Font.GothamBold
+HubState.VehicleFlyToggle.TextSize = 9
+HubState.VehicleFlyToggle.Parent = HubState.VehicleFlyRow
+table.insert(ThemeObjects.Backgrounds, HubState.VehicleFlyToggle)
+table.insert(ThemeObjects.Texts, HubState.VehicleFlyToggle)
+Instance.new("UICorner", HubState.VehicleFlyToggle).CornerRadius = UDim.new(0, 5)
+table.insert(ThemeObjects.StateTexts, {Object = HubState.VehicleFlyTitle, IsEnabled = function() return HubState.VehicleFlyEnabled end})
 
 ThemeObjects.ExtrasFeature.CopyFrame = Instance.new("Frame")
 ThemeObjects.ExtrasFeature.CopyFrame.Name = "PartCopyFrame"
@@ -4768,6 +4831,32 @@ local function ToggleFly()
 end
 HubState.FlyToggleBtn.MouseButton1Click:Connect(function() PlayClick() ToggleFly() end)
 
+-- Vehicle Fly uses the exact same BodyVelocity/BodyGyro technique as regular Fly
+-- (moving the character's own root part), just with independent state -- sitting
+-- in a seat welds the character to it, so moving the root part drags the vehicle.
+local function ToggleVehicleFly()
+	HubState.VehicleFlyEnabled = not HubState.VehicleFlyEnabled
+	HubState.VehicleFlyToggle.Text = HubState.VehicleFlyEnabled and "On" or "Off"
+	HubState.VehicleFlyTitle.TextColor3 = HubState.VehicleFlyEnabled and AccentColor or InactiveTextColor()
+	local Character = Player.Character
+	local RootPart = Character and Character:FindFirstChild("HumanoidRootPart")
+	if HubState.VehicleFlyEnabled then
+		if RootPart then
+			HubState.VehicleBodyVelocity = Instance.new("BodyVelocity") HubState.VehicleBodyVelocity.Velocity = Vector3.new(0, 0, 0) HubState.VehicleBodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge) HubState.VehicleBodyVelocity.Parent = RootPart
+			HubState.VehicleBodyGyro = Instance.new("BodyGyro") HubState.VehicleBodyGyro.P = 9e4 HubState.VehicleBodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9) HubState.VehicleBodyGyro.CFrame = RootPart.CFrame HubState.VehicleBodyGyro.Parent = RootPart
+		end
+	else
+		if HubState.VehicleBodyVelocity then HubState.VehicleBodyVelocity:Destroy() HubState.VehicleBodyVelocity = nil end
+		if HubState.VehicleBodyGyro then HubState.VehicleBodyGyro:Destroy() HubState.VehicleBodyGyro = nil end
+		if RootPart then
+			RootPart.Velocity = Vector3.new(0, 0, 0)
+			ThemeObjects.SetRootUpright(RootPart, RootPart.CFrame, RootPart.Position)
+		end
+	end
+end
+HubState.VehicleFlyToggle.MouseButton1Click:Connect(function() PlayClick() ToggleVehicleFly() end)
+ThemeObjects.AddFeatureKeybind({Name = "Vehicle Fly", Category = "Main Features", Storage = "VehicleFly", Parent = HubState.VehicleFlyRow, Toggle = HubState.VehicleFlyToggle, Get = function() return HubState.VehicleFlyKeybind end, Set = function(key) HubState.VehicleFlyKeybind = key; SaveKeybind("VehicleFly", key) end, Action = ToggleVehicleFly})
+
 local function GetClosestPlayerToMouse()
 	local nearest = nil
 	local lastDist = math.huge
@@ -4813,6 +4902,21 @@ HubState.Connections.MainLoop = RunService.RenderStepped:Connect(function()
 		if MoveDir.Magnitude > 0 then RootPart.CFrame = RootPart.CFrame + (MoveDir * (HubState.FlySpeed / 50)) end
 		local _, yaw = Camera.CFrame:ToOrientation()
 		HubState.BodyGyro.CFrame = CFrame.new(RootPart.Position) * CFrame.Angles(0, yaw, 0)
+		RootPart.Velocity = Vector3.new(0, 0, 0)
+		RootPart.AssemblyAngularVelocity = Vector3.zero
+	end
+
+	if HubState.VehicleFlyEnabled and RootPart and HubState.VehicleBodyGyro then
+		local MoveDir = Vector3.new(0,0,0)
+		if UserInputService:IsKeyDown(Enum.KeyCode.W) then MoveDir = MoveDir + Camera.CFrame.LookVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.S) then MoveDir = MoveDir - Camera.CFrame.LookVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.A) then MoveDir = MoveDir - Camera.CFrame.RightVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.D) then MoveDir = MoveDir + Camera.CFrame.RightVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then MoveDir = MoveDir + Vector3.new(0,1,0) end
+		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then MoveDir = MoveDir - Vector3.new(0,1,0) end
+		if MoveDir.Magnitude > 0 then RootPart.CFrame = RootPart.CFrame + (MoveDir * (HubState.VehicleFlySpeed / 50)) end
+		local _, vehicleYaw = Camera.CFrame:ToOrientation()
+		HubState.VehicleBodyGyro.CFrame = CFrame.new(RootPart.Position) * CFrame.Angles(0, vehicleYaw, 0)
 		RootPart.Velocity = Vector3.new(0, 0, 0)
 		RootPart.AssemblyAngularVelocity = Vector3.zero
 	end
