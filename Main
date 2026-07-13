@@ -4906,15 +4906,15 @@ HubState.Connections.MainLoop = RunService.RenderStepped:Connect(function()
 		RootPart.AssemblyAngularVelocity = Vector3.zero
 	end
 
-	if HubState.VehicleFlyEnabled and RootPart and HubState.VehicleBodyVelocity then
-		-- Unlike regular Fly, this can't teleport the root part's CFrame or keep
-		-- re-forcing BodyGyro to match camera yaw every frame: while seated, that root
-		-- part is welded into the vehicle's whole chassis/wheel/suspension assembly, and
-		-- fighting that assembly's own physics with a hard position/rotation snap every
-		-- frame is what caused the spinning and violent jitter at higher speed. Applying
-		-- a real velocity instead lets the physics engine integrate the vehicle's motion
-		-- normally, and the BodyGyro set once on toggle-on (see ToggleVehicleFly) just
-		-- holds whatever orientation the vehicle already had instead of chasing the camera.
+	if HubState.VehicleFlyEnabled and RootPart and HubState.VehicleBodyVelocity and HubState.VehicleBodyGyro then
+		-- Unlike regular Fly, this can't teleport the root part's CFrame every frame:
+		-- while seated, that root part is welded into the vehicle's whole chassis/wheel/
+		-- suspension assembly, and fighting that assembly's own physics with a hard
+		-- position snap every frame is what caused the spinning and violent jitter at
+		-- higher speed. A real velocity lets the physics engine integrate the vehicle's
+		-- motion normally. BodyGyro is still updated to the camera's yaw each frame for
+		-- steering (same as regular Fly) -- it applies smooth bounded torque rather than
+		-- an instant snap, so it's fine now that it isn't also fighting a CFrame teleport.
 		local MoveDir = Vector3.new(0,0,0)
 		if UserInputService:IsKeyDown(Enum.KeyCode.W) then MoveDir = MoveDir + Camera.CFrame.LookVector end
 		if UserInputService:IsKeyDown(Enum.KeyCode.S) then MoveDir = MoveDir - Camera.CFrame.LookVector end
@@ -4927,7 +4927,8 @@ HubState.Connections.MainLoop = RunService.RenderStepped:Connect(function()
 		else
 			HubState.VehicleBodyVelocity.Velocity = Vector3.new(0, 0, 0)
 		end
-		RootPart.AssemblyAngularVelocity = Vector3.zero
+		local _, vehicleYaw = Camera.CFrame:ToOrientation()
+		HubState.VehicleBodyGyro.CFrame = CFrame.new(RootPart.Position) * CFrame.Angles(0, vehicleYaw, 0)
 	end
 	
 	if HubState.AutoLockEnabled and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) and RootPart then
