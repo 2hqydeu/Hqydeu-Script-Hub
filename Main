@@ -532,25 +532,22 @@ ThemeObjects.AttachKeybindClearPrompt = function(entry, button)
 	end)
 end
 
+-- Note: `toggle` is intentionally unused now -- cards built by ThemeObjects.CreateFeatureCard
+-- already position their own Toggle on the card's top line, so this only needs to place the
+-- inline keybind button on the card's second (bottom) line. Kept as a parameter since callers
+-- already pass entry.Toggle through here via AddFeatureKeybind.
 ThemeObjects.AttachFeatureKeybindButton = function(entry, parent, toggle)
 	if not parent or not parent:IsA("GuiObject") or entry.InlineButton then return end
-	if toggle and toggle:IsA("GuiObject") then
-		toggle.Size = UDim2.new(0, 44, 0, 22)
-		toggle.Position = UDim2.new(1, -98, 0, 8)
-		toggle.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-		toggle.BackgroundTransparency = 0.8
-		toggle.TextSize = 9
-	end
 	local button = Instance.new("TextButton")
 	button.Name = "FeatureKeybindButton"
-	button.Size = UDim2.new(0, 44, 0, 22)
-	button.Position = UDim2.new(1, -50, 0, 8)
+	button.Size = UDim2.new(0, 46, 0, 20)
+	button.Position = UDim2.new(1, -54, 1, -26)
 	button.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	button.BackgroundTransparency = 0.8
 	button.BorderSizePixel = 0
 	button.Text = KeybindText(entry.Get())
 	button.Font = Enum.Font.GothamBold
-	button.TextSize = 8
+	button.TextSize = 9
 	button.TextColor3 = AccentColor
 	button.Parent = parent
 	table.insert(ThemeObjects.Backgrounds, button)
@@ -859,6 +856,97 @@ ThemeObjects.EnsureKeybindOutline = function(button)
 	outline.Color = Color3.fromRGB(0, 0, 0)
 	outline.Thickness = 1
 	outline.Transparency = 0
+end
+
+-- Shared card grid system: one uniform card component + a wrapping 2-column layout,
+-- replacing the old pattern of every page hand-computing its own row Y positions with
+-- inconsistent sizes/colors/corner radii scattered across the file.
+local CardWidth = 156
+local CardHeight = 60
+local CardGap = 8
+local CardCorner = UDim.new(0, 8)
+
+-- Wraps a page's cards into a 2-column grid (UIListLayout handles the actual wrapping;
+-- no more manual Y math anywhere). Keeps a ScrollingFrame's CanvasSize in sync too.
+local function ApplyCardGridLayout(page)
+	local layout = Instance.new("UIListLayout")
+	layout.Name = "CardGridLayout"
+	layout.FillDirection = Enum.FillDirection.Horizontal
+	layout.Wraps = true
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+	layout.VerticalAlignment = Enum.VerticalAlignment.Top
+	layout.Padding = UDim.new(0, CardGap)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = page
+	local padding = Instance.new("UIPadding")
+	padding.PaddingLeft = UDim.new(0, 4)
+	padding.PaddingTop = UDim.new(0, 4)
+	padding.PaddingRight = UDim.new(0, 4)
+	padding.PaddingBottom = UDim.new(0, 4)
+	padding.Parent = page
+	if page:IsA("ScrollingFrame") then
+		local function UpdateCanvas()
+			page.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 8)
+		end
+		layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(UpdateCanvas)
+		task.defer(UpdateCanvas)
+	end
+	return layout
+end
+
+-- Builds one uniform feature card: a Frame with Title (top-left) and Toggle (top-right)
+-- already wired into the standard slots. Callers needing a second stacked line (a speed
+-- input, an inline keybind button via AddFeatureKeybind's Parent/Toggle wiring, etc.)
+-- add it themselves at Position = UDim2.new(0, 8, 1, -26).
+ThemeObjects.CreateFeatureCard = function(page, name, title)
+	local card = Instance.new("Frame")
+	card.Name = name
+	card.Size = UDim2.new(0, CardWidth, 0, CardHeight)
+	card.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
+	card.BackgroundTransparency = 0.92
+	card.BorderSizePixel = 0
+	card.Parent = page
+	table.insert(ThemeObjects.Backgrounds, card)
+	Instance.new("UICorner", card).CornerRadius = CardCorner
+	local stroke = Instance.new("UIStroke")
+	stroke.Name = "ControlOutline"
+	stroke.Color = AccentColor
+	stroke.Thickness = 1
+	stroke.Transparency = 0.75
+	stroke.Parent = card
+	table.insert(ThemeObjects.Accents, stroke)
+
+	local titleLabel = Instance.new("TextLabel")
+	titleLabel.Name = "Title"
+	titleLabel.Size = UDim2.new(0, 92, 0, 20)
+	titleLabel.Position = UDim2.new(0, 8, 0, 6)
+	titleLabel.BackgroundTransparency = 1
+	titleLabel.Text = title
+	titleLabel.Font = Enum.Font.GothamBold
+	titleLabel.TextSize = 11
+	titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+	titleLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	titleLabel.Parent = card
+	table.insert(ThemeObjects.Texts, titleLabel)
+
+	local toggle = Instance.new("TextButton")
+	toggle.Name = "Toggle"
+	toggle.Size = UDim2.new(0, 44, 0, 20)
+	toggle.Position = UDim2.new(1, -52, 0, 6)
+	toggle.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	toggle.BackgroundTransparency = 0.8
+	toggle.BorderSizePixel = 0
+	toggle.Text = "Off"
+	toggle.Font = Enum.Font.GothamBold
+	toggle.TextSize = 9
+	toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+	toggle.Parent = card
+	table.insert(ThemeObjects.Backgrounds, toggle)
+	table.insert(ThemeObjects.Texts, toggle)
+	Instance.new("UICorner", toggle).CornerRadius = UDim.new(0, 5)
+
+	return card, titleLabel, toggle
 end
 
 ThemeObjects.AttachHoverSound = function(obj)
@@ -1239,13 +1327,19 @@ HubState.PageHeader.Parent = MainFrame
 table.insert(ThemeObjects.Texts, HubState.PageHeader)
 
 -- Pages
-HubState.MovementPage = Instance.new("Frame")
+HubState.MovementPage = Instance.new("ScrollingFrame")
 HubState.MovementPage.Name = "MovementPage"
 HubState.MovementPage.Size = UDim2.new(0, 336, 1, -54)
 HubState.MovementPage.Position = UDim2.new(0, 122, 0, 54)
 HubState.MovementPage.BackgroundTransparency = 1
 HubState.MovementPage.BorderSizePixel = 0
 HubState.MovementPage.ClipsDescendants = true
+HubState.MovementPage.ScrollBarThickness = 3
+HubState.MovementPage.ScrollBarImageColor3 = AccentColor
+HubState.MovementPage.ScrollingDirection = Enum.ScrollingDirection.Y
+HubState.MovementPage.ElasticBehavior = Enum.ElasticBehavior.Never
+HubState.MovementPage.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+HubState.MovementPage.CanvasSize = UDim2.new(0, 0, 0, 136)
 HubState.MovementPage.Visible = true
 HubState.MovementPage.Parent = MainFrame
 
@@ -1285,26 +1379,38 @@ HubState.TeleportPage.BorderSizePixel = 0
 HubState.TeleportPage.ClipsDescendants = true
 HubState.TeleportPage.Parent = MainFrame
 
-HubState.GamesPage = Instance.new("Frame")
+HubState.GamesPage = Instance.new("ScrollingFrame")
 HubState.GamesPage.Name = "GamesPage"
 HubState.GamesPage.Size = UDim2.new(0, 336, 1, -54)
 HubState.GamesPage.Position = UDim2.new(1.1, 0, 0, 54)
 HubState.GamesPage.BackgroundTransparency = 1
 HubState.GamesPage.BorderSizePixel = 0
 HubState.GamesPage.ClipsDescendants = true
+HubState.GamesPage.ScrollBarThickness = 3
+HubState.GamesPage.ScrollBarImageColor3 = AccentColor
+HubState.GamesPage.ScrollingDirection = Enum.ScrollingDirection.Y
+HubState.GamesPage.ElasticBehavior = Enum.ElasticBehavior.Never
+HubState.GamesPage.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+HubState.GamesPage.CanvasSize = UDim2.new(0, 0, 0, 136)
 HubState.GamesPage.Visible = false
 HubState.GamesPage.Parent = MainFrame
 
 -- MM2 page is loaded on demand from the external MM2 page module.
 
 
-HubState.ScriptsPage = Instance.new("Frame")
+HubState.ScriptsPage = Instance.new("ScrollingFrame")
 HubState.ScriptsPage.Name = "ScriptsPage"
 HubState.ScriptsPage.Size = UDim2.new(0, 336, 1, -54)
 HubState.ScriptsPage.Position = UDim2.new(1.1, 0, 0, 54)
 HubState.ScriptsPage.BackgroundTransparency = 1
 HubState.ScriptsPage.BorderSizePixel = 0
 HubState.ScriptsPage.ClipsDescendants = true
+HubState.ScriptsPage.ScrollBarThickness = 3
+HubState.ScriptsPage.ScrollBarImageColor3 = AccentColor
+HubState.ScriptsPage.ScrollingDirection = Enum.ScrollingDirection.Y
+HubState.ScriptsPage.ElasticBehavior = Enum.ElasticBehavior.Never
+HubState.ScriptsPage.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+HubState.ScriptsPage.CanvasSize = UDim2.new(0, 0, 0, 68)
 HubState.ScriptsPage.Visible = false
 HubState.ScriptsPage.Parent = MainFrame
 
@@ -1727,20 +1833,32 @@ ThemeObjects.ScriptRunner.RunOnceUrl = function(key, url, label)
 	end
 end
 
-HubState.InfiniteYieldRow = Instance.new("Frame")
-HubState.InfiniteYieldRow.Name = "InfiniteYieldRow"
-HubState.InfiniteYieldRow.Size = UDim2.new(1, -8, 0, 38)
-HubState.InfiniteYieldRow.Position = UDim2.new(0, 4, 0, 4)
-HubState.InfiniteYieldRow.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
-HubState.InfiniteYieldRow.BackgroundTransparency = 0.92
-HubState.InfiniteYieldRow.BorderSizePixel = 0
-HubState.InfiniteYieldRow.Parent = HubState.ScriptsPage
-table.insert(ThemeObjects.Backgrounds, HubState.InfiniteYieldRow)
-Instance.new("UICorner", HubState.InfiniteYieldRow).CornerRadius = UDim.new(0, 6)
+local function CreateScriptCard(name, order, parent)
+	local card = Instance.new("Frame")
+	card.Name = name
+	card.LayoutOrder = order
+	card.Size = UDim2.new(0, 156, 0, 60)
+	card.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
+	card.BackgroundTransparency = 0.92
+	card.BorderSizePixel = 0
+	card.Parent = parent
+	table.insert(ThemeObjects.Backgrounds, card)
+	Instance.new("UICorner", card).CornerRadius = UDim.new(0, 8)
+	local stroke = Instance.new("UIStroke")
+	stroke.Name = "ControlOutline"
+	stroke.Color = AccentColor
+	stroke.Thickness = 1
+	stroke.Transparency = 0.75
+	stroke.Parent = card
+	table.insert(ThemeObjects.Accents, stroke)
+	return card
+end
+
+HubState.InfiniteYieldRow = CreateScriptCard("InfiniteYieldRow", 1, HubState.ScriptsPage)
 
 HubState.InfiniteYieldTitle = Instance.new("TextLabel")
-HubState.InfiniteYieldTitle.Size = UDim2.new(1, -190, 1, 0)
-HubState.InfiniteYieldTitle.Position = UDim2.new(0, 10, 0, 0)
+HubState.InfiniteYieldTitle.Size = UDim2.new(0, 130, 0, 20)
+HubState.InfiniteYieldTitle.Position = UDim2.new(0, 8, 0, 6)
 HubState.InfiniteYieldTitle.BackgroundTransparency = 1
 HubState.InfiniteYieldTitle.BorderSizePixel = 0
 HubState.InfiniteYieldTitle.Text = "Infinite Yield:"
@@ -1753,14 +1871,14 @@ table.insert(ThemeObjects.Texts, HubState.InfiniteYieldTitle)
 
 HubState.InfiniteYieldExecute = Instance.new("TextButton")
 HubState.InfiniteYieldExecute.Name = "InfiniteYieldExecute"
-HubState.InfiniteYieldExecute.Size = UDim2.new(0, 82, 0, 22)
-HubState.InfiniteYieldExecute.Position = UDim2.new(1, -90, 0, 8)
+HubState.InfiniteYieldExecute.Size = UDim2.new(0, 44, 0, 20)
+HubState.InfiniteYieldExecute.Position = UDim2.new(1, -52, 1, -26)
 HubState.InfiniteYieldExecute.BackgroundColor3 = Color3.fromRGB(50, 50, 68)
 HubState.InfiniteYieldExecute.BackgroundTransparency = 0.8
 HubState.InfiniteYieldExecute.BorderSizePixel = 0
 HubState.InfiniteYieldExecute.Text = "Execute"
 HubState.InfiniteYieldExecute.Font = Enum.Font.GothamBold
-HubState.InfiniteYieldExecute.TextSize = 9
+HubState.InfiniteYieldExecute.TextSize = 8
 HubState.InfiniteYieldExecute.TextColor3 = Color3.fromRGB(255, 255, 255)
 HubState.InfiniteYieldExecute.Parent = HubState.InfiniteYieldRow
 table.insert(ThemeObjects.Backgrounds, HubState.InfiniteYieldExecute)
@@ -1768,14 +1886,14 @@ table.insert(ThemeObjects.Texts, HubState.InfiniteYieldExecute)
 Instance.new("UICorner", HubState.InfiniteYieldExecute).CornerRadius = UDim.new(0, 4)
 HubState.InfiniteYieldDestroy = Instance.new("TextButton")
 HubState.InfiniteYieldDestroy.Name = "InfiniteYieldDestroy"
-HubState.InfiniteYieldDestroy.Size = UDim2.new(0, 82, 0, 22)
-HubState.InfiniteYieldDestroy.Position = UDim2.new(1, -176, 0, 8)
+HubState.InfiniteYieldDestroy.Size = UDim2.new(0, 44, 0, 20)
+HubState.InfiniteYieldDestroy.Position = UDim2.new(0, 8, 1, -26)
 HubState.InfiniteYieldDestroy.BackgroundColor3 = Color3.fromRGB(255, 35, 35)
 HubState.InfiniteYieldDestroy.BackgroundTransparency = 0
 HubState.InfiniteYieldDestroy.BorderSizePixel = 0
 HubState.InfiniteYieldDestroy.Text = "Destroy"
 HubState.InfiniteYieldDestroy.Font = Enum.Font.GothamBold
-HubState.InfiniteYieldDestroy.TextSize = 9
+HubState.InfiniteYieldDestroy.TextSize = 8
 HubState.InfiniteYieldDestroy.TextColor3 = Color3.fromRGB(255, 255, 255)
 HubState.InfiniteYieldDestroy.Visible = false
 HubState.InfiniteYieldDestroy.Parent = HubState.InfiniteYieldRow
@@ -1800,20 +1918,11 @@ end)
 -- Opens Dex Explorer directly (DexPlusPlus build) without needing to load all of
 -- Infinite Yield first -- same idea as Infinite Yield's own built-in "dex" command,
 -- which is itself just a one-line shortcut to a Dex Explorer build.
-HubState.DexRow = Instance.new("Frame")
-HubState.DexRow.Name = "DexExplorerRow"
-HubState.DexRow.Size = UDim2.new(1, -8, 0, 38)
-HubState.DexRow.Position = UDim2.new(0, 4, 0, 46)
-HubState.DexRow.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
-HubState.DexRow.BackgroundTransparency = 0.92
-HubState.DexRow.BorderSizePixel = 0
-HubState.DexRow.Parent = HubState.ScriptsPage
-table.insert(ThemeObjects.Backgrounds, HubState.DexRow)
-Instance.new("UICorner", HubState.DexRow).CornerRadius = UDim.new(0, 6)
+HubState.DexRow = CreateScriptCard("DexExplorerRow", 2, HubState.ScriptsPage)
 
 HubState.DexTitle = Instance.new("TextLabel")
-HubState.DexTitle.Size = UDim2.new(1, -190, 1, 0)
-HubState.DexTitle.Position = UDim2.new(0, 10, 0, 0)
+HubState.DexTitle.Size = UDim2.new(0, 130, 0, 20)
+HubState.DexTitle.Position = UDim2.new(0, 8, 0, 6)
 HubState.DexTitle.BackgroundTransparency = 1
 HubState.DexTitle.BorderSizePixel = 0
 HubState.DexTitle.Text = "Dex Explorer:"
@@ -1826,14 +1935,14 @@ table.insert(ThemeObjects.Texts, HubState.DexTitle)
 
 HubState.DexExecute = Instance.new("TextButton")
 HubState.DexExecute.Name = "DexExplorerExecute"
-HubState.DexExecute.Size = UDim2.new(0, 82, 0, 22)
-HubState.DexExecute.Position = UDim2.new(1, -90, 0, 8)
+HubState.DexExecute.Size = UDim2.new(0, 44, 0, 20)
+HubState.DexExecute.Position = UDim2.new(1, -52, 1, -26)
 HubState.DexExecute.BackgroundColor3 = Color3.fromRGB(50, 50, 68)
 HubState.DexExecute.BackgroundTransparency = 0.8
 HubState.DexExecute.BorderSizePixel = 0
 HubState.DexExecute.Text = "Execute"
 HubState.DexExecute.Font = Enum.Font.GothamBold
-HubState.DexExecute.TextSize = 9
+HubState.DexExecute.TextSize = 8
 HubState.DexExecute.TextColor3 = Color3.fromRGB(255, 255, 255)
 HubState.DexExecute.Parent = HubState.DexRow
 table.insert(ThemeObjects.Backgrounds, HubState.DexExecute)
@@ -1844,14 +1953,22 @@ HubState.DexExecute.MouseButton1Click:Connect(function()
 	ThemeObjects.ScriptRunner.RunOnceUrl("DexExplorer", "https://github.com/AZYsGithub/DexPlusPlus/releases/latest/download/out.lua", "Dex Explorer")
 end)
 
+ApplyCardGridLayout(HubState.ScriptsPage)
+
 ThemeObjects.ExtrasFeature = {Enabled = false, Applying = false, Lighting = Lighting}
-ThemeObjects.ExtrasFeature.Page = Instance.new("Frame")
+ThemeObjects.ExtrasFeature.Page = Instance.new("ScrollingFrame")
 ThemeObjects.ExtrasFeature.Page.Name = "ExtrasPage"
 ThemeObjects.ExtrasFeature.Page.Size = UDim2.new(0, 336, 1, -54)
 ThemeObjects.ExtrasFeature.Page.Position = UDim2.new(1.1, 0, 0, 54)
 ThemeObjects.ExtrasFeature.Page.BackgroundTransparency = 1
 ThemeObjects.ExtrasFeature.Page.BorderSizePixel = 0
 ThemeObjects.ExtrasFeature.Page.ClipsDescendants = true
+ThemeObjects.ExtrasFeature.Page.ScrollBarThickness = 3
+ThemeObjects.ExtrasFeature.Page.ScrollBarImageColor3 = AccentColor
+ThemeObjects.ExtrasFeature.Page.ScrollingDirection = Enum.ScrollingDirection.Y
+ThemeObjects.ExtrasFeature.Page.ElasticBehavior = Enum.ElasticBehavior.Never
+ThemeObjects.ExtrasFeature.Page.VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+ThemeObjects.ExtrasFeature.Page.CanvasSize = UDim2.new(0, 0, 0, 136)
 ThemeObjects.ExtrasFeature.Page.Visible = false
 ThemeObjects.ExtrasFeature.Page.Parent = MainFrame
 ThemeObjects.ExtrasFeature.Original = {
@@ -1884,20 +2001,32 @@ function ThemeObjects.ExtrasFeature.Restore()
 	end
 end
 
-ThemeObjects.ExtrasFeature.Row = Instance.new("Frame")
-ThemeObjects.ExtrasFeature.Row.Name = "FullBrightRow"
-ThemeObjects.ExtrasFeature.Row.Size = UDim2.new(1, -8, 0, 38)
-ThemeObjects.ExtrasFeature.Row.Position = UDim2.new(0, 4, 0, 4)
-ThemeObjects.ExtrasFeature.Row.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
-ThemeObjects.ExtrasFeature.Row.BackgroundTransparency = 0.92
-ThemeObjects.ExtrasFeature.Row.BorderSizePixel = 0
-ThemeObjects.ExtrasFeature.Row.Parent = ThemeObjects.ExtrasFeature.Page
-table.insert(ThemeObjects.Backgrounds, ThemeObjects.ExtrasFeature.Row)
-Instance.new("UICorner", ThemeObjects.ExtrasFeature.Row).CornerRadius = UDim.new(0, 6)
+local function CreateExtrasCard(name, order, parent)
+	local card = Instance.new("Frame")
+	card.Name = name
+	card.LayoutOrder = order
+	card.Size = UDim2.new(0, 156, 0, 60)
+	card.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
+	card.BackgroundTransparency = 0.92
+	card.BorderSizePixel = 0
+	card.Parent = parent
+	table.insert(ThemeObjects.Backgrounds, card)
+	Instance.new("UICorner", card).CornerRadius = UDim.new(0, 8)
+	local stroke = Instance.new("UIStroke")
+	stroke.Name = "ControlOutline"
+	stroke.Color = AccentColor
+	stroke.Thickness = 1
+	stroke.Transparency = 0.75
+	stroke.Parent = card
+	table.insert(ThemeObjects.Accents, stroke)
+	return card
+end
+
+ThemeObjects.ExtrasFeature.Row = CreateExtrasCard("FullBrightRow", 1, ThemeObjects.ExtrasFeature.Page)
 
 ThemeObjects.ExtrasFeature.Title = Instance.new("TextLabel")
-ThemeObjects.ExtrasFeature.Title.Size = UDim2.new(0, 82, 0, 24)
-ThemeObjects.ExtrasFeature.Title.Position = UDim2.new(0, 8, 0, 7)
+ThemeObjects.ExtrasFeature.Title.Size = UDim2.new(0, 60, 0, 20)
+ThemeObjects.ExtrasFeature.Title.Position = UDim2.new(0, 8, 0, 6)
 ThemeObjects.ExtrasFeature.Title.BackgroundTransparency = 1
 ThemeObjects.ExtrasFeature.Title.Text = "Full Bright:"
 ThemeObjects.ExtrasFeature.Title.Font = Enum.Font.GothamBold
@@ -1907,8 +2036,8 @@ ThemeObjects.ExtrasFeature.Title.Parent = ThemeObjects.ExtrasFeature.Row
 table.insert(ThemeObjects.Texts, ThemeObjects.ExtrasFeature.Title)
 
 ThemeObjects.ExtrasFeature.Toggle = Instance.new("TextButton")
-ThemeObjects.ExtrasFeature.Toggle.Size = UDim2.new(0, 38, 0, 22)
-ThemeObjects.ExtrasFeature.Toggle.Position = UDim2.new(1, -46, 0, 8)
+ThemeObjects.ExtrasFeature.Toggle.Size = UDim2.new(0, 44, 0, 20)
+ThemeObjects.ExtrasFeature.Toggle.Position = UDim2.new(1, -52, 0, 6)
 ThemeObjects.ExtrasFeature.Toggle.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 ThemeObjects.ExtrasFeature.Toggle.BackgroundTransparency = 0.8
 ThemeObjects.ExtrasFeature.Toggle.BorderSizePixel = 0
@@ -1935,20 +2064,11 @@ ThemeObjects.AddFeatureKeybind({Name = "Full Bright", Category = "Main Features"
 	if ThemeObjects.ExtrasFeature.Enabled then ThemeObjects.ExtrasFeature.Apply() else ThemeObjects.ExtrasFeature.Restore() end
 end})
 
-ThemeObjects.ExtrasFeature.PartRow = Instance.new("Frame")
-ThemeObjects.ExtrasFeature.PartRow.Name = "PartSelectRow"
-ThemeObjects.ExtrasFeature.PartRow.Size = UDim2.new(1, -8, 0, 38)
-ThemeObjects.ExtrasFeature.PartRow.Position = UDim2.new(0, 4, 0, 46)
-ThemeObjects.ExtrasFeature.PartRow.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
-ThemeObjects.ExtrasFeature.PartRow.BackgroundTransparency = 0.92
-ThemeObjects.ExtrasFeature.PartRow.BorderSizePixel = 0
-ThemeObjects.ExtrasFeature.PartRow.Parent = ThemeObjects.ExtrasFeature.Page
-table.insert(ThemeObjects.Backgrounds, ThemeObjects.ExtrasFeature.PartRow)
-Instance.new("UICorner", ThemeObjects.ExtrasFeature.PartRow).CornerRadius = UDim.new(0, 6)
+ThemeObjects.ExtrasFeature.PartRow = CreateExtrasCard("PartSelectRow", 2, ThemeObjects.ExtrasFeature.Page)
 
 ThemeObjects.ExtrasFeature.PartTitle = Instance.new("TextLabel")
-ThemeObjects.ExtrasFeature.PartTitle.Size = UDim2.new(0, 82, 0, 24)
-ThemeObjects.ExtrasFeature.PartTitle.Position = UDim2.new(0, 8, 0, 7)
+ThemeObjects.ExtrasFeature.PartTitle.Size = UDim2.new(0, 70, 0, 20)
+ThemeObjects.ExtrasFeature.PartTitle.Position = UDim2.new(0, 8, 0, 6)
 ThemeObjects.ExtrasFeature.PartTitle.BackgroundTransparency = 1
 ThemeObjects.ExtrasFeature.PartTitle.Text = "Part Select:"
 ThemeObjects.ExtrasFeature.PartTitle.Font = Enum.Font.GothamBold
@@ -1958,8 +2078,8 @@ ThemeObjects.ExtrasFeature.PartTitle.Parent = ThemeObjects.ExtrasFeature.PartRow
 table.insert(ThemeObjects.Texts, ThemeObjects.ExtrasFeature.PartTitle)
 
 ThemeObjects.ExtrasFeature.PartToggle = Instance.new("TextButton")
-ThemeObjects.ExtrasFeature.PartToggle.Size = UDim2.new(0, 38, 0, 22)
-ThemeObjects.ExtrasFeature.PartToggle.Position = UDim2.new(1, -46, 0, 8)
+ThemeObjects.ExtrasFeature.PartToggle.Size = UDim2.new(0, 44, 0, 20)
+ThemeObjects.ExtrasFeature.PartToggle.Position = UDim2.new(1, -52, 0, 6)
 ThemeObjects.ExtrasFeature.PartToggle.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 ThemeObjects.ExtrasFeature.PartToggle.BackgroundTransparency = 0.8
 ThemeObjects.ExtrasFeature.PartToggle.BorderSizePixel = 0
@@ -1972,20 +2092,11 @@ table.insert(ThemeObjects.Texts, ThemeObjects.ExtrasFeature.PartToggle)
 Instance.new("UICorner", ThemeObjects.ExtrasFeature.PartToggle).CornerRadius = UDim.new(0, 5)
 table.insert(ThemeObjects.StateTexts, {Object = ThemeObjects.ExtrasFeature.PartTitle, IsEnabled = function() return ThemeObjects.ExtrasFeature.Selecting end})
 
-HubState.VehicleFlyRow = Instance.new("Frame")
-HubState.VehicleFlyRow.Name = "VehicleFlyRow"
-HubState.VehicleFlyRow.Size = UDim2.new(1, -8, 0, 38)
-HubState.VehicleFlyRow.Position = UDim2.new(0, 4, 0, 88)
-HubState.VehicleFlyRow.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
-HubState.VehicleFlyRow.BackgroundTransparency = 0.92
-HubState.VehicleFlyRow.BorderSizePixel = 0
-HubState.VehicleFlyRow.Parent = ThemeObjects.ExtrasFeature.Page
-table.insert(ThemeObjects.Backgrounds, HubState.VehicleFlyRow)
-Instance.new("UICorner", HubState.VehicleFlyRow).CornerRadius = UDim.new(0, 6)
+HubState.VehicleFlyRow = CreateExtrasCard("VehicleFlyRow", 3, ThemeObjects.ExtrasFeature.Page)
 
 HubState.VehicleFlyTitle = Instance.new("TextLabel")
-HubState.VehicleFlyTitle.Size = UDim2.new(0, 92, 0, 24)
-HubState.VehicleFlyTitle.Position = UDim2.new(0, 8, 0, 7)
+HubState.VehicleFlyTitle.Size = UDim2.new(0, 70, 0, 20)
+HubState.VehicleFlyTitle.Position = UDim2.new(0, 8, 0, 6)
 HubState.VehicleFlyTitle.BackgroundTransparency = 1
 HubState.VehicleFlyTitle.Text = "Vehicle Fly:"
 HubState.VehicleFlyTitle.Font = Enum.Font.GothamBold
@@ -1995,8 +2106,8 @@ HubState.VehicleFlyTitle.Parent = HubState.VehicleFlyRow
 table.insert(ThemeObjects.Texts, HubState.VehicleFlyTitle)
 
 HubState.VehicleFlyInput = Instance.new("TextBox")
-HubState.VehicleFlyInput.Size = UDim2.new(0, 46, 0, 22)
-HubState.VehicleFlyInput.Position = UDim2.new(0, 104, 0, 8)
+HubState.VehicleFlyInput.Size = UDim2.new(0, 46, 0, 20)
+HubState.VehicleFlyInput.Position = UDim2.new(0, 8, 1, -26)
 HubState.VehicleFlyInput.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 HubState.VehicleFlyInput.BackgroundTransparency = 0.8
 HubState.VehicleFlyInput.BorderSizePixel = 0
@@ -2017,8 +2128,8 @@ HubState.VehicleFlyInput.FocusLost:Connect(function()
 end)
 
 HubState.VehicleFlyToggle = Instance.new("TextButton")
-HubState.VehicleFlyToggle.Size = UDim2.new(0, 38, 0, 22)
-HubState.VehicleFlyToggle.Position = UDim2.new(1, -46, 0, 8)
+HubState.VehicleFlyToggle.Size = UDim2.new(0, 44, 0, 20)
+HubState.VehicleFlyToggle.Position = UDim2.new(1, -52, 0, 6)
 HubState.VehicleFlyToggle.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 HubState.VehicleFlyToggle.BackgroundTransparency = 0.8
 HubState.VehicleFlyToggle.BorderSizePixel = 0
@@ -2030,6 +2141,8 @@ table.insert(ThemeObjects.Backgrounds, HubState.VehicleFlyToggle)
 table.insert(ThemeObjects.Texts, HubState.VehicleFlyToggle)
 Instance.new("UICorner", HubState.VehicleFlyToggle).CornerRadius = UDim.new(0, 5)
 table.insert(ThemeObjects.StateTexts, {Object = HubState.VehicleFlyTitle, IsEnabled = function() return HubState.VehicleFlyEnabled end})
+
+ApplyCardGridLayout(ThemeObjects.ExtrasFeature.Page)
 
 ThemeObjects.ExtrasFeature.CopyFrame = Instance.new("Frame")
 ThemeObjects.ExtrasFeature.CopyFrame.Name = "PartCopyFrame"
@@ -2337,29 +2450,31 @@ shared.HqydeuLoader_Runtime = HqydeuRuntime
 HubState.GamesTabButton = nil
 HubState.SelectedGame = nil
 
-local function CreateGameLauncherButton(name, text, y, url, label, openFunctionName)
+local function CreateGameLauncherButton(name, text, order, url, label, openFunctionName)
 	local button = Instance.new("TextButton")
 	button.Name = name
-	button.Size = UDim2.new(1, -8, 0, 38)
-	button.Position = UDim2.new(0, 4, 0, y)
+	button.LayoutOrder = order
+	button.Size = UDim2.new(0, 156, 0, 60)
 	button.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 	button.BackgroundTransparency = 0.92
 	button.BorderSizePixel = 0
 	button.Text = text
 	button.Font = Enum.Font.GothamBold
-	button.TextSize = 11
+	button.TextSize = 12
+	button.TextWrapped = true
 	button.TextColor3 = Color3.fromRGB(255, 255, 255)
 	button.Parent = HubState.GamesPage
 	table.insert(ThemeObjects.Backgrounds, button)
 	table.insert(ThemeObjects.Texts, button)
-	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 6)
+	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 8)
 
 	local stroke = Instance.new("UIStroke")
 	stroke.Name = "ControlOutline"
-	stroke.Color = Color3.fromRGB(0, 0, 0)
-	stroke.Thickness = 1.5
-	stroke.Transparency = 0
+	stroke.Color = AccentColor
+	stroke.Thickness = 1
+	stroke.Transparency = 0.75
 	stroke.Parent = button
+	table.insert(ThemeObjects.Accents, stroke)
 
 	button.MouseButton1Click:Connect(function()
 		PlayClick()
@@ -2372,10 +2487,12 @@ local function CreateGameLauncherButton(name, text, y, url, label, openFunctionN
 	return button
 end
 
-HubState.MM2GameButton = CreateGameLauncherButton("MM2GameButton", "MM2", 4, "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/MM2", "MM2", "OpenMM2Page")
-HubState.QuietOrDieGameButton = CreateGameLauncherButton("QuietOrDieGameButton", "Quiet or Die", 46, "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/QOD", "Quiet Or Die", "OpenQuietOrDiePage")
-HubState.GrowABeehiveGameButton = CreateGameLauncherButton("GrowABeehiveGameButton", "Grow a Beehive", 88, "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/GABH", "Grow A Beehive", "OpenGrowABeehivePage")
-HubState.UndeadExpeditionGameButton = CreateGameLauncherButton("UndeadExpeditionGameButton", "Undead Expedition", 130, "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/UE", "Undead Expedition", "OpenUndeadExpeditionPage")
+HubState.MM2GameButton = CreateGameLauncherButton("MM2GameButton", "MM2", 1, "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/MM2", "MM2", "OpenMM2Page")
+HubState.QuietOrDieGameButton = CreateGameLauncherButton("QuietOrDieGameButton", "Quiet or Die", 2, "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/QOD", "Quiet Or Die", "OpenQuietOrDiePage")
+HubState.GrowABeehiveGameButton = CreateGameLauncherButton("GrowABeehiveGameButton", "Grow a Beehive", 3, "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/GABH", "Grow A Beehive", "OpenGrowABeehivePage")
+HubState.UndeadExpeditionGameButton = CreateGameLauncherButton("UndeadExpeditionGameButton", "Undead Expedition", 4, "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/UE", "Undead Expedition", "OpenUndeadExpeditionPage")
+
+ApplyCardGridLayout(HubState.GamesPage)
 
 HubState.MM2BackButton = Instance.new("TextButton")
 HubState.MM2BackButton.Name = "MM2BackButton"
@@ -2557,7 +2674,16 @@ ThemeObjects.DeepESP.Row.BackgroundTransparency = 0.92
 ThemeObjects.DeepESP.Row.BorderSizePixel = 0
 ThemeObjects.DeepESP.Row.Parent = HubState.CombatPage
 table.insert(ThemeObjects.Backgrounds, ThemeObjects.DeepESP.Row)
-Instance.new("UICorner", ThemeObjects.DeepESP.Row).CornerRadius = UDim.new(0, 6)
+Instance.new("UICorner", ThemeObjects.DeepESP.Row).CornerRadius = UDim.new(0, 8)
+do
+	local deepEspStroke = Instance.new("UIStroke")
+	deepEspStroke.Name = "ControlOutline"
+	deepEspStroke.Color = AccentColor
+	deepEspStroke.Thickness = 1
+	deepEspStroke.Transparency = 0.75
+	deepEspStroke.Parent = ThemeObjects.DeepESP.Row
+	table.insert(ThemeObjects.Accents, deepEspStroke)
+end
 
 ThemeObjects.DeepESP.Title = Instance.new("TextLabel")
 ThemeObjects.DeepESP.Title.Size = UDim2.new(0, 90, 0, 20)
@@ -2776,83 +2902,86 @@ table.insert(ThemeObjects.Backgrounds, HubState.AntiFlingBtn)
 table.insert(ThemeObjects.Texts, HubState.AntiFlingBtn)
 Instance.new("UICorner", HubState.AntiFlingBtn).CornerRadius = UDim.new(0, 4)
 
--- Full-width vertical combat rows
+-- Combat cards: shared 156x60 grid, wrapped 2-per-row
 do
-	local function CreateCombatRow(name, y)
-		local row = Instance.new("Frame")
-		row.Name = name
-		row.Size = UDim2.new(1, -8, 0, 38)
-		row.Position = UDim2.new(0, 4, 0, y)
-		row.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
-		row.BackgroundTransparency = 0.92
-		row.BorderSizePixel = 0
-		row.Parent = HubState.CombatPage
-		table.insert(ThemeObjects.Backgrounds, row)
-		Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
-		return row
+	local function CreateCombatCard(name, order)
+		local card = Instance.new("Frame")
+		card.Name = name
+		card.LayoutOrder = order
+		card.Size = UDim2.new(0, 156, 0, 60)
+		card.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
+		card.BackgroundTransparency = 0.92
+		card.BorderSizePixel = 0
+		card.Parent = HubState.CombatPage
+		table.insert(ThemeObjects.Backgrounds, card)
+		Instance.new("UICorner", card).CornerRadius = UDim.new(0, 8)
+		local stroke = Instance.new("UIStroke")
+		stroke.Name = "ControlOutline"
+		stroke.Color = AccentColor
+		stroke.Thickness = 1
+		stroke.Transparency = 0.75
+		stroke.Parent = card
+		table.insert(ThemeObjects.Accents, stroke)
+		return card
 	end
 
-	local lockRow = CreateCombatRow("AutoLockCard", 4)
-	local espRow = CreateCombatRow("PlayerESPCard", 46)
+	local lockRow = CreateCombatCard("AutoLockCard", 1)
+	local espRow = CreateCombatCard("PlayerESPCard", 2)
 	local bodyESPRow = ThemeObjects.DeepESP.Row
-	local flingRow = CreateCombatRow("FlingCard", 130)
-	local flingTargetRow = CreateCombatRow("FlingTargetCard", 172)
-	local antiFlingRow = CreateCombatRow("AntiFlingCard", 214)
+	local flingRow = CreateCombatCard("FlingCard", 4)
+	local flingTargetRow = CreateCombatCard("FlingTargetCard", 5)
+	local antiFlingRow = CreateCombatCard("AntiFlingCard", 6)
 
-	HubState.AutoLockTitle.Size = UDim2.new(0, 90, 0, 20)
-	HubState.AutoLockTitle.Position = UDim2.new(0, 8, 0.5, -10)
+	HubState.AutoLockTitle.Size = UDim2.new(0, 60, 0, 20)
+	HubState.AutoLockTitle.Position = UDim2.new(0, 8, 0, 6)
 	HubState.AutoLockTitle.TextSize = 11
 	HubState.AutoLockTitle.TextXAlignment = Enum.TextXAlignment.Left
 	HubState.AutoLockTitle.Parent = lockRow
 	HubState.AutoLockToggleBtn.Size = UDim2.new(0, 44, 0, 20)
-	HubState.AutoLockToggleBtn.Position = UDim2.new(1, -96, 0.5, -10)
+	HubState.AutoLockToggleBtn.Position = UDim2.new(1, -52, 0, 6)
 	HubState.AutoLockToggleBtn.TextSize = 9
 	HubState.AutoLockToggleBtn.Parent = lockRow
-	HubState.AutoLockBindBtn.Size = UDim2.new(0, 44, 0, 20)
-	HubState.AutoLockBindBtn.Position = UDim2.new(1, -48, 0.5, -10)
+	HubState.AutoLockBindBtn.Size = UDim2.new(0, 46, 0, 20)
+	HubState.AutoLockBindBtn.Position = UDim2.new(1, -54, 1, -26)
 	HubState.AutoLockBindBtn.TextSize = 8
 	HubState.AutoLockBindBtn.Parent = lockRow
 
-	HubState.ESPTitle.Size = UDim2.new(0, 90, 0, 20)
-	HubState.ESPTitle.Position = UDim2.new(0, 8, 0.5, -10)
+	HubState.ESPTitle.Size = UDim2.new(0, 84, 0, 20)
+	HubState.ESPTitle.Position = UDim2.new(0, 8, 0, 6)
 	HubState.ESPTitle.TextSize = 11
 	HubState.ESPTitle.Parent = espRow
 	HubState.ESPToggleBtn.Size = UDim2.new(0, 44, 0, 20)
-	HubState.ESPToggleBtn.Position = UDim2.new(1, -96, 0.5, -10)
+	HubState.ESPToggleBtn.Position = UDim2.new(1, -52, 0, 6)
 	HubState.ESPToggleBtn.TextSize = 9
 	HubState.ESPToggleBtn.Parent = espRow
-	HubState.ESPBindBtn.Size = UDim2.new(0, 44, 0, 20)
-	HubState.ESPBindBtn.Position = UDim2.new(1, -48, 0.5, -10)
-	HubState.ESPBindBtn.TextSize = 8
-	HubState.ESPBindBtn.Parent = espRow
 	HubState.ColorContainer.Size = UDim2.new(0, 44, 0, 20)
-	HubState.ColorContainer.Position = UDim2.new(1, -144, 0.5, -10)
+	HubState.ColorContainer.Position = UDim2.new(0, 8, 1, -26)
 	HubState.ColorContainer.Parent = espRow
 	HubState.ESPColorBtn.Size = UDim2.new(0, 44, 0, 20)
 	HubState.ESPColorBtn.TextSize = 8
+	HubState.ESPBindBtn.Size = UDim2.new(0, 46, 0, 20)
+	HubState.ESPBindBtn.Position = UDim2.new(1, -54, 1, -26)
+	HubState.ESPBindBtn.TextSize = 8
+	HubState.ESPBindBtn.Parent = espRow
 
 	if bodyESPRow then
 		bodyESPRow.Name = "BodyESPCard"
-		bodyESPRow.Size = UDim2.new(1, -8, 0, 38)
-		bodyESPRow.Position = UDim2.new(0, 4, 0, 88)
+		bodyESPRow.LayoutOrder = 3
+		bodyESPRow.Size = UDim2.new(0, 156, 0, 60)
 		bodyESPRow.Parent = HubState.CombatPage
-		ThemeObjects.DeepESP.Title.Size = UDim2.new(0, 90, 0, 20)
-		ThemeObjects.DeepESP.Title.Position = UDim2.new(0, 8, 0.5, -10)
+		ThemeObjects.DeepESP.Title.Size = UDim2.new(0, 60, 0, 20)
+		ThemeObjects.DeepESP.Title.Position = UDim2.new(0, 8, 0, 6)
 		ThemeObjects.DeepESP.Title.TextSize = 11
 		ThemeObjects.DeepESP.Toggle.Size = UDim2.new(0, 44, 0, 20)
-		ThemeObjects.DeepESP.Toggle.Position = UDim2.new(1, -96, 0.5, -10)
+		ThemeObjects.DeepESP.Toggle.Position = UDim2.new(1, -52, 0, 6)
 		ThemeObjects.DeepESP.Toggle.TextSize = 9
-		local bodyBind = bodyESPRow:FindFirstChild("FeatureKeybindButton")
-		if bodyBind and bodyBind:IsA("TextButton") then
-			bodyBind.Size = UDim2.new(0, 44, 0, 20)
-			bodyBind.Position = UDim2.new(1, -48, 0.5, -10)
-			bodyBind.TextSize = 8
-		end
+		-- keybind button auto-attached by AddFeatureKeybind already lands on the card's
+		-- second line via AttachFeatureKeybindButton's canonical bottom-right offset.
 	end
 
 	ThemeObjects.FlingTargetTitle = Instance.new("TextLabel")
-	ThemeObjects.FlingTargetTitle.Size = UDim2.new(0, 120, 0, 20)
-	ThemeObjects.FlingTargetTitle.Position = UDim2.new(0, 8, 0.5, -10)
+	ThemeObjects.FlingTargetTitle.Size = UDim2.new(0, 60, 0, 20)
+	ThemeObjects.FlingTargetTitle.Position = UDim2.new(0, 8, 0, 6)
 	ThemeObjects.FlingTargetTitle.BackgroundTransparency = 1
 	ThemeObjects.FlingTargetTitle.Text = "Fling:"
 	ThemeObjects.FlingTargetTitle.Font = Enum.Font.GothamBold
@@ -2862,12 +2991,13 @@ do
 	ThemeObjects.FlingTargetTitle.Parent = flingRow
 	table.insert(ThemeObjects.Texts, ThemeObjects.FlingTargetTitle)
 	HubState.FlingToggleBtn.Size = UDim2.new(0, 44, 0, 20)
-	HubState.FlingToggleBtn.Position = UDim2.new(1, -96, 0.5, -10)
+	HubState.FlingToggleBtn.Position = UDim2.new(1, -52, 0, 6)
 	HubState.FlingToggleBtn.TextSize = 9
 	HubState.FlingToggleBtn.Parent = flingRow
+
 	ThemeObjects.FlingMenuTitle = Instance.new("TextLabel")
-	ThemeObjects.FlingMenuTitle.Size = UDim2.new(0, 120, 0, 20)
-	ThemeObjects.FlingMenuTitle.Position = UDim2.new(0, 8, 0.5, -10)
+	ThemeObjects.FlingMenuTitle.Size = UDim2.new(0, 84, 0, 20)
+	ThemeObjects.FlingMenuTitle.Position = UDim2.new(0, 8, 0, 6)
 	ThemeObjects.FlingMenuTitle.BackgroundTransparency = 1
 	ThemeObjects.FlingMenuTitle.Text = "Fling Target:"
 	ThemeObjects.FlingMenuTitle.Font = Enum.Font.GothamBold
@@ -2877,19 +3007,19 @@ do
 	ThemeObjects.FlingMenuTitle.Parent = flingTargetRow
 	table.insert(ThemeObjects.Texts, ThemeObjects.FlingMenuTitle)
 	HubState.FlingTargetBtn.Size = UDim2.new(0, 44, 0, 20)
-	HubState.FlingTargetBtn.Position = UDim2.new(1, -96, 0.5, -10)
+	HubState.FlingTargetBtn.Position = UDim2.new(1, -52, 0, 6)
 	HubState.FlingTargetBtn.Text = "Target"
 	HubState.FlingTargetBtn.TextSize = 9
 	HubState.FlingTargetBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	HubState.FlingTargetBtn.Parent = flingTargetRow
-	HubState.FlingBindBtn.Size = UDim2.new(0, 44, 0, 20)
-	HubState.FlingBindBtn.Position = UDim2.new(1, -48, 0.5, -10)
+	HubState.FlingBindBtn.Size = UDim2.new(0, 46, 0, 20)
+	HubState.FlingBindBtn.Position = UDim2.new(1, -54, 1, -26)
 	HubState.FlingBindBtn.TextSize = 8
 	HubState.FlingBindBtn.Parent = flingTargetRow
 
 	ThemeObjects.AntiFlingTitle = Instance.new("TextLabel")
-	ThemeObjects.AntiFlingTitle.Size = UDim2.new(0, 120, 0, 20)
-	ThemeObjects.AntiFlingTitle.Position = UDim2.new(0, 8, 0.5, -10)
+	ThemeObjects.AntiFlingTitle.Size = UDim2.new(0, 70, 0, 20)
+	ThemeObjects.AntiFlingTitle.Position = UDim2.new(0, 8, 0, 6)
 	ThemeObjects.AntiFlingTitle.BackgroundTransparency = 1
 	ThemeObjects.AntiFlingTitle.Text = "Anti Fling:"
 	ThemeObjects.AntiFlingTitle.Font = Enum.Font.GothamBold
@@ -2899,10 +3029,12 @@ do
 	ThemeObjects.AntiFlingTitle.Parent = antiFlingRow
 	table.insert(ThemeObjects.Texts, ThemeObjects.AntiFlingTitle)
 	HubState.AntiFlingBtn.Size = UDim2.new(0, 44, 0, 20)
-	HubState.AntiFlingBtn.Position = UDim2.new(1, -48, 0.5, -10)
+	HubState.AntiFlingBtn.Position = UDim2.new(1, -52, 0, 6)
 	HubState.AntiFlingBtn.Text = "Off"
 	HubState.AntiFlingBtn.TextSize = 9
 	HubState.AntiFlingBtn.Parent = antiFlingRow
+
+	ApplyCardGridLayout(HubState.CombatPage)
 end
 
 HubState.TargetFrame = Instance.new("Frame")
@@ -4240,22 +4372,26 @@ TrackConnection("TeleportPlayerRemoving", Players.PlayerRemoving:Connect(UpdateP
 
 -- Movement Page Content
 do
-	for _, cardInfo in ipairs({
-		{Name = "SpeedMovementCard", X = 4, Y = 4},
-		{Name = "FlyMovementCard", X = 4, Y = 46},
-		{Name = "NoclipMovementCard", X = 4, Y = 88},
-	}) do
+	for i, cardName in ipairs({"SpeedMovementCard", "FlyMovementCard", "NoclipMovementCard"}) do
 		local card = Instance.new("Frame")
-		card.Name = cardInfo.Name
-		card.Size = UDim2.new(1, -8, 0, 38)
-		card.Position = UDim2.new(0, cardInfo.X, 0, cardInfo.Y)
+		card.Name = cardName
+		card.LayoutOrder = i
+		card.Size = UDim2.new(0, 156, 0, 60)
 		card.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 		card.BackgroundTransparency = 0.92
 		card.BorderSizePixel = 0
 		card.Parent = HubState.MovementPage
 		table.insert(ThemeObjects.Backgrounds, card)
-		Instance.new("UICorner", card).CornerRadius = UDim.new(0, 6)
+		Instance.new("UICorner", card).CornerRadius = UDim.new(0, 8)
+		local stroke = Instance.new("UIStroke")
+		stroke.Name = "ControlOutline"
+		stroke.Color = AccentColor
+		stroke.Thickness = 1
+		stroke.Transparency = 0.75
+		stroke.Parent = card
+		table.insert(ThemeObjects.Accents, stroke)
 	end
+	ApplyCardGridLayout(HubState.MovementPage)
 end
 
 ThemeObjects.FreeCam.Card = Instance.new("Frame")
@@ -4267,7 +4403,16 @@ ThemeObjects.FreeCam.Card.BackgroundTransparency = 0.92
 ThemeObjects.FreeCam.Card.BorderSizePixel = 0
 ThemeObjects.FreeCam.Card.Parent = ThemeObjects.CameraPage
 table.insert(ThemeObjects.Backgrounds, ThemeObjects.FreeCam.Card)
-Instance.new("UICorner", ThemeObjects.FreeCam.Card).CornerRadius = UDim.new(0, 6)
+Instance.new("UICorner", ThemeObjects.FreeCam.Card).CornerRadius = UDim.new(0, 8)
+do
+	local freeCamStroke = Instance.new("UIStroke")
+	freeCamStroke.Name = "ControlOutline"
+	freeCamStroke.Color = AccentColor
+	freeCamStroke.Thickness = 1
+	freeCamStroke.Transparency = 0.75
+	freeCamStroke.Parent = ThemeObjects.FreeCam.Card
+	table.insert(ThemeObjects.Accents, freeCamStroke)
+end
 
 ThemeObjects.CameraFOV = {Card = Instance.new("Frame")}
 ThemeObjects.CameraFOV.Card.Name = "FOVCameraCard"
@@ -4278,7 +4423,16 @@ ThemeObjects.CameraFOV.Card.BackgroundTransparency = 0.92
 ThemeObjects.CameraFOV.Card.BorderSizePixel = 0
 ThemeObjects.CameraFOV.Card.Parent = ThemeObjects.CameraPage
 table.insert(ThemeObjects.Backgrounds, ThemeObjects.CameraFOV.Card)
-Instance.new("UICorner", ThemeObjects.CameraFOV.Card).CornerRadius = UDim.new(0, 6)
+Instance.new("UICorner", ThemeObjects.CameraFOV.Card).CornerRadius = UDim.new(0, 8)
+do
+	local fovStroke = Instance.new("UIStroke")
+	fovStroke.Name = "ControlOutline"
+	fovStroke.Color = AccentColor
+	fovStroke.Thickness = 1
+	fovStroke.Transparency = 0.75
+	fovStroke.Parent = ThemeObjects.CameraFOV.Card
+	table.insert(ThemeObjects.Accents, fovStroke)
+end
 
 HubState.SpeedTitle = Instance.new("TextLabel")
 HubState.SpeedTitle.Size = UDim2.new(0, 48, 0, 22)
@@ -4496,48 +4650,49 @@ do
 	local flyCard = HubState.MovementPage:FindFirstChild("FlyMovementCard")
 	local noclipCard = HubState.MovementPage:FindFirstChild("NoclipMovementCard")
 
+	-- Line 1 (title + toggle), Line 2 (input + keybind) -- matches CreateFeatureCard's slots.
 	HubState.SpeedTitle.Size = UDim2.new(0, 60, 0, 20)
-	HubState.SpeedTitle.Position = UDim2.new(0, 8, 0.5, -10)
+	HubState.SpeedTitle.Position = UDim2.new(0, 8, 0, 6)
 	HubState.SpeedTitle.Parent = speedCard
-	HubState.SpeedInput.Size = UDim2.new(0, 44, 0, 20)
-	HubState.SpeedInput.Position = UDim2.new(1, -144, 0.5, -10)
-	HubState.SpeedInput.TextSize = 9
-	HubState.SpeedInput.Parent = speedCard
 	HubState.SpeedToggleBtn.Size = UDim2.new(0, 44, 0, 20)
-	HubState.SpeedToggleBtn.Position = UDim2.new(1, -96, 0.5, -10)
+	HubState.SpeedToggleBtn.Position = UDim2.new(1, -52, 0, 6)
 	HubState.SpeedToggleBtn.TextSize = 9
 	HubState.SpeedToggleBtn.Parent = speedCard
-	HubState.SpeedBindBtn.Size = UDim2.new(0, 44, 0, 20)
-	HubState.SpeedBindBtn.Position = UDim2.new(1, -48, 0.5, -10)
+	HubState.SpeedInput.Size = UDim2.new(0, 46, 0, 20)
+	HubState.SpeedInput.Position = UDim2.new(0, 8, 1, -26)
+	HubState.SpeedInput.TextSize = 9
+	HubState.SpeedInput.Parent = speedCard
+	HubState.SpeedBindBtn.Size = UDim2.new(0, 46, 0, 20)
+	HubState.SpeedBindBtn.Position = UDim2.new(1, -54, 1, -26)
 	HubState.SpeedBindBtn.TextSize = 8
 	HubState.SpeedBindBtn.Parent = speedCard
 
 	HubState.FlyTitle.Size = UDim2.new(0, 60, 0, 20)
-	HubState.FlyTitle.Position = UDim2.new(0, 8, 0.5, -10)
+	HubState.FlyTitle.Position = UDim2.new(0, 8, 0, 6)
 	HubState.FlyTitle.Parent = flyCard
-	HubState.FlyInput.Size = UDim2.new(0, 44, 0, 20)
-	HubState.FlyInput.Position = UDim2.new(1, -144, 0.5, -10)
-	HubState.FlyInput.TextSize = 9
-	HubState.FlyInput.Parent = flyCard
 	HubState.FlyToggleBtn.Size = UDim2.new(0, 44, 0, 20)
-	HubState.FlyToggleBtn.Position = UDim2.new(1, -96, 0.5, -10)
+	HubState.FlyToggleBtn.Position = UDim2.new(1, -52, 0, 6)
 	HubState.FlyToggleBtn.TextSize = 9
 	HubState.FlyToggleBtn.Parent = flyCard
-	HubState.FlyBindBtn.Size = UDim2.new(0, 44, 0, 20)
-	HubState.FlyBindBtn.Position = UDim2.new(1, -48, 0.5, -10)
+	HubState.FlyInput.Size = UDim2.new(0, 46, 0, 20)
+	HubState.FlyInput.Position = UDim2.new(0, 8, 1, -26)
+	HubState.FlyInput.TextSize = 9
+	HubState.FlyInput.Parent = flyCard
+	HubState.FlyBindBtn.Size = UDim2.new(0, 46, 0, 20)
+	HubState.FlyBindBtn.Position = UDim2.new(1, -54, 1, -26)
 	HubState.FlyBindBtn.TextSize = 8
 	HubState.FlyBindBtn.Parent = flyCard
 
 	HubState.NoclipTitle.Size = UDim2.new(0, 80, 0, 20)
-	HubState.NoclipTitle.Position = UDim2.new(0, 8, 0.5, -10)
+	HubState.NoclipTitle.Position = UDim2.new(0, 8, 0, 6)
 	HubState.NoclipTitle.TextXAlignment = Enum.TextXAlignment.Left
 	HubState.NoclipTitle.Parent = noclipCard
 	HubState.NoclipToggleBtn.Size = UDim2.new(0, 44, 0, 20)
-	HubState.NoclipToggleBtn.Position = UDim2.new(1, -96, 0.5, -10)
+	HubState.NoclipToggleBtn.Position = UDim2.new(1, -52, 0, 6)
 	HubState.NoclipToggleBtn.TextSize = 9
 	HubState.NoclipToggleBtn.Parent = noclipCard
-	HubState.NoclipBindBtn.Size = UDim2.new(0, 44, 0, 20)
-	HubState.NoclipBindBtn.Position = UDim2.new(1, -48, 0.5, -10)
+	HubState.NoclipBindBtn.Size = UDim2.new(0, 46, 0, 20)
+	HubState.NoclipBindBtn.Position = UDim2.new(1, -54, 1, -26)
 	HubState.NoclipBindBtn.TextSize = 8
 	HubState.NoclipBindBtn.Parent = noclipCard
 
@@ -6195,6 +6350,10 @@ KeybindEditorScroll.ZIndex = 91
 KeybindEditorScroll.Parent = KeybindEditorFrame
 
 local KeybindEditorLayout = Instance.new("UIListLayout")
+KeybindEditorLayout.FillDirection = Enum.FillDirection.Horizontal
+KeybindEditorLayout.Wraps = true
+KeybindEditorLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+KeybindEditorLayout.VerticalAlignment = Enum.VerticalAlignment.Top
 KeybindEditorLayout.Padding = UDim.new(0, 4)
 KeybindEditorLayout.SortOrder = Enum.SortOrder.LayoutOrder
 KeybindEditorLayout.Parent = KeybindEditorScroll
@@ -6257,7 +6416,7 @@ ThemeObjects.RefreshKeybindEditor = function()
 			layoutOrder += 1
 			local row = Instance.new("Frame")
 			row.Name = "KeybindEditorRow"
-			row.Size = UDim2.new(1, -8, 0, 28)
+			row.Size = UDim2.new(0, 108, 0, 28)
 			row.BackgroundColor3 = Color3.fromRGB(65, 65, 67)
 			row.BackgroundTransparency = 0.92
 			row.BorderSizePixel = 0
@@ -6268,29 +6427,31 @@ ThemeObjects.RefreshKeybindEditor = function()
 			Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
 			local rowStroke = Instance.new("UIStroke")
 			rowStroke.Name = "ControlOutline"
-			rowStroke.Color = Color3.fromRGB(0, 0, 0)
+			rowStroke.Color = AccentColor
 			rowStroke.Thickness = 1
-			rowStroke.Transparency = 0.18
+			rowStroke.Transparency = 0.75
 			rowStroke.Parent = row
+			table.insert(ThemeObjects.Accents, rowStroke)
 
 			local label = Instance.new("TextLabel")
-			label.Size = UDim2.new(1, -62, 1, 0)
-			label.Position = UDim2.new(0, 8, 0, 0)
+			label.Size = UDim2.new(0, 52, 1, 0)
+			label.Position = UDim2.new(0, 6, 0, 0)
 			label.BackgroundTransparency = 1
 			label.Text = entry.Name
 			label.Font = Enum.Font.GothamBold
-			label.TextSize = 9
+			label.TextSize = 8
 			label.TextColor3 = Color3.fromRGB(255, 255, 255)
 			label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 			label.TextStrokeTransparency = 0.5
 			label.TextXAlignment = Enum.TextXAlignment.Left
+			label.TextTruncate = Enum.TextTruncate.AtEnd
 			label.ZIndex = 92
 			label.Parent = row
 			table.insert(ThemeObjects.Texts, label)
 
 			local button = Instance.new("TextButton")
-			button.Size = UDim2.new(0, 46, 0, 22)
-			button.Position = UDim2.new(1, -52, 0.5, -11)
+			button.Size = UDim2.new(0, 44, 0, 20)
+			button.Position = UDim2.new(1, -48, 0.5, -10)
 			button.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 			button.BackgroundTransparency = 0.8
 			button.BorderSizePixel = 0
@@ -6312,7 +6473,7 @@ ThemeObjects.RefreshKeybindEditor = function()
 			ThemeObjects.AttachKeybindClearPrompt(entry, button)
 		end
 	end
-	KeybindEditorScroll.CanvasSize = UDim2.new(0, 0, 0, math.max(KeybindEditorLayout.AbsoluteContentSize.Y + 6, layoutOrder * 32))
+	KeybindEditorScroll.CanvasSize = UDim2.new(0, 0, 0, math.max(KeybindEditorLayout.AbsoluteContentSize.Y + 6, math.ceil(layoutOrder / 2) * 32))
 end
 ThemeObjects.RefreshKeybindEditor()
 
