@@ -71,7 +71,6 @@ for _, connectionName in ipairs({
 	"UndeadExpeditionPickupDockPosition",
 	"UndeadExpeditionPickupDockSize",
 	"UndeadExpeditionStructureAdded",
-	"UndeadExpeditionDungeonAdded",
 	"UndeadExpeditionLightingHeartbeat",
 }) do
 	if HubState.Connections[connectionName] then
@@ -1023,7 +1022,6 @@ do
 end
 
 local SafeGet, SafeSet, StructureDisplayName, StructureRoot, StructuresFolder, WatchStructures
-local DungeonsFolder, GetCaveDungeon, WatchDungeons
 local PlayerRoot, HasHunterTrapText, BoxRoot, BoxTypeFromName, BoxType, ClearBoxESP, RefreshBoxDistances, UpdateBoxESP
 local ClearStructureAlerts
 do
@@ -1051,7 +1049,10 @@ do
 
 	StructureDisplayName = function(structure)
 		if not structure then return "Structure" end
-		if structure.Name == "CaveDungeon" then return "Cave" end
+		-- Matched loosely (any name containing "cave") rather than an exact name check,
+		-- since it's a regular child of workspace.Structures like everything else here
+		-- and its precise instance name isn't confirmed.
+		if string.lower(structure.Name):find("cave", 1, true) then return "Cave" end
 		local displayName = structure:GetAttribute("DisplayName") or structure:GetAttribute("StructureName") or structure:GetAttribute("Name")
 		if displayName and tostring(displayName) ~= "" then return CleanStructureName(displayName) end
 		local stringValue = structure:FindFirstChild("Name")
@@ -1224,43 +1225,6 @@ do
 			ShowStructureMarker(child)
 			RegisterKnownStructureType(StructureDisplayName(child))
 			if HandleTrapStructureSpawn then HandleTrapStructureSpawn(child) end
-			state.LastBoxScan = 0
-		end))
-	end
-
-	-- The Cave dungeon lives outside workspace.Structures entirely, at
-	-- workspace.Dungeons.CaveDungeon, so it needs its own watcher mirroring
-	-- WatchStructures above rather than being picked up by the normal one.
-	DungeonsFolder = function()
-		return workspace:FindFirstChild("Dungeons")
-	end
-
-	GetCaveDungeon = function()
-		local folder = DungeonsFolder()
-		return folder and folder:FindFirstChild("CaveDungeon")
-	end
-
-	WatchDungeons = function()
-		local folder = DungeonsFolder()
-		if not folder then return end
-		local existing = HubState.Connections.UndeadExpeditionDungeonAdded
-		if existing and state.DungeonsFolder == folder then return end
-		if existing then
-			existing:Disconnect()
-			HubState.Connections.UndeadExpeditionDungeonAdded = nil
-		end
-		state.DungeonsFolder = folder
-
-		local existingCave = folder:FindFirstChild("CaveDungeon")
-		if existingCave then
-			RegisterKnownStructureType(StructureDisplayName(existingCave))
-		end
-
-		TrackConnection("UndeadExpeditionDungeonAdded", folder.ChildAdded:Connect(function(child)
-			if child.Name ~= "CaveDungeon" then return end
-			SetStructureMessage(StructureDisplayName(child))
-			ShowStructureMarker(child)
-			RegisterKnownStructureType(StructureDisplayName(child))
 			state.LastBoxScan = 0
 		end))
 	end
@@ -1647,19 +1611,14 @@ do
 			IsEnabled = IsAnyStructureTypeSelected,
 			Folder = structuresEspFolder,
 			GetTargets = function()
-				local filtered = {}
 				local folder = StructuresFolder()
-				if folder then
-					for _, structure in ipairs(folder:GetChildren()) do
-						local key = StructureFilterKey(StructureDisplayName(structure))
-						if state.SelectedStructureTypes[key] == true then
-							table.insert(filtered, structure)
-						end
+				if not folder then return {} end
+				local filtered = {}
+				for _, structure in ipairs(folder:GetChildren()) do
+					local key = StructureFilterKey(StructureDisplayName(structure))
+					if state.SelectedStructureTypes[key] == true then
+						table.insert(filtered, structure)
 					end
-				end
-				local cave = GetCaveDungeon()
-				if cave and state.SelectedStructureTypes[StructureFilterKey(StructureDisplayName(cave))] == true then
-					table.insert(filtered, cave)
 				end
 				return filtered
 			end,
@@ -2940,7 +2899,6 @@ TrackConnection("UndeadExpeditionLightingHeartbeat", RunService.Heartbeat:Connec
 	if now - (state.LastStructureWatchAt or 0) >= 1 then
 		state.LastStructureWatchAt = now
 		WatchStructures()
-		WatchDungeons()
 	end
 	if state.BoxESP then
 		RefreshBoxDistances()
@@ -3023,7 +2981,6 @@ ThemeObjects.OpenUndeadExpeditionPage = function()
 	HubState.ActiveContentPage = uePage
 	RefreshStructureTimerDisplay(false)
 	WatchStructures()
-	WatchDungeons()
 	if state.NoDarkness then ApplyNoDarkness() end
 	RefreshButtons()
 	UpdateTheme(true)
