@@ -1797,6 +1797,53 @@ HubState.InfiniteYieldDestroy.MouseButton1Click:Connect(function()
 	HubState.InfiniteYieldDestroy.Visible = false
 end)
 
+-- Opens Dex Explorer directly (DexPlusPlus build) without needing to load all of
+-- Infinite Yield first -- same idea as Infinite Yield's own built-in "dex" command,
+-- which is itself just a one-line shortcut to a Dex Explorer build.
+HubState.DexRow = Instance.new("Frame")
+HubState.DexRow.Name = "DexExplorerRow"
+HubState.DexRow.Size = UDim2.new(1, -8, 0, 38)
+HubState.DexRow.Position = UDim2.new(0, 4, 0, 46)
+HubState.DexRow.BackgroundColor3 = Color3.fromRGB(38, 38, 52)
+HubState.DexRow.BackgroundTransparency = 0.92
+HubState.DexRow.BorderSizePixel = 0
+HubState.DexRow.Parent = HubState.ScriptsPage
+table.insert(ThemeObjects.Backgrounds, HubState.DexRow)
+Instance.new("UICorner", HubState.DexRow).CornerRadius = UDim.new(0, 6)
+
+HubState.DexTitle = Instance.new("TextLabel")
+HubState.DexTitle.Size = UDim2.new(1, -190, 1, 0)
+HubState.DexTitle.Position = UDim2.new(0, 10, 0, 0)
+HubState.DexTitle.BackgroundTransparency = 1
+HubState.DexTitle.BorderSizePixel = 0
+HubState.DexTitle.Text = "Dex Explorer:"
+HubState.DexTitle.Font = Enum.Font.GothamBold
+HubState.DexTitle.TextSize = 11
+HubState.DexTitle.TextXAlignment = Enum.TextXAlignment.Left
+HubState.DexTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+HubState.DexTitle.Parent = HubState.DexRow
+table.insert(ThemeObjects.Texts, HubState.DexTitle)
+
+HubState.DexExecute = Instance.new("TextButton")
+HubState.DexExecute.Name = "DexExplorerExecute"
+HubState.DexExecute.Size = UDim2.new(0, 82, 0, 22)
+HubState.DexExecute.Position = UDim2.new(1, -90, 0, 8)
+HubState.DexExecute.BackgroundColor3 = Color3.fromRGB(50, 50, 68)
+HubState.DexExecute.BackgroundTransparency = 0.8
+HubState.DexExecute.BorderSizePixel = 0
+HubState.DexExecute.Text = "Execute"
+HubState.DexExecute.Font = Enum.Font.GothamBold
+HubState.DexExecute.TextSize = 9
+HubState.DexExecute.TextColor3 = Color3.fromRGB(255, 255, 255)
+HubState.DexExecute.Parent = HubState.DexRow
+table.insert(ThemeObjects.Backgrounds, HubState.DexExecute)
+table.insert(ThemeObjects.Texts, HubState.DexExecute)
+Instance.new("UICorner", HubState.DexExecute).CornerRadius = UDim.new(0, 4)
+HubState.DexExecute.MouseButton1Click:Connect(function()
+	PlayClick()
+	ThemeObjects.ScriptRunner.RunOnceUrl("DexExplorer", "https://github.com/AZYsGithub/DexPlusPlus/releases/latest/download/out.lua", "Dex Explorer")
+end)
+
 ThemeObjects.ExtrasFeature = {Enabled = false, Applying = false, Lighting = Lighting}
 ThemeObjects.ExtrasFeature.Page = Instance.new("Frame")
 ThemeObjects.ExtrasFeature.Page.Name = "ExtrasPage"
