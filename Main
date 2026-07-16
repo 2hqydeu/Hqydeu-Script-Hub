@@ -7,6 +7,7 @@ local RunService = game:GetService("RunService")
 local CoreGui = game:GetService("CoreGui")
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
+local ContextActionService = game:GetService("ContextActionService")
 
 local Player = Players.LocalPlayer
 local FrameColor = Color3.fromRGB(0x1E, 0x1E, 0x1E)
@@ -491,9 +492,11 @@ local function CreateToggleRow(parent, y, storageKey, onKeybindChanged)
 	return toggle, keybindBtn
 end
 
--- Label + color swatch. The swatch is a placeholder for now -- it shows the current ESP
--- color but isn't wired up to an actual picker yet, just an outlined square.
-local function CreateColorRow(parent, y, rowLabelText, defaultColor)
+-- Single-row ESP control: label, then (left to right) a color swatch, a keybind button,
+-- and the On/Off toggle -- one merged row per feature instead of a separate color row
+-- stacked on top of a separate toggle row. The swatch is still a placeholder -- it shows
+-- the current ESP color but isn't wired up to an actual picker yet.
+local function CreateESPRow(parent, y, rowLabelText, defaultColor, storageKey, onKeybindChanged)
 	local row = Instance.new("Frame")
 	row.Name = rowLabelText:gsub("%s+", "") .. "Row"
 	row.Size = UDim2.new(1, 0, 0, 40)
@@ -520,7 +523,7 @@ local function CreateColorRow(parent, y, rowLabelText, defaultColor)
 	local swatch = Instance.new("TextButton")
 	swatch.Name = "ColorSwatch"
 	swatch.Size = UDim2.new(0, 30, 0, 30)
-	swatch.Position = UDim2.new(1, -46, 0.5, -15)
+	swatch.Position = UDim2.new(1, -214, 0.5, -15)
 	swatch.BackgroundColor3 = defaultColor
 	swatch.AutoButtonColor = false
 	swatch.BorderSizePixel = 0
@@ -532,7 +535,25 @@ local function CreateColorRow(parent, y, rowLabelText, defaultColor)
 	swatchStroke.Thickness = 1
 	swatchStroke.Parent = swatch
 
-	return swatch
+	-- CreateKeybindButton's default position (1, -176, 0.5, -15) already sits directly
+	-- left of the toggle button below, so it needs no repositioning here.
+	local keybindBtn = CreateKeybindButton(row, storageKey, onKeybindChanged)
+
+	local toggle = Instance.new("TextButton")
+	toggle.Name = "Toggle"
+	toggle.Size = UDim2.new(0, 80, 0, 30)
+	toggle.Position = UDim2.new(1, -88, 0.5, -15)
+	toggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	toggle.BackgroundTransparency = 0.2
+	toggle.BorderSizePixel = 0
+	toggle.Text = "Off"
+	toggle.Font = UIFont
+	toggle.TextSize = 16
+	toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+	toggle.Parent = row
+	Instance.new("UICorner", toggle).CornerRadius = UDim.new(0, 6)
+
+	return toggle, swatch, keybindBtn
 end
 
 local DEFAULT_WALKSPEED = 16
@@ -675,10 +696,16 @@ JumpInput.FocusLost:Connect(function()
 	if JumpEnabled then ApplyJump() end
 end)
 
--- Fly
+-- Fly (ported from the old feature-rich hub): BodyVelocity locks the root part's
+-- velocity at zero -- acting as a zero-G anchor against gravity -- while a BodyGyro
+-- keeps it upright and turned to the camera's yaw each frame. Actual movement is still
+-- a direct CFrame nudge, same as Speed, but the BodyGyro means the character no longer
+-- tumbles while airborne.
 local FlyEnabled = false
-local FlyValue = 3
+local FlyValue = 10
 local FlyKeybind = Enum.KeyCode.Unknown
+local FlyBodyVelocity = nil
+local FlyBodyGyro = nil
 
 local FLY_TOP = JUMP_SECTION_BOTTOM + SECTION_GAP
 CreateSectionHeading(PlayerPage, FLY_TOP, "Fly")
@@ -686,32 +713,37 @@ local FlyInput = CreateStrengthRow(PlayerPage, FLY_TOP + 30, "Fly Strength", Fly
 local FlyToggle = CreateToggleRow(PlayerPage, FLY_TOP + 78, "FlyKeybind", function(k) FlyKeybind = k end)
 local FLY_SECTION_BOTTOM = FLY_TOP + 78 + 40
 
--- Same CFrame-nudge feel as Speed, just with a vertical component -- no BodyGyro, so
--- orientation is untouched. Gravity still applies to the root part though, and it was
--- winning against the vertical nudge every frame (which is why this didn't work at all
--- before), so velocity is zeroed each frame to cancel that out while flying.
-local flyRenderConnection = RunService.RenderStepped:Connect(function()
-	if not FlyEnabled then return end
-	local character = Player.Character
-	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-	local camera = workspace.CurrentCamera
-	if not (rootPart and camera) then return end
-	local moveDir = Vector3.new(0, 0, 0)
-	if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir += camera.CFrame.LookVector end
-	if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir -= camera.CFrame.LookVector end
-	if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir -= camera.CFrame.RightVector end
-	if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir += camera.CFrame.RightVector end
-	if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir += Vector3.new(0, 1, 0) end
-	if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir -= Vector3.new(0, 1, 0) end
-	if moveDir.Magnitude &gt; 0 then
-		rootPart.CFrame = rootPart.CFrame + (moveDir * (FlyValue / 10))
-	end
-	rootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-end)
+local function UprightCFrame(sourceCFrame, position)
+	local _, yaw = sourceCFrame:ToOrientation()
+	return CFrame.new(position or sourceCFrame.Position) * CFrame.Angles(0, yaw, 0)
+end
 
 local function ToggleFly()
 	FlyEnabled = not FlyEnabled
 	FlyToggle.Text = FlyEnabled and "On" or "Off"
+	local character = Player.Character
+	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+	if FlyEnabled then
+		if rootPart then
+			FlyBodyVelocity = Instance.new("BodyVelocity")
+			FlyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
+			FlyBodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+			FlyBodyVelocity.Parent = rootPart
+			FlyBodyGyro = Instance.new("BodyGyro")
+			FlyBodyGyro.P = 9e4
+			FlyBodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+			FlyBodyGyro.CFrame = rootPart.CFrame
+			FlyBodyGyro.Parent = rootPart
+		end
+	else
+		if FlyBodyVelocity then FlyBodyVelocity:Destroy() FlyBodyVelocity = nil end
+		if FlyBodyGyro then FlyBodyGyro:Destroy() FlyBodyGyro = nil end
+		if rootPart then
+			rootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+			rootPart.CFrame = UprightCFrame(rootPart.CFrame, rootPart.Position)
+			rootPart.AssemblyAngularVelocity = Vector3.zero
+		end
+	end
 end
 FlyToggle.MouseButton1Click:Connect(function() PlayClick() ToggleFly() end)
 
@@ -721,7 +753,269 @@ FlyInput.FocusLost:Connect(function()
 	FlyInput.Text = tostring(FlyValue)
 end)
 
-PlayerPage.CanvasSize = UDim2.new(0, 0, 0, FLY_SECTION_BOTTOM + 16)
+local flyRenderConnection = RunService.RenderStepped:Connect(function()
+	if not FlyEnabled then return end
+	local character = Player.Character
+	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+	local camera = workspace.CurrentCamera
+	if not (rootPart and FlyBodyGyro and camera) then return end
+	local moveDir = Vector3.new(0, 0, 0)
+	if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir += camera.CFrame.LookVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir -= camera.CFrame.LookVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir -= camera.CFrame.RightVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir += camera.CFrame.RightVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir += Vector3.new(0, 1, 0) end
+	if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir -= Vector3.new(0, 1, 0) end
+	if moveDir.Magnitude &gt; 0 then
+		rootPart.CFrame = rootPart.CFrame + (moveDir * (FlyValue / 50))
+	end
+	local _, yaw = camera.CFrame:ToOrientation()
+	FlyBodyGyro.CFrame = CFrame.new(rootPart.Position) * CFrame.Angles(0, yaw, 0)
+	rootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+	rootPart.AssemblyAngularVelocity = Vector3.zero
+end)
+
+-- Camera (ported from the old feature-rich hub): Free Cam detaches the camera from the
+-- character (right-click-drag to look, WASD/Q/E to move, Shift to go faster) and sinks
+-- the movement keys so the character doesn't also walk. Since you can't see your own
+-- screen-space body anymore, it highlights + labels your own character while active.
+-- FOV is unrelated to Free Cam -- just a direct camera.FieldOfView setter with a reset.
+local FreeCamEnabled = false
+local FreeCamKeybind = Enum.KeyCode.Unknown
+local FreeCamPosition = Vector3.new()
+local FreeCamPitch, FreeCamYaw = 0, 0
+local FreeCamOriginalType, FreeCamOriginalSubject, FreeCamOriginalCFrame, FreeCamOriginalFocus
+local FreeCamSelfColor = Color3.fromRGB(34, 139, 34)
+local FreeCamSelfHighlight, FreeCamSelfLabel, FreeCamSelfAdornee
+
+local CAMERA_TOP = FLY_SECTION_BOTTOM + SECTION_GAP
+CreateSectionHeading(PlayerPage, CAMERA_TOP, "Camera")
+local FreeCamToggle = CreateToggleRow(PlayerPage, CAMERA_TOP + 30, "FreeCamKeybind", function(k) FreeCamKeybind = k end)
+
+local DEFAULT_FOV = 70
+local FOVValue = (workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView) or DEFAULT_FOV
+
+local FOVRow = Instance.new("Frame")
+FOVRow.Name = "FOVRow"
+FOVRow.Size = UDim2.new(1, 0, 0, 40)
+FOVRow.Position = UDim2.new(0, 0, 0, CAMERA_TOP + 78)
+FOVRow.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+FOVRow.BackgroundTransparency = 0.5
+FOVRow.BorderSizePixel = 0
+FOVRow.Parent = PlayerPage
+Instance.new("UICorner", FOVRow).CornerRadius = UDim.new(0, 8)
+
+local FOVRowLabel = Instance.new("TextLabel")
+FOVRowLabel.Name = "RowLabel"
+FOVRowLabel.Size = UDim2.new(0, 200, 1, 0)
+FOVRowLabel.Position = UDim2.new(0, 16, 0, 0)
+FOVRowLabel.BackgroundTransparency = 1
+FOVRowLabel.Text = "FOV"
+FOVRowLabel.Font = UIFont
+FOVRowLabel.TextSize = 15
+FOVRowLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+FOVRowLabel.TextXAlignment = Enum.TextXAlignment.Left
+FOVRowLabel.TextYAlignment = Enum.TextYAlignment.Center
+FOVRowLabel.Parent = FOVRow
+
+local FOVInput = Instance.new("TextBox")
+FOVInput.Name = "Input"
+FOVInput.Size = UDim2.new(0, 70, 0, 30)
+FOVInput.Position = UDim2.new(1, -86, 0.5, -15)
+FOVInput.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+FOVInput.BackgroundTransparency = 0.2
+FOVInput.BorderSizePixel = 0
+FOVInput.ClearTextOnFocus = false
+FOVInput.Text = tostring(math.floor(FOVValue + 0.5))
+FOVInput.Font = UIFont
+FOVInput.TextSize = 16
+FOVInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+FOVInput.Parent = FOVRow
+Instance.new("UICorner", FOVInput).CornerRadius = UDim.new(0, 6)
+
+local FOVResetButton = Instance.new("TextButton")
+FOVResetButton.Name = "ResetButton"
+FOVResetButton.Size = UDim2.new(0, 80, 0, 30)
+FOVResetButton.Position = UDim2.new(1, -174, 0.5, -15)
+FOVResetButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+FOVResetButton.BackgroundTransparency = 0.2
+FOVResetButton.BorderSizePixel = 0
+FOVResetButton.Text = "Reset"
+FOVResetButton.Font = UIFont
+FOVResetButton.TextSize = 16
+FOVResetButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+FOVResetButton.Parent = FOVRow
+Instance.new("UICorner", FOVResetButton).CornerRadius = UDim.new(0, 6)
+
+local CAMERA_SECTION_BOTTOM = CAMERA_TOP + 78 + 40
+
+FOVInput.FocusLost:Connect(function()
+	local value = tonumber(FOVInput.Text)
+	if value then FOVValue = math.clamp(value, 20, 120) end
+	FOVInput.Text = tostring(math.floor(FOVValue + 0.5))
+	local camera = workspace.CurrentCamera
+	if camera then camera.FieldOfView = FOVValue end
+end)
+
+FOVResetButton.MouseButton1Click:Connect(function()
+	PlayClick()
+	FOVValue = DEFAULT_FOV
+	FOVInput.Text = tostring(DEFAULT_FOV)
+	if workspace.CurrentCamera then workspace.CurrentCamera.FieldOfView = DEFAULT_FOV end
+end)
+
+local function ClearFreeCamSelfESP()
+	if FreeCamSelfHighlight then FreeCamSelfHighlight:Destroy() FreeCamSelfHighlight = nil end
+	if FreeCamSelfLabel then FreeCamSelfLabel:Destroy() FreeCamSelfLabel = nil end
+	FreeCamSelfAdornee = nil
+end
+
+local function UpdateFreeCamSelfESP()
+	if not FreeCamEnabled then
+		ClearFreeCamSelfESP()
+		return
+	end
+	local character = Player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local head = character and character:FindFirstChild("Head")
+	local root = character and (character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso"))
+	if not character or not humanoid or humanoid.Health &lt;= 0 or not root then
+		ClearFreeCamSelfESP()
+		return
+	end
+	if FreeCamSelfAdornee ~= character then
+		ClearFreeCamSelfESP()
+		local highlight = Instance.new("Highlight")
+		highlight.Name = "SerenityFreeCamSelfHighlight"
+		highlight.Adornee = character
+		highlight.FillColor = FreeCamSelfColor
+		highlight.OutlineColor = FreeCamSelfColor
+		highlight.FillTransparency = 0.82
+		highlight.OutlineTransparency = 0
+		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		highlight.Parent = ScreenGui
+		FreeCamSelfHighlight = highlight
+
+		local label = Instance.new("BillboardGui")
+		label.Name = "SerenityFreeCamSelfLabel"
+		label.Adornee = head or root
+		label.Size = UDim2.new(0, 70, 0, 24)
+		label.StudsOffsetWorldSpace = Vector3.new(0, 2.8, 0)
+		label.AlwaysOnTop = true
+		label.Parent = ScreenGui
+		local text = Instance.new("TextLabel")
+		text.Size = UDim2.new(1, 0, 1, 0)
+		text.BackgroundTransparency = 1
+		text.Text = "You"
+		text.Font = UIFont
+		text.TextSize = 12
+		text.TextColor3 = FreeCamSelfColor
+		text.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+		text.TextStrokeTransparency = 0.15
+		text.Parent = label
+		FreeCamSelfLabel = label
+		FreeCamSelfAdornee = character
+	elseif FreeCamSelfLabel then
+		FreeCamSelfLabel.Adornee = head or root
+	end
+end
+
+local function EnableFreeCam()
+	if FreeCamEnabled then return end
+	local camera = workspace.CurrentCamera
+	if not camera then return end
+	FreeCamEnabled = true
+	FreeCamOriginalType = camera.CameraType
+	FreeCamOriginalSubject = camera.CameraSubject
+	FreeCamOriginalCFrame = camera.CFrame
+	FreeCamOriginalFocus = camera.Focus
+	FreeCamPosition = camera.CFrame.Position
+	FreeCamPitch, FreeCamYaw = camera.CFrame:ToOrientation()
+	camera.CameraType = Enum.CameraType.Scriptable
+	local character = Player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if humanoid then humanoid:Move(Vector3.zero) end
+	if root then root.AssemblyLinearVelocity = Vector3.zero root.AssemblyAngularVelocity = Vector3.zero end
+	FreeCamToggle.Text = "On"
+	UpdateFreeCamSelfESP()
+	ContextActionService:BindActionAtPriority(
+		"SerenityFreeCamSink",
+		function() return Enum.ContextActionResult.Sink end,
+		false,
+		Enum.ContextActionPriority.High.Value + 100,
+		Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D,
+		Enum.KeyCode.Q, Enum.KeyCode.E, Enum.KeyCode.LeftShift
+	)
+end
+
+local function DisableFreeCam()
+	if not FreeCamEnabled then return end
+	FreeCamEnabled = false
+	ContextActionService:UnbindAction("SerenityFreeCamSink")
+	-- Always release the RMB camera lock. Restoring a captured LockCenter state can
+	-- leave the cursor pinned after Free Cam is turned off.
+	UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+	UserInputService.MouseIconEnabled = true
+	ClearFreeCamSelfESP()
+	local camera = workspace.CurrentCamera
+	if camera then
+		camera.CameraType = FreeCamOriginalType or Enum.CameraType.Custom
+		local character = Player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		camera.CameraSubject = humanoid or FreeCamOriginalSubject
+		if FreeCamOriginalCFrame then camera.CFrame = FreeCamOriginalCFrame end
+		if FreeCamOriginalFocus then camera.Focus = FreeCamOriginalFocus end
+	end
+	FreeCamToggle.Text = "Off"
+	task.defer(function()
+		if not FreeCamEnabled then
+			UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+			UserInputService.MouseIconEnabled = true
+		end
+	end)
+end
+
+local function ToggleFreeCam()
+	if FreeCamEnabled then DisableFreeCam() else EnableFreeCam() end
+end
+FreeCamToggle.MouseButton1Click:Connect(function() PlayClick() ToggleFreeCam() end)
+
+local freeCamRenderConnection = RunService.RenderStepped:Connect(function(deltaTime)
+	if not FreeCamEnabled then return end
+	local camera = workspace.CurrentCamera
+	if not camera then return end
+	UpdateFreeCamSelfESP()
+	local focusedTextBox
+	pcall(function() focusedTextBox = UserInputService:GetFocusedTextBox() end)
+	if focusedTextBox then
+		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+		return
+	end
+	if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+		UserInputService.MouseBehavior = Enum.MouseBehavior.LockCurrentPosition
+		local mouseDelta = UserInputService:GetMouseDelta()
+		FreeCamYaw = FreeCamYaw - mouseDelta.X * 0.01
+		FreeCamPitch = math.clamp(FreeCamPitch - mouseDelta.Y * 0.01, math.rad(-89), math.rad(89))
+	else
+		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+	end
+	local rotation = CFrame.fromOrientation(FreeCamPitch, FreeCamYaw, 0)
+	local movement = Vector3.zero
+	if UserInputService:IsKeyDown(Enum.KeyCode.W) then movement += rotation.LookVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.S) then movement -= rotation.LookVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.D) then movement += rotation.RightVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.A) then movement -= rotation.RightVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.E) then movement += Vector3.new(0, 1, 0) end
+	if UserInputService:IsKeyDown(Enum.KeyCode.Q) then movement -= Vector3.new(0, 1, 0) end
+	local speed = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and 120 or 40
+	if movement.Magnitude &gt; 0 then FreeCamPosition = FreeCamPosition + movement.Unit * speed * deltaTime end
+	local cameraCFrame = CFrame.new(FreeCamPosition) * rotation
+	camera.CFrame = cameraCFrame
+	camera.Focus = cameraCFrame * CFrame.new(0, 0, -512)
+end)
+
+PlayerPage.CanvasSize = UDim2.new(0, 0, 0, CAMERA_SECTION_BOTTOM + 16)
 
 -- Re-apply active effects whenever the character (re)spawns.
 local characterAddedConnection = Player.CharacterAdded:Connect(function()
@@ -922,16 +1216,11 @@ end)
 
 CreateSectionHeading(VisualsPage, 8, "ESP")
 
-local OutlineESPSwatch = CreateColorRow(VisualsPage, 38, "Outline ESP", OutlineESPColor)
-local OutlineESPToggle = CreateToggleRow(VisualsPage, 86, "OutlineESPKeybind", function(k) OutlineESPKeybind = k end)
+local OutlineESPToggle, OutlineESPSwatch = CreateESPRow(VisualsPage, 38, "Outline ESP", OutlineESPColor, "OutlineESPKeybind", function(k) OutlineESPKeybind = k end)
+local BoxESPToggle, BoxESPSwatch = CreateESPRow(VisualsPage, 86, "Box ESP", BoxESPColor, "BoxESPKeybind", function(k) BoxESPKeybind = k end)
+local ESPLabelsToggle, ESPLabelsSwatch = CreateESPRow(VisualsPage, 134, "ESP Labels", ESPLabelsColor, "ESPLabelsKeybind", function(k) ESPLabelsKeybind = k end)
 
-local BoxESPSwatch = CreateColorRow(VisualsPage, 134, "Box ESP", BoxESPColor)
-local BoxESPToggle = CreateToggleRow(VisualsPage, 182, "BoxESPKeybind", function(k) BoxESPKeybind = k end)
-
-local ESPLabelsSwatch = CreateColorRow(VisualsPage, 230, "ESP Labels", ESPLabelsColor)
-local ESPLabelsToggle = CreateToggleRow(VisualsPage, 278, "ESPLabelsKeybind", function(k) ESPLabelsKeybind = k end)
-
-VisualsPage.CanvasSize = UDim2.new(0, 0, 0, 334)
+VisualsPage.CanvasSize = UDim2.new(0, 0, 0, 190)
 
 local function ToggleOutlineESP()
 	OutlineESPEnabled = not OutlineESPEnabled
@@ -1083,10 +1372,15 @@ local function DestroyGui()
 	if characterAddedConnection then characterAddedConnection:Disconnect() end
 	if speedRenderConnection then speedRenderConnection:Disconnect() end
 	if flyRenderConnection then flyRenderConnection:Disconnect() end
+	if freeCamRenderConnection then freeCamRenderConnection:Disconnect() end
 
 	SpeedEnabled = false
 	JumpEnabled = false
 	FlyEnabled = false
+	if FlyBodyVelocity then FlyBodyVelocity:Destroy() FlyBodyVelocity = nil end
+	if FlyBodyGyro then FlyBodyGyro:Destroy() FlyBodyGyro = nil end
+	DisableFreeCam()
+	if workspace.CurrentCamera then workspace.CurrentCamera.FieldOfView = DEFAULT_FOV end
 	OutlineESPEnabled = false
 	BoxESPEnabled = false
 	ESPLabelsEnabled = false
@@ -1124,6 +1418,8 @@ mainInputConnection = UserInputService.InputBegan:Connect(function(input, proces
 		ToggleJump()
 	elseif FlyKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == FlyKeybind then
 		ToggleFly()
+	elseif FreeCamKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == FreeCamKeybind then
+		ToggleFreeCam()
 	elseif OutlineESPKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == OutlineESPKeybind then
 		ToggleOutlineESP()
 	elseif BoxESPKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == BoxESPKeybind then
