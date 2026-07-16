@@ -43,7 +43,7 @@ local function GuiScaleFromValue(value)
 	return InterfaceScale * (value / 50)
 end
 
-local BackgroundTransparencyValue = math.clamp(tonumber(SavedKeybinds.BackgroundTransparency) or 0, 0, 80)
+local BackgroundTransparencyValue = math.clamp(tonumber(SavedKeybinds.BackgroundTransparency) or 0, 0, 100)
 
 SavedKeybinds.KeybindsByPlace = type(SavedKeybinds.KeybindsByPlace) == "table" and SavedKeybinds.KeybindsByPlace or {}
 local KeybindScopeActive = false
@@ -356,6 +356,7 @@ end
 -- Theme Management
 local ThemeObjects = { Backgrounds = {}, Texts = {}, Accents = {}, AccentBackgrounds = {}, StateTexts = {} }
 local HubState = {}
+ThemeObjects.RainbowAccent = {Enabled = SavedKeybinds.RainbowAccent == true, Hue = 0, SavedColor = nil}
 
 -- Closes the floating Optimize dock; called from several button handlers below.
 local function HideOptimizeDock()
@@ -615,6 +616,30 @@ ThemeObjects.ApplyMainGradient = function(intensity)
 			end
 		end
 	end
+end
+
+-- Cheap per-frame accent refresh for Rainbow mode: only snaps the color-driven objects
+-- (no tweening, no hover/layout work) since this can run many times a second.
+ThemeObjects.RefreshAccentColorsOnly = function()
+	MainTextureStroke.Color = AccentColor
+	for i = #ThemeObjects.Accents, 1, -1 do
+		local obj = ThemeObjects.Accents[i]
+		if obj.Parent then
+			if obj:IsA("UIStroke") then obj.Color = AccentColor
+			elseif obj:IsA("GuiObject") then obj.TextColor3 = AccentColor end
+		else
+			table.remove(ThemeObjects.Accents, i)
+		end
+	end
+	for i = #ThemeObjects.AccentBackgrounds, 1, -1 do
+		local obj = ThemeObjects.AccentBackgrounds[i]
+		if obj.Parent then
+			obj.BackgroundColor3 = AccentColor
+		else
+			table.remove(ThemeObjects.AccentBackgrounds, i)
+		end
+	end
+	if ThemeObjects.RefreshThemePreviews then ThemeObjects.RefreshThemePreviews() end
 end
 
 local function IsFrameLight()
@@ -1266,6 +1291,11 @@ HubState.Connections.GradientPulse = RunService.Heartbeat:Connect(function(delta
 	ThemeObjects.GradientPulseAccumulator = 0
 	ThemeObjects.GradientSweepAngle = (ThemeObjects.GradientSweepAngle + (elapsed * 22)) % 360
 	MainTextureGradient.Rotation = ThemeObjects.GradientSweepAngle
+	if ThemeObjects.RainbowAccent.Enabled then
+		ThemeObjects.RainbowAccent.Hue = (ThemeObjects.RainbowAccent.Hue + (elapsed * 0.4)) % 1
+		AccentColor = Color3.fromHSV(ThemeObjects.RainbowAccent.Hue, 1, 1)
+		ThemeObjects.RefreshAccentColorsOnly()
+	end
 end)
 ThemeObjects.FreeCam = {Enabled = false, Keybind = LoadKeybind("FreeCam"), Binding = false}
 
@@ -5949,15 +5979,18 @@ table.insert(ThemeObjects.Backgrounds, GuiSizeMinusBtn)
 table.insert(ThemeObjects.Texts, GuiSizeMinusBtn)
 Instance.new("UICorner", GuiSizeMinusBtn).CornerRadius = UDim.new(0, 5)
 
-local GuiSizeValueLabel = Instance.new("TextLabel")
+local GuiSizeValueLabel = Instance.new("TextBox")
 GuiSizeValueLabel.Size = UDim2.new(0, 46, 0, 20)
 GuiSizeValueLabel.Position = UDim2.new(0, 42, 0, 26)
 GuiSizeValueLabel.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
 GuiSizeValueLabel.BackgroundTransparency = 0.8
 GuiSizeValueLabel.BorderSizePixel = 0
+GuiSizeValueLabel.ClearTextOnFocus = false
 GuiSizeValueLabel.Text = tostring(GuiSizeValue)
 GuiSizeValueLabel.Font = Enum.Font.GothamBold
 GuiSizeValueLabel.TextSize = 10
+GuiSizeValueLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+GuiSizeValueLabel.PlaceholderColor3 = Color3.fromRGB(255, 255, 255)
 GuiSizeValueLabel.ZIndex = 81
 GuiSizeValueLabel.Parent = GuiSizeFrame
 table.insert(ThemeObjects.Backgrounds, GuiSizeValueLabel)
@@ -5995,7 +6028,7 @@ table.insert(ThemeObjects.Texts, GuiSizeResetBtn)
 Instance.new("UICorner", GuiSizeResetBtn).CornerRadius = UDim.new(0, 4)
 
 local function ApplyGuiSize(value)
-	GuiSizeValue = math.clamp(value, 20, 100)
+	GuiSizeValue = math.clamp(math.floor(value + 0.5), 20, 100)
 	GuiSizeValueLabel.Text = tostring(GuiSizeValue)
 	local targetScale = GuiScaleFromValue(GuiSizeValue)
 	for _, scaleObject in ipairs({MainScaleObject, HubState.TargetScaleObject, ThemeObjects.PlayerTP.Scale, SplashScaleObject, ThemeObjects.PickerDockScale, ThemeObjects.GuiSizeDockScale, ThemeObjects.ThemeDockScale, ThemeObjects.OptimizeDockScale, ThemeObjects.KeybindEditorScale, ThemeObjects.ExtrasFeature.CopyScale, ThemeObjects.MM2RoleDetailsScale}) do
@@ -6017,6 +6050,9 @@ end
 GuiSizeMinusBtn.MouseButton1Click:Connect(function() PlayClick() ApplyGuiSize(GuiSizeValue - 5) end)
 GuiSizePlusBtn.MouseButton1Click:Connect(function() PlayClick() ApplyGuiSize(GuiSizeValue + 5) end)
 GuiSizeResetBtn.MouseButton1Click:Connect(function() PlayClick() ApplyGuiSize(50) end)
+GuiSizeValueLabel.FocusLost:Connect(function()
+	ApplyGuiSize(tonumber(GuiSizeValueLabel.Text) or GuiSizeValue)
+end)
 
 local ThemeFrame = Instance.new("Frame")
 ThemeFrame.Name = "ThemeDock"
@@ -6088,7 +6124,7 @@ ThemeBackgroundBtn.Position = UDim2.new(0, 8, 0, 84)
 ThemeBackgroundBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 ThemeBackgroundBtn.BackgroundTransparency = 0.8
 ThemeBackgroundBtn.BorderSizePixel = 0
-ThemeBackgroundBtn.Text = "Background"
+ThemeBackgroundBtn.Text = "Transparency"
 ThemeBackgroundBtn.Font = Enum.Font.GothamBold
 ThemeBackgroundBtn.TextSize = 9
 ThemeBackgroundBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -6221,6 +6257,23 @@ table.insert(ThemeObjects.Backgrounds, ThemePickerBackBtn)
 table.insert(ThemeObjects.Texts, ThemePickerBackBtn)
 Instance.new("UICorner", ThemePickerBackBtn).CornerRadius = UDim.new(0, 5)
 
+local RainbowToggleBtn = Instance.new("TextButton")
+RainbowToggleBtn.Name = "RainbowToggleBtn"
+RainbowToggleBtn.Size = UDim2.new(0, 114, 0, 20)
+RainbowToggleBtn.Position = UDim2.new(0, 8, 0, 126)
+RainbowToggleBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+RainbowToggleBtn.BackgroundTransparency = 0.8
+RainbowToggleBtn.BorderSizePixel = 0
+RainbowToggleBtn.Text = ThemeObjects.RainbowAccent.Enabled and "Rainbow: On" or "Rainbow: Off"
+RainbowToggleBtn.Font = Enum.Font.GothamBold
+RainbowToggleBtn.TextSize = 8
+RainbowToggleBtn.ZIndex = 81
+RainbowToggleBtn.Visible = false
+RainbowToggleBtn.Parent = PickerFrame
+table.insert(ThemeObjects.Backgrounds, RainbowToggleBtn)
+table.insert(ThemeObjects.Texts, RainbowToggleBtn)
+Instance.new("UICorner", RainbowToggleBtn).CornerRadius = UDim.new(0, 5)
+
 local SaveCurrentColorBtn = Instance.new("TextButton")
 SaveCurrentColorBtn.Name = "SaveCurrentColorBtn"
 SaveCurrentColorBtn.Size = UDim2.new(0, 114, 0, 20)
@@ -6292,7 +6345,7 @@ local BackgroundTransparencyHeader = Instance.new("TextLabel")
 BackgroundTransparencyHeader.Size = UDim2.new(1, -34, 0, 28)
 BackgroundTransparencyHeader.Position = UDim2.new(0, 10, 0, 0)
 BackgroundTransparencyHeader.BackgroundTransparency = 1
-BackgroundTransparencyHeader.Text = "Background"
+BackgroundTransparencyHeader.Text = "Transparency"
 BackgroundTransparencyHeader.Font = Enum.Font.GothamBold
 BackgroundTransparencyHeader.TextSize = 13
 BackgroundTransparencyHeader.TextXAlignment = Enum.TextXAlignment.Left
@@ -6327,15 +6380,18 @@ table.insert(ThemeObjects.Backgrounds, BackgroundTransparencyMinusBtn)
 table.insert(ThemeObjects.Texts, BackgroundTransparencyMinusBtn)
 Instance.new("UICorner", BackgroundTransparencyMinusBtn).CornerRadius = UDim.new(0, 5)
 
-local BackgroundTransparencyValueLabel = Instance.new("TextLabel")
+local BackgroundTransparencyValueLabel = Instance.new("TextBox")
 BackgroundTransparencyValueLabel.Size = UDim2.new(0, 46, 0, 20)
 BackgroundTransparencyValueLabel.Position = UDim2.new(0, 42, 0, 58)
 BackgroundTransparencyValueLabel.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
 BackgroundTransparencyValueLabel.BackgroundTransparency = 0.8
 BackgroundTransparencyValueLabel.BorderSizePixel = 0
+BackgroundTransparencyValueLabel.ClearTextOnFocus = false
 BackgroundTransparencyValueLabel.Text = BackgroundTransparencyValue .. "%"
 BackgroundTransparencyValueLabel.Font = Enum.Font.GothamBold
 BackgroundTransparencyValueLabel.TextSize = 10
+BackgroundTransparencyValueLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+BackgroundTransparencyValueLabel.PlaceholderColor3 = Color3.fromRGB(255, 255, 255)
 BackgroundTransparencyValueLabel.Parent = BackgroundTransparencyFrame
 table.insert(ThemeObjects.Backgrounds, BackgroundTransparencyValueLabel)
 table.insert(ThemeObjects.Texts, BackgroundTransparencyValueLabel)
@@ -6356,7 +6412,7 @@ table.insert(ThemeObjects.Texts, BackgroundTransparencyPlusBtn)
 Instance.new("UICorner", BackgroundTransparencyPlusBtn).CornerRadius = UDim.new(0, 5)
 
 local function ApplyBackgroundTransparency(value)
-	BackgroundTransparencyValue = math.clamp(math.floor(value + 0.5), 0, 80)
+	BackgroundTransparencyValue = math.clamp(math.floor(value + 0.5), 0, 100)
 	BackgroundTransparencyValueLabel.Text = BackgroundTransparencyValue .. "%"
 	MainFrame.BackgroundTransparency = BackgroundTransparencyValue / 100
 	SavedKeybinds.BackgroundTransparency = BackgroundTransparencyValue
@@ -6369,6 +6425,10 @@ end)
 BackgroundTransparencyPlusBtn.MouseButton1Click:Connect(function()
 	PlayClick()
 	ApplyBackgroundTransparency(BackgroundTransparencyValue + 5)
+end)
+BackgroundTransparencyValueLabel.FocusLost:Connect(function()
+	local typed = tonumber((BackgroundTransparencyValueLabel.Text:gsub("%%", "")))
+	ApplyBackgroundTransparency(typed or BackgroundTransparencyValue)
 end)
 BackgroundTransparencyBackBtn.MouseButton1Click:Connect(function()
 	PlayClick()
@@ -6665,6 +6725,7 @@ local function RefreshThemePreviews()
 		HubState.ESPColorBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	end
 end
+ThemeObjects.RefreshThemePreviews = RefreshThemePreviews
 
 local function RefreshPickerMarkers()
 	SVWheel.BackgroundColor3 = Color3.fromHSV(PickerH, 1, 1)
@@ -6734,6 +6795,7 @@ local function OpenColorPicker(target)
 	ResetThemeBtn.Visible = PickerTarget == "Accent" or PickerTarget == "Frame"
 	ResetThemeBtn.Text = PickerTarget == "Frame" and "Reset Frame" or "Reset Accent"
 	ThemePickerBackBtn.Visible = PickerTarget == "Accent" or PickerTarget == "Frame"
+	RainbowToggleBtn.Visible = PickerTarget == "Accent"
 	SaveCurrentColorBtn.Visible = true
 	RefreshPickerMarkers()
 	RefreshSavedColorButtons()
@@ -6917,6 +6979,24 @@ ResetThemeBtn.MouseButton1Click:Connect(function()
 	RefreshThemePreviews()
 	UpdateTheme()
 	if PickerFrame.Visible then OpenColorPicker(PickerTarget) end
+end)
+
+RainbowToggleBtn.MouseButton1Click:Connect(function()
+	PlayClick()
+	local enabling = not ThemeObjects.RainbowAccent.Enabled
+	ThemeObjects.RainbowAccent.Enabled = enabling
+	if enabling then
+		ThemeObjects.RainbowAccent.SavedColor = AccentColor
+	else
+		AccentColor = ThemeObjects.RainbowAccent.SavedColor or AccentColor
+		SaveThemeColors()
+		RefreshThemePreviews()
+		UpdateTheme()
+	end
+	RainbowToggleBtn.Text = enabling and "Rainbow: On" or "Rainbow: Off"
+	SavedKeybinds.RainbowAccent = enabling
+	SavePersistentSettings()
+	if PickerFrame.Visible then RefreshPickerMarkers() end
 end)
 
 ClearKeybindsBtn.MouseButton1Click:Connect(function()
