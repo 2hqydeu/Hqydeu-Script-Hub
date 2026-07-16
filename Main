@@ -3,12 +3,14 @@
 -- chrome (title, minimize, drag), a Home tab, and a Player tab with just Speed so far.
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 local CoreGui = game:GetService("CoreGui")
 local Players = game:GetService("Players")
 
 local Player = Players.LocalPlayer
 local FrameColor = Color3.fromRGB(0x28, 0x28, 0x28)
 local AccentColor = Color3.fromRGB(255, 255, 255)
+local UIFont = Enum.Font.Ubuntu
 
 -- Main Container
 local ScreenGui = Instance.new("ScreenGui")
@@ -31,17 +33,17 @@ ClickSound.Parent = ScreenGui
 local function PlayClick() ClickSound:Play() end
 
 -- Main Window
-local HEADER_HEIGHT = 54
-local FULL_SIZE = UDim2.new(0, 720, 0, 480)
+local HEADER_HEIGHT = 58
+local FULL_SIZE = UDim2.new(0, 660, 0, 430)
 local MINI_SIZE = UDim2.new(0, 220, 0, HEADER_HEIGHT)
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Size = FULL_SIZE
-MainFrame.Position = UDim2.new(0.5, -360, 0.5, -240)
+MainFrame.Position = UDim2.new(0.5, -330, 0.5, -215)
 MainFrame.AnchorPoint = Vector2.new(0, 0)
 MainFrame.BackgroundColor3 = FrameColor
-MainFrame.BackgroundTransparency = 0.2
+MainFrame.BackgroundTransparency = 0
 MainFrame.BorderSizePixel = 0
 MainFrame.ClipsDescendants = true
 MainFrame.Active = true
@@ -52,29 +54,49 @@ local MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = UDim.new(0, 14)
 MainCorner.Parent = MainFrame
 
--- Header: title, minimize, and a plain "L Ctrl" hint -- all top-anchored so a minimize
--- shrinks the window straight up toward this row instead of shrinking from the center.
+-- Header: title, live local clock, minimize, and a plain "L Ctrl" hint -- all
+-- top-anchored so a minimize shrinks the window straight up toward this row instead of
+-- shrinking from the center.
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
-TitleLabel.Size = UDim2.new(0, 300, 0, 28)
-TitleLabel.Position = UDim2.new(0, 18, 0, 14)
+TitleLabel.Size = UDim2.new(0, 260, 0, 24)
+TitleLabel.Position = UDim2.new(0, 18, 0, 10)
 TitleLabel.BackgroundTransparency = 1
 TitleLabel.Text = "Serenity"
-TitleLabel.Font = Enum.Font.GothamMedium
+TitleLabel.Font = UIFont
 TitleLabel.TextSize = 20
 TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = MainFrame
 
+local TimeLabel = Instance.new("TextLabel")
+TimeLabel.Name = "TimeLabel"
+TimeLabel.Size = UDim2.new(0, 260, 0, 14)
+TimeLabel.Position = UDim2.new(0, 18, 0, 34)
+TimeLabel.BackgroundTransparency = 1
+TimeLabel.Text = os.date("%I:%M:%S %p")
+TimeLabel.Font = UIFont
+TimeLabel.TextSize = 11
+TimeLabel.TextColor3 = Color3.fromRGB(160, 160, 160)
+TimeLabel.TextXAlignment = Enum.TextXAlignment.Left
+TimeLabel.Parent = MainFrame
+
+task.spawn(function()
+	while ScreenGui.Parent do
+		TimeLabel.Text = os.date("%I:%M:%S %p")
+		task.wait(1)
+	end
+end)
+
 local MiniButton = Instance.new("TextButton")
 MiniButton.Name = "MiniButton"
 MiniButton.Size = UDim2.new(0, 26, 0, 26)
-MiniButton.Position = UDim2.new(1, -38, 0, 14)
+MiniButton.Position = UDim2.new(1, -38, 0, 16)
 MiniButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 MiniButton.BackgroundTransparency = 0.4
 MiniButton.BorderSizePixel = 0
 MiniButton.Text = "-"
-MiniButton.Font = Enum.Font.Gotham
+MiniButton.Font = UIFont
 MiniButton.TextSize = 18
 MiniButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 MiniButton.Parent = MainFrame
@@ -83,10 +105,10 @@ Instance.new("UICorner", MiniButton).CornerRadius = UDim.new(0, 7)
 local MinimizeLabel = Instance.new("TextLabel")
 MinimizeLabel.Name = "MinimizeLabel"
 MinimizeLabel.Size = UDim2.new(0, 46, 0, 26)
-MinimizeLabel.Position = UDim2.new(1, -90, 0, 14)
+MinimizeLabel.Position = UDim2.new(1, -90, 0, 16)
 MinimizeLabel.BackgroundTransparency = 1
 MinimizeLabel.Text = "L Ctrl"
-MinimizeLabel.Font = Enum.Font.Gotham
+MinimizeLabel.Font = UIFont
 MinimizeLabel.TextSize = 12
 MinimizeLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
 MinimizeLabel.TextXAlignment = Enum.TextXAlignment.Right
@@ -105,7 +127,7 @@ Divider.Parent = MainFrame
 local TabBar = Instance.new("Frame")
 TabBar.Name = "TabBar"
 TabBar.Size = UDim2.new(1, -32, 0, 32)
-TabBar.Position = UDim2.new(0, 16, 0, 63)
+TabBar.Position = UDim2.new(0, 16, 0, HEADER_HEIGHT + 8)
 TabBar.BackgroundTransparency = 1
 TabBar.Parent = MainFrame
 
@@ -115,10 +137,11 @@ TabBarLayout.Padding = UDim.new(0, 8)
 TabBarLayout.SortOrder = Enum.SortOrder.LayoutOrder
 TabBarLayout.Parent = TabBar
 
+local CONTENT_TOP = HEADER_HEIGHT + 8 + 32 + 8
 local ContentArea = Instance.new("Frame")
 ContentArea.Name = "ContentArea"
-ContentArea.Size = UDim2.new(1, -32, 1, -119)
-ContentArea.Position = UDim2.new(0, 16, 0, 103)
+ContentArea.Size = UDim2.new(1, -32, 1, -(CONTENT_TOP + 16))
+ContentArea.Position = UDim2.new(0, 16, 0, CONTENT_TOP)
 ContentArea.BackgroundTransparency = 1
 ContentArea.Parent = MainFrame
 
@@ -158,7 +181,7 @@ local function CreateTab(name, order, iconId)
 	label.Position = UDim2.new(0, 34, 0, 0)
 	label.BackgroundTransparency = 1
 	label.Text = name
-	label.Font = Enum.Font.Gotham
+	label.Font = UIFont
 	label.TextSize = 13
 	label.TextColor3 = Color3.fromRGB(255, 255, 255)
 	label.TextXAlignment = Enum.TextXAlignment.Left
@@ -185,7 +208,7 @@ local HomePage = CreateTab("Home", 1, "109169107128990")
 local AvatarImage = Instance.new("ImageLabel")
 AvatarImage.Name = "Avatar"
 AvatarImage.Size = UDim2.new(0, 64, 0, 64)
-AvatarImage.Position = UDim2.new(0, 0, 0, 0)
+AvatarImage.Position = UDim2.new(0.5, -32, 0, 40)
 AvatarImage.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 AvatarImage.BorderSizePixel = 0
 AvatarImage.Parent = HomePage
@@ -199,34 +222,35 @@ end)
 
 local WelcomeLabel = Instance.new("TextLabel")
 WelcomeLabel.Name = "WelcomeLabel"
-WelcomeLabel.Size = UDim2.new(1, -80, 0, 64)
-WelcomeLabel.Position = UDim2.new(0, 80, 0, 0)
+WelcomeLabel.Size = UDim2.new(1, 0, 0, 32)
+WelcomeLabel.Position = UDim2.new(0, 0, 0, 116)
 WelcomeLabel.BackgroundTransparency = 1
-WelcomeLabel.Text = "Welcome, " .. Player.DisplayName
-WelcomeLabel.Font = Enum.Font.GothamMedium
+WelcomeLabel.Text = "Welcome " .. Player.DisplayName .. "!"
+WelcomeLabel.Font = UIFont
 WelcomeLabel.TextSize = 18
 WelcomeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-WelcomeLabel.TextXAlignment = Enum.TextXAlignment.Left
+WelcomeLabel.TextXAlignment = Enum.TextXAlignment.Center
 WelcomeLabel.TextYAlignment = Enum.TextYAlignment.Center
 WelcomeLabel.Parent = HomePage
 
 -- Player tab
 local PlayerPage = CreateTab("Player", 2, "108208886963013")
 
+-- Speed: the same CFrame-nudge approach the old hub used (RenderStepped, moves the root
+-- part along the humanoid's current move direction), not a WalkSpeed swap.
 local SpeedEnabled = false
 local SpeedValue = 3
-local DEFAULT_WALKSPEED = 16
 
-local function ApplySpeed()
+RunService.RenderStepped:Connect(function()
+	if not SpeedEnabled then return end
 	local character = Player.Character
+	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if humanoid then
-		humanoid.WalkSpeed = SpeedEnabled and SpeedValue or DEFAULT_WALKSPEED
+	if not (rootPart and humanoid) then return end
+	local moveDir = humanoid.MoveDirection
+	if moveDir.Magnitude > 0 then
+		rootPart.CFrame = rootPart.CFrame + (moveDir * (SpeedValue / 10))
 	end
-end
-Player.CharacterAdded:Connect(function()
-	task.wait(0.1)
-	ApplySpeed()
 end)
 
 local SpeedLabel = Instance.new("TextLabel")
@@ -235,7 +259,7 @@ SpeedLabel.Size = UDim2.new(0, 70, 0, 28)
 SpeedLabel.Position = UDim2.new(0, 0, 0, 0)
 SpeedLabel.BackgroundTransparency = 1
 SpeedLabel.Text = "Speed"
-SpeedLabel.Font = Enum.Font.Gotham
+SpeedLabel.Font = UIFont
 SpeedLabel.TextSize = 14
 SpeedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 SpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -250,7 +274,7 @@ SpeedInput.BackgroundTransparency = 0.3
 SpeedInput.BorderSizePixel = 0
 SpeedInput.ClearTextOnFocus = false
 SpeedInput.Text = tostring(SpeedValue)
-SpeedInput.Font = Enum.Font.Gotham
+SpeedInput.Font = UIFont
 SpeedInput.TextSize = 13
 SpeedInput.TextColor3 = Color3.fromRGB(255, 255, 255)
 SpeedInput.Parent = PlayerPage
@@ -264,7 +288,7 @@ SpeedToggle.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 SpeedToggle.BackgroundTransparency = 0.3
 SpeedToggle.BorderSizePixel = 0
 SpeedToggle.Text = "Off"
-SpeedToggle.Font = Enum.Font.Gotham
+SpeedToggle.Font = UIFont
 SpeedToggle.TextSize = 13
 SpeedToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
 SpeedToggle.Parent = PlayerPage
@@ -274,7 +298,6 @@ SpeedToggle.MouseButton1Click:Connect(function()
 	PlayClick()
 	SpeedEnabled = not SpeedEnabled
 	SpeedToggle.Text = SpeedEnabled and "On" or "Off"
-	ApplySpeed()
 end)
 
 SpeedInput.FocusLost:Connect(function()
@@ -283,17 +306,21 @@ SpeedInput.FocusLost:Connect(function()
 		SpeedValue = value
 	end
 	SpeedInput.Text = tostring(SpeedValue)
-	if SpeedEnabled then ApplySpeed() end
 end)
 
 SelectTab("Home")
 
--- Minimize: hardcoded to Left Control, not user-configurable.
+-- Minimize: hardcoded to Left Control, not user-configurable. Everything below the
+-- header (divider, tabs, content) is explicitly hidden while minimized so nothing peeks
+-- past the clipped frame.
 local MinimizeKeybind = Enum.KeyCode.LeftControl
 local minimized = false
 
 local function ToggleGUI()
 	minimized = not minimized
+	Divider.Visible = not minimized
+	TabBar.Visible = not minimized
+	ContentArea.Visible = not minimized
 	TweenService:Create(MainFrame, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
 		Size = minimized and MINI_SIZE or FULL_SIZE,
 	}):Play()
