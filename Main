@@ -1,71 +1,13 @@
 -- Serenity: minimal UI shell. The old feature-rich hub has been set aside (full copy
--- kept in Main_Legacy_Full.lua) in favor of a clean rebuild -- this is intentionally a
--- blank slate with just window chrome: title, minimize (default Left Control), drag.
+-- kept in Main_Legacy_Full.lua) in favor of a clean rebuild -- blank slate with window
+-- chrome (title, minimize, drag), a Home tab, and a Player tab with just Speed so far.
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
-local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
 
-local KeybindStorageFile = "Serenity_Keybinds.json"
-local SavedKeybinds = {}
-local CanPersistKeybinds = type(isfile) == "function" and type(readfile) == "function" and type(writefile) == "function"
-local function LoadSettingsFromGenv()
-	if type(getgenv) == "function" then
-		local globalSettings = getgenv().Serenity_Settings
-		if type(globalSettings) == "table" then SavedKeybinds = globalSettings end
-	end
-end
-LoadSettingsFromGenv()
-if CanPersistKeybinds then
-	pcall(function()
-		if isfile(KeybindStorageFile) then
-			local decoded = HttpService:JSONDecode(readfile(KeybindStorageFile))
-			if type(decoded) == "table" then SavedKeybinds = decoded end
-		end
-	end)
-end
-LoadSettingsFromGenv()
-
-local function SavePersistentSettings()
-	if type(getgenv) == "function" then
-		getgenv().Serenity_Settings = SavedKeybinds
-	end
-	if CanPersistKeybinds then
-		pcall(function() writefile(KeybindStorageFile, HttpService:JSONEncode(SavedKeybinds)) end)
-	end
-end
-
-local function DecodeKeybind(savedName)
-	if type(savedName) == "string" then
-		local success, keyCode = pcall(function() return Enum.KeyCode[savedName] end)
-		if success and keyCode then return keyCode end
-	end
-	return nil
-end
-
--- Minimize defaults to Left Control on a fresh save file. Checking the raw saved value
--- (rather than the decoded result) lets a deliberate clear stick instead of reverting
--- back to the default on the next load.
-local function LoadMinimizeKeybind()
-	if SavedKeybinds.MinimizeGUI == nil then
-		return Enum.KeyCode.LeftControl
-	end
-	return DecodeKeybind(SavedKeybinds.MinimizeGUI) or Enum.KeyCode.LeftControl
-end
-
-local function SaveMinimizeKeybind(keyCode)
-	SavedKeybinds.MinimizeGUI = keyCode.Name
-	SavePersistentSettings()
-end
-
-local function KeybindText(keyCode)
-	if keyCode == Enum.KeyCode.Unknown then return "..." end
-	if keyCode == Enum.KeyCode.LeftControl then return "L Ctrl" end
-	if keyCode == Enum.KeyCode.RightControl then return "R Ctrl" end
-	return keyCode.Name
-end
-
-local FrameColor = Color3.fromRGB(0x5B, 0x5B, 0x5B)
+local Player = Players.LocalPlayer
+local FrameColor = Color3.fromRGB(0x28, 0x28, 0x28)
 local AccentColor = Color3.fromRGB(255, 255, 255)
 
 -- Main Container
@@ -89,15 +31,17 @@ ClickSound.Parent = ScreenGui
 local function PlayClick() ClickSound:Play() end
 
 -- Main Window
+local HEADER_HEIGHT = 54
 local FULL_SIZE = UDim2.new(0, 720, 0, 480)
-local MINI_SIZE = UDim2.new(0, 220, 0, 44)
+local MINI_SIZE = UDim2.new(0, 220, 0, HEADER_HEIGHT)
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Size = FULL_SIZE
-MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+MainFrame.Position = UDim2.new(0.5, -360, 0.5, -240)
+MainFrame.AnchorPoint = Vector2.new(0, 0)
 MainFrame.BackgroundColor3 = FrameColor
+MainFrame.BackgroundTransparency = 0.2
 MainFrame.BorderSizePixel = 0
 MainFrame.ClipsDescendants = true
 MainFrame.Active = true
@@ -108,6 +52,8 @@ local MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = UDim.new(0, 14)
 MainCorner.Parent = MainFrame
 
+-- Header: title, minimize, and a plain "L Ctrl" hint -- all top-anchored so a minimize
+-- shrinks the window straight up toward this row instead of shrinking from the center.
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
 TitleLabel.Size = UDim2.new(0, 300, 0, 28)
@@ -123,7 +69,7 @@ TitleLabel.Parent = MainFrame
 local MiniButton = Instance.new("TextButton")
 MiniButton.Name = "MiniButton"
 MiniButton.Size = UDim2.new(0, 26, 0, 26)
-MiniButton.Position = UDim2.new(1, -38, 0, 12)
+MiniButton.Position = UDim2.new(1, -38, 0, 14)
 MiniButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 MiniButton.BackgroundTransparency = 0.4
 MiniButton.BorderSizePixel = 0
@@ -134,58 +80,226 @@ MiniButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 MiniButton.Parent = MainFrame
 Instance.new("UICorner", MiniButton).CornerRadius = UDim.new(0, 7)
 
-local MinimizeKeybindBtn = Instance.new("TextButton")
-MinimizeKeybindBtn.Name = "MinimizeKeybindBtn"
-MinimizeKeybindBtn.Size = UDim2.new(0, 56, 0, 26)
-MinimizeKeybindBtn.Position = UDim2.new(1, -100, 0, 12)
-MinimizeKeybindBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-MinimizeKeybindBtn.BackgroundTransparency = 0.4
-MinimizeKeybindBtn.BorderSizePixel = 0
-MinimizeKeybindBtn.Font = Enum.Font.Gotham
-MinimizeKeybindBtn.TextSize = 12
-MinimizeKeybindBtn.TextColor3 = AccentColor
-MinimizeKeybindBtn.Parent = MainFrame
-Instance.new("UICorner", MinimizeKeybindBtn).CornerRadius = UDim.new(0, 7)
-local MinimizeKeybindStroke = Instance.new("UIStroke")
-MinimizeKeybindStroke.Name = "ControlOutline"
-MinimizeKeybindStroke.Color = Color3.fromRGB(0, 0, 0)
-MinimizeKeybindStroke.Thickness = 1
-MinimizeKeybindStroke.Parent = MinimizeKeybindBtn
+local MinimizeLabel = Instance.new("TextLabel")
+MinimizeLabel.Name = "MinimizeLabel"
+MinimizeLabel.Size = UDim2.new(0, 46, 0, 26)
+MinimizeLabel.Position = UDim2.new(1, -90, 0, 14)
+MinimizeLabel.BackgroundTransparency = 1
+MinimizeLabel.Text = "L Ctrl"
+MinimizeLabel.Font = Enum.Font.Gotham
+MinimizeLabel.TextSize = 12
+MinimizeLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
+MinimizeLabel.TextXAlignment = Enum.TextXAlignment.Right
+MinimizeLabel.Parent = MainFrame
 
-local HubState = {}
-HubState.MinimizeKeybind = LoadMinimizeKeybind()
-HubState.minimized = false
-HubState.IsBindingMinimize = false
-MinimizeKeybindBtn.Text = KeybindText(HubState.MinimizeKeybind)
+local Divider = Instance.new("Frame")
+Divider.Name = "Divider"
+Divider.Size = UDim2.new(1, 0, 0, 1)
+Divider.Position = UDim2.new(0, 0, 0, HEADER_HEIGHT)
+Divider.BackgroundColor3 = AccentColor
+Divider.BackgroundTransparency = 0.85
+Divider.BorderSizePixel = 0
+Divider.Parent = MainFrame
+
+-- Tabs
+local TabBar = Instance.new("Frame")
+TabBar.Name = "TabBar"
+TabBar.Size = UDim2.new(1, -32, 0, 32)
+TabBar.Position = UDim2.new(0, 16, 0, 63)
+TabBar.BackgroundTransparency = 1
+TabBar.Parent = MainFrame
+
+local TabBarLayout = Instance.new("UIListLayout")
+TabBarLayout.FillDirection = Enum.FillDirection.Horizontal
+TabBarLayout.Padding = UDim.new(0, 8)
+TabBarLayout.SortOrder = Enum.SortOrder.LayoutOrder
+TabBarLayout.Parent = TabBar
+
+local ContentArea = Instance.new("Frame")
+ContentArea.Name = "ContentArea"
+ContentArea.Size = UDim2.new(1, -32, 1, -119)
+ContentArea.Position = UDim2.new(0, 16, 0, 103)
+ContentArea.BackgroundTransparency = 1
+ContentArea.Parent = MainFrame
+
+local Tabs = {}
+local function SelectTab(name)
+	for tabName, entry in pairs(Tabs) do
+		local isSelected = tabName == name
+		entry.Page.Visible = isSelected
+		entry.Button.BackgroundTransparency = isSelected and 0.85 or 1
+	end
+end
+
+local function CreateTab(name, order, iconId)
+	local button = Instance.new("TextButton")
+	button.Name = name .. "Tab"
+	button.LayoutOrder = order
+	button.Size = UDim2.new(0, 96, 0, 32)
+	button.BackgroundColor3 = AccentColor
+	button.BackgroundTransparency = 1
+	button.BorderSizePixel = 0
+	button.AutoButtonColor = false
+	button.Text = ""
+	button.Parent = TabBar
+	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 8)
+
+	local icon = Instance.new("ImageLabel")
+	icon.Name = "Icon"
+	icon.Size = UDim2.new(0, 18, 0, 18)
+	icon.Position = UDim2.new(0, 10, 0.5, -9)
+	icon.BackgroundTransparency = 1
+	icon.Image = "rbxassetid://" .. iconId
+	icon.Parent = button
+
+	local label = Instance.new("TextLabel")
+	label.Name = "Label"
+	label.Size = UDim2.new(0, 56, 0, 32)
+	label.Position = UDim2.new(0, 34, 0, 0)
+	label.BackgroundTransparency = 1
+	label.Text = name
+	label.Font = Enum.Font.Gotham
+	label.TextSize = 13
+	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = button
+
+	local page = Instance.new("Frame")
+	page.Name = name .. "Page"
+	page.Size = UDim2.new(1, 0, 1, 0)
+	page.BackgroundTransparency = 1
+	page.Visible = false
+	page.Parent = ContentArea
+
+	Tabs[name] = {Button = button, Page = page}
+	button.MouseButton1Click:Connect(function()
+		PlayClick()
+		SelectTab(name)
+	end)
+	return page
+end
+
+-- Home tab
+local HomePage = CreateTab("Home", 1, "109169107128990")
+
+local AvatarImage = Instance.new("ImageLabel")
+AvatarImage.Name = "Avatar"
+AvatarImage.Size = UDim2.new(0, 64, 0, 64)
+AvatarImage.Position = UDim2.new(0, 0, 0, 0)
+AvatarImage.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+AvatarImage.BorderSizePixel = 0
+AvatarImage.Parent = HomePage
+Instance.new("UICorner", AvatarImage).CornerRadius = UDim.new(1, 0)
+task.spawn(function()
+	local success, content = pcall(function()
+		return Players:GetUserThumbnailAsync(Player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
+	end)
+	if success then AvatarImage.Image = content end
+end)
+
+local WelcomeLabel = Instance.new("TextLabel")
+WelcomeLabel.Name = "WelcomeLabel"
+WelcomeLabel.Size = UDim2.new(1, -80, 0, 64)
+WelcomeLabel.Position = UDim2.new(0, 80, 0, 0)
+WelcomeLabel.BackgroundTransparency = 1
+WelcomeLabel.Text = "Welcome, " .. Player.DisplayName
+WelcomeLabel.Font = Enum.Font.GothamMedium
+WelcomeLabel.TextSize = 18
+WelcomeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+WelcomeLabel.TextXAlignment = Enum.TextXAlignment.Left
+WelcomeLabel.TextYAlignment = Enum.TextYAlignment.Center
+WelcomeLabel.Parent = HomePage
+
+-- Player tab
+local PlayerPage = CreateTab("Player", 2, "108208886963013")
+
+local SpeedEnabled = false
+local SpeedValue = 3
+local DEFAULT_WALKSPEED = 16
+
+local function ApplySpeed()
+	local character = Player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.WalkSpeed = SpeedEnabled and SpeedValue or DEFAULT_WALKSPEED
+	end
+end
+Player.CharacterAdded:Connect(function()
+	task.wait(0.1)
+	ApplySpeed()
+end)
+
+local SpeedLabel = Instance.new("TextLabel")
+SpeedLabel.Name = "SpeedLabel"
+SpeedLabel.Size = UDim2.new(0, 70, 0, 28)
+SpeedLabel.Position = UDim2.new(0, 0, 0, 0)
+SpeedLabel.BackgroundTransparency = 1
+SpeedLabel.Text = "Speed"
+SpeedLabel.Font = Enum.Font.Gotham
+SpeedLabel.TextSize = 14
+SpeedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+SpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
+SpeedLabel.Parent = PlayerPage
+
+local SpeedInput = Instance.new("TextBox")
+SpeedInput.Name = "SpeedInput"
+SpeedInput.Size = UDim2.new(0, 60, 0, 28)
+SpeedInput.Position = UDim2.new(0, 90, 0, 0)
+SpeedInput.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+SpeedInput.BackgroundTransparency = 0.3
+SpeedInput.BorderSizePixel = 0
+SpeedInput.ClearTextOnFocus = false
+SpeedInput.Text = tostring(SpeedValue)
+SpeedInput.Font = Enum.Font.Gotham
+SpeedInput.TextSize = 13
+SpeedInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+SpeedInput.Parent = PlayerPage
+Instance.new("UICorner", SpeedInput).CornerRadius = UDim.new(0, 6)
+
+local SpeedToggle = Instance.new("TextButton")
+SpeedToggle.Name = "SpeedToggle"
+SpeedToggle.Size = UDim2.new(0, 70, 0, 28)
+SpeedToggle.Position = UDim2.new(0, 162, 0, 0)
+SpeedToggle.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+SpeedToggle.BackgroundTransparency = 0.3
+SpeedToggle.BorderSizePixel = 0
+SpeedToggle.Text = "Off"
+SpeedToggle.Font = Enum.Font.Gotham
+SpeedToggle.TextSize = 13
+SpeedToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+SpeedToggle.Parent = PlayerPage
+Instance.new("UICorner", SpeedToggle).CornerRadius = UDim.new(0, 6)
+
+SpeedToggle.MouseButton1Click:Connect(function()
+	PlayClick()
+	SpeedEnabled = not SpeedEnabled
+	SpeedToggle.Text = SpeedEnabled and "On" or "Off"
+	ApplySpeed()
+end)
+
+SpeedInput.FocusLost:Connect(function()
+	local value = tonumber(SpeedInput.Text)
+	if value then
+		SpeedValue = value
+	end
+	SpeedInput.Text = tostring(SpeedValue)
+	if SpeedEnabled then ApplySpeed() end
+end)
+
+SelectTab("Home")
+
+-- Minimize: hardcoded to Left Control, not user-configurable.
+local MinimizeKeybind = Enum.KeyCode.LeftControl
+local minimized = false
 
 local function ToggleGUI()
-	HubState.minimized = not HubState.minimized
+	minimized = not minimized
 	TweenService:Create(MainFrame, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-		Size = HubState.minimized and MINI_SIZE or FULL_SIZE,
+		Size = minimized and MINI_SIZE or FULL_SIZE,
 	}):Play()
-	MiniButton.Text = HubState.minimized and "+" or "-"
+	MiniButton.Text = minimized and "+" or "-"
 end
 MiniButton.MouseButton1Click:Connect(function() PlayClick() ToggleGUI() end)
-
-MinimizeKeybindBtn.MouseButton1Click:Connect(function()
-	PlayClick()
-	MinimizeKeybindBtn.Text = "..."
-	HubState.IsBindingMinimize = true
-	local rebindConnection
-	rebindConnection = UserInputService.InputBegan:Connect(function(input, processed)
-		if processed then return end
-		if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
-		local selectedKey = input.KeyCode
-		if selectedKey == Enum.KeyCode.Backspace or selectedKey == Enum.KeyCode.Delete then
-			selectedKey = Enum.KeyCode.Unknown
-		end
-		HubState.MinimizeKeybind = selectedKey
-		SaveMinimizeKeybind(selectedKey)
-		MinimizeKeybindBtn.Text = KeybindText(selectedKey)
-		HubState.IsBindingMinimize = false
-		rebindConnection:Disconnect()
-	end)
-end)
 
 -- Silent unbind-able destroy key (Right Control) -- no button, no prompt, no sound.
 local DestroyKeybind = Enum.KeyCode.RightControl
@@ -199,32 +313,32 @@ local function DestroyGui()
 end
 
 mainInputConnection = UserInputService.InputBegan:Connect(function(input, processed)
-	if processed or HubState.IsBindingMinimize or UserInputService:GetFocusedTextBox() then return end
+	if processed or UserInputService:GetFocusedTextBox() then return end
 	if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
 	if input.KeyCode == DestroyKeybind then
 		DestroyGui()
 		return
 	end
-	if input.KeyCode == HubState.MinimizeKeybind then ToggleGUI() end
+	if input.KeyCode == MinimizeKeybind then ToggleGUI() end
 end)
 
 -- Dragging
-HubState.dragging = false
-HubState.dragStart = nil
-HubState.startPos = nil
+local dragging = false
+local dragStart = nil
+local startPos = nil
 MainFrame.InputBegan:Connect(function(input)
 	if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
-	HubState.dragging = true
-	HubState.dragStart = input.Position
-	HubState.startPos = MainFrame.Position
+	dragging = true
+	dragStart = input.Position
+	startPos = MainFrame.Position
 	input.Changed:Connect(function()
 		if input.UserInputState == Enum.UserInputState.End then
-			HubState.dragging = false
+			dragging = false
 		end
 	end)
 end)
 dragChangedConnection = UserInputService.InputChanged:Connect(function(input)
-	if not HubState.dragging or (input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch) then return end
-	local delta = input.Position - HubState.dragStart
-	MainFrame.Position = UDim2.new(HubState.startPos.X.Scale, HubState.startPos.X.Offset + delta.X, HubState.startPos.Y.Scale, HubState.startPos.Y.Offset + delta.Y)
+	if not dragging or (input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch) then return end
+	local delta = input.Position - dragStart
+	MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
 end)
