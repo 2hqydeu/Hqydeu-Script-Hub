@@ -694,8 +694,8 @@ local VisualsPage = CreateTab("Visuals", 3, "90467794700971", true)
 local TeleportPage = CreateTab("Teleport", 4, "90261647722333", true)
 
 -- Scripts tab: launches the separate game modules (loadstring + HttpGet, same as the
--- old hub). Each module only ever gets fetched once per execution. No icon given yet.
-local ScriptsPage = CreateTab("Scripts", 5, nil, true)
+-- old hub). Each module only ever gets fetched once per execution.
+local ScriptsPage = CreateTab("Scripts", 5, "77194728508403", true)
 
 local ScriptRunner = {Loaded = {}}
 local function RunScriptOnce(key, url)
