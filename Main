@@ -621,6 +621,7 @@ end
 -- Cheap per-frame accent refresh for Rainbow mode: only snaps the color-driven objects
 -- (no tweening, no hover/layout work) since this can run many times a second.
 ThemeObjects.RefreshAccentColorsOnly = function()
+	ThemeObjects.ApplyMainGradient(0.5)
 	MainTextureStroke.Color = AccentColor
 	for i = #ThemeObjects.Accents, 1, -1 do
 		local obj = ThemeObjects.Accents[i]
@@ -1292,7 +1293,7 @@ HubState.Connections.GradientPulse = RunService.Heartbeat:Connect(function(delta
 	ThemeObjects.GradientSweepAngle = (ThemeObjects.GradientSweepAngle + (elapsed * 22)) % 360
 	MainTextureGradient.Rotation = ThemeObjects.GradientSweepAngle
 	if ThemeObjects.RainbowAccent.Enabled then
-		ThemeObjects.RainbowAccent.Hue = (ThemeObjects.RainbowAccent.Hue + (elapsed * 0.4)) % 1
+		ThemeObjects.RainbowAccent.Hue = (ThemeObjects.RainbowAccent.Hue + (elapsed * 1.8)) % 1
 		AccentColor = Color3.fromHSV(ThemeObjects.RainbowAccent.Hue, 1, 1)
 		ThemeObjects.RefreshAccentColorsOnly()
 	end
@@ -6136,7 +6137,7 @@ Instance.new("UICorner", ThemeBackgroundBtn).CornerRadius = UDim.new(0, 5)
 
 local PickerFrame = Instance.new("Frame")
 PickerFrame.Name = "AccentPickerDock"
-PickerFrame.Size = UDim2.new(0, 130, 0, 216)
+PickerFrame.Size = UDim2.new(0, 130, 0, 246)
 PickerFrame.AnchorPoint = Vector2.new(1, 0)
 PickerFrame.ZIndex = 80
 PickerFrame.Visible = false
@@ -6260,7 +6261,7 @@ Instance.new("UICorner", ThemePickerBackBtn).CornerRadius = UDim.new(0, 5)
 local RainbowToggleBtn = Instance.new("TextButton")
 RainbowToggleBtn.Name = "RainbowToggleBtn"
 RainbowToggleBtn.Size = UDim2.new(0, 114, 0, 20)
-RainbowToggleBtn.Position = UDim2.new(0, 8, 0, 126)
+RainbowToggleBtn.Position = UDim2.new(0, 8, 0, 152)
 RainbowToggleBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 RainbowToggleBtn.BackgroundTransparency = 0.8
 RainbowToggleBtn.BorderSizePixel = 0
@@ -6277,7 +6278,7 @@ Instance.new("UICorner", RainbowToggleBtn).CornerRadius = UDim.new(0, 5)
 local SaveCurrentColorBtn = Instance.new("TextButton")
 SaveCurrentColorBtn.Name = "SaveCurrentColorBtn"
 SaveCurrentColorBtn.Size = UDim2.new(0, 114, 0, 20)
-SaveCurrentColorBtn.Position = UDim2.new(0, 8, 0, 152)
+SaveCurrentColorBtn.Position = UDim2.new(0, 8, 0, 178)
 SaveCurrentColorBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 SaveCurrentColorBtn.BackgroundTransparency = 0.8
 SaveCurrentColorBtn.BorderSizePixel = 0
@@ -6295,7 +6296,7 @@ for index = 1, 5 do
 	local swatch = Instance.new("TextButton")
 	swatch.Name = "SavedColorSlot" .. index
 	swatch.Size = UDim2.new(0, 18, 0, 18)
-	swatch.Position = UDim2.new(0, 8 + ((index - 1) * 24), 0, 188)
+	swatch.Position = UDim2.new(0, 8 + ((index - 1) * 24), 0, 214)
 	swatch.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	swatch.BackgroundTransparency = 0.15
 	swatch.BorderSizePixel = 0
