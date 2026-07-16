@@ -1,6 +1,4 @@
--- Serenity: minimal UI shell. The old feature-rich hub has been set aside (full copy
--- kept in Main_Legacy_Full.lua) in favor of a clean rebuild -- blank slate with window
--- chrome (title, minimize, drag), a Home tab, and a Player tab (Speed / Jump / Fly).
+
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
