@@ -186,12 +186,20 @@ HeaderDivider.BackgroundTransparency = 0.85
 HeaderDivider.BorderSizePixel = 0
 HeaderDivider.Parent = MainFrame
 
--- Tabs
-local TabBar = Instance.new("Frame")
+-- Tabs -- horizontally scrolling so adding more tabs later never crowds the bar; they
+-- just keep their full width and the row scrolls instead of squeezing.
+local TabBar = Instance.new("ScrollingFrame")
 TabBar.Name = "TabBar"
 TabBar.Size = UDim2.new(1, -32, 0, 32)
 TabBar.Position = UDim2.new(0, 16, 0, HEADER_HEIGHT + 8)
 TabBar.BackgroundTransparency = 1
+TabBar.BorderSizePixel = 0
+TabBar.ScrollBarThickness = 3
+TabBar.ScrollBarImageColor3 = AccentColor
+TabBar.ScrollingDirection = Enum.ScrollingDirection.X
+TabBar.ElasticBehavior = Enum.ElasticBehavior.Never
+TabBar.CanvasSize = UDim2.new(0, 0, 0, 0)
+TabBar.AutomaticCanvasSize = Enum.AutomaticSize.X
 TabBar.Parent = MainFrame
 
 local TabBarLayout = Instance.new("UIListLayout")
@@ -679,12 +687,15 @@ local characterAddedConnection = Player.CharacterAdded:Connect(function()
 	if JumpEnabled then ApplyJump() end
 end)
 
--- Visuals tab (blank for now -- icon left as nil until an emblem is picked)
-local VisualsPage = CreateTab("Visuals", 3, nil, true)
+-- Visuals tab (blank for now)
+local VisualsPage = CreateTab("Visuals", 3, "90467794700971", true)
+
+-- Teleport tab (blank for now)
+local TeleportPage = CreateTab("Teleport", 4, "90261647722333", true)
 
 -- Scripts tab: launches the separate game modules (loadstring + HttpGet, same as the
--- old hub). Each module only ever gets fetched once per execution.
-local ScriptsPage = CreateTab("Scripts", 4, nil, true)
+-- old hub). Each module only ever gets fetched once per execution. No icon given yet.
+local ScriptsPage = CreateTab("Scripts", 5, nil, true)
 
 local ScriptRunner = {Loaded = {}}
 local function RunScriptOnce(key, url)
