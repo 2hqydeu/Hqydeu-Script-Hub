@@ -95,7 +95,7 @@ ClickSound.Parent = ScreenGui
 local function PlayClick() ClickSound:Play() end
 
 -- Main Window
-local HEADER_HEIGHT = 64
+local HEADER_HEIGHT = 58
 local FULL_SIZE = UDim2.new(0, 560, 0, 430)
 local MINI_SIZE = UDim2.new(0, 220, 0, HEADER_HEIGHT)
 local WINDOW_POSITION = UDim2.new(0.5, -280, 0.5, -215)
@@ -117,9 +117,9 @@ local MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = UDim.new(0, 14)
 MainCorner.Parent = MainFrame
 
--- Header: title, live local clock (small text, larger leading icon), minimize, and a
--- plain "L Ctrl" hint -- all top-anchored so a minimize shrinks the window straight up
--- toward this row instead of shrinking from the center.
+-- Header: title, live local clock (plain text, no icon), minimize, and a plain "L Ctrl"
+-- hint -- all top-anchored so a minimize shrinks the window straight up toward this row
+-- instead of shrinking from the center.
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
 TitleLabel.Size = UDim2.new(0, 260, 0, 24)
@@ -132,18 +132,10 @@ TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = MainFrame
 
-local TimeIcon = Instance.new("ImageLabel")
-TimeIcon.Name = "TimeIcon"
-TimeIcon.Size = UDim2.new(0, 26, 0, 26)
-TimeIcon.Position = UDim2.new(0, 18, 0, 34)
-TimeIcon.BackgroundTransparency = 1
-TimeIcon.Image = "rbxassetid://86571187953743"
-TimeIcon.Parent = MainFrame
-
 local TimeLabel = Instance.new("TextLabel")
 TimeLabel.Name = "TimeLabel"
 TimeLabel.Size = UDim2.new(0, 200, 0, 14)
-TimeLabel.Position = UDim2.new(0, 50, 0, 40)
+TimeLabel.Position = UDim2.new(0, 18, 0, 36)
 TimeLabel.BackgroundTransparency = 1
 TimeLabel.Text = os.date("%I:%M:%S %p")
 TimeLabel.Font = UIFont
@@ -162,7 +154,7 @@ end)
 local MiniButton = Instance.new("TextButton")
 MiniButton.Name = "MiniButton"
 MiniButton.Size = UDim2.new(0, 26, 0, 26)
-MiniButton.Position = UDim2.new(1, -38, 0, 19)
+MiniButton.Position = UDim2.new(1, -38, 0, 16)
 MiniButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 MiniButton.BackgroundTransparency = 0.4
 MiniButton.BorderSizePixel = 0
@@ -176,7 +168,7 @@ Instance.new("UICorner", MiniButton).CornerRadius = UDim.new(0, 7)
 local MinimizeLabel = Instance.new("TextLabel")
 MinimizeLabel.Name = "MinimizeLabel"
 MinimizeLabel.Size = UDim2.new(0, 46, 0, 26)
-MinimizeLabel.Position = UDim2.new(1, -90, 0, 19)
+MinimizeLabel.Position = UDim2.new(1, -90, 0, 16)
 MinimizeLabel.BackgroundTransparency = 1
 MinimizeLabel.Text = "L Ctrl"
 MinimizeLabel.Font = UIFont
@@ -406,20 +398,16 @@ end
 local function CreateKeybindButton(parent, storageKey, onKeybindChanged)
 	local btn = Instance.new("TextButton")
 	btn.Name = "KeybindButton"
-	btn.Size = UDim2.new(0, 72, 0, 30)
-	btn.Position = UDim2.new(1, -88, 0.5, -15)
+	btn.Size = UDim2.new(0, 80, 0, 30)
+	btn.Position = UDim2.new(1, -176, 0.5, -15)
 	btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 	btn.BackgroundTransparency = 0.2
 	btn.BorderSizePixel = 0
 	btn.Font = UIFont
-	btn.TextSize = 13
-	btn.TextColor3 = AccentColor
+	btn.TextSize = 16
+	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	btn.Parent = parent
 	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(0, 0, 0)
-	stroke.Thickness = 1
-	stroke.Parent = btn
 
 	local loadedKey = LoadFeatureKeybind(storageKey)
 	btn.Text = KeybindText(loadedKey)
@@ -440,8 +428,11 @@ local function CreateKeybindButton(parent, storageKey, onKeybindChanged)
 			SaveFeatureKeybind(storageKey, selectedKey)
 			btn.Text = KeybindText(selectedKey)
 			onKeybindChanged(selectedKey)
-			bindingInProgress = false
 			capture:Disconnect()
+			-- Deferred so this input event finishes dispatching to every listener
+			-- (including the global toggle-key handler below) before the guard drops --
+			-- otherwise the same keypress that sets the bind could also fire the toggle.
+			task.defer(function() bindingInProgress = false end)
 		end)
 	end)
 
@@ -476,7 +467,7 @@ local function CreateToggleRow(parent, y, storageKey, onKeybindChanged)
 	local toggle = Instance.new("TextButton")
 	toggle.Name = "Toggle"
 	toggle.Size = UDim2.new(0, 80, 0, 30)
-	toggle.Position = UDim2.new(1, -176, 0.5, -15)
+	toggle.Position = UDim2.new(1, -88, 0.5, -15)
 	toggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 	toggle.BackgroundTransparency = 0.2
 	toggle.BorderSizePixel = 0
@@ -643,8 +634,10 @@ local FlyInput = CreateStrengthRow(PlayerPage, FLY_TOP + 30, "Fly Strength", Fly
 local FlyToggle = CreateToggleRow(PlayerPage, FLY_TOP + 78, "FlyKeybind", function(k) FlyKeybind = k end)
 local FLY_SECTION_BOTTOM = FLY_TOP + 78 + 40
 
--- Same CFrame-nudge feel as Speed, just with a vertical component -- no BodyGyro or
--- velocity-zeroing, so it moves identically to how Speed moves.
+-- Same CFrame-nudge feel as Speed, just with a vertical component -- no BodyGyro, so
+-- orientation is untouched. Gravity still applies to the root part though, and it was
+-- winning against the vertical nudge every frame (which is why this didn't work at all
+-- before), so velocity is zeroed each frame to cancel that out while flying.
 local flyRenderConnection = RunService.RenderStepped:Connect(function()
 	if not FlyEnabled then return end
 	local character = Player.Character
@@ -661,6 +654,7 @@ local flyRenderConnection = RunService.RenderStepped:Connect(function()
 	if moveDir.Magnitude > 0 then
 		rootPart.CFrame = rootPart.CFrame + (moveDir * (FlyValue / 10))
 	end
+	rootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
 end)
 
 local function ToggleFly()
@@ -787,6 +781,13 @@ MainFrame.InputBegan:Connect(function(input)
 	input.Changed:Connect(function()
 		if input.UserInputState == Enum.UserInputState.End then
 			dragging = false
+			-- Only the minimized pill snaps to an edge; a full-size window stays
+			-- wherever it's dropped.
+			if minimized then
+				TweenService:Create(MainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+					Position = GetSnappedMinimizedPosition(),
+				}):Play()
+			end
 		end
 	end)
 end)
@@ -799,7 +800,7 @@ end)
 -- Title sequence: the real UI (MainFrame) stays invisible the entire time -- this is a
 -- fully separate panel occupying the same spot, so nothing underneath is built-but-
 -- hidden, it just doesn't exist visually yet. Emblem spins + grows + fades into the
--- center (matching the old hub's intro), then a fake ~4.5s "loading" runs with a status
+-- center (matching the old hub's intro), then a fake ~3s "loading" runs with a status
 -- line that cycles through nonsense messages and a progress bar that fills unevenly.
 local SplashFrame = Instance.new("CanvasGroup")
 SplashFrame.Name = "SplashFrame"
@@ -816,7 +817,7 @@ Instance.new("UICorner", SplashFrame).CornerRadius = UDim.new(0, 14)
 local SplashImage = Instance.new("ImageLabel")
 SplashImage.Name = "SplashImage"
 SplashImage.AnchorPoint = Vector2.new(0.5, 0.5)
-SplashImage.Position = UDim2.new(0.5, 0, 0, 155)
+SplashImage.Position = UDim2.new(0.5, 0, 0, 160)
 SplashImage.Size = UDim2.new(0, 0, 0, 0)
 SplashImage.Rotation = -540
 SplashImage.BackgroundTransparency = 1
@@ -828,7 +829,7 @@ local LoadingLabel = Instance.new("TextLabel")
 LoadingLabel.Name = "LoadingLabel"
 LoadingLabel.AnchorPoint = Vector2.new(0.5, 0)
 LoadingLabel.Size = UDim2.new(0, 340, 0, 20)
-LoadingLabel.Position = UDim2.new(0.5, 0, 0, 285)
+LoadingLabel.Position = UDim2.new(0.5, 0, 0, 322)
 LoadingLabel.BackgroundTransparency = 1
 LoadingLabel.Text = ""
 LoadingLabel.Font = UIFont
@@ -840,7 +841,7 @@ local LoadingTrack = Instance.new("Frame")
 LoadingTrack.Name = "LoadingTrack"
 LoadingTrack.AnchorPoint = Vector2.new(0.5, 0)
 LoadingTrack.Size = UDim2.new(0, 300, 0, 6)
-LoadingTrack.Position = UDim2.new(0.5, 0, 0, 315)
+LoadingTrack.Position = UDim2.new(0.5, 0, 0, 350)
 LoadingTrack.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 LoadingTrack.BorderSizePixel = 0
 LoadingTrack.Parent = SplashFrame
@@ -892,14 +893,14 @@ end
 
 task.spawn(function()
 	local spinIn = TweenService:Create(SplashImage, TweenInfo.new(0.7, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-		Size = UDim2.new(0, 220, 0, 220),
+		Size = UDim2.new(0, 300, 0, 300),
 		Rotation = 0,
 		ImageTransparency = 0,
 	})
 	spinIn:Play()
 	spinIn.Completed:Wait()
 
-	RunFakeLoading(4.5)
+	RunFakeLoading(3)
 	task.wait(0.25)
 
 	local fadeOut = TweenService:Create(SplashFrame, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
