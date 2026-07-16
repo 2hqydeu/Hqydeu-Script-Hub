@@ -491,6 +491,50 @@ local function CreateToggleRow(parent, y, storageKey, onKeybindChanged)
 	return toggle, keybindBtn
 end
 
+-- Label + color swatch. The swatch is a placeholder for now -- it shows the current ESP
+-- color but isn't wired up to an actual picker yet, just an outlined square.
+local function CreateColorRow(parent, y, rowLabelText, defaultColor)
+	local row = Instance.new("Frame")
+	row.Name = rowLabelText:gsub("%s+", "") .. "Row"
+	row.Size = UDim2.new(1, 0, 0, 40)
+	row.Position = UDim2.new(0, 0, 0, y)
+	row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	row.BackgroundTransparency = 0.5
+	row.BorderSizePixel = 0
+	row.Parent = parent
+	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+
+	local rowLabel = Instance.new("TextLabel")
+	rowLabel.Name = "RowLabel"
+	rowLabel.Size = UDim2.new(0, 200, 1, 0)
+	rowLabel.Position = UDim2.new(0, 16, 0, 0)
+	rowLabel.BackgroundTransparency = 1
+	rowLabel.Text = rowLabelText
+	rowLabel.Font = UIFont
+	rowLabel.TextSize = 15
+	rowLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	rowLabel.TextXAlignment = Enum.TextXAlignment.Left
+	rowLabel.TextYAlignment = Enum.TextYAlignment.Center
+	rowLabel.Parent = row
+
+	local swatch = Instance.new("TextButton")
+	swatch.Name = "ColorSwatch"
+	swatch.Size = UDim2.new(0, 30, 0, 30)
+	swatch.Position = UDim2.new(1, -46, 0.5, -15)
+	swatch.BackgroundColor3 = defaultColor
+	swatch.AutoButtonColor = false
+	swatch.BorderSizePixel = 0
+	swatch.Text = ""
+	swatch.Parent = row
+	Instance.new("UICorner", swatch).CornerRadius = UDim.new(0, 6)
+	local swatchStroke = Instance.new("UIStroke")
+	swatchStroke.Color = Color3.fromRGB(0, 0, 0)
+	swatchStroke.Thickness = 1
+	swatchStroke.Parent = swatch
+
+	return swatch
+end
+
 local DEFAULT_WALKSPEED = 16
 local SECTION_GAP = 16
 
@@ -687,8 +731,113 @@ local characterAddedConnection = Player.CharacterAdded:Connect(function()
 	if JumpEnabled then ApplyJump() end
 end)
 
--- Visuals tab (blank for now)
+-- Visuals tab: Outline ESP and Box ESP, both real. Their color swatches are placeholders
+-- only -- no picker wired up yet, just a static outlined square.
 local VisualsPage = CreateTab("Visuals", 3, "90467794700971", true)
+
+local ESPDefaultColor = Color3.fromRGB(100, 255, 100)
+
+local OutlineESPEnabled = false
+local OutlineESPKeybind = Enum.KeyCode.Unknown
+local OutlineESPColor = ESPDefaultColor
+local OutlineHighlights = {}
+
+local BoxESPEnabled = false
+local BoxESPKeybind = Enum.KeyCode.Unknown
+local BoxESPColor = ESPDefaultColor
+local BoxAdornments = {}
+
+local function RemoveOutlineHighlight(character)
+	local highlight = OutlineHighlights[character]
+	if highlight then highlight:Destroy() end
+	OutlineHighlights[character] = nil
+end
+
+local function AddOutlineHighlight(character)
+	if OutlineHighlights[character] then return end
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "SerenityOutlineESP"
+	highlight.FillTransparency = 1
+	highlight.OutlineTransparency = 0
+	highlight.OutlineColor = OutlineESPColor
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.Parent = character
+	OutlineHighlights[character] = highlight
+end
+
+local function RemoveBoxAdornment(character)
+	local box = BoxAdornments[character]
+	if box then box:Destroy() end
+	BoxAdornments[character] = nil
+end
+
+local function AddBoxAdornment(character)
+	if BoxAdornments[character] then return end
+	local rootPart = character:FindFirstChild("HumanoidRootPart")
+	if not rootPart then return end
+	local box = Instance.new("BoxHandleAdornment")
+	box.Name = "SerenityBoxESP"
+	box.Adornee = rootPart
+	box.Size = Vector3.new(4, 6, 2)
+	box.Color3 = BoxESPColor
+	box.Transparency = 0.5
+	box.AlwaysOnTop = true
+	box.Parent = rootPart
+	BoxAdornments[character] = box
+end
+
+local function RefreshOutlineESP()
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= Player and plr.Character then
+			if OutlineESPEnabled then AddOutlineHighlight(plr.Character) else RemoveOutlineHighlight(plr.Character) end
+		end
+	end
+end
+
+local function RefreshBoxESP()
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= Player and plr.Character then
+			if BoxESPEnabled then AddBoxAdornment(plr.Character) else RemoveBoxAdornment(plr.Character) end
+		end
+	end
+end
+
+local function HookOtherPlayerCharacters(plr)
+	if plr == Player then return end
+	plr.CharacterAdded:Connect(function(character)
+		task.wait(0.1)
+		if OutlineESPEnabled then AddOutlineHighlight(character) end
+		if BoxESPEnabled then AddBoxAdornment(character) end
+	end)
+end
+for _, plr in ipairs(Players:GetPlayers()) do
+	HookOtherPlayerCharacters(plr)
+end
+Players.PlayerAdded:Connect(HookOtherPlayerCharacters)
+
+CreateSectionHeading(VisualsPage, 8, "ESP")
+
+local OutlineESPSwatch = CreateColorRow(VisualsPage, 38, "Outline ESP", OutlineESPColor)
+local OutlineESPToggle = CreateToggleRow(VisualsPage, 86, "OutlineESPKeybind", function(k) OutlineESPKeybind = k end)
+
+local BoxESPSwatch = CreateColorRow(VisualsPage, 134, "Box ESP", BoxESPColor)
+local BoxESPToggle = CreateToggleRow(VisualsPage, 182, "BoxESPKeybind", function(k) BoxESPKeybind = k end)
+
+VisualsPage.CanvasSize = UDim2.new(0, 0, 0, 238)
+
+local function ToggleOutlineESP()
+	OutlineESPEnabled = not OutlineESPEnabled
+	OutlineESPToggle.Text = OutlineESPEnabled and "On" or "Off"
+	RefreshOutlineESP()
+end
+OutlineESPToggle.MouseButton1Click:Connect(function() PlayClick() ToggleOutlineESP() end)
+
+local function ToggleBoxESP()
+	BoxESPEnabled = not BoxESPEnabled
+	BoxESPToggle.Text = BoxESPEnabled and "On" or "Off"
+	RefreshBoxESP()
+end
+BoxESPToggle.MouseButton1Click:Connect(function() PlayClick() ToggleBoxESP() end)
 
 -- Teleport tab (blank for now)
 local TeleportPage = CreateTab("Teleport", 4, "90261647722333", true)
@@ -823,6 +972,10 @@ local function DestroyGui()
 	SpeedEnabled = false
 	JumpEnabled = false
 	FlyEnabled = false
+	OutlineESPEnabled = false
+	BoxESPEnabled = false
+	for character in pairs(OutlineHighlights) do RemoveOutlineHighlight(character) end
+	for character in pairs(BoxAdornments) do RemoveBoxAdornment(character) end
 
 	local character = Player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -852,6 +1005,10 @@ mainInputConnection = UserInputService.InputBegan:Connect(function(input, proces
 		ToggleJump()
 	elseif FlyKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == FlyKeybind then
 		ToggleFly()
+	elseif OutlineESPKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == OutlineESPKeybind then
+		ToggleOutlineESP()
+	elseif BoxESPKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == BoxESPKeybind then
+		ToggleBoxESP()
 	end
 end)
 
