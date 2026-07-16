@@ -603,7 +603,7 @@ local speedRenderConnection = RunService.RenderStepped:Connect(function()
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if not (rootPart and humanoid) then return end
 	local moveDir = humanoid.MoveDirection
-	if moveDir.Magnitude &gt; 0 then
+	if moveDir.Magnitude > 0 then
 		rootPart.CFrame = rootPart.CFrame + (moveDir * (SpeedValue / 10))
 	end
 end)
@@ -766,7 +766,7 @@ local flyRenderConnection = RunService.RenderStepped:Connect(function()
 	if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir += camera.CFrame.RightVector end
 	if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir += Vector3.new(0, 1, 0) end
 	if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir -= Vector3.new(0, 1, 0) end
-	if moveDir.Magnitude &gt; 0 then
+	if moveDir.Magnitude > 0 then
 		rootPart.CFrame = rootPart.CFrame + (moveDir * (FlyValue / 50))
 	end
 	local _, yaw = camera.CFrame:ToOrientation()
@@ -879,7 +879,7 @@ local function UpdateFreeCamSelfESP()
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	local head = character and character:FindFirstChild("Head")
 	local root = character and (character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso"))
-	if not character or not humanoid or humanoid.Health &lt;= 0 or not root then
+	if not character or not humanoid or humanoid.Health <= 0 or not root then
 		ClearFreeCamSelfESP()
 		return
 	end
@@ -1009,7 +1009,7 @@ local freeCamRenderConnection = RunService.RenderStepped:Connect(function(deltaT
 	if UserInputService:IsKeyDown(Enum.KeyCode.E) then movement += Vector3.new(0, 1, 0) end
 	if UserInputService:IsKeyDown(Enum.KeyCode.Q) then movement -= Vector3.new(0, 1, 0) end
 	local speed = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and 120 or 40
-	if movement.Magnitude &gt; 0 then FreeCamPosition = FreeCamPosition + movement.Unit * speed * deltaTime end
+	if movement.Magnitude > 0 then FreeCamPosition = FreeCamPosition + movement.Unit * speed * deltaTime end
 	local cameraCFrame = CFrame.new(FreeCamPosition) * rotation
 	camera.CFrame = cameraCFrame
 	camera.Focus = cameraCFrame * CFrame.new(0, 0, -512)
@@ -1157,7 +1157,7 @@ local lastESPLabelUpdate = 0
 RunService.Heartbeat:Connect(function()
 	if not ESPLabelsEnabled then return end
 	local now = os.clock()
-	if now - lastESPLabelUpdate &lt; ESPLabelUpdateInterval then return end
+	if now - lastESPLabelUpdate < ESPLabelUpdateInterval then return end
 	lastESPLabelUpdate = now
 	local myRoot = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
 	for _, plr in ipairs(Players:GetPlayers()) do
@@ -1166,7 +1166,7 @@ RunService.Heartbeat:Connect(function()
 			local humanoid = character:FindFirstChildOfClass("Humanoid")
 			local root = character:FindFirstChild("HumanoidRootPart")
 			local labelPart = character:FindFirstChild("Head") or root
-			if humanoid and root and labelPart and humanoid.Health &gt; 0 then
+			if humanoid and root and labelPart and humanoid.Health > 0 then
 				local espGui = labelPart:FindFirstChild("SerenityESPLabel")
 				if not espGui then
 					espGui = Instance.new("BillboardGui")
@@ -1336,7 +1336,7 @@ local function GetSnappedMinimizedPosition()
 	local currentAbsPos = MainFrame.AbsolutePosition
 	local currentAbsSize = MainFrame.AbsoluteSize
 	local centerX = currentAbsPos.X + (currentAbsSize.X / 2)
-	local snappedX = (centerX &lt; viewportSize.X / 2) and 8 or (viewportSize.X - miniWidth - 8)
+	local snappedX = (centerX < viewportSize.X / 2) and 8 or (viewportSize.X - miniWidth - 8)
 	local snappedY = math.clamp(currentAbsPos.Y, 8, math.max(8, viewportSize.Y - miniHeight - 8))
 	return UDim2.new(0, snappedX, 0, snappedY)
 end
