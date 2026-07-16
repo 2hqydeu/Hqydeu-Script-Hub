@@ -233,7 +233,7 @@ local function CreateTab(name, order, iconId, scrolling)
 	local button = Instance.new("TextButton")
 	button.Name = name .. "Tab"
 	button.LayoutOrder = order
-	button.Size = UDim2.new(0, 140, 0, 32)
+	button.Size = UDim2.new(0, 126, 0, 32)
 	button.BackgroundColor3 = AccentColor
 	button.BackgroundTransparency = 1
 	button.BorderSizePixel = 0
@@ -261,7 +261,7 @@ local function CreateTab(name, order, iconId, scrolling)
 	icon.LayoutOrder = 1
 	icon.Size = UDim2.new(0, 24, 0, 24)
 	icon.BackgroundTransparency = 1
-	icon.Image = "rbxassetid://" .. iconId
+	if iconId then icon.Image = "rbxassetid://" .. iconId end
 	icon.Parent = content
 
 	local label = Instance.new("TextLabel")
@@ -678,6 +678,81 @@ local characterAddedConnection = Player.CharacterAdded:Connect(function()
 	JumpOriginal = nil
 	if JumpEnabled then ApplyJump() end
 end)
+
+-- Visuals tab (blank for now -- icon left as nil until an emblem is picked)
+local VisualsPage = CreateTab("Visuals", 3, nil, true)
+
+-- Scripts tab: launches the separate game modules (loadstring + HttpGet, same as the
+-- old hub). Each module only ever gets fetched once per execution.
+local ScriptsPage = CreateTab("Scripts", 4, nil, true)
+
+local ScriptRunner = {Loaded = {}}
+local function RunScriptOnce(key, url)
+	if ScriptRunner.Loaded[key] then return true end
+	local fetched, source = pcall(function() return game:HttpGet(url) end)
+	if not fetched or type(source) ~= "string" or source == "" then return false end
+	if type(loadstring) ~= "function" then return false end
+	local chunk = loadstring(source)
+	if not chunk then return false end
+	local ran = pcall(chunk)
+	if ran then
+		ScriptRunner.Loaded[key] = true
+		return true
+	end
+	return false
+end
+
+local function CreateGameRow(parent, y, gameTitle, url)
+	local row = Instance.new("Frame")
+	row.Name = gameTitle:gsub("%s+", "") .. "Row"
+	row.Size = UDim2.new(1, 0, 0, 44)
+	row.Position = UDim2.new(0, 0, 0, y)
+	row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	row.BackgroundTransparency = 0.5
+	row.BorderSizePixel = 0
+	row.Parent = parent
+	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+
+	local titleLabel = Instance.new("TextLabel")
+	titleLabel.Name = "TitleLabel"
+	titleLabel.Size = UDim2.new(0, 240, 1, 0)
+	titleLabel.Position = UDim2.new(0, 16, 0, 0)
+	titleLabel.BackgroundTransparency = 1
+	titleLabel.Text = gameTitle
+	titleLabel.Font = UIFont
+	titleLabel.TextSize = 15
+	titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+	titleLabel.TextYAlignment = Enum.TextYAlignment.Center
+	titleLabel.Parent = row
+
+	local executeBtn = Instance.new("TextButton")
+	executeBtn.Name = "ExecuteButton"
+	executeBtn.Size = UDim2.new(0, 90, 0, 32)
+	executeBtn.Position = UDim2.new(1, -106, 0.5, -16)
+	executeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	executeBtn.BackgroundTransparency = 0.2
+	executeBtn.BorderSizePixel = 0
+	executeBtn.Text = "Execute"
+	executeBtn.Font = UIFont
+	executeBtn.TextSize = 15
+	executeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	executeBtn.Parent = row
+	Instance.new("UICorner", executeBtn).CornerRadius = UDim.new(0, 6)
+
+	executeBtn.MouseButton1Click:Connect(function()
+		PlayClick()
+		if ScriptRunner.Loaded[gameTitle] then return end
+		executeBtn.Text = "Loading..."
+		local ok = RunScriptOnce(gameTitle, url)
+		executeBtn.Text = ok and "Loaded" or "Execute"
+	end)
+
+	return row
+end
+
+CreateGameRow(ScriptsPage, 8, "Undead Expedition", "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/UE")
+ScriptsPage.CanvasSize = UDim2.new(0, 0, 0, 60)
 
 SelectTab("Home")
 
