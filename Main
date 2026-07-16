@@ -34,20 +34,21 @@ local function PlayClick() ClickSound:Play() end
 
 -- Main Window
 local HEADER_HEIGHT = 58
-local FULL_SIZE = UDim2.new(0, 660, 0, 430)
+local FULL_SIZE = UDim2.new(0, 560, 0, 430)
 local MINI_SIZE = UDim2.new(0, 220, 0, HEADER_HEIGHT)
+local WINDOW_POSITION = UDim2.new(0.5, -280, 0.5, -215)
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Size = FULL_SIZE
-MainFrame.Position = UDim2.new(0.5, -330, 0.5, -215)
+MainFrame.Position = WINDOW_POSITION
 MainFrame.AnchorPoint = Vector2.new(0, 0)
 MainFrame.BackgroundColor3 = FrameColor
 MainFrame.BackgroundTransparency = 0
 MainFrame.BorderSizePixel = 0
 MainFrame.ClipsDescendants = true
 MainFrame.Active = true
-MainFrame.Visible = true
+MainFrame.Visible = false
 MainFrame.Parent = ScreenGui
 
 local MainCorner = Instance.new("UICorner")
@@ -74,7 +75,7 @@ TimeIcon.Name = "TimeIcon"
 TimeIcon.Size = UDim2.new(0, 12, 0, 12)
 TimeIcon.Position = UDim2.new(0, 18, 0, 35)
 TimeIcon.BackgroundTransparency = 1
-TimeIcon.Image = "rbxassetid://113747687297168"
+TimeIcon.Image = "rbxassetid://86571187953743"
 TimeIcon.Parent = MainFrame
 
 local TimeLabel = Instance.new("TextLabel")
@@ -177,16 +178,16 @@ local function CreateTab(name, order, iconId)
 
 	local icon = Instance.new("ImageLabel")
 	icon.Name = "Icon"
-	icon.Size = UDim2.new(0, 18, 0, 18)
-	icon.Position = UDim2.new(0, 12, 0.5, -9)
+	icon.Size = UDim2.new(0, 24, 0, 24)
+	icon.Position = UDim2.new(0, 10, 0.5, -12)
 	icon.BackgroundTransparency = 1
 	icon.Image = "rbxassetid://" .. iconId
 	icon.Parent = button
 
 	local label = Instance.new("TextLabel")
 	label.Name = "Label"
-	label.Size = UDim2.new(0, 90, 0, 32)
-	label.Position = UDim2.new(0, 38, 0, 0)
+	label.Size = UDim2.new(0, 84, 0, 32)
+	label.Position = UDim2.new(0, 42, 0, 0)
 	label.BackgroundTransparency = 1
 	label.Text = name
 	label.Font = UIFont
@@ -211,7 +212,7 @@ local function CreateTab(name, order, iconId)
 end
 
 -- Home tab
-local HomePage = CreateTab("Home", 1, "135094574434623")
+local HomePage = CreateTab("Home", 1, "96269089530329")
 
 local AvatarImage = Instance.new("ImageLabel")
 AvatarImage.Name = "Avatar"
@@ -242,15 +243,32 @@ WelcomeLabel.TextYAlignment = Enum.TextYAlignment.Center
 WelcomeLabel.Parent = HomePage
 
 -- Player tab
-local PlayerPage = CreateTab("Player", 2, "83610223637658")
+local PlayerPage = CreateTab("Player", 2, "87870052960106")
 
--- Speed: the same CFrame-nudge approach the old hub used (RenderStepped, moves the root
--- part along the humanoid's current move direction), not a WalkSpeed swap.
 local SpeedEnabled = false
 local SpeedValue = 3
+local SpeedMode = "CFrame" -- "CFrame" (old hub's root-nudge movement) or "WalkSpeed"
+local DEFAULT_WALKSPEED = 16
+
+local function ApplySpeed()
+	local character = Player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return end
+	if SpeedMode == "WalkSpeed" then
+		humanoid.WalkSpeed = SpeedEnabled and SpeedValue or DEFAULT_WALKSPEED
+	else
+		-- CFrame mode drives movement itself every frame below; keep WalkSpeed normal
+		-- so the two approaches never stack.
+		humanoid.WalkSpeed = DEFAULT_WALKSPEED
+	end
+end
+Player.CharacterAdded:Connect(function()
+	task.wait(0.1)
+	ApplySpeed()
+end)
 
 RunService.RenderStepped:Connect(function()
-	if not SpeedEnabled then return end
+	if not (SpeedEnabled and SpeedMode == "CFrame") then return end
 	local character = Player.Character
 	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -261,51 +279,89 @@ RunService.RenderStepped:Connect(function()
 	end
 end)
 
-local SpeedLabel = Instance.new("TextLabel")
-SpeedLabel.Name = "SpeedLabel"
-SpeedLabel.Size = UDim2.new(0, 90, 0, 36)
-SpeedLabel.Position = UDim2.new(0, 0, 0, 60)
-SpeedLabel.BackgroundTransparency = 1
-SpeedLabel.Text = "Speed"
-SpeedLabel.Font = UIFont
-SpeedLabel.TextSize = 18
-SpeedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-SpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
-SpeedLabel.Parent = PlayerPage
+local SpeedHeading = Instance.new("TextLabel")
+SpeedHeading.Name = "SpeedHeading"
+SpeedHeading.Size = UDim2.new(1, 0, 0, 30)
+SpeedHeading.Position = UDim2.new(0, 0, 0, 0)
+SpeedHeading.BackgroundTransparency = 1
+SpeedHeading.Text = "Speed"
+SpeedHeading.Font = UIFont
+SpeedHeading.TextSize = 22
+SpeedHeading.TextColor3 = Color3.fromRGB(255, 255, 255)
+SpeedHeading.TextXAlignment = Enum.TextXAlignment.Left
+SpeedHeading.Parent = PlayerPage
+
+local SpeedStrengthRow = Instance.new("Frame")
+SpeedStrengthRow.Name = "SpeedStrengthRow"
+SpeedStrengthRow.Size = UDim2.new(1, 0, 0, 44)
+SpeedStrengthRow.Position = UDim2.new(0, 0, 0, 40)
+SpeedStrengthRow.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+SpeedStrengthRow.BackgroundTransparency = 0.5
+SpeedStrengthRow.BorderSizePixel = 0
+SpeedStrengthRow.Parent = PlayerPage
+Instance.new("UICorner", SpeedStrengthRow).CornerRadius = UDim.new(0, 8)
+
+local SpeedStrengthLabel = Instance.new("TextLabel")
+SpeedStrengthLabel.Name = "SpeedStrengthLabel"
+SpeedStrengthLabel.Size = UDim2.new(0, 160, 1, 0)
+SpeedStrengthLabel.Position = UDim2.new(0, 16, 0, 0)
+SpeedStrengthLabel.BackgroundTransparency = 1
+SpeedStrengthLabel.Text = "Speed Strength"
+SpeedStrengthLabel.Font = UIFont
+SpeedStrengthLabel.TextSize = 16
+SpeedStrengthLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+SpeedStrengthLabel.TextXAlignment = Enum.TextXAlignment.Left
+SpeedStrengthLabel.TextYAlignment = Enum.TextYAlignment.Center
+SpeedStrengthLabel.Parent = SpeedStrengthRow
 
 local SpeedInput = Instance.new("TextBox")
 SpeedInput.Name = "SpeedInput"
-SpeedInput.Size = UDim2.new(0, 80, 0, 36)
-SpeedInput.Position = UDim2.new(0, 100, 0, 60)
-SpeedInput.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-SpeedInput.BackgroundTransparency = 0.3
+SpeedInput.Size = UDim2.new(0, 70, 0, 30)
+SpeedInput.Position = UDim2.new(1, -176, 0.5, -15)
+SpeedInput.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+SpeedInput.BackgroundTransparency = 0.2
 SpeedInput.BorderSizePixel = 0
 SpeedInput.ClearTextOnFocus = false
 SpeedInput.Text = tostring(SpeedValue)
 SpeedInput.Font = UIFont
 SpeedInput.TextSize = 16
 SpeedInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-SpeedInput.Parent = PlayerPage
+SpeedInput.Parent = SpeedStrengthRow
 Instance.new("UICorner", SpeedInput).CornerRadius = UDim.new(0, 6)
 
 local SpeedToggle = Instance.new("TextButton")
 SpeedToggle.Name = "SpeedToggle"
-SpeedToggle.Size = UDim2.new(0, 90, 0, 36)
-SpeedToggle.Position = UDim2.new(0, 192, 0, 60)
-SpeedToggle.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-SpeedToggle.BackgroundTransparency = 0.3
+SpeedToggle.Size = UDim2.new(0, 80, 0, 30)
+SpeedToggle.Position = UDim2.new(1, -96, 0.5, -15)
+SpeedToggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+SpeedToggle.BackgroundTransparency = 0.2
 SpeedToggle.BorderSizePixel = 0
 SpeedToggle.Text = "Off"
 SpeedToggle.Font = UIFont
 SpeedToggle.TextSize = 16
 SpeedToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-SpeedToggle.Parent = PlayerPage
+SpeedToggle.Parent = SpeedStrengthRow
 Instance.new("UICorner", SpeedToggle).CornerRadius = UDim.new(0, 6)
+
+local SpeedModeButton = Instance.new("TextButton")
+SpeedModeButton.Name = "SpeedModeButton"
+SpeedModeButton.Size = UDim2.new(1, 0, 0, 40)
+SpeedModeButton.Position = UDim2.new(0, 0, 0, 94)
+SpeedModeButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+SpeedModeButton.BackgroundTransparency = 0.5
+SpeedModeButton.BorderSizePixel = 0
+SpeedModeButton.Text = "Mode: CFrame Movement"
+SpeedModeButton.Font = UIFont
+SpeedModeButton.TextSize = 15
+SpeedModeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+SpeedModeButton.Parent = PlayerPage
+Instance.new("UICorner", SpeedModeButton).CornerRadius = UDim.new(0, 8)
 
 SpeedToggle.MouseButton1Click:Connect(function()
 	PlayClick()
 	SpeedEnabled = not SpeedEnabled
 	SpeedToggle.Text = SpeedEnabled and "On" or "Off"
+	ApplySpeed()
 end)
 
 SpeedInput.FocusLost:Connect(function()
@@ -314,6 +370,14 @@ SpeedInput.FocusLost:Connect(function()
 		SpeedValue = value
 	end
 	SpeedInput.Text = tostring(SpeedValue)
+	ApplySpeed()
+end)
+
+SpeedModeButton.MouseButton1Click:Connect(function()
+	PlayClick()
+	SpeedMode = SpeedMode == "CFrame" and "WalkSpeed" or "CFrame"
+	SpeedModeButton.Text = SpeedMode == "CFrame" and "Mode: CFrame Movement" or "Mode: WalkSpeed"
+	ApplySpeed()
 end)
 
 SelectTab("Home")
@@ -378,49 +442,54 @@ dragChangedConnection = UserInputService.InputChanged:Connect(function(input)
 	MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
 end)
 
--- Title sequence: a ~5s cosmetic-only intro that sits on top of the already-built UI
--- (blocking input to it) and destroys itself when done -- no real loading happens, it's
--- purely for effect.
-local SplashGroup = Instance.new("CanvasGroup")
-SplashGroup.Name = "SplashGroup"
-SplashGroup.Size = UDim2.new(1, 0, 1, 0)
-SplashGroup.BackgroundColor3 = FrameColor
-SplashGroup.BackgroundTransparency = 0
-SplashGroup.BorderSizePixel = 0
-SplashGroup.ZIndex = 50
-SplashGroup.Active = true
-SplashGroup.Parent = MainFrame
-Instance.new("UICorner", SplashGroup).CornerRadius = UDim.new(0, 14)
+-- Title sequence: the real UI (MainFrame) stays invisible the entire time -- this is a
+-- fully separate panel occupying the same spot, so nothing underneath is built-but-
+-- hidden, it just doesn't exist visually yet. Emblem spins + grows + fades into the
+-- center (matching the old hub's intro), then a fake ~4.5s "loading" runs with a status
+-- line that cycles through nonsense messages and a progress bar that fills unevenly.
+local SplashFrame = Instance.new("CanvasGroup")
+SplashFrame.Name = "SplashFrame"
+SplashFrame.Size = FULL_SIZE
+SplashFrame.Position = WINDOW_POSITION
+SplashFrame.AnchorPoint = Vector2.new(0, 0)
+SplashFrame.BackgroundColor3 = FrameColor
+SplashFrame.BackgroundTransparency = 0
+SplashFrame.BorderSizePixel = 0
+SplashFrame.Active = true
+SplashFrame.Parent = ScreenGui
+Instance.new("UICorner", SplashFrame).CornerRadius = UDim.new(0, 14)
 
 local SplashImage = Instance.new("ImageLabel")
 SplashImage.Name = "SplashImage"
-SplashImage.AnchorPoint = Vector2.new(0.5, 0)
-SplashImage.Size = UDim2.new(0, 160, 0, 160)
-SplashImage.Position = UDim2.new(0.5, 0, 0, -200)
+SplashImage.AnchorPoint = Vector2.new(0.5, 0.5)
+SplashImage.Position = UDim2.new(0.5, 0, 0, 150)
+SplashImage.Size = UDim2.new(0, 0, 0, 0)
+SplashImage.Rotation = -540
 SplashImage.BackgroundTransparency = 1
-SplashImage.Image = "rbxassetid://137707558778682"
-SplashImage.Parent = SplashGroup
+SplashImage.ImageTransparency = 1
+SplashImage.Image = "rbxassetid://80871305904541"
+SplashImage.Parent = SplashFrame
 
 local LoadingLabel = Instance.new("TextLabel")
 LoadingLabel.Name = "LoadingLabel"
 LoadingLabel.AnchorPoint = Vector2.new(0.5, 0)
-LoadingLabel.Size = UDim2.new(0, 200, 0, 20)
-LoadingLabel.Position = UDim2.new(0.5, 0, 0, 250)
+LoadingLabel.Size = UDim2.new(0, 340, 0, 20)
+LoadingLabel.Position = UDim2.new(0.5, 0, 0, 230)
 LoadingLabel.BackgroundTransparency = 1
-LoadingLabel.Text = "Loading..."
+LoadingLabel.Text = ""
 LoadingLabel.Font = UIFont
 LoadingLabel.TextSize = 14
 LoadingLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
-LoadingLabel.Parent = SplashGroup
+LoadingLabel.Parent = SplashFrame
 
 local LoadingTrack = Instance.new("Frame")
 LoadingTrack.Name = "LoadingTrack"
 LoadingTrack.AnchorPoint = Vector2.new(0.5, 0)
-LoadingTrack.Size = UDim2.new(0, 260, 0, 6)
-LoadingTrack.Position = UDim2.new(0.5, 0, 0, 280)
+LoadingTrack.Size = UDim2.new(0, 300, 0, 6)
+LoadingTrack.Position = UDim2.new(0.5, 0, 0, 262)
 LoadingTrack.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 LoadingTrack.BorderSizePixel = 0
-LoadingTrack.Parent = SplashGroup
+LoadingTrack.Parent = SplashFrame
 Instance.new("UICorner", LoadingTrack).CornerRadius = UDim.new(1, 0)
 
 local LoadingFill = Instance.new("Frame")
@@ -431,25 +500,59 @@ LoadingFill.BorderSizePixel = 0
 LoadingFill.Parent = LoadingTrack
 Instance.new("UICorner", LoadingFill).CornerRadius = UDim.new(1, 0)
 
+local FakeLoadingMessages = {
+	"Loading assets...",
+	"Loading scripts...",
+	"Initializing modules...",
+	"Compiling shaders...",
+	"Fetching configuration...",
+	"Optimizing textures...",
+	"Establishing connection...",
+	"Warming up cache...",
+	"Resolving dependencies...",
+	"Finalizing setup...",
+}
+
+local function RunFakeLoading(totalDuration)
+	local stepCount = math.random(9, 13)
+	local progressWeights, durationWeights = {}, {}
+	local progressSum, durationSum = 0, 0
+	for i = 1, stepCount do
+		progressWeights[i] = math.random(4, 20)
+		durationWeights[i] = math.random(4, 20)
+		progressSum += progressWeights[i]
+		durationSum += durationWeights[i]
+	end
+	local cumulativeProgress = 0
+	for i = 1, stepCount do
+		local stepDuration = (durationWeights[i] / durationSum) * totalDuration
+		cumulativeProgress = math.min(1, cumulativeProgress + (progressWeights[i] / progressSum))
+		LoadingLabel.Text = FakeLoadingMessages[math.random(1, #FakeLoadingMessages)]
+		TweenService:Create(LoadingFill, TweenInfo.new(math.min(stepDuration, 0.2), Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Size = UDim2.new(cumulativeProgress, 0, 1, 0),
+		}):Play()
+		task.wait(stepDuration)
+	end
+	LoadingFill.Size = UDim2.new(1, 0, 1, 0)
+end
+
 task.spawn(function()
-	local swipeIn = TweenService:Create(SplashImage, TweenInfo.new(0.6, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-		Position = UDim2.new(0.5, 0, 0, 40),
+	local spinIn = TweenService:Create(SplashImage, TweenInfo.new(0.7, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+		Size = UDim2.new(0, 120, 0, 120),
+		Rotation = 0,
+		ImageTransparency = 0,
 	})
-	swipeIn:Play()
-	swipeIn.Completed:Wait()
+	spinIn:Play()
+	spinIn.Completed:Wait()
 
-	local fill = TweenService:Create(LoadingFill, TweenInfo.new(3.6, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
-		Size = UDim2.new(1, 0, 1, 0),
-	})
-	fill:Play()
-	fill.Completed:Wait()
+	RunFakeLoading(4.5)
+	task.wait(0.25)
 
-	task.wait(0.3)
-
-	local fadeOut = TweenService:Create(SplashGroup, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+	local fadeOut = TweenService:Create(SplashFrame, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 		GroupTransparency = 1,
 	})
 	fadeOut:Play()
 	fadeOut.Completed:Wait()
-	SplashGroup:Destroy()
+	SplashFrame:Destroy()
+	MainFrame.Visible = true
 end)
