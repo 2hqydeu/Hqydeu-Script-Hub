@@ -1,10 +1,13 @@
 -- Undead Expedition module for Serenity. Wiped down to a blank slate to match the new
 -- hub's approach -- full copy of the old feature-rich version kept in
 -- UE_Legacy_Full.lua. This loads standalone (Serenity no longer exposes a shared
--- runtime/theme table for modules to hook into), starting small with just Base TP.
+-- runtime/theme table for modules to hook into). Base TP works; ESP and Auto Farm are
+-- laid out but not wired up yet; Full Bright is wired up.
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 local CoreGui = game:GetService("CoreGui")
+local Lighting = game:GetService("Lighting")
 
 local Player = Players.LocalPlayer
 local FrameColor = Color3.fromRGB(0x1E, 0x1E, 0x1E)
@@ -50,19 +53,63 @@ local function TeleportToBase()
 	return StableTeleport(CFrame.new(BASE_POSITION + Vector3.new(0, 4, 0)))
 end
 
+-- Full Bright: same Lighting overrides the old hub used, reasserted twice a second while
+-- enabled (some games reset Lighting periodically) and restored to whatever the game had
+-- originally when toggled off or the panel is closed.
+local FullBrightEnabled = false
+local FullBrightOriginal = {
+	Brightness = Lighting.Brightness,
+	ClockTime = Lighting.ClockTime,
+	FogEnd = Lighting.FogEnd,
+	GlobalShadows = Lighting.GlobalShadows,
+	Ambient = Lighting.Ambient,
+	OutdoorAmbient = Lighting.OutdoorAmbient,
+	ExposureCompensation = Lighting.ExposureCompensation,
+}
+
+local function ApplyFullBright()
+	pcall(function()
+		Lighting.Brightness = 3
+		Lighting.ClockTime = 14
+		Lighting.FogEnd = 100000
+		Lighting.GlobalShadows = false
+		Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+		Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+		Lighting.ExposureCompensation = 0.35
+	end)
+end
+
+local function RestoreFullBright()
+	for property, value in pairs(FullBrightOriginal) do
+		pcall(function() Lighting[property] = value end)
+	end
+end
+
+local lastFullBrightApply = 0
+RunService.Heartbeat:Connect(function()
+	if not FullBrightEnabled then return end
+	if os.clock() - lastFullBrightApply < 0.5 then return end
+	lastFullBrightApply = os.clock()
+	ApplyFullBright()
+end)
+
 -- UI: a small standalone panel, matching Serenity's look for consistency.
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SerenityUE"
 ScreenGui.Parent = CoreGui
 ScreenGui.ResetOnSpawn = false
 
+local FULL_HEIGHT = 232
+local MINI_HEIGHT = 44
+
 local PanelFrame = Instance.new("Frame")
 PanelFrame.Name = "UEPanel"
-PanelFrame.Size = UDim2.new(0, 260, 0, 108)
-PanelFrame.Position = UDim2.new(0.5, -130, 0.5, -54)
+PanelFrame.Size = UDim2.new(0, 280, 0, FULL_HEIGHT)
+PanelFrame.Position = UDim2.new(0.5, -140, 0.5, -116)
 PanelFrame.AnchorPoint = Vector2.new(0, 0)
 PanelFrame.BackgroundColor3 = FrameColor
 PanelFrame.BorderSizePixel = 0
+PanelFrame.ClipsDescendants = true
 PanelFrame.Active = true
 PanelFrame.Parent = ScreenGui
 
@@ -72,20 +119,57 @@ PanelCorner.Parent = PanelFrame
 
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
-TitleLabel.Size = UDim2.new(1, -32, 0, 26)
-TitleLabel.Position = UDim2.new(0, 16, 0, 12)
+TitleLabel.Size = UDim2.new(0, 160, 0, 24)
+TitleLabel.Position = UDim2.new(0, 16, 0, 10)
 TitleLabel.BackgroundTransparency = 1
 TitleLabel.Text = "Undead Expedition"
 TitleLabel.Font = UIFont
-TitleLabel.TextSize = 16
+TitleLabel.TextSize = 15
 TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = PanelFrame
 
+local MinimizeButton = Instance.new("TextButton")
+MinimizeButton.Name = "MinimizeButton"
+MinimizeButton.Size = UDim2.new(0, 24, 0, 24)
+MinimizeButton.Position = UDim2.new(1, -70, 0, 10)
+MinimizeButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+MinimizeButton.BackgroundTransparency = 0.4
+MinimizeButton.BorderSizePixel = 0
+MinimizeButton.Text = "-"
+MinimizeButton.Font = UIFont
+MinimizeButton.TextSize = 16
+MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinimizeButton.Parent = PanelFrame
+Instance.new("UICorner", MinimizeButton).CornerRadius = UDim.new(0, 7)
+
+local CloseButton = Instance.new("TextButton")
+CloseButton.Name = "CloseButton"
+CloseButton.Size = UDim2.new(0, 24, 0, 24)
+CloseButton.Position = UDim2.new(1, -40, 0, 10)
+CloseButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+CloseButton.BackgroundTransparency = 0.4
+CloseButton.BorderSizePixel = 0
+CloseButton.Text = "x"
+CloseButton.Font = UIFont
+CloseButton.TextSize = 14
+CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseButton.Parent = PanelFrame
+Instance.new("UICorner", CloseButton).CornerRadius = UDim.new(0, 7)
+
+local HeaderDivider = Instance.new("Frame")
+HeaderDivider.Name = "HeaderDivider"
+HeaderDivider.Size = UDim2.new(1, 0, 0, 1)
+HeaderDivider.Position = UDim2.new(0, 0, 0, MINI_HEIGHT)
+HeaderDivider.BackgroundColor3 = AccentColor
+HeaderDivider.BackgroundTransparency = 0.85
+HeaderDivider.BorderSizePixel = 0
+HeaderDivider.Parent = PanelFrame
+
 local BaseTPButton = Instance.new("TextButton")
 BaseTPButton.Name = "BaseTPButton"
 BaseTPButton.Size = UDim2.new(1, -32, 0, 36)
-BaseTPButton.Position = UDim2.new(0, 16, 0, 50)
+BaseTPButton.Position = UDim2.new(0, 16, 0, 52)
 BaseTPButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 BaseTPButton.BackgroundTransparency = 0.3
 BaseTPButton.BorderSizePixel = 0
@@ -98,6 +182,87 @@ Instance.new("UICorner", BaseTPButton).CornerRadius = UDim.new(0, 8)
 
 BaseTPButton.MouseButton1Click:Connect(function()
 	TeleportToBase()
+end)
+
+-- Feature row layout: label left, toggle right. Reused for ESP / Auto Farm (not wired up
+-- yet) and Full Bright (wired up below).
+local function CreateFeatureRow(y, labelText)
+	local row = Instance.new("Frame")
+	row.Name = labelText:gsub("%s+", "") .. "Row"
+	row.Size = UDim2.new(1, -32, 0, 36)
+	row.Position = UDim2.new(0, 16, 0, y)
+	row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	row.BackgroundTransparency = 0.5
+	row.BorderSizePixel = 0
+	row.Parent = PanelFrame
+	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+
+	local label = Instance.new("TextLabel")
+	label.Name = "Label"
+	label.Size = UDim2.new(0, 140, 1, 0)
+	label.Position = UDim2.new(0, 12, 0, 0)
+	label.BackgroundTransparency = 1
+	label.Text = labelText
+	label.Font = UIFont
+	label.TextSize = 14
+	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextYAlignment = Enum.TextYAlignment.Center
+	label.Parent = row
+
+	local toggle = Instance.new("TextButton")
+	toggle.Name = "Toggle"
+	toggle.Size = UDim2.new(0, 64, 0, 26)
+	toggle.Position = UDim2.new(1, -74, 0.5, -13)
+	toggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	toggle.BackgroundTransparency = 0.2
+	toggle.BorderSizePixel = 0
+	toggle.Text = "Off"
+	toggle.Font = UIFont
+	toggle.TextSize = 14
+	toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+	toggle.Parent = row
+	Instance.new("UICorner", toggle).CornerRadius = UDim.new(0, 6)
+
+	return row, toggle
+end
+
+-- Layout only for now -- no ESP or Auto Farm logic wired up yet.
+local _, ESPToggle = CreateFeatureRow(96, "ESP")
+local _, AutoFarmToggle = CreateFeatureRow(140, "Auto Farm")
+
+local _, FullBrightToggle = CreateFeatureRow(184, "Full Bright")
+FullBrightToggle.MouseButton1Click:Connect(function()
+	FullBrightEnabled = not FullBrightEnabled
+	FullBrightToggle.Text = FullBrightEnabled and "On" or "Off"
+	if FullBrightEnabled then
+		ApplyFullBright()
+	else
+		RestoreFullBright()
+	end
+end)
+
+-- Minimize: shrinks to just the header, matching Serenity's own minimize behavior.
+local minimized = false
+local function ToggleMinimize()
+	minimized = not minimized
+	HeaderDivider.Visible = not minimized
+	BaseTPButton.Visible = not minimized
+	for _, child in ipairs(PanelFrame:GetChildren()) do
+		if child:IsA("Frame") and child.Name:match("Row$") then
+			child.Visible = not minimized
+		end
+	end
+	PanelFrame.Size = UDim2.new(0, 280, 0, minimized and MINI_HEIGHT or FULL_HEIGHT)
+	MinimizeButton.Text = minimized and "+" or "-"
+end
+MinimizeButton.MouseButton1Click:Connect(ToggleMinimize)
+
+-- Close: reverses Full Bright before tearing down, regardless of what else is toggled.
+CloseButton.MouseButton1Click:Connect(function()
+	FullBrightEnabled = false
+	RestoreFullBright()
+	ScreenGui:Destroy()
 end)
 
 -- Dragging
