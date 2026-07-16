@@ -1246,6 +1246,7 @@ end
 
 local function HoldOnBox(target, options)
 	options = options or {}
+	local isEnabled = options.IsEnabled or function() return true end
 	local boxType = BoxType(target)
 	local requiredKey = boxType and BOX_TYPE_REQUIRED_KEY[boxType]
 	if requiredKey then
@@ -1283,7 +1284,7 @@ local function HoldOnBox(target, options)
 	local pressed = false
 	local usedFallback = false
 
-	while os.clock() < deadline and target.Parent and openPrompt.Parent do
+	while isEnabled() and os.clock() < deadline and target.Parent and openPrompt.Parent do
 		if HasDriftedAway(anchorPosition) then StableTeleport(CFrame.new(anchorPosition)) end
 		AimCameraAtPrompt(anchorPosition)
 		if not usedFallback then
@@ -1327,8 +1328,9 @@ end
 
 local function ClaimNearbyDrop(boxPosition, options)
 	options = options or {}
+	local isEnabled = options.IsEnabled or function() return true end
 	local deadline = os.clock() + FARM_CLAIM_SEARCH_TIMEOUT
-	while os.clock() < deadline do
+	while isEnabled() and os.clock() < deadline do
 		local prompt = FindNearbyClaimPrompt(boxPosition, FARM_CLAIM_SEARCH_RADIUS)
 		if prompt then
 			local part = prompt.Parent
@@ -1351,11 +1353,15 @@ local function ClaimNearbyDrop(boxPosition, options)
 	return false
 end
 
-local function ClaimDropsNearArea(position, attempts)
+local function ClaimDropsNearArea(position, attempts, options)
+	options = options or {}
+	local isEnabled = options.IsEnabled or function() return true end
+	task.wait(0.75)
 	attempts = attempts or 6
 	local misses = 0
 	for _ = 1, attempts do
-		local claimed = ClaimNearbyDrop(position)
+		if not isEnabled() then break end
+		local claimed = ClaimNearbyDrop(position, {IsEnabled = isEnabled})
 		if not claimed then
 			misses += 1
 			if misses >= 2 then break end
@@ -1469,11 +1475,42 @@ local function FightEnemies(targetPosition, enemyNames)
 	end
 end
 
+-- Idle-sweep candidates deliberately bypass state.SelectedBoxTypes (the Box ESP filter
+-- checkboxes) -- that filter only controls what's highlighted, and defaults every type to
+-- Off, so gating the farm loop on it silently starved crate-clearing. Also skips Hunter Trap
+-- boxes and any structure with a still-pending encounter so the queue-driven trigger/fight
+-- flow below isn't shortcut by grabbing its crate directly.
+local function GetIdleSweepBoxTargets()
+	local folder = StructuresFolder()
+	if not folder then return {} end
+	local targets = {}
+	for _, structure in ipairs(folder:GetChildren()) do
+		local isUnhandledEncounter = MatchEncounter(structure) and not state.AutoTrapHandled[structure]
+		if not isUnhandledEncounter then
+			local lootFolder = structure:FindFirstChild("Loot")
+			if lootFolder then
+				for _, box in ipairs(lootFolder:GetChildren()) do
+					if BoxRoot(box) and BoxType(box) ~= "Hunter Trap" then
+						table.insert(targets, box)
+					end
+				end
+			end
+			for _, child in ipairs(structure:GetChildren()) do
+				if child.Name ~= "Loot" and BoxTypeFromName(child.Name) and BoxType(child) ~= "Hunter Trap" then
+					table.insert(targets, child)
+				end
+			end
+		end
+	end
+	return targets
+end
+
 local function RunAutoTrapStep()
+	local isEnabledFn = function() return state.AutoTrapEnabled end
 	if #state.AutoTrapQueue == 0 then
 		-- Idle sweep: regular loot boxes not tied to a pending encounter.
 		state.AutoTrapPhase = "Clearing crates"
-		local boxes = CollectLootBoxes()
+		local boxes = GetIdleSweepBoxTargets()
 		local root = PlayerRoot()
 		if not root or #boxes == 0 then
 			state.AutoTrapPhase = "Idle"
@@ -1492,9 +1529,9 @@ local function RunAutoTrapStep()
 			end
 		end
 		if best then
-			local success = HoldOnBox(best)
+			local success = HoldOnBox(best, {IsEnabled = isEnabledFn})
 			if success then
-				ClaimDropsNearArea(BoxRoot(best) and BoxRoot(best).Position or root.Position)
+				ClaimDropsNearArea(BoxRoot(best) and BoxRoot(best).Position or root.Position, 6, {IsEnabled = isEnabledFn})
 			else
 				state.AutoTrapSweepSkipped[best] = now + FARM_SKIP_COOLDOWN
 			end
@@ -1510,13 +1547,15 @@ local function RunAutoTrapStep()
 	local triggerPosition = encounter.TriggerPart(structure)
 	if not triggerPosition then return end
 
-	state.AutoTrapPhase = "Triggering " .. encounter.Key
 	local foundEnemies = false
 	for _ = 1, TRAP_TRIGGER_ATTEMPTS do
+		if not state.AutoTrapEnabled then break end
+		state.AutoTrapPhase = "Triggering " .. encounter.Key
 		StableTeleport(CFrame.new(triggerPosition + Vector3.new(0, 4, 0)))
 		task.wait(TRAP_TRIGGER_WAIT)
+		state.AutoTrapPhase = "Waiting for enemies"
 		local waited = 0
-		while waited < TRAP_HUNTER_SCAN_WINDOW do
+		while waited < TRAP_HUNTER_SCAN_WINDOW and state.AutoTrapEnabled do
 			if #GetActiveEnemies(encounter.EnemyNames) > 0 then foundEnemies = true break end
 			task.wait(0.25)
 			waited += 0.25
@@ -1534,21 +1573,22 @@ local function RunAutoTrapStep()
 
 	if encounter.LootAttempts > 0 then
 		state.AutoTrapPhase = "Looting " .. encounter.Key
-		ClaimDropsNearArea(triggerPosition, encounter.LootAttempts)
+		ClaimDropsNearArea(triggerPosition, encounter.LootAttempts, {IsEnabled = isEnabledFn})
 		local lootFolder = structure:FindFirstChild("Loot")
 		if lootFolder then
 			for _, box in ipairs(lootFolder:GetChildren()) do
 				local boxType = BoxType(box)
 				if boxType and BOX_TYPE_REQUIRED_KEY[boxType] then
-					if HoldOnBox(box) then
-						ClaimDropsNearArea(BoxRoot(box) and BoxRoot(box).Position or triggerPosition)
+					if HoldOnBox(box, {IsEnabled = isEnabledFn}) then
+						ClaimDropsNearArea(BoxRoot(box) and BoxRoot(box).Position or triggerPosition, 6, {IsEnabled = isEnabledFn})
 					end
 				end
 			end
 		end
 	end
 
-	TeleportToBase()
+	local returnRoot = PlayerRoot()
+	if returnRoot then TeleportToBase() end
 	state.AutoTrapKilled += 1
 	state.AutoTrapPhase = "Idle"
 end
