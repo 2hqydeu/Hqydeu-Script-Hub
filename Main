@@ -187,9 +187,24 @@ MinimizeKeybindBtn.MouseButton1Click:Connect(function()
 	end)
 end)
 
-UserInputService.InputBegan:Connect(function(input, processed)
+-- Silent unbind-able destroy key (Right Control) -- no button, no prompt, no sound.
+local DestroyKeybind = Enum.KeyCode.RightControl
+local mainInputConnection
+local dragChangedConnection
+
+local function DestroyGui()
+	if mainInputConnection then mainInputConnection:Disconnect() end
+	if dragChangedConnection then dragChangedConnection:Disconnect() end
+	ScreenGui:Destroy()
+end
+
+mainInputConnection = UserInputService.InputBegan:Connect(function(input, processed)
 	if processed or HubState.IsBindingMinimize or UserInputService:GetFocusedTextBox() then return end
 	if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+	if input.KeyCode == DestroyKeybind then
+		DestroyGui()
+		return
+	end
 	if input.KeyCode == HubState.MinimizeKeybind then ToggleGUI() end
 end)
 
@@ -208,7 +223,7 @@ MainFrame.InputBegan:Connect(function(input)
 		end
 	end)
 end)
-UserInputService.InputChanged:Connect(function(input)
+dragChangedConnection = UserInputService.InputChanged:Connect(function(input)
 	if not HubState.dragging or (input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch) then return end
 	local delta = input.Position - HubState.dragStart
 	MainFrame.Position = UDim2.new(HubState.startPos.X.Scale, HubState.startPos.X.Offset + delta.X, HubState.startPos.Y.Scale, HubState.startPos.Y.Offset + delta.Y)
