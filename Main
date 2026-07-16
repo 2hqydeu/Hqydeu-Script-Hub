@@ -43,6 +43,8 @@ local function GuiScaleFromValue(value)
 	return InterfaceScale * (value / 50)
 end
 
+local BackgroundTransparencyValue = math.clamp(tonumber(SavedKeybinds.BackgroundTransparency) or 0, 0, 80)
+
 SavedKeybinds.KeybindsByPlace = type(SavedKeybinds.KeybindsByPlace) == "table" and SavedKeybinds.KeybindsByPlace or {}
 local KeybindScopeActive = false
 local KeybindScopePlaceKey = nil
@@ -150,7 +152,7 @@ local function UnpackColor(saved, fallback)
 end
 
 local DefaultFrameColor = Color3.fromRGB(28, 28, 38)
-local DefaultAccentColor = Color3.fromRGB(0, 210, 255)
+local DefaultAccentColor = Color3.fromRGB(255, 255, 255)
 local FrameThemeColor = LoadColor("ThemeFrame", DefaultFrameColor)
 local AccentColor = LoadColor("ThemeAccent", DefaultAccentColor)
 
@@ -229,6 +231,7 @@ MainFrame.Size = UDim2.new(0, 460, 0, 300)
 MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 MainFrame.BackgroundColor3 = FrameThemeColor
+MainFrame.BackgroundTransparency = BackgroundTransparencyValue / 100
 MainFrame.ClipsDescendants = true
 MainFrame.BorderSizePixel = 0
 MainFrame.Visible = false
@@ -1193,7 +1196,7 @@ HubState.Connections.TextOutline = ScreenGui.DescendantAdded:Connect(function(ob
 	ThemeObjects.StyleTextOutline(object)
 	ThemeObjects.StyleControlOutline(object)
 end)
-ThemeObjects.GradientPulseTime = 0
+ThemeObjects.GradientSweepAngle = MainTextureGradient.Rotation
 ThemeObjects.GradientPulseAccumulator = 0
 ThemeObjects.ToggleColorAccumulator = 0
 ThemeObjects.UprightCFrame = function(sourceCFrame, position)
@@ -1205,9 +1208,12 @@ ThemeObjects.SetRootUpright = function(root, sourceCFrame, position)
 	root.CFrame = ThemeObjects.UprightCFrame(sourceCFrame or root.CFrame, position or root.Position)
 	root.AssemblyAngularVelocity = Vector3.zero
 end
+-- Replaces the old sine-driven "breathing" intensity pulse: the gradient tint now stays
+-- at a fixed accent intensity and instead sweeps slowly around the frame (a rotating
+-- highlight rather than a throbbing one), which is also cheaper since it no longer
+-- rebuilds a 5-keypoint ColorSequence every tick -- just a single Rotation set.
 HubState.Connections.GradientPulse = RunService.Heartbeat:Connect(function(deltaTime)
 	if not MainFrame.Visible then return end
-	ThemeObjects.GradientPulseTime = ThemeObjects.GradientPulseTime + deltaTime
 	ThemeObjects.GradientPulseAccumulator = ThemeObjects.GradientPulseAccumulator + deltaTime
 	ThemeObjects.ToggleColorAccumulator = ThemeObjects.ToggleColorAccumulator + deltaTime
 	if ThemeObjects.ToggleColorAccumulator >= 0.25 then
@@ -1215,11 +1221,10 @@ HubState.Connections.GradientPulse = RunService.Heartbeat:Connect(function(delta
 		ThemeObjects.RefreshStateTexts(true)
 	end
 	if ThemeObjects.GradientPulseAccumulator < 0.033 then return end
+	local elapsed = ThemeObjects.GradientPulseAccumulator
 	ThemeObjects.GradientPulseAccumulator = 0
-	if type(ThemeObjects.ApplyMainGradient) == "function" then
-		local pulse = 0.5 + ((math.sin(ThemeObjects.GradientPulseTime * 1.35) + 1) * 0.25)
-		pcall(ThemeObjects.ApplyMainGradient, pulse)
-	end
+	ThemeObjects.GradientSweepAngle = (ThemeObjects.GradientSweepAngle + (elapsed * 22)) % 360
+	MainTextureGradient.Rotation = ThemeObjects.GradientSweepAngle
 end)
 ThemeObjects.FreeCam = {Enabled = false, Keybind = LoadKeybind("FreeCam"), Binding = false}
 
@@ -6056,7 +6061,7 @@ Instance.new("UICorner", ThemeFrameBtn).CornerRadius = UDim.new(0, 5)
 
 local PickerFrame = Instance.new("Frame")
 PickerFrame.Name = "AccentPickerDock"
-PickerFrame.Size = UDim2.new(0, 130, 0, 216)
+PickerFrame.Size = UDim2.new(0, 130, 0, 260)
 PickerFrame.AnchorPoint = Vector2.new(1, 0)
 PickerFrame.BackgroundColor3 = FrameThemeColor
 PickerFrame.BackgroundTransparency = 0.04
@@ -6228,6 +6233,75 @@ for index = 1, 5 do
 	swatchStroke.Parent = swatch
 	SavedColorButtons[index] = swatch
 end
+
+local BackgroundTransparencyTitle = Instance.new("TextLabel")
+BackgroundTransparencyTitle.Size = UDim2.new(0, 114, 0, 12)
+BackgroundTransparencyTitle.Position = UDim2.new(0, 8, 0, 214)
+BackgroundTransparencyTitle.BackgroundTransparency = 1
+BackgroundTransparencyTitle.Text = "Background:"
+BackgroundTransparencyTitle.Font = Enum.Font.GothamBold
+BackgroundTransparencyTitle.TextSize = 9
+BackgroundTransparencyTitle.TextXAlignment = Enum.TextXAlignment.Left
+BackgroundTransparencyTitle.Parent = PickerFrame
+table.insert(ThemeObjects.Texts, BackgroundTransparencyTitle)
+
+local BackgroundTransparencyMinusBtn = Instance.new("TextButton")
+BackgroundTransparencyMinusBtn.Size = UDim2.new(0, 28, 0, 20)
+BackgroundTransparencyMinusBtn.Position = UDim2.new(0, 8, 0, 230)
+BackgroundTransparencyMinusBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+BackgroundTransparencyMinusBtn.BackgroundTransparency = 0.8
+BackgroundTransparencyMinusBtn.BorderSizePixel = 0
+BackgroundTransparencyMinusBtn.Text = "-"
+BackgroundTransparencyMinusBtn.Font = Enum.Font.GothamBold
+BackgroundTransparencyMinusBtn.TextSize = 12
+BackgroundTransparencyMinusBtn.Parent = PickerFrame
+table.insert(ThemeObjects.Backgrounds, BackgroundTransparencyMinusBtn)
+table.insert(ThemeObjects.Texts, BackgroundTransparencyMinusBtn)
+Instance.new("UICorner", BackgroundTransparencyMinusBtn).CornerRadius = UDim.new(0, 5)
+
+local BackgroundTransparencyValueLabel = Instance.new("TextLabel")
+BackgroundTransparencyValueLabel.Size = UDim2.new(0, 46, 0, 20)
+BackgroundTransparencyValueLabel.Position = UDim2.new(0, 42, 0, 230)
+BackgroundTransparencyValueLabel.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+BackgroundTransparencyValueLabel.BackgroundTransparency = 0.8
+BackgroundTransparencyValueLabel.BorderSizePixel = 0
+BackgroundTransparencyValueLabel.Text = BackgroundTransparencyValue .. "%"
+BackgroundTransparencyValueLabel.Font = Enum.Font.GothamBold
+BackgroundTransparencyValueLabel.TextSize = 10
+BackgroundTransparencyValueLabel.Parent = PickerFrame
+table.insert(ThemeObjects.Backgrounds, BackgroundTransparencyValueLabel)
+table.insert(ThemeObjects.Texts, BackgroundTransparencyValueLabel)
+Instance.new("UICorner", BackgroundTransparencyValueLabel).CornerRadius = UDim.new(0, 5)
+
+local BackgroundTransparencyPlusBtn = Instance.new("TextButton")
+BackgroundTransparencyPlusBtn.Size = UDim2.new(0, 28, 0, 20)
+BackgroundTransparencyPlusBtn.Position = UDim2.new(0, 94, 0, 230)
+BackgroundTransparencyPlusBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+BackgroundTransparencyPlusBtn.BackgroundTransparency = 0.8
+BackgroundTransparencyPlusBtn.BorderSizePixel = 0
+BackgroundTransparencyPlusBtn.Text = "+"
+BackgroundTransparencyPlusBtn.Font = Enum.Font.GothamBold
+BackgroundTransparencyPlusBtn.TextSize = 12
+BackgroundTransparencyPlusBtn.Parent = PickerFrame
+table.insert(ThemeObjects.Backgrounds, BackgroundTransparencyPlusBtn)
+table.insert(ThemeObjects.Texts, BackgroundTransparencyPlusBtn)
+Instance.new("UICorner", BackgroundTransparencyPlusBtn).CornerRadius = UDim.new(0, 5)
+
+local function ApplyBackgroundTransparency(value)
+	BackgroundTransparencyValue = math.clamp(math.floor(value + 0.5), 0, 80)
+	BackgroundTransparencyValueLabel.Text = BackgroundTransparencyValue .. "%"
+	MainFrame.BackgroundTransparency = BackgroundTransparencyValue / 100
+	SavedKeybinds.BackgroundTransparency = BackgroundTransparencyValue
+	SavePersistentSettings()
+end
+BackgroundTransparencyMinusBtn.MouseButton1Click:Connect(function()
+	PlayClick()
+	ApplyBackgroundTransparency(BackgroundTransparencyValue - 10)
+end)
+BackgroundTransparencyPlusBtn.MouseButton1Click:Connect(function()
+	PlayClick()
+	ApplyBackgroundTransparency(BackgroundTransparencyValue + 10)
+end)
 
 for _, pickerObject in ipairs(PickerFrame:GetDescendants()) do
 	if pickerObject:IsA("GuiObject") then pickerObject.ZIndex = 81 end
