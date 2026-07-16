@@ -605,7 +605,16 @@ ThemeObjects.ApplyMainGradient = function(intensity)
 	if TargetTextureGradient then TargetTextureGradient.Color = MainTextureGradient.Color end
 	if ThemeObjects.PlayerTP and ThemeObjects.PlayerTP.Gradient then ThemeObjects.PlayerTP.Gradient.Color = MainTextureGradient.Color end
 	if ThemeObjects.MM2RoleDetailsGradient then ThemeObjects.MM2RoleDetailsGradient.Color = MainTextureGradient.Color end
-	if ThemeObjects.KeybindEditorGradient then ThemeObjects.KeybindEditorGradient.Color = MainTextureGradient.Color end
+	if ThemeObjects.PopupGradients then
+		for i = #ThemeObjects.PopupGradients, 1, -1 do
+			local popupGradient = ThemeObjects.PopupGradients[i]
+			if popupGradient and popupGradient.Parent then
+				popupGradient.Color = MainTextureGradient.Color
+			else
+				table.remove(ThemeObjects.PopupGradients, i)
+			end
+		end
+	end
 end
 
 local function IsFrameLight()
@@ -861,6 +870,38 @@ ThemeObjects.EnsureKeybindOutline = function(button)
 	outline.Transparency = 0
 end
 
+-- Canonical "popup panel" look (matches the Teleport menu the user singled out as the
+-- reference style): dark translucent panel, diagonal accent-tinted gradient, thin accent
+-- stroke. Applied to every floating dock/popup except the Fling Target menu, which is
+-- deliberately left with its own distinct style.
+ThemeObjects.PopupGradients = ThemeObjects.PopupGradients or {}
+ThemeObjects.StylePopupPanel = function(frame, cornerRadius)
+	if not frame then return end
+	frame.BackgroundColor3 = Color3.fromRGB(14, 18, 26)
+	frame.BackgroundTransparency = 0.18
+	frame.BorderSizePixel = 0
+	frame:SetAttribute("PopupPanelDark", true)
+	local corner = frame:FindFirstChildOfClass("UICorner") or Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, cornerRadius or 10)
+	corner.Parent = frame
+	local gradient = frame:FindFirstChildOfClass("UIGradient") or Instance.new("UIGradient")
+	gradient.Rotation = 135
+	gradient.Parent = frame
+	table.insert(ThemeObjects.PopupGradients, gradient)
+	local stroke = frame:FindFirstChild("ControlOutline")
+	if not (stroke and stroke:IsA("UIStroke")) then
+		stroke = Instance.new("UIStroke")
+		stroke.Name = "ControlOutline"
+		stroke.Parent = frame
+	end
+	stroke.Thickness = 1
+	stroke.Transparency = 0.35
+	stroke.Color = AccentColor
+	table.insert(ThemeObjects.Accents, stroke)
+	table.insert(ThemeObjects.Backgrounds, frame)
+	return gradient, stroke
+end
+
 -- Shared card grid system: one uniform card component + a wrapping 2-column layout,
 -- replacing the old pattern of every page hand-computing its own row Y positions with
 -- inconsistent sizes/colors/corner radii scattered across the file.
@@ -1080,7 +1121,7 @@ local function UpdateTheme(instant)
 			end
 		local target = (obj:IsA("TextButton") or obj:IsA("TextBox") or obj.Name == "TabScroll" or obj.Name == "TargetRow") and secBgColor or bgColor
 			local targetTransparency = obj.BackgroundTransparency
-			if obj.Name == "PlayerTPFrame" or obj.Name == "MM2RoleDetailsPanel" then target = Color3.fromRGB(14, 18, 26)
+			if obj.Name == "PlayerTPFrame" or obj.Name == "MM2RoleDetailsPanel" or obj:GetAttribute("PopupPanelDark") then target = Color3.fromRGB(14, 18, 26)
 			end
 			if IsGameLauncherButton(obj) then target = Color3.fromRGB(65, 65, 67) end
 			if obj.Name == "ESPColorBtn" then target = HubState.ESPColor end
@@ -5301,6 +5342,7 @@ ThemeObjects.CloseTransientPopups = function()
 	if ThemeObjects.PickerDock then ThemeObjects.PickerDock.Visible = false end
 	if ThemeObjects.GuiSizeDock then ThemeObjects.GuiSizeDock.Visible = false end
 	if ThemeObjects.ThemeDock then ThemeObjects.ThemeDock.Visible = false end
+	if ThemeObjects.BackgroundTransparencyDock then ThemeObjects.BackgroundTransparencyDock.Visible = false end
 	HideOptimizeDock()
 	if ThemeObjects.KeybindEditorFrame then ThemeObjects.KeybindEditorFrame.Visible = false end
 	if ThemeObjects.ConfirmClearFrame then ThemeObjects.ConfirmClearFrame.Visible = false end
@@ -5863,21 +5905,11 @@ local GuiSizeFrame = Instance.new("Frame")
 GuiSizeFrame.Name = "GuiSizeDock"
 GuiSizeFrame.Size = UDim2.new(0, 130, 0, 80)
 GuiSizeFrame.AnchorPoint = Vector2.new(1, 0)
-GuiSizeFrame.BackgroundColor3 = FrameThemeColor
-GuiSizeFrame.BackgroundTransparency = 0.04
-GuiSizeFrame.BorderSizePixel = 0
 GuiSizeFrame.ZIndex = 80
 GuiSizeFrame.Visible = false
 GuiSizeFrame.Parent = ScreenGui
 ThemeObjects.GuiSizeDock = GuiSizeFrame
-table.insert(ThemeObjects.Backgrounds, GuiSizeFrame)
-Instance.new("UICorner", GuiSizeFrame).CornerRadius = UDim.new(0, 9)
-local GuiSizeDockStroke = Instance.new("UIStroke")
-GuiSizeDockStroke.Color = AccentColor
-GuiSizeDockStroke.Thickness = 1.5
-GuiSizeDockStroke.Transparency = 0
-GuiSizeDockStroke.Parent = GuiSizeFrame
-table.insert(ThemeObjects.Accents, GuiSizeDockStroke)
+ThemeObjects.StylePopupPanel(GuiSizeFrame)
 local GuiSizeDockScale = Instance.new("UIScale", GuiSizeFrame)
 GuiSizeDockScale.Scale = GuiScaleFromValue(GuiSizeValue)
 ThemeObjects.GuiSizeDockScale = GuiSizeDockScale
@@ -5988,23 +6020,13 @@ GuiSizeResetBtn.MouseButton1Click:Connect(function() PlayClick() ApplyGuiSize(50
 
 local ThemeFrame = Instance.new("Frame")
 ThemeFrame.Name = "ThemeDock"
-ThemeFrame.Size = UDim2.new(0, 130, 0, 94)
+ThemeFrame.Size = UDim2.new(0, 130, 0, 118)
 ThemeFrame.AnchorPoint = Vector2.new(1, 0)
-ThemeFrame.BackgroundColor3 = FrameThemeColor
-ThemeFrame.BackgroundTransparency = 0.04
-ThemeFrame.BorderSizePixel = 0
 ThemeFrame.ZIndex = 80
 ThemeFrame.Visible = false
 ThemeFrame.Parent = ScreenGui
 ThemeObjects.ThemeDock = ThemeFrame
-table.insert(ThemeObjects.Backgrounds, ThemeFrame)
-Instance.new("UICorner", ThemeFrame).CornerRadius = UDim.new(0, 9)
-local ThemeDockStroke = Instance.new("UIStroke")
-ThemeDockStroke.Color = AccentColor
-ThemeDockStroke.Thickness = 1.5
-ThemeDockStroke.Transparency = 0
-ThemeDockStroke.Parent = ThemeFrame
-table.insert(ThemeObjects.Accents, ThemeDockStroke)
+ThemeObjects.StylePopupPanel(ThemeFrame)
 local ThemeDockScale = Instance.new("UIScale", ThemeFrame)
 ThemeDockScale.Scale = GuiScaleFromValue(GuiSizeValue)
 ThemeObjects.ThemeDockScale = ThemeDockScale
@@ -6059,25 +6081,32 @@ ThemeFrameBtn.ZIndex = 81
 ThemeFrameBtn.Parent = ThemeFrame
 Instance.new("UICorner", ThemeFrameBtn).CornerRadius = UDim.new(0, 5)
 
+local ThemeBackgroundBtn = Instance.new("TextButton")
+ThemeBackgroundBtn.Name = "ThemeBackgroundBtn"
+ThemeBackgroundBtn.Size = UDim2.new(0, 114, 0, 22)
+ThemeBackgroundBtn.Position = UDim2.new(0, 8, 0, 84)
+ThemeBackgroundBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+ThemeBackgroundBtn.BackgroundTransparency = 0.8
+ThemeBackgroundBtn.BorderSizePixel = 0
+ThemeBackgroundBtn.Text = "Background"
+ThemeBackgroundBtn.Font = Enum.Font.GothamBold
+ThemeBackgroundBtn.TextSize = 9
+ThemeBackgroundBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ThemeBackgroundBtn.ZIndex = 81
+ThemeBackgroundBtn.Parent = ThemeFrame
+table.insert(ThemeObjects.Backgrounds, ThemeBackgroundBtn)
+table.insert(ThemeObjects.Texts, ThemeBackgroundBtn)
+Instance.new("UICorner", ThemeBackgroundBtn).CornerRadius = UDim.new(0, 5)
+
 local PickerFrame = Instance.new("Frame")
 PickerFrame.Name = "AccentPickerDock"
-PickerFrame.Size = UDim2.new(0, 130, 0, 260)
+PickerFrame.Size = UDim2.new(0, 130, 0, 216)
 PickerFrame.AnchorPoint = Vector2.new(1, 0)
-PickerFrame.BackgroundColor3 = FrameThemeColor
-PickerFrame.BackgroundTransparency = 0.04
-PickerFrame.BorderSizePixel = 0
 PickerFrame.ZIndex = 80
 PickerFrame.Visible = false
 PickerFrame.Parent = ScreenGui
 ThemeObjects.PickerDock = PickerFrame
-table.insert(ThemeObjects.Backgrounds, PickerFrame)
-Instance.new("UICorner", PickerFrame).CornerRadius = UDim.new(0, 9)
-local PickerDockStroke = Instance.new("UIStroke")
-PickerDockStroke.Color = AccentColor
-PickerDockStroke.Thickness = 1.5
-PickerDockStroke.Transparency = 0
-PickerDockStroke.Parent = PickerFrame
-table.insert(ThemeObjects.Accents, PickerDockStroke)
+ThemeObjects.StylePopupPanel(PickerFrame)
 local PickerScaleObject = Instance.new("UIScale", PickerFrame)
 PickerScaleObject.Scale = GuiScaleFromValue(GuiSizeValue)
 ThemeObjects.PickerDockScale = PickerScaleObject
@@ -6234,55 +6263,94 @@ for index = 1, 5 do
 	SavedColorButtons[index] = swatch
 end
 
-local BackgroundTransparencyTitle = Instance.new("TextLabel")
-BackgroundTransparencyTitle.Size = UDim2.new(0, 114, 0, 12)
-BackgroundTransparencyTitle.Position = UDim2.new(0, 8, 0, 214)
-BackgroundTransparencyTitle.BackgroundTransparency = 1
-BackgroundTransparencyTitle.Text = "Background:"
-BackgroundTransparencyTitle.Font = Enum.Font.GothamBold
-BackgroundTransparencyTitle.TextSize = 9
-BackgroundTransparencyTitle.TextXAlignment = Enum.TextXAlignment.Left
-BackgroundTransparencyTitle.Parent = PickerFrame
-table.insert(ThemeObjects.Texts, BackgroundTransparencyTitle)
+for _, pickerObject in ipairs(PickerFrame:GetDescendants()) do
+	if pickerObject:IsA("GuiObject") then pickerObject.ZIndex = 81 end
+end
+
+local BackgroundTransparencyFrame = Instance.new("Frame")
+BackgroundTransparencyFrame.Name = "BackgroundTransparencyDock"
+BackgroundTransparencyFrame.Size = UDim2.new(0, 130, 0, 88)
+BackgroundTransparencyFrame.AnchorPoint = Vector2.new(1, 0)
+BackgroundTransparencyFrame.ZIndex = 80
+BackgroundTransparencyFrame.Visible = false
+BackgroundTransparencyFrame.Parent = ScreenGui
+ThemeObjects.BackgroundTransparencyDock = BackgroundTransparencyFrame
+ThemeObjects.StylePopupPanel(BackgroundTransparencyFrame)
+local BackgroundTransparencyScale = Instance.new("UIScale", BackgroundTransparencyFrame)
+BackgroundTransparencyScale.Scale = GuiScaleFromValue(GuiSizeValue)
+ThemeObjects.BackgroundTransparencyDockScale = BackgroundTransparencyScale
+
+ThemeObjects.UpdateBackgroundTransparencyDockPosition = function()
+	local scale = GuiScaleFromValue(GuiSizeValue)
+	BackgroundTransparencyFrame.Position = UDim2.fromOffset(MainFrame.AbsolutePosition.X - (7 * scale), MainFrame.AbsolutePosition.Y + (36 * scale))
+end
+TrackConnection("BackgroundTransparencyDockPosition", MainFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(ThemeObjects.UpdateBackgroundTransparencyDockPosition))
+TrackConnection("BackgroundTransparencyDockSize", MainFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(ThemeObjects.UpdateBackgroundTransparencyDockPosition))
+ThemeObjects.UpdateBackgroundTransparencyDockPosition()
+
+local BackgroundTransparencyHeader = Instance.new("TextLabel")
+BackgroundTransparencyHeader.Size = UDim2.new(1, -34, 0, 28)
+BackgroundTransparencyHeader.Position = UDim2.new(0, 10, 0, 0)
+BackgroundTransparencyHeader.BackgroundTransparency = 1
+BackgroundTransparencyHeader.Text = "Background"
+BackgroundTransparencyHeader.Font = Enum.Font.GothamBold
+BackgroundTransparencyHeader.TextSize = 13
+BackgroundTransparencyHeader.TextXAlignment = Enum.TextXAlignment.Left
+BackgroundTransparencyHeader.Parent = BackgroundTransparencyFrame
+table.insert(ThemeObjects.Texts, BackgroundTransparencyHeader)
+
+local BackgroundTransparencyBackBtn = Instance.new("TextButton")
+BackgroundTransparencyBackBtn.Size = UDim2.new(0, 114, 0, 20)
+BackgroundTransparencyBackBtn.Position = UDim2.new(0, 8, 0, 30)
+BackgroundTransparencyBackBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+BackgroundTransparencyBackBtn.BackgroundTransparency = 0.8
+BackgroundTransparencyBackBtn.BorderSizePixel = 0
+BackgroundTransparencyBackBtn.Text = "Back"
+BackgroundTransparencyBackBtn.Font = Enum.Font.GothamBold
+BackgroundTransparencyBackBtn.TextSize = 8
+BackgroundTransparencyBackBtn.Parent = BackgroundTransparencyFrame
+table.insert(ThemeObjects.Backgrounds, BackgroundTransparencyBackBtn)
+table.insert(ThemeObjects.Texts, BackgroundTransparencyBackBtn)
+Instance.new("UICorner", BackgroundTransparencyBackBtn).CornerRadius = UDim.new(0, 5)
 
 local BackgroundTransparencyMinusBtn = Instance.new("TextButton")
 BackgroundTransparencyMinusBtn.Size = UDim2.new(0, 28, 0, 20)
-BackgroundTransparencyMinusBtn.Position = UDim2.new(0, 8, 0, 230)
+BackgroundTransparencyMinusBtn.Position = UDim2.new(0, 8, 0, 58)
 BackgroundTransparencyMinusBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 BackgroundTransparencyMinusBtn.BackgroundTransparency = 0.8
 BackgroundTransparencyMinusBtn.BorderSizePixel = 0
 BackgroundTransparencyMinusBtn.Text = "-"
 BackgroundTransparencyMinusBtn.Font = Enum.Font.GothamBold
 BackgroundTransparencyMinusBtn.TextSize = 12
-BackgroundTransparencyMinusBtn.Parent = PickerFrame
+BackgroundTransparencyMinusBtn.Parent = BackgroundTransparencyFrame
 table.insert(ThemeObjects.Backgrounds, BackgroundTransparencyMinusBtn)
 table.insert(ThemeObjects.Texts, BackgroundTransparencyMinusBtn)
 Instance.new("UICorner", BackgroundTransparencyMinusBtn).CornerRadius = UDim.new(0, 5)
 
 local BackgroundTransparencyValueLabel = Instance.new("TextLabel")
 BackgroundTransparencyValueLabel.Size = UDim2.new(0, 46, 0, 20)
-BackgroundTransparencyValueLabel.Position = UDim2.new(0, 42, 0, 230)
+BackgroundTransparencyValueLabel.Position = UDim2.new(0, 42, 0, 58)
 BackgroundTransparencyValueLabel.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
 BackgroundTransparencyValueLabel.BackgroundTransparency = 0.8
 BackgroundTransparencyValueLabel.BorderSizePixel = 0
 BackgroundTransparencyValueLabel.Text = BackgroundTransparencyValue .. "%"
 BackgroundTransparencyValueLabel.Font = Enum.Font.GothamBold
 BackgroundTransparencyValueLabel.TextSize = 10
-BackgroundTransparencyValueLabel.Parent = PickerFrame
+BackgroundTransparencyValueLabel.Parent = BackgroundTransparencyFrame
 table.insert(ThemeObjects.Backgrounds, BackgroundTransparencyValueLabel)
 table.insert(ThemeObjects.Texts, BackgroundTransparencyValueLabel)
 Instance.new("UICorner", BackgroundTransparencyValueLabel).CornerRadius = UDim.new(0, 5)
 
 local BackgroundTransparencyPlusBtn = Instance.new("TextButton")
 BackgroundTransparencyPlusBtn.Size = UDim2.new(0, 28, 0, 20)
-BackgroundTransparencyPlusBtn.Position = UDim2.new(0, 94, 0, 230)
+BackgroundTransparencyPlusBtn.Position = UDim2.new(0, 94, 0, 58)
 BackgroundTransparencyPlusBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 BackgroundTransparencyPlusBtn.BackgroundTransparency = 0.8
 BackgroundTransparencyPlusBtn.BorderSizePixel = 0
 BackgroundTransparencyPlusBtn.Text = "+"
 BackgroundTransparencyPlusBtn.Font = Enum.Font.GothamBold
 BackgroundTransparencyPlusBtn.TextSize = 12
-BackgroundTransparencyPlusBtn.Parent = PickerFrame
+BackgroundTransparencyPlusBtn.Parent = BackgroundTransparencyFrame
 table.insert(ThemeObjects.Backgrounds, BackgroundTransparencyPlusBtn)
 table.insert(ThemeObjects.Texts, BackgroundTransparencyPlusBtn)
 Instance.new("UICorner", BackgroundTransparencyPlusBtn).CornerRadius = UDim.new(0, 5)
@@ -6296,15 +6364,23 @@ local function ApplyBackgroundTransparency(value)
 end
 BackgroundTransparencyMinusBtn.MouseButton1Click:Connect(function()
 	PlayClick()
-	ApplyBackgroundTransparency(BackgroundTransparencyValue - 10)
+	ApplyBackgroundTransparency(BackgroundTransparencyValue - 5)
 end)
 BackgroundTransparencyPlusBtn.MouseButton1Click:Connect(function()
 	PlayClick()
-	ApplyBackgroundTransparency(BackgroundTransparencyValue + 10)
+	ApplyBackgroundTransparency(BackgroundTransparencyValue + 5)
+end)
+BackgroundTransparencyBackBtn.MouseButton1Click:Connect(function()
+	PlayClick()
+	BackgroundTransparencyFrame.Visible = false
+	ThemeFrame.Visible = true
+	if ThemeObjects.UpdateThemeDockPosition then
+		ThemeObjects.UpdateThemeDockPosition()
+	end
 end)
 
-for _, pickerObject in ipairs(PickerFrame:GetDescendants()) do
-	if pickerObject:IsA("GuiObject") then pickerObject.ZIndex = 81 end
+for _, popupObject in ipairs(BackgroundTransparencyFrame:GetDescendants()) do
+	if popupObject:IsA("GuiObject") then popupObject.ZIndex = 81 end
 end
 
 local ConfirmClearFrame = Instance.new("Frame")
@@ -6351,29 +6427,15 @@ local KeybindEditorFrame = Instance.new("Frame")
 KeybindEditorFrame.Name = "KeybindEditorFrame"
 KeybindEditorFrame.Size = UDim2.new(0, 240, 0, 190)
 KeybindEditorFrame.AnchorPoint = Vector2.new(1, 0)
-KeybindEditorFrame.BackgroundColor3 = FrameThemeColor
-KeybindEditorFrame.BackgroundTransparency = 0.04
-KeybindEditorFrame.BorderSizePixel = 0
 KeybindEditorFrame.Visible = false
 KeybindEditorFrame.ZIndex = 90
 KeybindEditorFrame.Parent = ScreenGui
 ThemeObjects.KeybindEditorFrame = KeybindEditorFrame
-table.insert(ThemeObjects.Backgrounds, KeybindEditorFrame)
 local KeybindEditorScale = Instance.new("UIScale", KeybindEditorFrame)
 KeybindEditorScale.Scale = GuiScaleFromValue(GuiSizeValue)
 ThemeObjects.KeybindEditorScale = KeybindEditorScale
-Instance.new("UICorner", KeybindEditorFrame).CornerRadius = UDim.new(0, 10)
-local KeybindEditorGradient = Instance.new("UIGradient")
-KeybindEditorGradient.Rotation = 135
-KeybindEditorGradient.Parent = KeybindEditorFrame
+local KeybindEditorGradient = ThemeObjects.StylePopupPanel(KeybindEditorFrame)
 ThemeObjects.KeybindEditorGradient = KeybindEditorGradient
-local KeybindEditorStroke = Instance.new("UIStroke")
-KeybindEditorStroke.Name = "ControlOutline"
-KeybindEditorStroke.Color = AccentColor
-KeybindEditorStroke.Thickness = 1.5
-KeybindEditorStroke.Transparency = 0
-KeybindEditorStroke.Parent = KeybindEditorFrame
-table.insert(ThemeObjects.Accents, KeybindEditorStroke)
 
 ThemeObjects.UpdateKeybindEditorDockPosition = function()
 	local scale = GuiScaleFromValue(GuiSizeValue)
@@ -6556,6 +6618,7 @@ EditKeybindsBtn.MouseButton1Click:Connect(function()
 	if ThemeObjects.PickerDock then ThemeObjects.PickerDock.Visible = false end
 	if ThemeObjects.GuiSizeDock then ThemeObjects.GuiSizeDock.Visible = false end
 	if ThemeObjects.ThemeDock then ThemeObjects.ThemeDock.Visible = false end
+	if ThemeObjects.BackgroundTransparencyDock then ThemeObjects.BackgroundTransparencyDock.Visible = false end
 	HideOptimizeDock()
 	ResetThemeBtn.Visible = false
 	if ThemePickerBackBtn then ThemePickerBackBtn.Visible = false end
@@ -6660,6 +6723,7 @@ local function OpenColorPicker(target)
 	if ThemeFrame then ThemeFrame.Visible = false end
 	HideOptimizeDock()
 	if KeybindEditorFrame then KeybindEditorFrame.Visible = false end
+	if BackgroundTransparencyFrame then BackgroundTransparencyFrame.Visible = false end
 	if ThemeObjects.ExtrasFeature.CopyFrame and ThemeObjects.ExtrasFeature.CopyFrame.Visible then
 		ThemeObjects.ExtrasFeature.EndSelection(true)
 	end
@@ -6762,6 +6826,7 @@ AccentColorBtn.MouseButton1Click:Connect(function()
 	if SaveCurrentColorBtn then SaveCurrentColorBtn.Visible = false end
 	ConfirmClearFrame.Visible = false
 	if KeybindEditorFrame then KeybindEditorFrame.Visible = false end
+	if BackgroundTransparencyFrame then BackgroundTransparencyFrame.Visible = false end
 	ThemeFrame.Visible = willOpen
 	if willOpen and ThemeObjects.UpdateThemeDockPosition then
 		ThemeObjects.UpdateThemeDockPosition()
@@ -6778,6 +6843,19 @@ ThemeFrameBtn.MouseButton1Click:Connect(function()
 	OpenColorPicker("Frame")
 end)
 
+ThemeBackgroundBtn.MouseButton1Click:Connect(function()
+	PlayClick()
+	ThemeFrame.Visible = false
+	GuiSizeFrame.Visible = false
+	PickerFrame.Visible = false
+	HideOptimizeDock()
+	if KeybindEditorFrame then KeybindEditorFrame.Visible = false end
+	BackgroundTransparencyFrame.Visible = true
+	if ThemeObjects.UpdateBackgroundTransparencyDockPosition then
+		ThemeObjects.UpdateBackgroundTransparencyDockPosition()
+	end
+end)
+
 if HubState.ESPColorBtn then
 	HubState.ESPColorBtn.MouseButton1Click:Connect(function()
 		PlayClick()
@@ -6785,6 +6863,7 @@ if HubState.ESPColorBtn then
 		if ThemeFrame then ThemeFrame.Visible = false end
 		HideOptimizeDock()
 		if KeybindEditorFrame then KeybindEditorFrame.Visible = false end
+		if BackgroundTransparencyFrame then BackgroundTransparencyFrame.Visible = false end
 		if PickerFrame.Visible and PickerTarget == "ESP" then
 			PickerFrame.Visible = false
 			ThemePickerBackBtn.Visible = false
@@ -6806,6 +6885,7 @@ GuiSizeBtn.MouseButton1Click:Connect(function()
 	if SaveCurrentColorBtn then SaveCurrentColorBtn.Visible = false end
 	ConfirmClearFrame.Visible = false
 	if KeybindEditorFrame then KeybindEditorFrame.Visible = false end
+	if BackgroundTransparencyFrame then BackgroundTransparencyFrame.Visible = false end
 	GuiSizeFrame.Visible = willOpen
 	if willOpen and ThemeObjects.UpdateGuiSizeDockPosition then
 		ThemeObjects.UpdateGuiSizeDockPosition()
@@ -6849,6 +6929,7 @@ ClearKeybindsBtn.MouseButton1Click:Connect(function()
 	ThemePickerBackBtn.Visible = false
 	if SaveCurrentColorBtn then SaveCurrentColorBtn.Visible = false end
 	if KeybindEditorFrame then KeybindEditorFrame.Visible = false end
+	if BackgroundTransparencyFrame then BackgroundTransparencyFrame.Visible = false end
 	ConfirmClearFrame.Visible = true
 end)
 ConfirmNoBtn.MouseButton1Click:Connect(function() PlayClick() ConfirmClearFrame.Visible = false end)
