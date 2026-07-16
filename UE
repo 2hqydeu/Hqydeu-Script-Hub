@@ -506,7 +506,7 @@ for _, tier in ipairs(RARITY_TIERS) do
 	if state.ESPSelectedRarities[tier] == nil then state.ESPSelectedRarities[tier] = false end
 end
 for _, boxType in ipairs(BOX_TYPES) do
-	if state.SelectedBoxTypes[boxType] == nil then state.SelectedBoxTypes[boxType] = false end
+	if state.SelectedBoxTypes[boxType] == nil then state.SelectedBoxTypes[boxType] = true end
 end
 
 local Connections = {}
@@ -515,6 +515,11 @@ local function TrackConnection(name, connection)
 	Connections[name] = connection
 	return connection
 end
+
+-- Forward-declared here (rather than down by the UI construction) so the auto-farm loop
+-- below can push live phase updates to the status label as each step happens, instead of
+-- the label only refreshing once a full RunAutoTrapStep() call has finished.
+local RefreshButtons
 
 ----------------------------------------------------------------------
 -- Rarity / structure color helpers (ported)
@@ -568,7 +573,7 @@ end
 ----------------------------------------------------------------------
 local function CleanStructureName(name)
 	name = tostring(name or ""):gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
-	name = name:gsub("%s*%(%d+%)$", ""):gsub("[-_#]%d+$", "")
+	name = name:gsub("%s*%(%d+%)$", ""):gsub("[%s_%-%#]*%d+$", "")
 	return name
 end
 
@@ -612,6 +617,7 @@ end
 
 local function BoxTypeFromName(name)
 	local lower = tostring(name or ""):lower()
+	if HasHunterTrapText(lower) then return "Hunter Trap" end
 	for _, boxType in ipairs(BOX_TYPES) do
 		if lower:find(boxType:lower(), 1, true) then return boxType end
 	end
@@ -631,33 +637,61 @@ local function BoxType(box)
 	return nil
 end
 
+local function HunterTrapPart(box)
+	if not box then return nil end
+	if box:IsA("BasePart") and box.Name:lower() == "string" then return box end
+	local direct = box:FindFirstChild("string")
+	if direct and direct:IsA("BasePart") then return direct end
+	for _, child in ipairs(box:GetDescendants()) do
+		if child:IsA("BasePart") and child.Name:lower() == "string" then
+			return child
+		end
+	end
+	return nil
+end
+
 local function BoxRoot(box)
 	if HasHunterTrapText(box.Name) then
-		local part = box:FindFirstChild("string", true)
-		if part and part:IsA("BasePart") then return part end
+		local part = HunterTrapPart(box)
+		if part then return part end
 	end
 	if box:IsA("BasePart") then return box end
 	return box.PrimaryPart or box:FindFirstChildWhichIsA("BasePart", true)
+end
+
+local function IsBoxAllowed(box)
+	local boxType = BoxType(box)
+	return boxType ~= nil and state.SelectedBoxTypes[boxType] ~= false
 end
 
 local function CollectLootBoxes()
 	local folder = StructuresFolder()
 	if not folder then return {} end
 	local boxes = {}
+	local seen = {}
+	local function addCandidate(candidate)
+		if not candidate or seen[candidate] then return end
+		if BoxRoot(candidate) and IsBoxAllowed(candidate) then
+			seen[candidate] = true
+			table.insert(boxes, candidate)
+		end
+	end
 	for _, structure in ipairs(folder:GetChildren()) do
 		local lootFolder = structure:FindFirstChild("Loot")
-		local candidates = lootFolder and lootFolder:GetChildren() or structure:GetChildren()
-		for _, candidate in ipairs(candidates) do
-			local boxType = BoxType(candidate)
-			if boxType and state.SelectedBoxTypes[boxType] and BoxRoot(candidate) then
-				table.insert(boxes, candidate)
+		if lootFolder then
+			for _, box in ipairs(lootFolder:GetChildren()) do
+				addCandidate(box)
 			end
 		end
-		if state.SelectedBoxTypes["Hunter Trap"] then
+		for _, child in ipairs(structure:GetChildren()) do
+			if child.Name ~= "Loot" and BoxTypeFromName(child.Name) then
+				addCandidate(child)
+			end
+		end
+		if state.SelectedBoxTypes["Hunter Trap"] ~= false then
 			for _, descendant in ipairs(structure:GetDescendants()) do
-				if HasHunterTrapText(descendant.Name) and BoxRoot(descendant) then
-					table.insert(boxes, descendant)
-					break
+				if HasHunterTrapText(descendant.Name) then
+					addCandidate(descendant)
 				end
 			end
 		end
@@ -859,37 +893,135 @@ local function SafeSet(object, property, value)
 	pcall(function() object[property] = value end)
 end
 
-local function ApplyNoDarkness()
-	if not state.OriginalLighting then
-		state.OriginalLighting = {
-			Brightness = SafeGet(Lighting, "Brightness"),
-			ClockTime = SafeGet(Lighting, "ClockTime"),
-			FogEnd = SafeGet(Lighting, "FogEnd"),
-			GlobalShadows = SafeGet(Lighting, "GlobalShadows"),
-			Ambient = SafeGet(Lighting, "Ambient"),
-			OutdoorAmbient = SafeGet(Lighting, "OutdoorAmbient"),
-			ExposureCompensation = SafeGet(Lighting, "ExposureCompensation"),
-		}
+local lightingEffectProperties = {
+	Atmosphere = {"Density", "Offset", "Color", "Decay", "Glare", "Haze"},
+	ColorCorrectionEffect = {"Enabled", "Brightness", "Contrast", "Saturation", "TintColor"},
+	BloomEffect = {"Enabled", "Intensity", "Size", "Threshold"},
+	BlurEffect = {"Enabled", "Size"},
+	DepthOfFieldEffect = {"Enabled", "FarIntensity", "FocusDistance", "InFocusRadius", "NearIntensity"},
+	SunRaysEffect = {"Enabled", "Intensity", "Spread"},
+}
+
+local function LightingEffectClass(instance)
+	for className in pairs(lightingEffectProperties) do
+		if instance:IsA(className) then return className end
 	end
-	SafeSet(Lighting, "Brightness", 3)
+	return nil
+end
+
+local function CaptureLightingEffectDefaults(effect, original)
+	local className = LightingEffectClass(effect)
+	if not className then return end
+	original.Effects = original.Effects or {}
+	if original.Effects[effect] then return end
+	local saved = {}
+	for _, property in ipairs(lightingEffectProperties[className]) do
+		local value = SafeGet(effect, property)
+		if value ~= nil then saved[property] = value end
+	end
+	original.Effects[effect] = saved
+end
+
+local function IsNoDarknessLighting()
+	return Lighting.Brightness >= 3.8
+		and Lighting.FogEnd >= 900000
+		and Lighting.Ambient.R > 0.95
+		and Lighting.OutdoorAmbient.R > 0.95
+end
+
+local function BuildLightingSnapshot()
+	local snapshot = {
+		ClockTime = Lighting.ClockTime,
+		TimeOfDay = SafeGet(Lighting, "TimeOfDay"),
+		Brightness = Lighting.Brightness,
+		FogEnd = Lighting.FogEnd,
+		FogStart = Lighting.FogStart,
+		FogColor = Lighting.FogColor,
+		Ambient = Lighting.Ambient,
+		OutdoorAmbient = Lighting.OutdoorAmbient,
+		ExposureCompensation = Lighting.ExposureCompensation,
+		GlobalShadows = SafeGet(Lighting, "GlobalShadows"),
+		Effects = {},
+	}
+	for _, child in ipairs(Lighting:GetChildren()) do
+		CaptureLightingEffectDefaults(child, snapshot)
+	end
+	return snapshot
+end
+
+local function SaveLightingDefaults()
+	if not IsNoDarknessLighting() then
+		state.OriginalLighting = BuildLightingSnapshot()
+	end
+end
+
+local function ApplyNoDarkness()
+	SaveLightingDefaults()
 	SafeSet(Lighting, "ClockTime", 14)
-	SafeSet(Lighting, "FogEnd", 100000)
-	SafeSet(Lighting, "GlobalShadows", false)
+	SafeSet(Lighting, "TimeOfDay", "14:00:00")
+	SafeSet(Lighting, "Brightness", 4)
+	SafeSet(Lighting, "FogStart", 0)
+	SafeSet(Lighting, "FogEnd", 1000000)
+	SafeSet(Lighting, "FogColor", Color3.fromRGB(255, 255, 255))
 	SafeSet(Lighting, "Ambient", Color3.fromRGB(255, 255, 255))
 	SafeSet(Lighting, "OutdoorAmbient", Color3.fromRGB(255, 255, 255))
-	SafeSet(Lighting, "ExposureCompensation", 0.35)
+	SafeSet(Lighting, "ExposureCompensation", 0.45)
+	SafeSet(Lighting, "GlobalShadows", false)
+	for _, child in ipairs(Lighting:GetChildren()) do
+		CaptureLightingEffectDefaults(child, state.OriginalLighting)
+		if child:IsA("Atmosphere") then
+			SafeSet(child, "Density", 0)
+			SafeSet(child, "Haze", 0)
+			SafeSet(child, "Glare", 0)
+			SafeSet(child, "Offset", 0)
+			SafeSet(child, "Color", Color3.fromRGB(255, 255, 255))
+			SafeSet(child, "Decay", Color3.fromRGB(255, 255, 255))
+		elseif child:IsA("ColorCorrectionEffect") then
+			SafeSet(child, "Enabled", false)
+			SafeSet(child, "Brightness", 0)
+			SafeSet(child, "Contrast", 0)
+			SafeSet(child, "Saturation", 0)
+			SafeSet(child, "TintColor", Color3.fromRGB(255, 255, 255))
+		elseif child:IsA("BloomEffect") or child:IsA("BlurEffect") or child:IsA("DepthOfFieldEffect") or child:IsA("SunRaysEffect") then
+			SafeSet(child, "Enabled", false)
+		end
+	end
 end
 
 local function RestoreLighting()
-	if not state.OriginalLighting then return end
-	for property, value in pairs(state.OriginalLighting) do
-		SafeSet(Lighting, property, value)
+	local original = state.OriginalLighting
+	if not original then
+		SafeSet(Lighting, "ClockTime", 12)
+		SafeSet(Lighting, "TimeOfDay", "12:00:00")
+		SafeSet(Lighting, "Brightness", 2)
+		SafeSet(Lighting, "FogStart", 0)
+		SafeSet(Lighting, "FogEnd", 100000)
+		SafeSet(Lighting, "Ambient", Color3.fromRGB(128, 128, 128))
+		SafeSet(Lighting, "OutdoorAmbient", Color3.fromRGB(128, 128, 128))
+		SafeSet(Lighting, "ExposureCompensation", 0)
+		SafeSet(Lighting, "GlobalShadows", true)
+		return
+	end
+	for property, value in pairs(original) do
+		if property ~= "Effects" then SafeSet(Lighting, property, value) end
+	end
+	for effect, properties in pairs(original.Effects or {}) do
+		if typeof(effect) == "Instance" and effect.Parent then
+			for property, value in pairs(properties) do
+				SafeSet(effect, property, value)
+			end
+		end
 	end
 end
 
 local function SetNoDarkness(enabled)
 	state.NoDarkness = enabled == true
-	if state.NoDarkness then ApplyNoDarkness() else RestoreLighting() end
+	if state.NoDarkness then
+		ApplyNoDarkness()
+	else
+		RestoreLighting()
+		state.OriginalLighting = nil
+	end
 end
 
 ----------------------------------------------------------------------
@@ -1023,6 +1155,23 @@ end
 ----------------------------------------------------------------------
 -- Auto-farm system (ported in full)
 ----------------------------------------------------------------------
+-- FindFirstChild(name, true) is case-sensitive and returns nil if nothing matches exactly,
+-- which used to make TriggerPart() give up on a structure the instant its part naming
+-- didn't match byte-for-byte -- silently abandoning that encounter forever, since
+-- HandleTrapStructureSpawn had already marked it Handled. This does a case-insensitive
+-- scan and always falls back to the structure's own root so a trigger position is found.
+local function FindNamedTriggerPart(structure, partName)
+	local direct = structure:FindFirstChild(partName)
+	if direct and direct:IsA("BasePart") then return direct end
+	local lowerName = partName:lower()
+	for _, child in ipairs(structure:GetDescendants()) do
+		if child:IsA("BasePart") and child.Name:lower() == lowerName then
+			return child
+		end
+	end
+	return StructureRoot(structure)
+end
+
 local ENCOUNTERS = {
 	{
 		Key = "Hunter Trap",
@@ -1030,7 +1179,7 @@ local ENCOUNTERS = {
 		TriggerPart = function(structure)
 			local isVariant2 = tostring(structure.Name):find("2") ~= nil
 			local partName = isVariant2 and "Trap" or "string"
-			local part = structure:FindFirstChild(partName, true)
+			local part = FindNamedTriggerPart(structure, partName)
 			if not part then return nil end
 			local position = part.Position
 			if isVariant2 then position += TRAP2_LAND_OFFSET end
@@ -1043,7 +1192,7 @@ local ENCOUNTERS = {
 		Key = "Graveyard",
 		Matches = function(name) return tostring(name):lower():find("graveyard", 1, true) ~= nil end,
 		TriggerPart = function(structure)
-			local part = structure:FindFirstChild("Trap", true)
+			local part = FindNamedTriggerPart(structure, "Trap")
 			return part and part.Position
 		end,
 		EnemyNames = {"grounder"},
@@ -1053,7 +1202,7 @@ local ENCOUNTERS = {
 		Key = "Ancient Ruins",
 		Matches = function(name) return tostring(name):lower():find("ancient", 1, true) ~= nil end,
 		TriggerPart = function(structure)
-			local part = structure:FindFirstChild("Trap", true)
+			local part = FindNamedTriggerPart(structure, "Trap")
 			return part and part.Position
 		end,
 		EnemyNames = {"pharaon", "mummy"},
@@ -1237,9 +1386,13 @@ end
 -- filled in, matching the old module's own forward-reference pattern.
 local IsKeyDrop
 function IsKeyDrop(part)
-	local lower = tostring(part.Name or ""):lower()
-	for _, keyName in ipairs(KEY_TOOL_NAMES) do
-		if lower:find(keyName:lower(), 1, true) then return true end
+	for _, descendant in ipairs(part:GetDescendants()) do
+		if descendant:IsA("TextLabel") or descendant:IsA("TextButton") then
+			local text = tostring(descendant.Text)
+			for _, keyName in ipairs(KEY_TOOL_NAMES) do
+				if text == keyName then return true end
+			end
+		end
 	end
 	return false
 end
@@ -1265,7 +1418,9 @@ local function HoldOnBox(target, options)
 	end
 
 	local promptPart = openPrompt.Parent
-	local anchorPosition = (promptPart and promptPart:IsA("BasePart") and promptPart.Position or Vector3.zero) + Vector3.new(0, 1, 0)
+	local fallbackRoot = BoxRoot(target)
+	local anchorBase = (promptPart and promptPart:IsA("BasePart") and promptPart.Position) or (fallbackRoot and fallbackRoot.Position) or Vector3.zero
+	local anchorPosition = anchorBase + Vector3.new(0, 1, 0)
 	StableTeleport(CFrame.new(anchorPosition))
 	state.ToolInteractionActive = true
 	AimCameraAtPrompt(anchorPosition)
@@ -1377,55 +1532,95 @@ local function GetBackpackItemCount()
 end
 
 local function RunMissedItemSweep()
-	local root = PlayerRoot()
-	if not root then return end
-	local targets = {}
-	for _, item in ipairs(GetAllGroundItems()) do
-		if IsKeyDrop(item) or IsRarityAllowed(GetDropRarity(item)) then
-			table.insert(targets, item)
+	local ok = pcall(function()
+		local candidates = {}
+		for _, part in ipairs(GetAllGroundItems()) do
+			if part and part.Parent and (IsKeyDrop(part) or IsRarityAllowed(GetDropRarity(part))) then
+				table.insert(candidates, part)
+			end
 		end
-	end
-	table.sort(targets, function(a, b)
-		return (a.Position - root.Position).Magnitude < (b.Position - root.Position).Magnitude
+		if #candidates == 0 then return end
+
+		local root = PlayerRoot()
+		if root then
+			table.sort(candidates, function(a, b)
+				return (a.Position - root.Position).Magnitude < (b.Position - root.Position).Magnitude
+			end)
+		end
+
+		state.AutoTrapPhase = "Sweeping missed items"
+		state.AutoTrapPhaseStartedAt = os.clock()
+		if RefreshButtons then RefreshButtons() end
+
+		for index, part in ipairs(candidates) do
+			if index > MAX_SWEEP_TARGETS then break end
+			if not (state.AutoTrapEnabled and MainFrame.Parent) then break end
+			if part and part.Parent then
+				StableTeleport(CFrame.new(part.Position + Vector3.new(0, 3, 0)))
+				task.wait(0.2)
+				ClaimNearbyDrop(part.Position, {IsEnabled = function() return state.AutoTrapEnabled end})
+			end
+		end
 	end)
-	for index, item in ipairs(targets) do
-		if index > MAX_SWEEP_TARGETS then break end
-		ClaimNearbyDrop(item.Position)
+	if not ok then
+		warn("[UE Auto Trap] missed-item sweep failed, continuing")
 	end
 end
 
 local function RunAutoSellStep()
+	local backpack = Player:FindFirstChildOfClass("Backpack")
+	if not backpack then return end
+
+	state.ToolInteractionActive = true
 	state.AutoTrapPhase = "Selling inventory"
 	state.AutoTrapPhaseStartedAt = os.clock()
-	local character = Player.Character
-	local backpack = Player:FindFirstChildOfClass("Backpack")
-	local equippedTool = character and character:FindFirstChildOfClass("Tool")
-	local protectedTools = {}
-	if equippedTool then table.insert(protectedTools, {Tool = equippedTool, WasEquipped = true}) end
-	if backpack then
+	if RefreshButtons then RefreshButtons() end
+
+	local ok = pcall(function()
+		local protectedTools = {}
+		local character = Player.Character
+		local equipped = character and character:FindFirstChildOfClass("Tool")
+		if equipped then
+			table.insert(protectedTools, {Tool = equipped, WasEquipped = true})
+			equipped.Parent = nil
+		end
 		for _, tool in ipairs(backpack:GetChildren()) do
 			for _, keyName in ipairs(KEY_TOOL_NAMES) do
-				if tool.Name == keyName then table.insert(protectedTools, {Tool = tool, WasEquipped = false}) end
+				if tool.Name == keyName then
+					table.insert(protectedTools, {Tool = tool, WasEquipped = false})
+					tool.Parent = nil
+				end
 			end
 		end
-	end
-	for _, entry in ipairs(protectedTools) do entry.Tool.Parent = nil end
 
-	StableTeleport(CFrame.new(SELLER_POSITION + Vector3.new(0, 2, 0)))
-	task.wait(0.3)
-	local sellerPart = workspace:FindFirstChild("Base") and workspace.Base:FindFirstChild("Seller")
-	local prompt = sellerPart and sellerPart:FindFirstChildOfClass("ProximityPrompt")
-	if prompt and type(fireproximityprompt) == "function" then
-		pcall(fireproximityprompt, prompt)
-	end
-	local sellRemote = ReplicatedStorage:FindFirstChild("SellRemote")
-	if sellRemote then pcall(function() sellRemote:FireServer("AllItems") end) end
-	task.wait(AUTO_SELL_SETTLE_WAIT)
+		StableTeleport(CFrame.new(SELLER_POSITION + Vector3.new(0, 2, 0)))
+		task.wait(0.3)
+		local sellerPart = workspace:FindFirstChild("Base") and workspace.Base:FindFirstChild("Seller")
+		local prompt = sellerPart and sellerPart:FindFirstChildOfClass("ProximityPrompt")
+		if prompt and type(fireproximityprompt) == "function" then
+			pcall(fireproximityprompt, prompt)
+		end
+		local sellRemote = ReplicatedStorage:FindFirstChild("SellRemote")
+		if sellRemote then pcall(function() sellRemote:FireServer("AllItems") end) end
+		task.wait(AUTO_SELL_SETTLE_WAIT)
 
-	for _, entry in ipairs(protectedTools) do
-		entry.Tool.Parent = entry.WasEquipped and character or backpack
+		for _, entry in ipairs(protectedTools) do
+			pcall(function()
+				if entry.Tool and entry.Tool.Parent == nil then
+					local currentCharacter = Player.Character
+					local currentBackpack = Player:FindFirstChildOfClass("Backpack")
+					entry.Tool.Parent = (entry.WasEquipped and currentCharacter) or currentBackpack or currentCharacter
+				end
+			end)
+		end
+	end)
+	if not ok then
+		warn("[UE Auto Trap] auto-sell step failed, resuming normal operation")
 	end
+
+	state.ToolInteractionActive = false
 	state.AutoTrapPhase = "Idle"
+	if RefreshButtons then RefreshButtons() end
 end
 
 local function FightEnemies(targetPosition, enemyNames)
@@ -1510,6 +1705,7 @@ local function RunAutoTrapStep()
 	if #state.AutoTrapQueue == 0 then
 		-- Idle sweep: regular loot boxes not tied to a pending encounter.
 		state.AutoTrapPhase = "Clearing crates"
+		if RefreshButtons then RefreshButtons() end
 		local boxes = GetIdleSweepBoxTargets()
 		local root = PlayerRoot()
 		if not root or #boxes == 0 then
@@ -1536,7 +1732,10 @@ local function RunAutoTrapStep()
 				state.AutoTrapSweepSkipped[best] = now + FARM_SKIP_COOLDOWN
 			end
 		end
-		state.AutoTrapPhase = "Idle"
+		if state.AutoTrapEnabled and #state.AutoTrapQueue == 0 then
+			state.AutoTrapPhase = "Idle"
+			if RefreshButtons then RefreshButtons() end
+		end
 		return
 	end
 
@@ -1545,15 +1744,20 @@ local function RunAutoTrapStep()
 	if not structure.Parent then return end
 
 	local triggerPosition = encounter.TriggerPart(structure)
-	if not triggerPosition then return end
+	if not triggerPosition then
+		warn("[UE Auto Trap] could not find a trigger part on " .. tostring(structure.Name) .. " (" .. encounter.Key .. ")")
+		return
+	end
 
 	local foundEnemies = false
 	for _ = 1, TRAP_TRIGGER_ATTEMPTS do
 		if not state.AutoTrapEnabled then break end
 		state.AutoTrapPhase = "Triggering " .. encounter.Key
+		if RefreshButtons then RefreshButtons() end
 		StableTeleport(CFrame.new(triggerPosition + Vector3.new(0, 4, 0)))
 		task.wait(TRAP_TRIGGER_WAIT)
 		state.AutoTrapPhase = "Waiting for enemies"
+		if RefreshButtons then RefreshButtons() end
 		local waited = 0
 		while waited < TRAP_HUNTER_SCAN_WINDOW and state.AutoTrapEnabled do
 			if #GetActiveEnemies(encounter.EnemyNames) > 0 then foundEnemies = true break end
@@ -1565,15 +1769,23 @@ local function RunAutoTrapStep()
 	end
 
 	if not foundEnemies then
+		warn("[UE Auto Trap] giving up on " .. tostring(structure.Name) .. " (" .. encounter.Key .. ") after " .. TRAP_TRIGGER_ATTEMPTS .. " attempts")
 		state.AutoTrapPhase = "Idle"
+		if RefreshButtons then RefreshButtons() end
 		return
 	end
 
+	state.AutoTrapPhase = "Fighting"
+	if RefreshButtons then RefreshButtons() end
 	FightEnemies(triggerPosition, encounter.EnemyNames)
 
 	if encounter.LootAttempts > 0 then
 		state.AutoTrapPhase = "Looting " .. encounter.Key
+		if RefreshButtons then RefreshButtons() end
 		ClaimDropsNearArea(triggerPosition, encounter.LootAttempts, {IsEnabled = isEnabledFn})
+
+		state.AutoTrapPhase = "Opening " .. encounter.Key .. " crate"
+		if RefreshButtons then RefreshButtons() end
 		local lootFolder = structure:FindFirstChild("Loot")
 		if lootFolder then
 			for _, box in ipairs(lootFolder:GetChildren()) do
@@ -1587,10 +1799,13 @@ local function RunAutoTrapStep()
 		end
 	end
 
+	state.AutoTrapPhase = "Returning to base"
+	if RefreshButtons then RefreshButtons() end
 	local returnRoot = PlayerRoot()
 	if returnRoot then TeleportToBase() end
 	state.AutoTrapKilled += 1
 	state.AutoTrapPhase = "Idle"
+	if RefreshButtons then RefreshButtons() end
 end
 
 local function SetAutoTrapEnabled(enabled)
@@ -1601,7 +1816,8 @@ end
 ----------------------------------------------------------------------
 -- Toggle actions (defined before UI construction so row callbacks can wire directly)
 ----------------------------------------------------------------------
-local RefreshButtons -- forward-declared; assigned after the UI rows exist
+-- RefreshButtons itself is forward-declared much earlier (see above); assigned below once
+-- the UI rows exist.
 
 local function ToggleBoxESP()
 	state.BoxESP = not state.BoxESP
@@ -1796,9 +2012,17 @@ end)
 
 task.spawn(function()
 	while MainFrame.Parent do
-		if state.AutoTrapEnabled and (state.AutoTrapPhase == "Selling inventory") and os.clock() - state.AutoTrapPhaseStartedAt > 20 then
-			state.AutoTrapPhase = "Idle"
-			state.ToolInteractionActive = false
+		if state.AutoTrapEnabled then
+			local phase = tostring(state.AutoTrapPhase or "")
+			if phase == "Selling inventory" or phase == "Sweeping missed items" then
+				local startedAt = tonumber(state.AutoTrapPhaseStartedAt) or 0
+				if startedAt > 0 and os.clock() - startedAt > 20 then
+					warn("[UE Auto Trap] watchdog: phase stuck on \"" .. phase .. "\" for 20s+, forcing reset")
+					state.AutoTrapPhase = "Idle"
+					state.ToolInteractionActive = false
+					if RefreshButtons then RefreshButtons() end
+				end
+			end
 		end
 		task.wait(5)
 	end
