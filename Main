@@ -1,6 +1,6 @@
 -- Serenity: minimal UI shell. The old feature-rich hub has been set aside (full copy
 -- kept in Main_Legacy_Full.lua) in favor of a clean rebuild -- blank slate with window
--- chrome (title, minimize, drag), a Home tab, and a Player tab with just Speed so far.
+-- chrome (title, minimize, drag), a Home tab, and a Player tab (Speed / Jump / Fly).
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -8,7 +8,7 @@ local CoreGui = game:GetService("CoreGui")
 local Players = game:GetService("Players")
 
 local Player = Players.LocalPlayer
-local FrameColor = Color3.fromRGB(0x28, 0x28, 0x28)
+local FrameColor = Color3.fromRGB(0x1E, 0x1E, 0x1E)
 local AccentColor = Color3.fromRGB(255, 255, 255)
 local UIFont = Enum.Font.Ubuntu
 
@@ -33,7 +33,7 @@ ClickSound.Parent = ScreenGui
 local function PlayClick() ClickSound:Play() end
 
 -- Main Window
-local HEADER_HEIGHT = 58
+local HEADER_HEIGHT = 60
 local FULL_SIZE = UDim2.new(0, 560, 0, 430)
 local MINI_SIZE = UDim2.new(0, 220, 0, HEADER_HEIGHT)
 local WINDOW_POSITION = UDim2.new(0.5, -280, 0.5, -215)
@@ -55,13 +55,13 @@ local MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = UDim.new(0, 14)
 MainCorner.Parent = MainFrame
 
--- Header: title, live local clock (with a small leading icon), minimize, and a plain
--- "L Ctrl" hint -- all top-anchored so a minimize shrinks the window straight up toward
--- this row instead of shrinking from the center.
+-- Header: title, live local clock (with a leading icon), minimize, and a plain "L Ctrl"
+-- hint -- all top-anchored so a minimize shrinks the window straight up toward this row
+-- instead of shrinking from the center.
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
 TitleLabel.Size = UDim2.new(0, 260, 0, 24)
-TitleLabel.Position = UDim2.new(0, 18, 0, 10)
+TitleLabel.Position = UDim2.new(0, 18, 0, 8)
 TitleLabel.BackgroundTransparency = 1
 TitleLabel.Text = "Serenity"
 TitleLabel.Font = UIFont
@@ -72,20 +72,20 @@ TitleLabel.Parent = MainFrame
 
 local TimeIcon = Instance.new("ImageLabel")
 TimeIcon.Name = "TimeIcon"
-TimeIcon.Size = UDim2.new(0, 12, 0, 12)
-TimeIcon.Position = UDim2.new(0, 18, 0, 35)
+TimeIcon.Size = UDim2.new(0, 18, 0, 18)
+TimeIcon.Position = UDim2.new(0, 18, 0, 36)
 TimeIcon.BackgroundTransparency = 1
 TimeIcon.Image = "rbxassetid://86571187953743"
 TimeIcon.Parent = MainFrame
 
 local TimeLabel = Instance.new("TextLabel")
 TimeLabel.Name = "TimeLabel"
-TimeLabel.Size = UDim2.new(0, 240, 0, 14)
-TimeLabel.Position = UDim2.new(0, 34, 0, 34)
+TimeLabel.Size = UDim2.new(0, 220, 0, 18)
+TimeLabel.Position = UDim2.new(0, 44, 0, 36)
 TimeLabel.BackgroundTransparency = 1
 TimeLabel.Text = os.date("%I:%M:%S %p")
 TimeLabel.Font = UIFont
-TimeLabel.TextSize = 11
+TimeLabel.TextSize = 14
 TimeLabel.TextColor3 = Color3.fromRGB(160, 160, 160)
 TimeLabel.TextXAlignment = Enum.TextXAlignment.Left
 TimeLabel.Parent = MainFrame
@@ -100,7 +100,7 @@ end)
 local MiniButton = Instance.new("TextButton")
 MiniButton.Name = "MiniButton"
 MiniButton.Size = UDim2.new(0, 26, 0, 26)
-MiniButton.Position = UDim2.new(1, -38, 0, 16)
+MiniButton.Position = UDim2.new(1, -38, 0, 17)
 MiniButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 MiniButton.BackgroundTransparency = 0.4
 MiniButton.BorderSizePixel = 0
@@ -114,7 +114,7 @@ Instance.new("UICorner", MiniButton).CornerRadius = UDim.new(0, 7)
 local MinimizeLabel = Instance.new("TextLabel")
 MinimizeLabel.Name = "MinimizeLabel"
 MinimizeLabel.Size = UDim2.new(0, 46, 0, 26)
-MinimizeLabel.Position = UDim2.new(1, -90, 0, 16)
+MinimizeLabel.Position = UDim2.new(1, -90, 0, 17)
 MinimizeLabel.BackgroundTransparency = 1
 MinimizeLabel.Text = "L Ctrl"
 MinimizeLabel.Font = UIFont
@@ -123,14 +123,14 @@ MinimizeLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
 MinimizeLabel.TextXAlignment = Enum.TextXAlignment.Right
 MinimizeLabel.Parent = MainFrame
 
-local Divider = Instance.new("Frame")
-Divider.Name = "Divider"
-Divider.Size = UDim2.new(1, 0, 0, 1)
-Divider.Position = UDim2.new(0, 0, 0, HEADER_HEIGHT)
-Divider.BackgroundColor3 = AccentColor
-Divider.BackgroundTransparency = 0.85
-Divider.BorderSizePixel = 0
-Divider.Parent = MainFrame
+local HeaderDivider = Instance.new("Frame")
+HeaderDivider.Name = "HeaderDivider"
+HeaderDivider.Size = UDim2.new(1, 0, 0, 1)
+HeaderDivider.Position = UDim2.new(0, 0, 0, HEADER_HEIGHT)
+HeaderDivider.BackgroundColor3 = AccentColor
+HeaderDivider.BackgroundTransparency = 0.85
+HeaderDivider.BorderSizePixel = 0
+HeaderDivider.Parent = MainFrame
 
 -- Tabs
 local TabBar = Instance.new("Frame")
@@ -146,7 +146,17 @@ TabBarLayout.Padding = UDim.new(0, 8)
 TabBarLayout.SortOrder = Enum.SortOrder.LayoutOrder
 TabBarLayout.Parent = TabBar
 
-local CONTENT_TOP = HEADER_HEIGHT + 8 + 32 + 8
+local TAB_BAR_BOTTOM = HEADER_HEIGHT + 8 + 32
+local TabDivider = Instance.new("Frame")
+TabDivider.Name = "TabDivider"
+TabDivider.Size = UDim2.new(1, 0, 0, 1)
+TabDivider.Position = UDim2.new(0, 0, 0, TAB_BAR_BOTTOM + 8)
+TabDivider.BackgroundColor3 = AccentColor
+TabDivider.BackgroundTransparency = 0.85
+TabDivider.BorderSizePixel = 0
+TabDivider.Parent = MainFrame
+
+local CONTENT_TOP = TAB_BAR_BOTTOM + 8 + 1 + 8
 local ContentArea = Instance.new("Frame")
 ContentArea.Name = "ContentArea"
 ContentArea.Size = UDim2.new(1, -32, 1, -(CONTENT_TOP + 16))
@@ -163,6 +173,8 @@ local function SelectTab(name)
 	end
 end
 
+-- Icon + label are grouped as one horizontally-centered unit (via a nested UIListLayout)
+-- so they read as a single "logo + wordmark," not two separately-positioned pieces.
 local function CreateTab(name, order, iconId)
 	local button = Instance.new("TextButton")
 	button.Name = name .. "Tab"
@@ -176,25 +188,39 @@ local function CreateTab(name, order, iconId)
 	button.Parent = TabBar
 	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 8)
 
+	local content = Instance.new("Frame")
+	content.Name = "Content"
+	content.Size = UDim2.new(1, 0, 1, 0)
+	content.BackgroundTransparency = 1
+	content.Parent = button
+
+	local contentLayout = Instance.new("UIListLayout")
+	contentLayout.FillDirection = Enum.FillDirection.Horizontal
+	contentLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	contentLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+	contentLayout.Padding = UDim.new(0, 6)
+	contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	contentLayout.Parent = content
+
 	local icon = Instance.new("ImageLabel")
 	icon.Name = "Icon"
+	icon.LayoutOrder = 1
 	icon.Size = UDim2.new(0, 24, 0, 24)
-	icon.Position = UDim2.new(0, 10, 0.5, -12)
 	icon.BackgroundTransparency = 1
 	icon.Image = "rbxassetid://" .. iconId
-	icon.Parent = button
+	icon.Parent = content
 
 	local label = Instance.new("TextLabel")
 	label.Name = "Label"
-	label.Size = UDim2.new(0, 84, 0, 32)
-	label.Position = UDim2.new(0, 42, 0, 0)
+	label.LayoutOrder = 2
+	label.AutomaticSize = Enum.AutomaticSize.X
+	label.Size = UDim2.new(0, 0, 1, 0)
 	label.BackgroundTransparency = 1
 	label.Text = name
 	label.Font = UIFont
 	label.TextSize = 13
 	label.TextColor3 = Color3.fromRGB(255, 255, 255)
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.Parent = button
+	label.Parent = content
 
 	local page = Instance.new("Frame")
 	page.Name = name .. "Page"
@@ -245,10 +271,99 @@ WelcomeLabel.Parent = HomePage
 -- Player tab
 local PlayerPage = CreateTab("Player", 2, "87870052960106")
 
+-- Shared row builder: a heading label plus a full-width "<Name> Strength" row holding a
+-- numeric input and an On/Off toggle. Returns the row's controls so callers can wire up
+-- their own logic.
+local function CreateStrengthSection(parent, headingText, rowLabelText, y, defaultValue)
+	local heading = Instance.new("TextLabel")
+	heading.Name = headingText .. "Heading"
+	heading.Size = UDim2.new(1, 0, 0, 22)
+	heading.Position = UDim2.new(0, 0, 0, y)
+	heading.BackgroundTransparency = 1
+	heading.Text = headingText
+	heading.Font = UIFont
+	heading.TextSize = 16
+	heading.TextColor3 = Color3.fromRGB(255, 255, 255)
+	heading.TextXAlignment = Enum.TextXAlignment.Left
+	heading.Parent = parent
+
+	local row = Instance.new("Frame")
+	row.Name = headingText .. "StrengthRow"
+	row.Size = UDim2.new(1, 0, 0, 40)
+	row.Position = UDim2.new(0, 0, 0, y + 28)
+	row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	row.BackgroundTransparency = 0.5
+	row.BorderSizePixel = 0
+	row.Parent = parent
+	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+
+	local rowLabel = Instance.new("TextLabel")
+	rowLabel.Name = "RowLabel"
+	rowLabel.Size = UDim2.new(0, 160, 1, 0)
+	rowLabel.Position = UDim2.new(0, 16, 0, 0)
+	rowLabel.BackgroundTransparency = 1
+	rowLabel.Text = rowLabelText
+	rowLabel.Font = UIFont
+	rowLabel.TextSize = 15
+	rowLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	rowLabel.TextXAlignment = Enum.TextXAlignment.Left
+	rowLabel.TextYAlignment = Enum.TextYAlignment.Center
+	rowLabel.Parent = row
+
+	local input = Instance.new("TextBox")
+	input.Name = "Input"
+	input.Size = UDim2.new(0, 70, 0, 30)
+	input.Position = UDim2.new(1, -176, 0.5, -15)
+	input.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	input.BackgroundTransparency = 0.2
+	input.BorderSizePixel = 0
+	input.ClearTextOnFocus = false
+	input.Text = tostring(defaultValue)
+	input.Font = UIFont
+	input.TextSize = 16
+	input.TextColor3 = Color3.fromRGB(255, 255, 255)
+	input.Parent = row
+	Instance.new("UICorner", input).CornerRadius = UDim.new(0, 6)
+
+	local toggle = Instance.new("TextButton")
+	toggle.Name = "Toggle"
+	toggle.Size = UDim2.new(0, 80, 0, 30)
+	toggle.Position = UDim2.new(1, -96, 0.5, -15)
+	toggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	toggle.BackgroundTransparency = 0.2
+	toggle.BorderSizePixel = 0
+	toggle.Text = "Off"
+	toggle.Font = UIFont
+	toggle.TextSize = 16
+	toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+	toggle.Parent = row
+	Instance.new("UICorner", toggle).CornerRadius = UDim.new(0, 6)
+
+	return input, toggle
+end
+
+local DEFAULT_WALKSPEED = 16
+
+-- Speed
 local SpeedEnabled = false
 local SpeedValue = 3
 local SpeedMode = "CFrame" -- "CFrame" (old hub's root-nudge movement) or "WalkSpeed"
-local DEFAULT_WALKSPEED = 16
+
+local SpeedInput, SpeedToggle = CreateStrengthSection(PlayerPage, "Speed", "Speed Strength", 0, SpeedValue)
+
+local SpeedModeButton = Instance.new("TextButton")
+SpeedModeButton.Name = "SpeedModeButton"
+SpeedModeButton.Size = UDim2.new(1, 0, 0, 36)
+SpeedModeButton.Position = UDim2.new(0, 0, 0, 74)
+SpeedModeButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+SpeedModeButton.BackgroundTransparency = 0.5
+SpeedModeButton.BorderSizePixel = 0
+SpeedModeButton.Text = "Mode: CFrame Movement"
+SpeedModeButton.Font = UIFont
+SpeedModeButton.TextSize = 14
+SpeedModeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+SpeedModeButton.Parent = PlayerPage
+Instance.new("UICorner", SpeedModeButton).CornerRadius = UDim.new(0, 8)
 
 local function ApplySpeed()
 	local character = Player.Character
@@ -262,12 +377,8 @@ local function ApplySpeed()
 		humanoid.WalkSpeed = DEFAULT_WALKSPEED
 	end
 end
-Player.CharacterAdded:Connect(function()
-	task.wait(0.1)
-	ApplySpeed()
-end)
 
-RunService.RenderStepped:Connect(function()
+local speedRenderConnection = RunService.RenderStepped:Connect(function()
 	if not (SpeedEnabled and SpeedMode == "CFrame") then return end
 	local character = Player.Character
 	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
@@ -279,84 +390,6 @@ RunService.RenderStepped:Connect(function()
 	end
 end)
 
-local SpeedHeading = Instance.new("TextLabel")
-SpeedHeading.Name = "SpeedHeading"
-SpeedHeading.Size = UDim2.new(1, 0, 0, 30)
-SpeedHeading.Position = UDim2.new(0, 0, 0, 0)
-SpeedHeading.BackgroundTransparency = 1
-SpeedHeading.Text = "Speed"
-SpeedHeading.Font = UIFont
-SpeedHeading.TextSize = 22
-SpeedHeading.TextColor3 = Color3.fromRGB(255, 255, 255)
-SpeedHeading.TextXAlignment = Enum.TextXAlignment.Left
-SpeedHeading.Parent = PlayerPage
-
-local SpeedStrengthRow = Instance.new("Frame")
-SpeedStrengthRow.Name = "SpeedStrengthRow"
-SpeedStrengthRow.Size = UDim2.new(1, 0, 0, 44)
-SpeedStrengthRow.Position = UDim2.new(0, 0, 0, 40)
-SpeedStrengthRow.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-SpeedStrengthRow.BackgroundTransparency = 0.5
-SpeedStrengthRow.BorderSizePixel = 0
-SpeedStrengthRow.Parent = PlayerPage
-Instance.new("UICorner", SpeedStrengthRow).CornerRadius = UDim.new(0, 8)
-
-local SpeedStrengthLabel = Instance.new("TextLabel")
-SpeedStrengthLabel.Name = "SpeedStrengthLabel"
-SpeedStrengthLabel.Size = UDim2.new(0, 160, 1, 0)
-SpeedStrengthLabel.Position = UDim2.new(0, 16, 0, 0)
-SpeedStrengthLabel.BackgroundTransparency = 1
-SpeedStrengthLabel.Text = "Speed Strength"
-SpeedStrengthLabel.Font = UIFont
-SpeedStrengthLabel.TextSize = 16
-SpeedStrengthLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-SpeedStrengthLabel.TextXAlignment = Enum.TextXAlignment.Left
-SpeedStrengthLabel.TextYAlignment = Enum.TextYAlignment.Center
-SpeedStrengthLabel.Parent = SpeedStrengthRow
-
-local SpeedInput = Instance.new("TextBox")
-SpeedInput.Name = "SpeedInput"
-SpeedInput.Size = UDim2.new(0, 70, 0, 30)
-SpeedInput.Position = UDim2.new(1, -176, 0.5, -15)
-SpeedInput.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-SpeedInput.BackgroundTransparency = 0.2
-SpeedInput.BorderSizePixel = 0
-SpeedInput.ClearTextOnFocus = false
-SpeedInput.Text = tostring(SpeedValue)
-SpeedInput.Font = UIFont
-SpeedInput.TextSize = 16
-SpeedInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-SpeedInput.Parent = SpeedStrengthRow
-Instance.new("UICorner", SpeedInput).CornerRadius = UDim.new(0, 6)
-
-local SpeedToggle = Instance.new("TextButton")
-SpeedToggle.Name = "SpeedToggle"
-SpeedToggle.Size = UDim2.new(0, 80, 0, 30)
-SpeedToggle.Position = UDim2.new(1, -96, 0.5, -15)
-SpeedToggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-SpeedToggle.BackgroundTransparency = 0.2
-SpeedToggle.BorderSizePixel = 0
-SpeedToggle.Text = "Off"
-SpeedToggle.Font = UIFont
-SpeedToggle.TextSize = 16
-SpeedToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-SpeedToggle.Parent = SpeedStrengthRow
-Instance.new("UICorner", SpeedToggle).CornerRadius = UDim.new(0, 6)
-
-local SpeedModeButton = Instance.new("TextButton")
-SpeedModeButton.Name = "SpeedModeButton"
-SpeedModeButton.Size = UDim2.new(1, 0, 0, 40)
-SpeedModeButton.Position = UDim2.new(0, 0, 0, 94)
-SpeedModeButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-SpeedModeButton.BackgroundTransparency = 0.5
-SpeedModeButton.BorderSizePixel = 0
-SpeedModeButton.Text = "Mode: CFrame Movement"
-SpeedModeButton.Font = UIFont
-SpeedModeButton.TextSize = 15
-SpeedModeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-SpeedModeButton.Parent = PlayerPage
-Instance.new("UICorner", SpeedModeButton).CornerRadius = UDim.new(0, 8)
-
 SpeedToggle.MouseButton1Click:Connect(function()
 	PlayClick()
 	SpeedEnabled = not SpeedEnabled
@@ -366,9 +399,7 @@ end)
 
 SpeedInput.FocusLost:Connect(function()
 	local value = tonumber(SpeedInput.Text)
-	if value then
-		SpeedValue = value
-	end
+	if value then SpeedValue = value end
 	SpeedInput.Text = tostring(SpeedValue)
 	ApplySpeed()
 end)
@@ -380,18 +411,133 @@ SpeedModeButton.MouseButton1Click:Connect(function()
 	ApplySpeed()
 end)
 
+-- Jump
+local JumpEnabled = false
+local JumpValue = 50
+local JumpOriginal = nil -- captured Humanoid jump settings, restored exactly when toggled off
+
+local JumpInput, JumpToggle = CreateStrengthSection(PlayerPage, "Jump", "Jump Strength", 122, JumpValue)
+
+local function ApplyJump()
+	local character = Player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return end
+	if JumpEnabled then
+		if not JumpOriginal then
+			JumpOriginal = {
+				UseJumpPower = humanoid.UseJumpPower,
+				JumpPower = humanoid.JumpPower,
+				JumpHeight = humanoid.JumpHeight,
+			}
+		end
+		humanoid.UseJumpPower = true
+		humanoid.JumpPower = JumpValue
+	elseif JumpOriginal then
+		humanoid.UseJumpPower = JumpOriginal.UseJumpPower
+		humanoid.JumpPower = JumpOriginal.JumpPower
+		humanoid.JumpHeight = JumpOriginal.JumpHeight
+	end
+end
+
+JumpToggle.MouseButton1Click:Connect(function()
+	PlayClick()
+	JumpEnabled = not JumpEnabled
+	JumpToggle.Text = JumpEnabled and "On" or "Off"
+	ApplyJump()
+end)
+
+JumpInput.FocusLost:Connect(function()
+	local value = tonumber(JumpInput.Text)
+	if value then JumpValue = value end
+	JumpInput.Text = tostring(JumpValue)
+	if JumpEnabled then ApplyJump() end
+end)
+
+-- Fly
+local FlyEnabled = false
+local FlyValue = 3
+local FlyGyro = nil
+
+local FlyInput, FlyToggle = CreateStrengthSection(PlayerPage, "Fly", "Fly Strength", 202, FlyValue)
+
+local function StopFly()
+	if FlyGyro then
+		FlyGyro:Destroy()
+		FlyGyro = nil
+	end
+end
+
+local function StartFly()
+	local character = Player.Character
+	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+	if not rootPart then return end
+	StopFly()
+	local gyro = Instance.new("BodyGyro")
+	gyro.Name = "SerenityFlyGyro"
+	gyro.MaxTorque = Vector3.new(400000, 400000, 400000)
+	gyro.P = 10000
+	gyro.CFrame = rootPart.CFrame
+	gyro.Parent = rootPart
+	FlyGyro = gyro
+end
+
+local flyRenderConnection = RunService.RenderStepped:Connect(function()
+	if not (FlyEnabled and FlyGyro and FlyGyro.Parent) then return end
+	local character = Player.Character
+	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+	local camera = workspace.CurrentCamera
+	if not (rootPart and camera) then return end
+	local moveDir = Vector3.new(0, 0, 0)
+	if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir += camera.CFrame.LookVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir -= camera.CFrame.LookVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir -= camera.CFrame.RightVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir += camera.CFrame.RightVector end
+	if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir += Vector3.new(0, 1, 0) end
+	if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir -= Vector3.new(0, 1, 0) end
+	if moveDir.Magnitude > 0 then
+		rootPart.CFrame = rootPart.CFrame + (moveDir * (FlyValue / 50))
+	end
+	local _, yaw = camera.CFrame:ToOrientation()
+	FlyGyro.CFrame = CFrame.new(rootPart.Position) * CFrame.Angles(0, yaw, 0)
+	rootPart.Velocity = Vector3.new(0, 0, 0)
+	rootPart.AssemblyAngularVelocity = Vector3.zero
+end)
+
+FlyToggle.MouseButton1Click:Connect(function()
+	PlayClick()
+	FlyEnabled = not FlyEnabled
+	FlyToggle.Text = FlyEnabled and "On" or "Off"
+	if FlyEnabled then StartFly() else StopFly() end
+end)
+
+FlyInput.FocusLost:Connect(function()
+	local value = tonumber(FlyInput.Text)
+	if value then FlyValue = value end
+	FlyInput.Text = tostring(FlyValue)
+end)
+
+-- Re-apply active effects whenever the character (re)spawns.
+local characterAddedConnection = Player.CharacterAdded:Connect(function()
+	task.wait(0.1)
+	ApplySpeed()
+	JumpOriginal = nil
+	if JumpEnabled then ApplyJump() end
+	if FlyEnabled then StartFly() end
+end)
+
 SelectTab("Home")
 
 -- Minimize: hardcoded to Left Control, not user-configurable. Everything below the
--- header (divider, tabs, content) is explicitly hidden while minimized so nothing peeks
--- past the clipped frame.
+-- header (dividers, tabs, content) is explicitly hidden while minimized so nothing
+-- peeks past the clipped frame.
 local MinimizeKeybind = Enum.KeyCode.LeftControl
 local minimized = false
 
 local function ToggleGUI()
 	minimized = not minimized
-	Divider.Visible = not minimized
+	HeaderDivider.Visible = not minimized
 	TabBar.Visible = not minimized
+	TabDivider.Visible = not minimized
 	ContentArea.Visible = not minimized
 	TweenService:Create(MainFrame, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
 		Size = minimized and MINI_SIZE or FULL_SIZE,
@@ -401,6 +547,8 @@ end
 MiniButton.MouseButton1Click:Connect(function() PlayClick() ToggleGUI() end)
 
 -- Silent unbind-able destroy key (Right Control) -- no button, no prompt, no sound.
+-- Reverses every active effect (Speed/Jump/Fly, whichever mode) before tearing down, so
+-- nothing lingers on the character no matter what was toggled on when this fires.
 local DestroyKeybind = Enum.KeyCode.RightControl
 local mainInputConnection
 local dragChangedConnection
@@ -408,6 +556,26 @@ local dragChangedConnection
 local function DestroyGui()
 	if mainInputConnection then mainInputConnection:Disconnect() end
 	if dragChangedConnection then dragChangedConnection:Disconnect() end
+	if characterAddedConnection then characterAddedConnection:Disconnect() end
+	if speedRenderConnection then speedRenderConnection:Disconnect() end
+	if flyRenderConnection then flyRenderConnection:Disconnect() end
+
+	SpeedEnabled = false
+	JumpEnabled = false
+	FlyEnabled = false
+	StopFly()
+
+	local character = Player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.WalkSpeed = DEFAULT_WALKSPEED
+		if JumpOriginal then
+			humanoid.UseJumpPower = JumpOriginal.UseJumpPower
+			humanoid.JumpPower = JumpOriginal.JumpPower
+			humanoid.JumpHeight = JumpOriginal.JumpHeight
+		end
+	end
+
 	ScreenGui:Destroy()
 end
 
@@ -462,7 +630,7 @@ Instance.new("UICorner", SplashFrame).CornerRadius = UDim.new(0, 14)
 local SplashImage = Instance.new("ImageLabel")
 SplashImage.Name = "SplashImage"
 SplashImage.AnchorPoint = Vector2.new(0.5, 0.5)
-SplashImage.Position = UDim2.new(0.5, 0, 0, 150)
+SplashImage.Position = UDim2.new(0.5, 0, 0, 155)
 SplashImage.Size = UDim2.new(0, 0, 0, 0)
 SplashImage.Rotation = -540
 SplashImage.BackgroundTransparency = 1
@@ -474,7 +642,7 @@ local LoadingLabel = Instance.new("TextLabel")
 LoadingLabel.Name = "LoadingLabel"
 LoadingLabel.AnchorPoint = Vector2.new(0.5, 0)
 LoadingLabel.Size = UDim2.new(0, 340, 0, 20)
-LoadingLabel.Position = UDim2.new(0.5, 0, 0, 230)
+LoadingLabel.Position = UDim2.new(0.5, 0, 0, 285)
 LoadingLabel.BackgroundTransparency = 1
 LoadingLabel.Text = ""
 LoadingLabel.Font = UIFont
@@ -486,7 +654,7 @@ local LoadingTrack = Instance.new("Frame")
 LoadingTrack.Name = "LoadingTrack"
 LoadingTrack.AnchorPoint = Vector2.new(0.5, 0)
 LoadingTrack.Size = UDim2.new(0, 300, 0, 6)
-LoadingTrack.Position = UDim2.new(0.5, 0, 0, 262)
+LoadingTrack.Position = UDim2.new(0.5, 0, 0, 315)
 LoadingTrack.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 LoadingTrack.BorderSizePixel = 0
 LoadingTrack.Parent = SplashFrame
@@ -538,7 +706,7 @@ end
 
 task.spawn(function()
 	local spinIn = TweenService:Create(SplashImage, TweenInfo.new(0.7, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-		Size = UDim2.new(0, 120, 0, 120),
+		Size = UDim2.new(0, 220, 0, 220),
 		Rotation = 0,
 		ImageTransparency = 0,
 	})
