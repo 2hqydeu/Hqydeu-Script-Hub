@@ -368,6 +368,29 @@ end
 local Green = Color3.fromRGB(38, 190, 92)
 local Red = Color3.fromRGB(220, 42, 58)
 
+-- Smooths wheel-scrolling on a ScrollingFrame by tweening CanvasPosition toward a running
+-- target instead of relying on Roblox's default instant per-notch jump. Trades away
+-- scrollbar-thumb dragging (ScrollingEnabled has to be off so native handling doesn't
+-- fight the tween) for wheel/touch scrolling that doesn't stutter.
+local function SmoothScroll(scrollFrame, step)
+	step = step or 90
+	scrollFrame.ScrollingEnabled = false
+	local target = scrollFrame.CanvasPosition
+	local function Clamp(pos)
+		local maxX = math.max(0, scrollFrame.AbsoluteCanvasSize.X - scrollFrame.AbsoluteWindowSize.X)
+		local maxY = math.max(0, scrollFrame.AbsoluteCanvasSize.Y - scrollFrame.AbsoluteWindowSize.Y)
+		return Vector2.new(math.clamp(pos.X, 0, maxX), math.clamp(pos.Y, 0, maxY))
+	end
+	local function ScrollBy(delta)
+		target = Clamp(target + Vector2.new(0, delta))
+		TweenService:Create(scrollFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			CanvasPosition = target,
+		}):Play()
+	end
+	scrollFrame.MouseWheelForward:Connect(function() ScrollBy(-step) end)
+	scrollFrame.MouseWheelBackward:Connect(function() ScrollBy(step) end)
+end
+
 -- Only one docked popup (Auto Farm's Pickup Filter, ESP's Options) is ever open at once --
 -- opening one force-closes whichever other one was already open.
 local ManagedPopups = {}
@@ -433,6 +456,7 @@ local function CreatePopupDock(title, width, height)
 	scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	scroll.ZIndex = 41
 	scroll.Parent = dock
+	SmoothScroll(scroll)
 
 	local scrollLayout = Instance.new("UIListLayout")
 	scrollLayout.Padding = UDim.new(0, 10)
@@ -1905,7 +1929,7 @@ do
 	local ESPMobsEnabled = false
 	local SelectedBoxTypes = {}
 	for _, boxType in ipairs(BOX_TYPES) do SelectedBoxTypes[boxType] = false end
-	local KnownStructureTypes = {"Hunter Trap", "Graveyard", "Ancient Ruins"}
+	local KnownStructureTypes = {"Hunter Trap", "Graveyard", "Ancient Ruins", "Cave"}
 	local SelectedStructureTypes = {}
 	for _, name in ipairs(KnownStructureTypes) do SelectedStructureTypes[name] = false end
 	local ESPSelectedRarities = {}
