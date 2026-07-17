@@ -14,6 +14,7 @@ local CoreGui = game:GetService("CoreGui")
 local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VirtualInputManager = game:GetService("VirtualInputManager")
+local TweenService = game:GetService("TweenService")
 
 local Player = Players.LocalPlayer
 local FrameColor = Color3.fromRGB(0x1E, 0x1E, 0x1E)
@@ -359,11 +360,223 @@ local function CreateFeatureRow(y, labelText)
 	return row, toggle
 end
 
--- ESP: this row just opens the Filter popup (further below) -- every actual ESP toggle
+-- Shared popup building blocks: a small docked window (positioned to the left of the
+-- panel, like the old hub's filter dock) with a scrolling body, plus card/chip helpers for
+-- laying out filter sections inside it. Reused by both the Auto Farm pickup Filter popup
+-- and the ESP Options popup further below, so both read as the same visual language
+-- instead of two different one-off designs.
+local Green = Color3.fromRGB(38, 190, 92)
+local Red = Color3.fromRGB(220, 42, 58)
+
+local function CreatePopupDock(title, width, height)
+	local dock = Instance.new("Frame")
+	dock.Name = title:gsub("%s+", "") .. "Popup"
+	dock.Size = UDim2.new(0, width, 0, height)
+	dock.BackgroundColor3 = FrameColor
+	dock.BorderSizePixel = 0
+	dock.Visible = false
+	dock.ZIndex = 40
+	dock.Parent = ScreenGui
+	Instance.new("UICorner", dock).CornerRadius = UDim.new(0, 10)
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = AccentColor
+	stroke.Thickness = 1
+	stroke.Transparency = 0.4
+	stroke.Parent = dock
+
+	local header = Instance.new("TextLabel")
+	header.Size = UDim2.new(1, -40, 0, 26)
+	header.Position = UDim2.new(0, 12, 0, 4)
+	header.BackgroundTransparency = 1
+	header.Text = title
+	header.Font = UIFont
+	header.TextSize = 14
+	header.TextColor3 = Color3.fromRGB(255, 255, 255)
+	header.TextXAlignment = Enum.TextXAlignment.Left
+	header.ZIndex = 41
+	header.Parent = dock
+
+	local closeButton = Instance.new("TextButton")
+	closeButton.Size = UDim2.new(0, 22, 0, 22)
+	closeButton.Position = UDim2.new(1, -30, 0, 6)
+	closeButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	closeButton.BackgroundTransparency = 0.4
+	closeButton.BorderSizePixel = 0
+	closeButton.Text = "×"
+	closeButton.Font = UIFont
+	closeButton.TextSize = 15
+	closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	closeButton.ZIndex = 41
+	closeButton.Parent = dock
+	Instance.new("UICorner", closeButton).CornerRadius = UDim.new(0, 6)
+	closeButton.MouseButton1Click:Connect(function() dock.Visible = false end)
+
+	local scroll = Instance.new("ScrollingFrame")
+	scroll.Size = UDim2.new(1, -16, 1, -38)
+	scroll.Position = UDim2.new(0, 8, 0, 34)
+	scroll.BackgroundTransparency = 1
+	scroll.BorderSizePixel = 0
+	scroll.ScrollBarThickness = 3
+	scroll.ScrollBarImageColor3 = AccentColor
+	scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+	scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	scroll.ZIndex = 41
+	scroll.Parent = dock
+
+	local scrollLayout = Instance.new("UIListLayout")
+	scrollLayout.Padding = UDim.new(0, 10)
+	scrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	scrollLayout.Parent = scroll
+
+	local function UpdatePosition()
+		dock.Position = UDim2.fromOffset(PanelFrame.AbsolutePosition.X - (width + 8), PanelFrame.AbsolutePosition.Y)
+	end
+	PanelFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(UpdatePosition)
+	UpdatePosition()
+
+	return dock, scroll
+end
+
+-- A rounded card with its own header + underline, so each filter section (Mobs/Box/
+-- Structures/Item, or the pickup rarity list) reads as a distinct grouped block instead of
+-- everything running together in one flat list.
+local function CreateFilterCard(scroll, order, title)
+	local card = Instance.new("Frame")
+	card.LayoutOrder = order
+	card.Size = UDim2.new(1, 0, 0, 0)
+	card.AutomaticSize = Enum.AutomaticSize.Y
+	card.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	card.BackgroundTransparency = 0.4
+	card.BorderSizePixel = 0
+	card.ZIndex = 41
+	card.Parent = scroll
+	Instance.new("UICorner", card).CornerRadius = UDim.new(0, 8)
+
+	local padding = Instance.new("UIPadding")
+	padding.PaddingLeft = UDim.new(0, 10)
+	padding.PaddingRight = UDim.new(0, 10)
+	padding.PaddingTop = UDim.new(0, 8)
+	padding.PaddingBottom = UDim.new(0, 10)
+	padding.Parent = card
+
+	local cardLayout = Instance.new("UIListLayout")
+	cardLayout.Padding = UDim.new(0, 8)
+	cardLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	cardLayout.Parent = card
+
+	local header = Instance.new("TextLabel")
+	header.LayoutOrder = 0
+	header.Size = UDim2.new(1, 0, 0, 16)
+	header.BackgroundTransparency = 1
+	header.Text = title
+	header.Font = Enum.Font.GothamBold
+	header.TextSize = 13
+	header.TextColor3 = AccentColor
+	header.TextXAlignment = Enum.TextXAlignment.Left
+	header.ZIndex = 42
+	header.Parent = card
+
+	local divider = Instance.new("Frame")
+	divider.LayoutOrder = 1
+	divider.Size = UDim2.new(1, 0, 0, 1)
+	divider.BackgroundColor3 = AccentColor
+	divider.BackgroundTransparency = 0.7
+	divider.BorderSizePixel = 0
+	divider.ZIndex = 42
+	divider.Parent = card
+
+	return card
+end
+
+local function CreateChipButton(parent, order, text, selected)
+	local button = Instance.new("TextButton")
+	button.LayoutOrder = order
+	button.Size = UDim2.new(0, 66, 0, 22)
+	button.BackgroundColor3 = selected and Green or Red
+	button.BorderSizePixel = 0
+	button.Text = text
+	button.Font = UIFont
+	button.TextSize = 10
+	button.TextColor3 = Color3.fromRGB(255, 255, 255)
+	button.TextTruncate = Enum.TextTruncate.AtEnd
+	button.ZIndex = 42
+	button.Parent = parent
+	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 5)
+	return button
+end
+
+local function CreateChipGrid(card, order)
+	local grid = Instance.new("Frame")
+	grid.LayoutOrder = order
+	grid.Size = UDim2.new(1, 0, 0, 0)
+	grid.AutomaticSize = Enum.AutomaticSize.Y
+	grid.BackgroundTransparency = 1
+	grid.ZIndex = 41
+	grid.Parent = card
+	local gridLayout = Instance.new("UIGridLayout")
+	gridLayout.CellSize = UDim2.new(0, 66, 0, 22)
+	gridLayout.CellPadding = UDim2.new(0, 4, 0, 4)
+	gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	gridLayout.Parent = grid
+	return grid
+end
+
+local function CreateAllNoneRow(card, order, onAll, onNone)
+	local row = Instance.new("Frame")
+	row.LayoutOrder = order
+	row.Size = UDim2.new(1, 0, 0, 22)
+	row.BackgroundTransparency = 1
+	row.ZIndex = 41
+	row.Parent = card
+	local allButton = CreateChipButton(row, 1, "All", true)
+	allButton.Position = UDim2.new(0, 0, 0, 0)
+	allButton.BackgroundColor3 = Green
+	allButton.MouseButton1Click:Connect(onAll)
+	local noneButton = CreateChipButton(row, 2, "None", false)
+	noneButton.Position = UDim2.new(0, 72, 0, 0)
+	noneButton.BackgroundColor3 = Red
+	noneButton.MouseButton1Click:Connect(onNone)
+end
+
+-- Label + On/Off pill, for single-toggle sections (Mobs ESP, Box ESP) instead of a bare
+-- chip sitting alone in an otherwise-empty row.
+local function CreateToggleChipRow(card, order, labelText, initialOn)
+	local row = Instance.new("Frame")
+	row.LayoutOrder = order
+	row.Size = UDim2.new(1, 0, 0, 24)
+	row.BackgroundTransparency = 1
+	row.ZIndex = 41
+	row.Parent = card
+	local rowLabel = Instance.new("TextLabel")
+	rowLabel.Size = UDim2.new(1, -60, 1, 0)
+	rowLabel.BackgroundTransparency = 1
+	rowLabel.Text = labelText
+	rowLabel.Font = UIFont
+	rowLabel.TextSize = 11
+	rowLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+	rowLabel.TextXAlignment = Enum.TextXAlignment.Left
+	rowLabel.ZIndex = 42
+	rowLabel.Parent = row
+	local toggle = Instance.new("TextButton")
+	toggle.Size = UDim2.new(0, 52, 0, 22)
+	toggle.Position = UDim2.new(1, -52, 0.5, -11)
+	toggle.BackgroundColor3 = initialOn and Green or Red
+	toggle.BorderSizePixel = 0
+	toggle.Text = initialOn and "On" or "Off"
+	toggle.Font = UIFont
+	toggle.TextSize = 11
+	toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+	toggle.ZIndex = 42
+	toggle.Parent = row
+	Instance.new("UICorner", toggle).CornerRadius = UDim.new(0, 5)
+	return toggle
+end
+
+-- ESP: this row just opens the Options popup (further below) -- every actual ESP toggle
 -- (Box/Structures/Items/Mobs) and their type/rarity filters live inside that popup instead
 -- of on the page itself.
 local _, ESPToggle = CreateFeatureRow(96, "ESP")
-ESPToggle.Text = "Filter"
+ESPToggle.Text = "Options"
 
 -- Auto Farm: wired to the ported Auto Trap logic further down this file. The row is
 -- grown a bit taller than the standard feature row to fit a phase/kill-count status line.
@@ -422,6 +635,99 @@ local BOX_TYPE_REQUIRED_KEY = {
 local KEY_TOOL_NAMES = {}
 for _, keyName in pairs(BOX_TYPE_REQUIRED_KEY) do
 	KEY_TOOL_NAMES[keyName] = true
+end
+
+-- Pickup rarity filter ("Filter" button next to Auto Farm below): ported back from the
+-- old hub. Discovers the game's own rarity tiers from ReplicatedStorage.Items.Drops, then
+-- gates what ClaimNearbyDrop/FindNearbyClaimPrompt will actually pick up -- key drops
+-- always get claimed regardless of the filter (IsKeyDrop), since Auto Farm needs them for
+-- the boss crates no matter what rarities are toggled off.
+local function DiscoverRarityTiers()
+	local tiers = {}
+	local itemsFolder = ReplicatedStorage:FindFirstChild("Items")
+	local dropsFolder = itemsFolder and itemsFolder:FindFirstChild("Drops")
+	if dropsFolder then
+		for _, child in ipairs(dropsFolder:GetChildren()) do
+			if child:IsA("Folder") then
+				table.insert(tiers, child.Name)
+			end
+		end
+	end
+	return tiers
+end
+local RARITY_TIERS = DiscoverRarityTiers()
+local KNOWN_RARITY_SET = {}
+for _, tier in ipairs(RARITY_TIERS) do
+	KNOWN_RARITY_SET[tier] = true
+end
+
+local function GetDropRarity(part)
+	for _, descendant in ipairs(part:GetDescendants()) do
+		if (descendant:IsA("TextLabel") or descendant:IsA("TextButton")) and KNOWN_RARITY_SET[tostring(descendant.Text)] then
+			return tostring(descendant.Text)
+		end
+	end
+	return nil
+end
+
+local function IsKeyDrop(part)
+	for _, descendant in ipairs(part:GetDescendants()) do
+		if (descendant:IsA("TextLabel") or descendant:IsA("TextButton")) and KEY_TOOL_NAMES[tostring(descendant.Text)] then
+			return true
+		end
+	end
+	return false
+end
+
+local SelectedRarities = {}
+for _, tier in ipairs(RARITY_TIERS) do SelectedRarities[tier] = true end
+
+local function IsRarityAllowed(rarity)
+	if not rarity then return true end
+	return SelectedRarities[rarity] ~= false
+end
+
+local PickupFilterButton = Instance.new("TextButton")
+PickupFilterButton.Name = "PickupFilterButton"
+PickupFilterButton.Size = UDim2.new(0, 44, 0, 22)
+PickupFilterButton.Position = UDim2.new(1, -150, 0, 8)
+PickupFilterButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+PickupFilterButton.BackgroundTransparency = 0.2
+PickupFilterButton.BorderSizePixel = 0
+PickupFilterButton.Text = "Filter"
+PickupFilterButton.Font = UIFont
+PickupFilterButton.TextSize = 10
+PickupFilterButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+PickupFilterButton.Parent = AutoFarmRow
+Instance.new("UICorner", PickupFilterButton).CornerRadius = UDim.new(0, 5)
+
+do
+	local dock, scroll = CreatePopupDock("Pickup Filter", 210, 260)
+	local card = CreateFilterCard(scroll, 1, "Item Rarity")
+	local rarityFilterButtons = {}
+	CreateAllNoneRow(card, 1,
+		function()
+			for _, tier in ipairs(RARITY_TIERS) do SelectedRarities[tier] = true end
+			for _, button in pairs(rarityFilterButtons) do button.BackgroundColor3 = Green end
+		end,
+		function()
+			for _, tier in ipairs(RARITY_TIERS) do SelectedRarities[tier] = false end
+			for _, button in pairs(rarityFilterButtons) do button.BackgroundColor3 = Red end
+		end
+	)
+	local grid = CreateChipGrid(card, 2)
+	for index, tier in ipairs(RARITY_TIERS) do
+		local button = CreateChipButton(grid, index, tier, SelectedRarities[tier] ~= false)
+		button.MouseButton1Click:Connect(function()
+			SelectedRarities[tier] = not (SelectedRarities[tier] ~= false)
+			button.BackgroundColor3 = SelectedRarities[tier] ~= false and Green or Red
+		end)
+		rarityFilterButtons[tier] = button
+	end
+
+	PickupFilterButton.MouseButton1Click:Connect(function()
+		dock.Visible = not dock.Visible
+	end)
 end
 
 local BOX_OPEN_HOLD_DURATION = 3
@@ -547,8 +853,8 @@ local function FindOpenPrompt(box)
 end
 
 local function FindNearbyClaimPrompt(position, radius)
-	-- Rarity filtering was dropped here (no filter dock in this standalone panel); this
-	-- claims any claimable drop in range, matching the old hub's all-rarities-enabled default.
+	-- Key drops always get claimed regardless of the rarity filter (Auto Farm needs them
+	-- for the boss crates no matter what's toggled off in Pickup Filter).
 	local bestPrompt, bestPart, bestDist
 	for _, inst in ipairs(workspace:GetDescendants()) do
 		if inst:IsA("ProximityPrompt") and inst.Enabled then
@@ -557,7 +863,8 @@ local function FindNearbyClaimPrompt(position, radius)
 				local part = inst.Parent
 				if part and part:IsA("BasePart") then
 					local dist = (part.Position - position).Magnitude
-					if dist <= radius and (not bestDist or dist < bestDist) then
+					local allowed = IsKeyDrop(part) or IsRarityAllowed(GetDropRarity(part))
+					if dist <= radius and (not bestDist or dist < bestDist) and allowed then
 						bestDist = dist
 						bestPrompt = inst
 						bestPart = part
@@ -1534,33 +1841,8 @@ do
 		return name
 	end
 
-	local function DiscoverRarityTiers()
-		local tiers = {}
-		local itemsFolder = ReplicatedStorage:FindFirstChild("Items")
-		local dropsFolder = itemsFolder and itemsFolder:FindFirstChild("Drops")
-		if dropsFolder then
-			for _, child in ipairs(dropsFolder:GetChildren()) do
-				if child:IsA("Folder") then
-					table.insert(tiers, child.Name)
-				end
-			end
-		end
-		return tiers
-	end
-	local RARITY_TIERS = DiscoverRarityTiers()
-	local KNOWN_RARITY_SET = {}
-	for _, tier in ipairs(RARITY_TIERS) do
-		KNOWN_RARITY_SET[tier] = true
-	end
-
-	local function GetDropRarity(part)
-		for _, descendant in ipairs(part:GetDescendants()) do
-			if (descendant:IsA("TextLabel") or descendant:IsA("TextButton")) and KNOWN_RARITY_SET[tostring(descendant.Text)] then
-				return tostring(descendant.Text)
-			end
-		end
-		return nil
-	end
+	-- RARITY_TIERS/GetDropRarity are already declared earlier (shared with Auto Farm's
+	-- Pickup Filter) -- reused here for Item ESP instead of re-discovering them.
 
 	local RARITY_COLOR_PRESETS = {
 		Common = Color3.fromRGB(190, 190, 190),
@@ -1946,13 +2228,13 @@ do
 	for slotIndex = 1, STRUCTURE_ALERT_SLOTS do
 		local label = Instance.new("TextLabel")
 		label.Name = "Alert" .. slotIndex
-		label.Size = UDim2.new(0, 320, 0, 24)
-		label.Position = UDim2.new(0.5, -160, 0, 20 + (slotIndex - 1) * 26)
+		label.Size = UDim2.new(0, 400, 0, 32)
+		label.Position = UDim2.new(0.5, -200, 0, 90 + (slotIndex - 1) * 36)
 		label.BackgroundTransparency = 1
 		label.Text = ""
 		label.RichText = true
-		label.Font = Enum.Font.GothamBold
-		label.TextSize = 13
+		label.Font = Enum.Font.GothamBlack
+		label.TextSize = 19
 		label.TextColor3 = Color3.fromRGB(255, 255, 255)
 		label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 		label.TextStrokeTransparency = 1
@@ -2085,168 +2367,15 @@ do
 		if not StructureNotificationsEnabled then ClearStructureAlerts() end
 	end)
 
-	-- Filter popup: opened by the ESP row's "Filter" button. UIListLayout/UIGridLayout
-	-- handle all the positioning here (including the dynamically-growing structure type
-	-- list) instead of the old hub's manually-computed row/column offsets.
-	local Green = Color3.fromRGB(38, 190, 92)
-	local Red = Color3.fromRGB(220, 42, 58)
-
-	local FilterPopup = Instance.new("Frame")
-	FilterPopup.Name = "UndeadExpeditionFilterPopup"
-	FilterPopup.Size = UDim2.new(0, 240, 0, 320)
-	FilterPopup.BackgroundColor3 = FrameColor
-	FilterPopup.BorderSizePixel = 0
-	FilterPopup.Visible = false
-	FilterPopup.ZIndex = 40
-	FilterPopup.Parent = ScreenGui
-	Instance.new("UICorner", FilterPopup).CornerRadius = UDim.new(0, 10)
-	local filterStroke = Instance.new("UIStroke")
-	filterStroke.Color = AccentColor
-	filterStroke.Thickness = 1
-	filterStroke.Transparency = 0.4
-	filterStroke.Parent = FilterPopup
-
-	local function UpdateFilterPopupPosition()
-		FilterPopup.Position = UDim2.fromOffset(PanelFrame.AbsolutePosition.X - 248, PanelFrame.AbsolutePosition.Y)
-	end
-	PanelFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(UpdateFilterPopupPosition)
-	UpdateFilterPopupPosition()
-
-	local filterHeader = Instance.new("TextLabel")
-	filterHeader.Size = UDim2.new(1, -40, 0, 26)
-	filterHeader.Position = UDim2.new(0, 12, 0, 4)
-	filterHeader.BackgroundTransparency = 1
-	filterHeader.Text = "ESP Filters"
-	filterHeader.Font = UIFont
-	filterHeader.TextSize = 14
-	filterHeader.TextColor3 = Color3.fromRGB(255, 255, 255)
-	filterHeader.TextXAlignment = Enum.TextXAlignment.Left
-	filterHeader.ZIndex = 41
-	filterHeader.Parent = FilterPopup
-
-	local filterCloseButton = Instance.new("TextButton")
-	filterCloseButton.Size = UDim2.new(0, 22, 0, 22)
-	filterCloseButton.Position = UDim2.new(1, -30, 0, 6)
-	filterCloseButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-	filterCloseButton.BackgroundTransparency = 0.4
-	filterCloseButton.BorderSizePixel = 0
-	filterCloseButton.Text = "×"
-	filterCloseButton.Font = UIFont
-	filterCloseButton.TextSize = 15
-	filterCloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-	filterCloseButton.ZIndex = 41
-	filterCloseButton.Parent = FilterPopup
-	Instance.new("UICorner", filterCloseButton).CornerRadius = UDim.new(0, 6)
-	filterCloseButton.MouseButton1Click:Connect(function() FilterPopup.Visible = false end)
-
-	local filterScroll = Instance.new("ScrollingFrame")
-	filterScroll.Size = UDim2.new(1, -16, 1, -38)
-	filterScroll.Position = UDim2.new(0, 8, 0, 34)
-	filterScroll.BackgroundTransparency = 1
-	filterScroll.BorderSizePixel = 0
-	filterScroll.ScrollBarThickness = 3
-	filterScroll.ScrollBarImageColor3 = AccentColor
-	filterScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-	filterScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	filterScroll.ZIndex = 41
-	filterScroll.Parent = FilterPopup
-
-	local scrollLayout = Instance.new("UIListLayout")
-	scrollLayout.Padding = UDim.new(0, 10)
-	scrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	scrollLayout.Parent = filterScroll
-
-	local function CreateFilterSectionLabel(order, text)
-		local label = Instance.new("TextLabel")
-		label.LayoutOrder = order
-		label.Size = UDim2.new(1, 0, 0, 16)
-		label.BackgroundTransparency = 1
-		label.Text = text
-		label.Font = UIFont
-		label.TextSize = 12
-		label.TextColor3 = AccentColor
-		label.TextXAlignment = Enum.TextXAlignment.Left
-		label.ZIndex = 41
-		label.Parent = filterScroll
-		return label
-	end
-
-	local function CreateChipButton(parent, text, selected)
-		local button = Instance.new("TextButton")
-		button.Size = UDim2.new(0, 68, 0, 22)
-		button.BackgroundColor3 = selected and Green or Red
-		button.BorderSizePixel = 0
-		button.Font = UIFont
-		button.TextSize = 10
-		button.TextColor3 = Color3.fromRGB(255, 255, 255)
-		button.TextTruncate = Enum.TextTruncate.AtEnd
-		button.ZIndex = 41
-		button.Parent = parent
-		Instance.new("UICorner", button).CornerRadius = UDim.new(0, 5)
-		return button
-	end
-
-	local function CreateChipGrid(order)
-		local grid = Instance.new("Frame")
-		grid.LayoutOrder = order
-		grid.Size = UDim2.new(1, 0, 0, 0)
-		grid.AutomaticSize = Enum.AutomaticSize.Y
-		grid.BackgroundTransparency = 1
-		grid.ZIndex = 41
-		grid.Parent = filterScroll
-		local gridLayout = Instance.new("UIGridLayout")
-		gridLayout.CellSize = UDim2.new(0, 68, 0, 22)
-		gridLayout.CellPadding = UDim2.new(0, 4, 0, 4)
-		gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
-		gridLayout.Parent = grid
-		return grid
-	end
-
-	local function CreateAllNoneRow(order, onAll, onNone)
-		local row = Instance.new("Frame")
-		row.LayoutOrder = order
-		row.Size = UDim2.new(1, 0, 0, 22)
-		row.BackgroundTransparency = 1
-		row.ZIndex = 41
-		row.Parent = filterScroll
-		local allButton = Instance.new("TextButton")
-		allButton.Size = UDim2.new(0, 68, 0, 22)
-		allButton.Position = UDim2.new(0, 0, 0, 0)
-		allButton.BackgroundColor3 = Green
-		allButton.BorderSizePixel = 0
-		allButton.Text = "All"
-		allButton.Font = UIFont
-		allButton.TextSize = 10
-		allButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-		allButton.ZIndex = 41
-		allButton.Parent = row
-		Instance.new("UICorner", allButton).CornerRadius = UDim.new(0, 5)
-		allButton.MouseButton1Click:Connect(onAll)
-		local noneButton = Instance.new("TextButton")
-		noneButton.Size = UDim2.new(0, 68, 0, 22)
-		noneButton.Position = UDim2.new(0, 76, 0, 0)
-		noneButton.BackgroundColor3 = Red
-		noneButton.BorderSizePixel = 0
-		noneButton.Text = "None"
-		noneButton.Font = UIFont
-		noneButton.TextSize = 10
-		noneButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-		noneButton.ZIndex = 41
-		noneButton.Parent = row
-		Instance.new("UICorner", noneButton).CornerRadius = UDim.new(0, 5)
-		noneButton.MouseButton1Click:Connect(onNone)
-	end
+	-- ESP Options popup: opened by the ESP row's "Options" button. Built from the same
+	-- shared dock/card/chip helpers as the Auto Farm Pickup Filter popup, so both read as
+	-- one consistent design instead of two different one-off layouts -- each category
+	-- (Mobs/Box/Structures/Item) gets its own clearly separated card with a proper header.
+	local ESPDock, ESPScroll = CreatePopupDock("ESP Options", 250, 360)
 
 	-- Mobs ESP (single on/off, no filters)
-	CreateFilterSectionLabel(1, "Mobs ESP")
-	local mobsToggleRow = Instance.new("Frame")
-	mobsToggleRow.LayoutOrder = 2
-	mobsToggleRow.Size = UDim2.new(1, 0, 0, 22)
-	mobsToggleRow.BackgroundTransparency = 1
-	mobsToggleRow.ZIndex = 41
-	mobsToggleRow.Parent = filterScroll
-	local mobsEspToggleButton = CreateChipButton(mobsToggleRow, "Off", false)
-	mobsEspToggleButton.Size = UDim2.new(0, 68, 0, 22)
+	local mobsCard = CreateFilterCard(ESPScroll, 1, "Mobs ESP")
+	local mobsEspToggleButton = CreateToggleChipRow(mobsCard, 2, "Highlight enemies", ESPMobsEnabled)
 	mobsEspToggleButton.MouseButton1Click:Connect(function()
 		ESPMobsEnabled = not ESPMobsEnabled
 		mobsEspToggleButton.Text = ESPMobsEnabled and "On" or "Off"
@@ -2254,26 +2383,18 @@ do
 	end)
 
 	-- Box ESP
-	CreateFilterSectionLabel(3, "Box ESP")
-	local boxToggleRow = Instance.new("Frame")
-	boxToggleRow.LayoutOrder = 4
-	boxToggleRow.Size = UDim2.new(1, 0, 0, 22)
-	boxToggleRow.BackgroundTransparency = 1
-	boxToggleRow.ZIndex = 41
-	boxToggleRow.Parent = filterScroll
-	local boxEspToggleButton = CreateChipButton(boxToggleRow, "Off", false)
-	boxEspToggleButton.Size = UDim2.new(0, 68, 0, 22)
+	local boxCard = CreateFilterCard(ESPScroll, 2, "Box ESP")
+	local boxEspToggleButton = CreateToggleChipRow(boxCard, 2, "Highlight crates", BoxESPEnabled)
 	boxEspToggleButton.MouseButton1Click:Connect(function()
 		BoxESPEnabled = not BoxESPEnabled
 		boxEspToggleButton.Text = BoxESPEnabled and "On" or "Off"
 		boxEspToggleButton.BackgroundColor3 = BoxESPEnabled and Green or Red
 		if not BoxESPEnabled then UpdateBoxESP() end
 	end)
-	local boxGrid = CreateChipGrid(5)
+	local boxGrid = CreateChipGrid(boxCard, 3)
 	local boxFilterButtons = {}
-	for _, boxType in ipairs(BOX_TYPES) do
-		local button = CreateChipButton(boxGrid, boxType, SelectedBoxTypes[boxType] ~= false)
-		button.Text = boxType
+	for index, boxType in ipairs(BOX_TYPES) do
+		local button = CreateChipButton(boxGrid, index, boxType, SelectedBoxTypes[boxType] ~= false)
 		button.MouseButton1Click:Connect(function()
 			SelectedBoxTypes[boxType] = not (SelectedBoxTypes[boxType] ~= false)
 			button.BackgroundColor3 = SelectedBoxTypes[boxType] ~= false and Green or Red
@@ -2282,8 +2403,8 @@ do
 	end
 
 	-- Structures ESP (dynamic, grows as new structure types are seen)
-	CreateFilterSectionLabel(6, "Structures ESP")
-	CreateAllNoneRow(7,
+	local structuresCard = CreateFilterCard(ESPScroll, 3, "Structures ESP")
+	CreateAllNoneRow(structuresCard, 2,
 		function()
 			for _, name in ipairs(KnownStructureTypes) do SelectedStructureTypes[name] = true end
 		end,
@@ -2291,10 +2412,12 @@ do
 			for _, name in ipairs(KnownStructureTypes) do SelectedStructureTypes[name] = false end
 		end
 	)
-	local structuresGrid = CreateChipGrid(8)
+	local structuresGrid = CreateChipGrid(structuresCard, 3)
 	local structureFilterButtons = {}
+	local structureFilterCount = 0
 	local function CreateStructureFilterButton(name)
-		local button = CreateChipButton(structuresGrid, name, SelectedStructureTypes[name] == true)
+		structureFilterCount = structureFilterCount + 1
+		local button = CreateChipButton(structuresGrid, structureFilterCount, name, SelectedStructureTypes[name] == true)
 		button.MouseButton1Click:Connect(function()
 			SelectedStructureTypes[name] = not (SelectedStructureTypes[name] == true)
 			button.BackgroundColor3 = SelectedStructureTypes[name] == true and Green or Red
@@ -2319,8 +2442,8 @@ do
 	end
 
 	-- Item ESP (by rarity, discovered from the game's own drop tiers)
-	CreateFilterSectionLabel(9, "Item ESP")
-	CreateAllNoneRow(10,
+	local itemsCard = CreateFilterCard(ESPScroll, 4, "Item ESP")
+	CreateAllNoneRow(itemsCard, 2,
 		function()
 			for _, tier in ipairs(RARITY_TIERS) do ESPSelectedRarities[tier] = true end
 		end,
@@ -2328,10 +2451,10 @@ do
 			for _, tier in ipairs(RARITY_TIERS) do ESPSelectedRarities[tier] = false end
 		end
 	)
-	local itemsGrid = CreateChipGrid(11)
+	local itemsGrid = CreateChipGrid(itemsCard, 3)
 	local itemFilterButtons = {}
-	for _, tier in ipairs(RARITY_TIERS) do
-		local button = CreateChipButton(itemsGrid, tier, ESPSelectedRarities[tier] == true)
+	for index, tier in ipairs(RARITY_TIERS) do
+		local button = CreateChipButton(itemsGrid, index, tier, ESPSelectedRarities[tier] == true)
 		button.MouseButton1Click:Connect(function()
 			ESPSelectedRarities[tier] = not (ESPSelectedRarities[tier] == true)
 			button.BackgroundColor3 = ESPSelectedRarities[tier] == true and Green or Red
@@ -2356,14 +2479,11 @@ do
 	end
 
 	ESPToggle.MouseButton1Click:Connect(function()
-		FilterPopup.Visible = not FilterPopup.Visible
-		if FilterPopup.Visible then
-			UpdateFilterPopupPosition()
-			RefreshAllChipColors()
-		end
+		ESPDock.Visible = not ESPDock.Visible
+		if ESPDock.Visible then RefreshAllChipColors() end
 	end)
 
-	-- Periodic scan: keeps ESP highlights, distances, and the filter dock's growing
+	-- Periodic scan: keeps ESP highlights, distances, and the options dock's growing
 	-- structure type list up to date without needing every click to trigger a refresh.
 	local lastESPScan = 0
 	RunService.Heartbeat:Connect(function()
@@ -2379,9 +2499,9 @@ do
 		end
 	end)
 
-	-- Close: hide the filter popup and clear ESP/alerts along with everything else.
+	-- Close: hide the options dock and clear ESP/alerts along with everything else.
 	CloseButton.MouseButton1Click:Connect(function()
-		FilterPopup.Visible = false
+		ESPDock.Visible = false
 		StructureNotificationsEnabled = false
 		ClearStructureAlerts()
 	end)
