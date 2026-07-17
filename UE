@@ -308,9 +308,13 @@ local TRAP_HUNTER_SCAN_WINDOW = 10
 local TRAP_TRIGGER_ATTEMPTS = 3
 local TRAP_COMBAT_FIRE_INTERVAL = 0.2
 local TRAP_COMBAT_STANDOFF = 6
+local TRAP_COMBAT_STANDOFF_MIN = 3
+local TRAP_COMBAT_CLOSE_STEP = 1.5
+local TRAP_COMBAT_STALL_TIMEOUT = 1.5
 local TRAP_RESPAWN_WAIT = 1
 local TRAP_IDLE_WAIT = 0.5
 local TRAP_WAVE_CLEAR_GRACE = 4
+local KEY_EQUIP_RETRY_WINDOW = 3
 
 local function PlayerRoot()
 	local character = Player and Player.Character
@@ -490,7 +494,15 @@ local function HoldOnBox(target, targetRoot, options)
 
 	local requiredKey = BOX_TYPE_REQUIRED_KEY[BoxType(target)]
 	if requiredKey then
-		if not EquipKeyTool(requiredKey) then
+		-- the key drop can take a moment to replicate into the backpack after ClaimNearbyDrop
+		-- fires the claim prompt, so retry for a few seconds instead of giving up on the first miss
+		local keyDeadline = os.clock() + KEY_EQUIP_RETRY_WINDOW
+		local haveKey = EquipKeyTool(requiredKey)
+		while not haveKey and os.clock() < keyDeadline do
+			task.wait(0.25)
+			haveKey = EquipKeyTool(requiredKey)
+		end
+		if not haveKey then
 			warn(logPrefix .. " missing " .. requiredKey .. " for " .. tostring(target.Name))
 			if statusLabel then statusLabel.Text = "Need " .. requiredKey end
 			return false
@@ -744,6 +756,11 @@ local function FightEnemies(trapPosition, nameFilters)
 	end
 	local hadRoot = true
 	local emptySince = nil
+	-- Per-target adaptive standoff: some enemies (Grounder, Pharaon/mummy) have a bigger
+	-- hitbox or longer reach than Hunter, so a fixed 6-stud standoff can leave us close
+	-- enough to get hit but too far to land our own attack. If a target's health hasn't
+	-- dropped in a while, step closer instead of camping at a distance that never connects.
+	local currentTarget, currentStandoff, lastHealth, lastDamageAt
 	while AutoFarmEnabled and ScreenGui.Parent do
 		local enemies = GetActiveEnemies(nameFilters)
 		if #enemies == 0 then
@@ -781,9 +798,26 @@ local function FightEnemies(trapPosition, nameFilters)
 					local target = enemies[1]
 					local targetRoot = EnemyRoot(target)
 					if targetRoot then
+						local humanoid = target:FindFirstChildOfClass("Humanoid")
+						local health = humanoid and humanoid.Health
+						local now = os.clock()
+
+						if target ~= currentTarget then
+							currentTarget = target
+							currentStandoff = TRAP_COMBAT_STANDOFF
+							lastHealth = health
+							lastDamageAt = now
+						elseif health and lastHealth and health < lastHealth - 0.01 then
+							lastHealth = health
+							lastDamageAt = now
+						elseif lastDamageAt and now - lastDamageAt >= TRAP_COMBAT_STALL_TIMEOUT and currentStandoff > TRAP_COMBAT_STANDOFF_MIN then
+							currentStandoff = math.max(TRAP_COMBAT_STANDOFF_MIN, currentStandoff - TRAP_COMBAT_CLOSE_STEP)
+							lastDamageAt = now
+						end
+
 						local flatOffset = Vector3.new(root.Position.X - targetRoot.Position.X, 0, root.Position.Z - targetRoot.Position.Z)
-						if flatOffset.Magnitude < 0.1 then flatOffset = Vector3.new(TRAP_COMBAT_STANDOFF, 0, 0) end
-						local standPosition = targetRoot.Position + flatOffset.Unit * TRAP_COMBAT_STANDOFF
+						if flatOffset.Magnitude < 0.1 then flatOffset = Vector3.new(currentStandoff, 0, 0) end
+						local standPosition = targetRoot.Position + flatOffset.Unit * currentStandoff
 						local facePosition = Vector3.new(standPosition.X, targetRoot.Position.Y, standPosition.Z)
 						local lookAt = Vector3.new(targetRoot.Position.X, facePosition.Y, targetRoot.Position.Z)
 						if (lookAt - facePosition).Magnitude > 0.05 then
