@@ -393,6 +393,12 @@ HeaderBackdrop.Position = UDim2.new(0, 0, 0, 0)
 HeaderBackdrop.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 HeaderBackdrop.BorderSizePixel = 0
 HeaderBackdrop.Parent = MainFrame
+-- ClipsDescendants clips to MainFrame's rectangular bounds, not its rounded shape, so
+-- without its own UICorner this showed square corners poking out past the window's
+-- rounded top. Radius matches MainCorner so the top edge lines up with the window exactly.
+local headerBackdropCorner = Instance.new("UICorner")
+headerBackdropCorner.CornerRadius = UDim.new(0, 14)
+headerBackdropCorner.Parent = HeaderBackdrop
 
 -- Header: title emblem (same mark as the splash screen, in place of the "Serenity" text),
 -- live local clock underneath it, minimize, and a plain "L Ctrl" hint -- all top-anchored
@@ -403,8 +409,12 @@ TitleEmblem.Name = "TitleEmblem"
 -- Wide banner instead of a tall square -- sits entirely above TimeLabel (which starts at
 -- y=36) instead of overlapping it. ScaleType.Fit keeps the mark's own proportions inside
 -- this box, so it isn't stretched even though the box itself is wide and short.
-TitleEmblem.Size = UDim2.new(0, 150, 0, 32)
-TitleEmblem.Position = UDim2.new(0, 6, 0, 2)
+-- AnchorPoint(0.5, 0) + matching X on TimeLabel below keeps the two centered on the same
+-- vertical axis, so they read as one stacked unit instead of the emblem sitting off to
+-- one side while the timer anchors to the left edge.
+TitleEmblem.AnchorPoint = Vector2.new(0.5, 0)
+TitleEmblem.Size = UDim2.new(0, 140, 0, 30)
+TitleEmblem.Position = UDim2.new(0, 90, 0, 4)
 TitleEmblem.BackgroundTransparency = 1
 TitleEmblem.Image = "rbxassetid://76652375830768"
 TitleEmblem.ScaleType = Enum.ScaleType.Fit
@@ -412,14 +422,15 @@ TitleEmblem.Parent = MainFrame
 
 local TimeLabel = Instance.new("TextLabel")
 TimeLabel.Name = "TimeLabel"
-TimeLabel.Size = UDim2.new(0, 200, 0, 14)
-TimeLabel.Position = UDim2.new(0, 18, 0, 36)
+TimeLabel.AnchorPoint = Vector2.new(0.5, 0)
+TimeLabel.Size = UDim2.new(0, 160, 0, 12)
+TimeLabel.Position = UDim2.new(0, 90, 0, 36)
 TimeLabel.BackgroundTransparency = 1
 TimeLabel.Text = os.date("%I:%M:%S %p")
 TimeLabel.Font = UIFont
-TimeLabel.TextSize = 11
+TimeLabel.TextSize = 10
 TimeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-TimeLabel.TextXAlignment = Enum.TextXAlignment.Left
+TimeLabel.TextXAlignment = Enum.TextXAlignment.Center
 TimeLabel.Parent = MainFrame
 
 task.spawn(function()
@@ -520,23 +531,12 @@ end
 -- Trade-off: dragging the scrollbar thumb itself no longer works (ScrollingEnabled has to
 -- be off to stop native wheel handling from fighting the tween) -- wheel and touch still
 -- do, which covers how these lists actually get used.
-local function SmoothScroll(scrollFrame, step)
-	step = step or 90
-	scrollFrame.ScrollingEnabled = false
-	local target = scrollFrame.CanvasPosition
-	local function Clamp(pos)
-		local maxX = math.max(0, scrollFrame.AbsoluteCanvasSize.X - scrollFrame.AbsoluteWindowSize.X)
-		local maxY = math.max(0, scrollFrame.AbsoluteCanvasSize.Y - scrollFrame.AbsoluteWindowSize.Y)
-		return Vector2.new(math.clamp(pos.X, 0, maxX), math.clamp(pos.Y, 0, maxY))
-	end
-	local function ScrollBy(delta)
-		target = Clamp(target + Vector2.new(0, delta))
-		TweenService:Create(scrollFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			CanvasPosition = target,
-		}):Play()
-	end
-	scrollFrame.MouseWheelForward:Connect(function() ScrollBy(-step) end)
-	scrollFrame.MouseWheelBackward:Connect(function() ScrollBy(step) end)
+-- Disabling native ScrollingEnabled to replace wheel input with a tween turned out to kill
+-- scrolling entirely in-game (neither wheel nor the scrollbar worked) rather than just
+-- losing thumb-drag as expected, so this is back to native scrolling. Left as a named
+-- no-op (rather than ripping out every call site) in case a safer smoothing approach is
+-- worth trying later.
+local function SmoothScroll(_scrollFrame, _step)
 end
 
 -- Icon + label are grouped as one horizontally-centered unit (via a nested UIListLayout)
@@ -2080,17 +2080,12 @@ do
 
 	-- Opens the floating quick-teleport popup (further below) -- same Players/Waypoints
 	-- data as this tab -- without needing to have the hub's Teleport tab open at all.
-	-- TogglePopup itself isn't defined until the popup is actually built further down, so
-	-- it's forward-declared here and the button just calls whatever it ends up pointing to.
+	-- The button's actual click handler is wired down where PopupFrame is built (not here)
+	-- -- both it and the button already exist by that point, so there's no forward-reference
+	-- indirection for a click to silently fall through.
 	PopupKeybind = Enum.KeyCode.LeftAlt
-	local TogglePopup
-	local PopupToggleButton
-	PopupToggleButton = CreateToggleRow(TeleportPage, 0, "TPMenuKeybind", function(k) PopupKeybind = k end, "TP Menu Popup", Enum.KeyCode.LeftAlt)
+	local PopupToggleButton = CreateToggleRow(TeleportPage, 0, "TPMenuKeybind", function(k) PopupKeybind = k end, "TP Menu Popup", Enum.KeyCode.LeftAlt)
 	PopupToggleButton.Text = "Closed"
-	PopupToggleButton.MouseButton1Click:Connect(function()
-		PlayClick()
-		if TogglePopup then TogglePopup() end
-	end)
 
 	local PlayersTabButton = Instance.new("TextButton")
 	PlayersTabButton.Name = "PlayersTabButton"
@@ -2911,9 +2906,16 @@ do
 		PopupToggleButton.Text = visible and "Open" or "Closed"
 		if visible then ShowPopupTab(PopupActiveTab) end
 	end
-	TogglePopup = function()
+	local function TogglePopup()
 		SetPopupVisible(not PopupFrame.Visible)
 	end
+	-- Wired here (not up where the button was created) since PopupFrame/SetPopupVisible
+	-- only exist from this point onward -- straightforward direct wiring, no forward
+	-- reference for the click to fall through silently.
+	PopupToggleButton.MouseButton1Click:Connect(function()
+		PlayClick()
+		TogglePopup()
+	end)
 	PopupClose.MouseButton1Click:Connect(function() PlayClick() SetPopupVisible(false) end)
 	table.insert(looseConnections, UserInputService.InputBegan:Connect(function(input, processed)
 		if processed or UserInputService:GetFocusedTextBox() or bindingInProgress then return end
