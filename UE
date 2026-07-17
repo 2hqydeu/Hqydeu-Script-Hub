@@ -492,7 +492,12 @@ local function HoldOnBox(target, targetRoot, options)
 	local logPrefix = options.LogPrefix or "[Auto Farm]"
 	local isEnabled = options.IsEnabled or function() return true end
 
-	local requiredKey = BOX_TYPE_REQUIRED_KEY[BoxType(target)]
+	-- options.RequiredKey lets a caller that already knows the answer (e.g. RunAutoFarmStep,
+	-- which knows a Graveyard/Ancient Ruins crate needs a key from the encounter itself)
+	-- skip BoxType()'s name/text detection entirely -- that detection is what was silently
+	-- failing to identify boss crates, so this was equipping nothing and just trying to
+	-- open them bare.
+	local requiredKey = options.RequiredKey or BOX_TYPE_REQUIRED_KEY[BoxType(target)]
 	if requiredKey then
 		-- the key drop can take a moment to replicate into the backpack after ClaimNearbyDrop
 		-- fires the claim prompt, so retry for a few seconds instead of giving up on the first miss
@@ -1022,37 +1027,53 @@ local function RunAutoFarmStep()
 		AutoFarmPhase = "Opening " .. encounter.Id .. " crate"
 		RefreshAutoFarmUI()
 		local lootFolder = structure:FindFirstChild("Loot")
-		if lootFolder then
-			-- Boss crates (Grounder/Ancient) don't reliably self-identify via BoxType()'s
-			-- name/text matching, so instead of gating per-box on that, force-equip the key
-			-- this encounter is already known to need, then run the exact same open logic
-			-- every other chest uses on everything in the loot folder.
-			if encounter.RequiredKey then
-				local keyDeadline = os.clock() + KEY_EQUIP_RETRY_WINDOW
-				local haveKey = EquipKeyTool(encounter.RequiredKey)
-				while not haveKey and os.clock() < keyDeadline do
-					task.wait(0.25)
-					haveKey = EquipKeyTool(encounter.RequiredKey)
-				end
-				if not haveKey then
-					warn("[Auto Farm] missing " .. encounter.RequiredKey .. " for " .. encounter.Id .. " crate")
-				end
-			end
-			for _, box in ipairs(lootFolder:GetChildren()) do
-				if encounter.RequiredKey or BOX_TYPE_REQUIRED_KEY[BoxType(box)] then
-					local boxRoot = BoxRoot(box)
-					if boxRoot then
-						local boxPosition = boxRoot.Position
-						local opened = HoldOnBox(box, boxRoot, {
-							StatusLabel = AutoFarmStatus,
-							LogPrefix = "[Auto Farm]",
-							IsEnabled = function() return AutoFarmEnabled end,
-						})
-						if opened then
-							ClaimDropsNearArea(boxPosition, 6)
+
+		-- Boss crates (Grounder/Ancient) don't reliably self-identify via BoxType()'s name/
+		-- text matching, and might not sit as a direct Loot child, so for encounters with a
+		-- known RequiredKey this skips name filtering entirely (one level into any
+		-- sub-folders too) and passes the key straight into HoldOnBox instead of leaving it
+		-- to (re-)guess via BoxType() -- see HoldOnBox's options.RequiredKey above.
+		local candidates = {}
+		if encounter.RequiredKey then
+			if lootFolder then
+				for _, box in ipairs(lootFolder:GetChildren()) do
+					if box:IsA("Folder") then
+						for _, nested in ipairs(box:GetChildren()) do
+							table.insert(candidates, nested)
 						end
+					else
+						table.insert(candidates, box)
 					end
 				end
+			end
+			for _, child in ipairs(structure:GetChildren()) do
+				if child ~= lootFolder then
+					table.insert(candidates, child)
+				end
+			end
+		elseif lootFolder then
+			for _, box in ipairs(lootFolder:GetChildren()) do
+				if BOX_TYPE_REQUIRED_KEY[BoxType(box)] then
+					table.insert(candidates, box)
+				end
+			end
+		end
+
+		for _, box in ipairs(candidates) do
+			local boxRoot = BoxRoot(box)
+			if boxRoot then
+				local boxPosition = boxRoot.Position
+				local opened = HoldOnBox(box, boxRoot, {
+					StatusLabel = AutoFarmStatus,
+					LogPrefix = "[Auto Farm]",
+					IsEnabled = function() return AutoFarmEnabled end,
+					RequiredKey = encounter.RequiredKey,
+				})
+				if opened then
+					ClaimDropsNearArea(boxPosition, 6)
+				end
+			elseif encounter.RequiredKey then
+				warn("[Auto Farm] " .. tostring(box.Name) .. " under the " .. encounter.Id .. " loot has no BasePart root, skipping")
 			end
 		end
 	end
