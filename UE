@@ -708,6 +708,7 @@ local ENCOUNTERS = {
 		end,
 		EnemyNames = {"grounder"},
 		LootAttempts = 6,
+		RequiredKey = "Grounder Key",
 	},
 	{
 		Id = "Ancient Ruins",
@@ -720,6 +721,7 @@ local ENCOUNTERS = {
 		end,
 		EnemyNames = {"pharaon", "mummy"},
 		LootAttempts = 6,
+		RequiredKey = "Ancient Key",
 	},
 }
 
@@ -1021,8 +1023,23 @@ local function RunAutoFarmStep()
 		RefreshAutoFarmUI()
 		local lootFolder = structure:FindFirstChild("Loot")
 		if lootFolder then
+			-- Boss crates (Grounder/Ancient) don't reliably self-identify via BoxType()'s
+			-- name/text matching, so instead of gating per-box on that, force-equip the key
+			-- this encounter is already known to need, then run the exact same open logic
+			-- every other chest uses on everything in the loot folder.
+			if encounter.RequiredKey then
+				local keyDeadline = os.clock() + KEY_EQUIP_RETRY_WINDOW
+				local haveKey = EquipKeyTool(encounter.RequiredKey)
+				while not haveKey and os.clock() < keyDeadline do
+					task.wait(0.25)
+					haveKey = EquipKeyTool(encounter.RequiredKey)
+				end
+				if not haveKey then
+					warn("[Auto Farm] missing " .. encounter.RequiredKey .. " for " .. encounter.Id .. " crate")
+				end
+			end
 			for _, box in ipairs(lootFolder:GetChildren()) do
-				if BOX_TYPE_REQUIRED_KEY[BoxType(box)] then
+				if encounter.RequiredKey or BOX_TYPE_REQUIRED_KEY[BoxType(box)] then
 					local boxRoot = BoxRoot(box)
 					if boxRoot then
 						local boxPosition = boxRoot.Position
