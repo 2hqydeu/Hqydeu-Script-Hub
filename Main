@@ -387,8 +387,8 @@ MainCorner.Parent = MainFrame
 -- the center.
 local TitleEmblem = Instance.new("ImageLabel")
 TitleEmblem.Name = "TitleEmblem"
-TitleEmblem.Size = UDim2.new(0, 26, 0, 26)
-TitleEmblem.Position = UDim2.new(0, 18, 0, 7)
+TitleEmblem.Size = UDim2.new(0, 32, 0, 32)
+TitleEmblem.Position = UDim2.new(0, 16, 0, 4)
 TitleEmblem.BackgroundTransparency = 1
 TitleEmblem.Image = "rbxassetid://130985618733437"
 TitleEmblem.ScaleType = Enum.ScaleType.Fit
