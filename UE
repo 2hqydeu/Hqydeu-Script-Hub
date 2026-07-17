@@ -522,6 +522,33 @@ local function HoldOnBox(target, targetRoot, options)
 	local anchorPosition = anchorPart.Position + Vector3.new(0, 1, 0)
 	local DRIFT_TOLERANCE = 4
 
+	-- The anchor point sits right at/inside the crate's own collision geometry, so without
+	-- this, physics shoves the character back out every step, HasDriftedAway sees that as
+	-- drift and teleports right back in, and the two fight in a tight loop -- that's the
+	-- violent character/camera jitter that breaks the hold. Disabling collision on just the
+	-- crate (not the character) for the duration of the interaction removes the shove.
+	local savedCollisions = {}
+	local function DisableTargetCollision()
+		if target:IsA("BasePart") then
+			savedCollisions[target] = target.CanCollide
+			target.CanCollide = false
+		end
+		for _, part in ipairs(target:GetDescendants()) do
+			if part:IsA("BasePart") then
+				savedCollisions[part] = part.CanCollide
+				part.CanCollide = false
+			end
+		end
+	end
+	local function RestoreTargetCollision()
+		for part, wasCollidable in pairs(savedCollisions) do
+			if part and part.Parent then
+				pcall(function() part.CanCollide = wasCollidable end)
+			end
+		end
+	end
+	DisableTargetCollision()
+
 	local function HasDriftedAway()
 		local root = PlayerRoot()
 		if not root then return true end
@@ -551,6 +578,7 @@ local function HoldOnBox(target, targetRoot, options)
 
 	if not StableTeleport(CFrame.new(anchorPosition)) then
 		ToolInteractionActive = false
+		RestoreTargetCollision()
 		return false
 	end
 	task.wait(0.15)
@@ -597,6 +625,7 @@ local function HoldOnBox(target, targetRoot, options)
 	end
 	ToolInteractionActive = false
 	RestoreCamera()
+	RestoreTargetCollision()
 	local success = not (target.Parent and BoxRoot(target))
 	if not success then
 		warn(logPrefix .. " " .. tostring(target.Name) .. " did not open after firing the prompt")
