@@ -134,66 +134,49 @@ local WINDOW_POSITION = UDim2.new(0.5, -280, 0.5, -215)
 -- construction (further down) actually assigns it.
 local MainFrame
 
--- Title sequence: the real UI (MainFrame) stays invisible until this finishes -- this is
--- a fully separate panel, sized and centered on its own (independent of the eventual
--- window's footprint) so the much larger emblem has room to breathe without the
--- CanvasGroup clipping it. Emblem spins/grows/fades in while the wings slide in from the
--- screen edges at the same time (not after), meeting at its sides with a ripple where
--- they land, then everything settles into a quick, contained float until a fake ~3s
--- "loading" (status line + progress bar) finishes, at which point the whole thing --
--- loading bar included -- fades out together in one motion.
+-- Title sequence: the real UI (MainFrame) stays invisible until this finishes. No
+-- background panel -- every piece (emblem, wings, loading bar/label) sits directly on
+-- ScreenGui at its own absolute screen position and fades out on its own tween, so
+-- nothing is bounded by an invisible box that could clip the (larger-than-the-emblem)
+-- wings. Emblem spins/grows/fades in while the wings slide in from the screen edges at
+-- the same time (not after), meeting at its sides with a ripple where they land, then
+-- everything settles into a quick, contained float until a fake ~3s "loading" (status
+-- line + progress bar) finishes, at which point the whole thing fades out together.
 do
-	local SPLASH_SIZE = UDim2.new(0, 640, 0, 600)
-
-	local SplashFrame = Instance.new("CanvasGroup")
-	SplashFrame.Name = "SplashFrame"
-	SplashFrame.Size = SPLASH_SIZE
-	SplashFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-	SplashFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-	SplashFrame.BackgroundColor3 = FrameColor
-	SplashFrame.BackgroundTransparency = 0
-	SplashFrame.BorderSizePixel = 0
-	SplashFrame.Active = true
-	SplashFrame.Parent = ScreenGui
-	Instance.new("UICorner", SplashFrame).CornerRadius = UDim.new(0, 14)
-
-	-- Emblem's local top offset within the panel -- also used to derive its absolute
-	-- screen position below, for the wings and ripple (which live outside this panel
-	-- entirely). Sized to fill almost the whole area above the loading bar.
-	local EMBLEM_LOCAL_Y = 250
-	local EMBLEM_SIZE = 460 -- final width/height once grown in
+	-- Shared vertical anchor for the whole composition (screen-center scale + this pixel
+	-- offset) -- everything below is positioned relative to it, tight enough that the
+	-- emblem, wings, and loading bar read as one compact group instead of being spread
+	-- out with dead space between them.
+	local CENTER_Y = 0.5
+	local EMBLEM_Y_OFFSET = -70
+	local EMBLEM_SIZE = 380 -- final width/height once grown in
 
 	local SplashImage = Instance.new("ImageLabel")
 	SplashImage.Name = "SplashImage"
 	SplashImage.AnchorPoint = Vector2.new(0.5, 0.5)
-	SplashImage.Position = UDim2.new(0.5, 0, 0, EMBLEM_LOCAL_Y)
+	SplashImage.Position = UDim2.new(0.5, 0, CENTER_Y, EMBLEM_Y_OFFSET)
 	SplashImage.Size = UDim2.new(0, 0, 0, 0)
 	SplashImage.Rotation = -540
 	SplashImage.BackgroundTransparency = 1
 	SplashImage.ImageTransparency = 1
 	SplashImage.Image = "rbxassetid://130985618733437"
-	SplashImage.Parent = SplashFrame
+	SplashImage.ZIndex = 4
+	SplashImage.Parent = ScreenGui
 
-	-- Wings slide in from the real screen edges, not just the splash panel -- SplashFrame
-	-- is a CanvasGroup, which clips its own descendants, so a wing parented inside it
-	-- would just pop into view at the panel edge instead of visibly sweeping in from
-	-- further out. Parenting them to ScreenGui instead avoids that. EMBLEM_CENTER
-	-- mirrors the emblem's absolute screen position (the panel is centered on screen, so
-	-- this is just the panel's own center offset by the emblem's local position within it).
-	local EMBLEM_CENTER_Y = 0.5
-	local EMBLEM_CENTER_Y_OFFSET = EMBLEM_LOCAL_Y - (SPLASH_SIZE.Y.Offset / 2)
-	local WING_SIZE = UDim2.new(0, 230, 0, 368)
-	-- Tucked in noticeably closer than half the emblem's size -- a clean edge-to-edge
-	-- meeting point left too much dead space between the visible wing art and the emblem
-	-- (the wing images have transparent padding on their inner edge), so the resting
-	-- position overlaps the bounding boxes a bit to close that gap.
-	local WING_HALF_GAP = 190
+	-- Wings are sized larger than the emblem itself, so they read as the dominant shape
+	-- flanking it rather than a small accent.
+	local WING_SIZE = UDim2.new(0, 300, 0, 480)
+	-- Tucked in well inside half the emblem's size -- a clean edge-to-edge meeting point
+	-- left too much dead space between the visible wing art and the emblem (the wing
+	-- images have transparent padding on their inner edge), so the resting position
+	-- overlaps the bounding boxes to close that gap.
+	local WING_HALF_GAP = 105
 
 	local RightWing = Instance.new("ImageLabel")
 	RightWing.Name = "RightWing"
 	RightWing.AnchorPoint = Vector2.new(0, 0.5)
 	RightWing.Size = WING_SIZE
-	RightWing.Position = UDim2.new(1.15, 0, EMBLEM_CENTER_Y, EMBLEM_CENTER_Y_OFFSET)
+	RightWing.Position = UDim2.new(1.15, 0, CENTER_Y, EMBLEM_Y_OFFSET)
 	RightWing.BackgroundTransparency = 1
 	RightWing.ScaleType = Enum.ScaleType.Fit
 	RightWing.Image = "rbxassetid://84773586505914"
@@ -204,33 +187,39 @@ do
 	LeftWing.Name = "LeftWing"
 	LeftWing.AnchorPoint = Vector2.new(1, 0.5)
 	LeftWing.Size = WING_SIZE
-	LeftWing.Position = UDim2.new(-0.15, 0, EMBLEM_CENTER_Y, EMBLEM_CENTER_Y_OFFSET)
+	LeftWing.Position = UDim2.new(-0.15, 0, CENTER_Y, EMBLEM_Y_OFFSET)
 	LeftWing.BackgroundTransparency = 1
 	LeftWing.ScaleType = Enum.ScaleType.Fit
 	LeftWing.Image = "rbxassetid://82311031044938"
 	LeftWing.ZIndex = 5
 	LeftWing.Parent = ScreenGui
 
+	-- Loading bar/label sit close beneath the emblem -- tight gap, no enclosing panel.
+	local LOADING_LABEL_Y_OFFSET = EMBLEM_Y_OFFSET + (EMBLEM_SIZE / 2) + 30
+	local LOADING_TRACK_Y_OFFSET = LOADING_LABEL_Y_OFFSET + 28
+
 	local LoadingLabel = Instance.new("TextLabel")
 	LoadingLabel.Name = "LoadingLabel"
 	LoadingLabel.AnchorPoint = Vector2.new(0.5, 0)
 	LoadingLabel.Size = UDim2.new(0, 340, 0, 20)
-	LoadingLabel.Position = UDim2.new(0.5, 0, 0, 500)
+	LoadingLabel.Position = UDim2.new(0.5, 0, CENTER_Y, LOADING_LABEL_Y_OFFSET)
 	LoadingLabel.BackgroundTransparency = 1
 	LoadingLabel.Text = ""
 	LoadingLabel.Font = UIFont
 	LoadingLabel.TextSize = 14
 	LoadingLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
-	LoadingLabel.Parent = SplashFrame
+	LoadingLabel.ZIndex = 4
+	LoadingLabel.Parent = ScreenGui
 
 	local LoadingTrack = Instance.new("Frame")
 	LoadingTrack.Name = "LoadingTrack"
 	LoadingTrack.AnchorPoint = Vector2.new(0.5, 0)
 	LoadingTrack.Size = UDim2.new(0, 300, 0, 6)
-	LoadingTrack.Position = UDim2.new(0.5, 0, 0, 530)
+	LoadingTrack.Position = UDim2.new(0.5, 0, CENTER_Y, LOADING_TRACK_Y_OFFSET)
 	LoadingTrack.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 	LoadingTrack.BorderSizePixel = 0
-	LoadingTrack.Parent = SplashFrame
+	LoadingTrack.ZIndex = 4
+	LoadingTrack.Parent = ScreenGui
 	Instance.new("UICorner", LoadingTrack).CornerRadius = UDim.new(1, 0)
 
 	local LoadingFill = Instance.new("Frame")
@@ -238,6 +227,7 @@ do
 	LoadingFill.Size = UDim2.new(0, 0, 1, 0)
 	LoadingFill.BackgroundColor3 = AccentColor
 	LoadingFill.BorderSizePixel = 0
+	LoadingFill.ZIndex = 4
 	LoadingFill.Parent = LoadingTrack
 	Instance.new("UICorner", LoadingFill).CornerRadius = UDim.new(1, 0)
 
@@ -283,7 +273,7 @@ do
 		local ring = Instance.new("Frame")
 		ring.Name = "Shockwave"
 		ring.AnchorPoint = Vector2.new(0.5, 0.5)
-		ring.Position = UDim2.new(0.5, 0, EMBLEM_CENTER_Y, EMBLEM_CENTER_Y_OFFSET)
+		ring.Position = UDim2.new(0.5, 0, CENTER_Y, EMBLEM_Y_OFFSET)
 		ring.Size = UDim2.new(0, EMBLEM_SIZE * 0.35, 0, EMBLEM_SIZE * 0.35)
 		ring.BackgroundTransparency = 1
 		ring.BorderSizePixel = 0
@@ -316,10 +306,10 @@ do
 		-- overlap the emblem even briefly.
 		local wingTweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 		local rightWingIn = TweenService:Create(RightWing, wingTweenInfo, {
-			Position = UDim2.new(0.5, WING_HALF_GAP, EMBLEM_CENTER_Y, EMBLEM_CENTER_Y_OFFSET),
+			Position = UDim2.new(0.5, WING_HALF_GAP, CENTER_Y, EMBLEM_Y_OFFSET),
 		})
 		local leftWingIn = TweenService:Create(LeftWing, wingTweenInfo, {
-			Position = UDim2.new(0.5, -WING_HALF_GAP, EMBLEM_CENTER_Y, EMBLEM_CENTER_Y_OFFSET),
+			Position = UDim2.new(0.5, -WING_HALF_GAP, CENTER_Y, EMBLEM_Y_OFFSET),
 		})
 		spinIn:Play()
 		rightWingIn:Play()
@@ -333,13 +323,13 @@ do
 		-- as flowing rather than a slow drift.
 		local floatTweenInfo = TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
 		local emblemFloat = TweenService:Create(SplashImage, floatTweenInfo, {
-			Position = UDim2.new(0.5, 6, 0, EMBLEM_LOCAL_Y - 8),
+			Position = UDim2.new(0.5, 6, CENTER_Y, EMBLEM_Y_OFFSET - 8),
 		})
 		local rightWingFloat = TweenService:Create(RightWing, floatTweenInfo, {
-			Position = UDim2.new(0.5, WING_HALF_GAP + 5, EMBLEM_CENTER_Y, EMBLEM_CENTER_Y_OFFSET - 6),
+			Position = UDim2.new(0.5, WING_HALF_GAP + 5, CENTER_Y, EMBLEM_Y_OFFSET - 6),
 		})
 		local leftWingFloat = TweenService:Create(LeftWing, floatTweenInfo, {
-			Position = UDim2.new(0.5, -WING_HALF_GAP - 5, EMBLEM_CENTER_Y, EMBLEM_CENTER_Y_OFFSET - 6),
+			Position = UDim2.new(0.5, -WING_HALF_GAP - 5, CENTER_Y, EMBLEM_Y_OFFSET - 6),
 		})
 		emblemFloat:Play()
 		rightWingFloat:Play()
@@ -349,20 +339,24 @@ do
 
 		-- Fade starts the instant loading finishes -- no pause in between -- so there's
 		-- never a moment where the bar looks done but nothing's actually happening yet.
+		-- Every piece fades on its own tween (no shared background to fade as a group).
 		emblemFloat:Cancel()
 		rightWingFloat:Cancel()
 		leftWingFloat:Cancel()
 		local fadeOutTweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-		local fadeOut = TweenService:Create(SplashFrame, fadeOutTweenInfo, {GroupTransparency = 1})
-		local rightWingOut = TweenService:Create(RightWing, fadeOutTweenInfo, {ImageTransparency = 1})
-		local leftWingOut = TweenService:Create(LeftWing, fadeOutTweenInfo, {ImageTransparency = 1})
-		fadeOut:Play()
-		rightWingOut:Play()
-		leftWingOut:Play()
-		fadeOut.Completed:Wait()
-		SplashFrame:Destroy()
+		TweenService:Create(SplashImage, fadeOutTweenInfo, {ImageTransparency = 1}):Play()
+		TweenService:Create(RightWing, fadeOutTweenInfo, {ImageTransparency = 1}):Play()
+		TweenService:Create(LeftWing, fadeOutTweenInfo, {ImageTransparency = 1}):Play()
+		TweenService:Create(LoadingLabel, fadeOutTweenInfo, {TextTransparency = 1}):Play()
+		TweenService:Create(LoadingTrack, fadeOutTweenInfo, {BackgroundTransparency = 1}):Play()
+		local fillFadeOut = TweenService:Create(LoadingFill, fadeOutTweenInfo, {BackgroundTransparency = 1})
+		fillFadeOut:Play()
+		fillFadeOut.Completed:Wait()
+		SplashImage:Destroy()
 		RightWing:Destroy()
 		LeftWing:Destroy()
+		LoadingLabel:Destroy()
+		LoadingTrack:Destroy()
 		if MainFrame then MainFrame.Visible = true end
 	end)
 end
@@ -1925,20 +1919,23 @@ local TeleportPage = CreateTab("Teleport", 4, "90261647722333", true)
 -- old hub). Each module only ever gets fetched once per execution.
 local ScriptsPage = CreateTab("Scripts", 5, "77194728508403", true)
 
-local ScriptRunner = {Loaded = {}}
+-- Caches the fetched source per game so re-running it (see below) never re-hits the
+-- network, but still actually executes the chunk again each time -- these game modules
+-- are built to detect their own already-built UI and reopen it instead of rebuilding
+-- from scratch, so re-running is how you get it back after closing it.
+local ScriptRunner = {Sources = {}}
 local function RunScriptOnce(key, url)
-	if ScriptRunner.Loaded[key] then return true end
-	local fetched, source = pcall(function() return game:HttpGet(url) end)
-	if not fetched or type(source) ~= "string" or source == "" then return false end
+	local source = ScriptRunner.Sources[key]
+	if not source then
+		local fetched, fetchedSource = pcall(function() return game:HttpGet(url) end)
+		if not fetched or type(fetchedSource) ~= "string" or fetchedSource == "" then return false end
+		source = fetchedSource
+		ScriptRunner.Sources[key] = source
+	end
 	if type(loadstring) ~= "function" then return false end
 	local chunk = loadstring(source)
 	if not chunk then return false end
-	local ran = pcall(chunk)
-	if ran then
-		ScriptRunner.Loaded[key] = true
-		return true
-	end
-	return false
+	return pcall(chunk)
 end
 
 local function CreateGameRow(parent, y, gameTitle, url)
@@ -1981,10 +1978,13 @@ local function CreateGameRow(parent, y, gameTitle, url)
 
 	executeBtn.MouseButton1Click:Connect(function()
 		PlayClick()
-		if ScriptRunner.Loaded[gameTitle] then return end
-		executeBtn.Text = "Loading..."
+		-- No "already loaded, do nothing" guard -- once it's run once, this re-runs the
+		-- cached source every click, which lets a closed game UI be reopened. "Open"
+		-- (not "Loaded") reflects that it stays clickable afterward instead of going dead.
+		local reopening = ScriptRunner.Sources[gameTitle] ~= nil
+		executeBtn.Text = reopening and "Opening..." or "Loading..."
 		local ok = RunScriptOnce(gameTitle, url)
-		executeBtn.Text = ok and "Loaded" or "Execute"
+		executeBtn.Text = ok and "Open" or "Execute"
 	end)
 
 	return row
