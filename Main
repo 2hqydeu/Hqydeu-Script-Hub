@@ -127,7 +127,247 @@ local FULL_SIZE = UDim2.new(0, 560, 0, 430)
 local MINI_SIZE = UDim2.new(0, 220, 0, HEADER_HEIGHT)
 local WINDOW_POSITION = UDim2.new(0.5, -280, 0.5, -215)
 
-local MainFrame = Instance.new("Frame")
+-- MainFrame gets built below, but the title sequence needs to run first -- before any of
+-- the (invisible-until-ready) tab/feature construction -- so the emblem starts spinning
+-- the instant the script executes instead of only after the whole GUI has finished
+-- building. Forward-declared so this section's closures can set MainFrame.Visible once
+-- construction (further down) actually assigns it.
+local MainFrame
+
+-- Title sequence: the real UI (MainFrame) stays invisible until this finishes -- this is
+-- a fully separate panel, sized and centered on its own (independent of the eventual
+-- window's footprint) so the much larger emblem has room to breathe without the
+-- CanvasGroup clipping it. Emblem spins/grows/fades in while the wings slide in from the
+-- screen edges at the same time (not after), meeting at its sides with a ripple where
+-- they land, then everything settles into a quick, contained float until a fake ~3s
+-- "loading" (status line + progress bar) finishes, at which point the whole thing --
+-- loading bar included -- fades out together in one motion.
+do
+	local SPLASH_SIZE = UDim2.new(0, 640, 0, 600)
+
+	local SplashFrame = Instance.new("CanvasGroup")
+	SplashFrame.Name = "SplashFrame"
+	SplashFrame.Size = SPLASH_SIZE
+	SplashFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+	SplashFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+	SplashFrame.BackgroundColor3 = FrameColor
+	SplashFrame.BackgroundTransparency = 0
+	SplashFrame.BorderSizePixel = 0
+	SplashFrame.Active = true
+	SplashFrame.Parent = ScreenGui
+	Instance.new("UICorner", SplashFrame).CornerRadius = UDim.new(0, 14)
+
+	-- Emblem's local top offset within the panel -- also used to derive its absolute
+	-- screen position below, for the wings and ripple (which live outside this panel
+	-- entirely). Sized to fill almost the whole area above the loading bar.
+	local EMBLEM_LOCAL_Y = 250
+	local EMBLEM_SIZE = 460 -- final width/height once grown in
+
+	local SplashImage = Instance.new("ImageLabel")
+	SplashImage.Name = "SplashImage"
+	SplashImage.AnchorPoint = Vector2.new(0.5, 0.5)
+	SplashImage.Position = UDim2.new(0.5, 0, 0, EMBLEM_LOCAL_Y)
+	SplashImage.Size = UDim2.new(0, 0, 0, 0)
+	SplashImage.Rotation = -540
+	SplashImage.BackgroundTransparency = 1
+	SplashImage.ImageTransparency = 1
+	SplashImage.Image = "rbxassetid://130985618733437"
+	SplashImage.Parent = SplashFrame
+
+	-- Wings slide in from the real screen edges, not just the splash panel -- SplashFrame
+	-- is a CanvasGroup, which clips its own descendants, so a wing parented inside it
+	-- would just pop into view at the panel edge instead of visibly sweeping in from
+	-- further out. Parenting them to ScreenGui instead avoids that. EMBLEM_CENTER
+	-- mirrors the emblem's absolute screen position (the panel is centered on screen, so
+	-- this is just the panel's own center offset by the emblem's local position within it).
+	local EMBLEM_CENTER_Y = 0.5
+	local EMBLEM_CENTER_Y_OFFSET = EMBLEM_LOCAL_Y - (SPLASH_SIZE.Y.Offset / 2)
+	local WING_SIZE = UDim2.new(0, 230, 0, 368)
+	-- Tucked in noticeably closer than half the emblem's size -- a clean edge-to-edge
+	-- meeting point left too much dead space between the visible wing art and the emblem
+	-- (the wing images have transparent padding on their inner edge), so the resting
+	-- position overlaps the bounding boxes a bit to close that gap.
+	local WING_HALF_GAP = 190
+
+	local RightWing = Instance.new("ImageLabel")
+	RightWing.Name = "RightWing"
+	RightWing.AnchorPoint = Vector2.new(0, 0.5)
+	RightWing.Size = WING_SIZE
+	RightWing.Position = UDim2.new(1.15, 0, EMBLEM_CENTER_Y, EMBLEM_CENTER_Y_OFFSET)
+	RightWing.BackgroundTransparency = 1
+	RightWing.ScaleType = Enum.ScaleType.Fit
+	RightWing.Image = "rbxassetid://84773586505914"
+	RightWing.ZIndex = 5
+	RightWing.Parent = ScreenGui
+
+	local LeftWing = Instance.new("ImageLabel")
+	LeftWing.Name = "LeftWing"
+	LeftWing.AnchorPoint = Vector2.new(1, 0.5)
+	LeftWing.Size = WING_SIZE
+	LeftWing.Position = UDim2.new(-0.15, 0, EMBLEM_CENTER_Y, EMBLEM_CENTER_Y_OFFSET)
+	LeftWing.BackgroundTransparency = 1
+	LeftWing.ScaleType = Enum.ScaleType.Fit
+	LeftWing.Image = "rbxassetid://82311031044938"
+	LeftWing.ZIndex = 5
+	LeftWing.Parent = ScreenGui
+
+	local LoadingLabel = Instance.new("TextLabel")
+	LoadingLabel.Name = "LoadingLabel"
+	LoadingLabel.AnchorPoint = Vector2.new(0.5, 0)
+	LoadingLabel.Size = UDim2.new(0, 340, 0, 20)
+	LoadingLabel.Position = UDim2.new(0.5, 0, 0, 500)
+	LoadingLabel.BackgroundTransparency = 1
+	LoadingLabel.Text = ""
+	LoadingLabel.Font = UIFont
+	LoadingLabel.TextSize = 14
+	LoadingLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
+	LoadingLabel.Parent = SplashFrame
+
+	local LoadingTrack = Instance.new("Frame")
+	LoadingTrack.Name = "LoadingTrack"
+	LoadingTrack.AnchorPoint = Vector2.new(0.5, 0)
+	LoadingTrack.Size = UDim2.new(0, 300, 0, 6)
+	LoadingTrack.Position = UDim2.new(0.5, 0, 0, 530)
+	LoadingTrack.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	LoadingTrack.BorderSizePixel = 0
+	LoadingTrack.Parent = SplashFrame
+	Instance.new("UICorner", LoadingTrack).CornerRadius = UDim.new(1, 0)
+
+	local LoadingFill = Instance.new("Frame")
+	LoadingFill.Name = "LoadingFill"
+	LoadingFill.Size = UDim2.new(0, 0, 1, 0)
+	LoadingFill.BackgroundColor3 = AccentColor
+	LoadingFill.BorderSizePixel = 0
+	LoadingFill.Parent = LoadingTrack
+	Instance.new("UICorner", LoadingFill).CornerRadius = UDim.new(1, 0)
+
+	local FakeLoadingMessages = {
+		"Loading assets...",
+		"Loading scripts...",
+		"Initializing modules...",
+		"Compiling shaders...",
+		"Fetching configuration...",
+		"Optimizing textures...",
+		"Establishing connection...",
+		"Warming up cache...",
+		"Resolving dependencies...",
+		"Finalizing setup...",
+	}
+
+	local function RunFakeLoading(totalDuration)
+		local stepCount = math.random(9, 13)
+		local progressWeights, durationWeights = {}, {}
+		local progressSum, durationSum = 0, 0
+		for i = 1, stepCount do
+			progressWeights[i] = math.random(4, 20)
+			durationWeights[i] = math.random(4, 20)
+			progressSum += progressWeights[i]
+			durationSum += durationWeights[i]
+		end
+		local cumulativeProgress = 0
+		for i = 1, stepCount do
+			local stepDuration = (durationWeights[i] / durationSum) * totalDuration
+			cumulativeProgress = math.min(1, cumulativeProgress + (progressWeights[i] / progressSum))
+			LoadingLabel.Text = FakeLoadingMessages[math.random(1, #FakeLoadingMessages)]
+			TweenService:Create(LoadingFill, TweenInfo.new(math.min(stepDuration, 0.2), Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Size = UDim2.new(cumulativeProgress, 0, 1, 0),
+			}):Play()
+			task.wait(stepDuration)
+		end
+		LoadingFill.Size = UDim2.new(1, 0, 1, 0)
+	end
+
+	-- Ring that blooms outward from the emblem's center and fades, timed to the instant
+	-- the wings land -- a "shockwave" for the meeting point instead of just a hard stop.
+	local function PlayShockwave()
+		local ring = Instance.new("Frame")
+		ring.Name = "Shockwave"
+		ring.AnchorPoint = Vector2.new(0.5, 0.5)
+		ring.Position = UDim2.new(0.5, 0, EMBLEM_CENTER_Y, EMBLEM_CENTER_Y_OFFSET)
+		ring.Size = UDim2.new(0, EMBLEM_SIZE * 0.35, 0, EMBLEM_SIZE * 0.35)
+		ring.BackgroundTransparency = 1
+		ring.BorderSizePixel = 0
+		ring.ZIndex = 6
+		ring.Parent = ScreenGui
+		Instance.new("UICorner", ring).CornerRadius = UDim.new(1, 0)
+		local ringStroke = Instance.new("UIStroke")
+		ringStroke.Color = AccentColor
+		ringStroke.Thickness = 5
+		ringStroke.Transparency = 0.1
+		ringStroke.Parent = ring
+
+		local ringTweenInfo = TweenInfo.new(0.55, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		TweenService:Create(ring, ringTweenInfo, {
+			Size = UDim2.new(0, EMBLEM_SIZE * 2.3, 0, EMBLEM_SIZE * 2.3),
+		}):Play()
+		TweenService:Create(ringStroke, ringTweenInfo, {Transparency = 1}):Play()
+		task.delay(ringTweenInfo.Time, function() ring:Destroy() end)
+	end
+
+	task.spawn(function()
+		-- Emblem grow/fade and the wings sliding in all start together instead of one
+		-- waiting on the other, so the whole entrance reads as one synced motion.
+		local spinIn = TweenService:Create(SplashImage, TweenInfo.new(0.7, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+			Size = UDim2.new(0, EMBLEM_SIZE, 0, EMBLEM_SIZE),
+			Rotation = 0,
+			ImageTransparency = 0,
+		})
+		-- Quint/Out decelerates hard into place with no overshoot, so the wings never
+		-- overlap the emblem even briefly.
+		local wingTweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+		local rightWingIn = TweenService:Create(RightWing, wingTweenInfo, {
+			Position = UDim2.new(0.5, WING_HALF_GAP, EMBLEM_CENTER_Y, EMBLEM_CENTER_Y_OFFSET),
+		})
+		local leftWingIn = TweenService:Create(LeftWing, wingTweenInfo, {
+			Position = UDim2.new(0.5, -WING_HALF_GAP, EMBLEM_CENTER_Y, EMBLEM_CENTER_Y_OFFSET),
+		})
+		spinIn:Play()
+		rightWingIn:Play()
+		leftWingIn:Play()
+		rightWingIn.Completed:Wait()
+		PlayShockwave()
+		spinIn.Completed:Wait() -- spin-in runs a little longer than the wings; let it finish
+
+		-- A small, contained, quick float once everything has landed -- applies to the
+		-- emblem and both wings (never the loading bar/label), and is fast enough to read
+		-- as flowing rather than a slow drift.
+		local floatTweenInfo = TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+		local emblemFloat = TweenService:Create(SplashImage, floatTweenInfo, {
+			Position = UDim2.new(0.5, 6, 0, EMBLEM_LOCAL_Y - 8),
+		})
+		local rightWingFloat = TweenService:Create(RightWing, floatTweenInfo, {
+			Position = UDim2.new(0.5, WING_HALF_GAP + 5, EMBLEM_CENTER_Y, EMBLEM_CENTER_Y_OFFSET - 6),
+		})
+		local leftWingFloat = TweenService:Create(LeftWing, floatTweenInfo, {
+			Position = UDim2.new(0.5, -WING_HALF_GAP - 5, EMBLEM_CENTER_Y, EMBLEM_CENTER_Y_OFFSET - 6),
+		})
+		emblemFloat:Play()
+		rightWingFloat:Play()
+		leftWingFloat:Play()
+
+		RunFakeLoading(3)
+
+		-- Fade starts the instant loading finishes -- no pause in between -- so there's
+		-- never a moment where the bar looks done but nothing's actually happening yet.
+		emblemFloat:Cancel()
+		rightWingFloat:Cancel()
+		leftWingFloat:Cancel()
+		local fadeOutTweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		local fadeOut = TweenService:Create(SplashFrame, fadeOutTweenInfo, {GroupTransparency = 1})
+		local rightWingOut = TweenService:Create(RightWing, fadeOutTweenInfo, {ImageTransparency = 1})
+		local leftWingOut = TweenService:Create(LeftWing, fadeOutTweenInfo, {ImageTransparency = 1})
+		fadeOut:Play()
+		rightWingOut:Play()
+		leftWingOut:Play()
+		fadeOut.Completed:Wait()
+		SplashFrame:Destroy()
+		RightWing:Destroy()
+		LeftWing:Destroy()
+		if MainFrame then MainFrame.Visible = true end
+	end)
+end
+
+MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Size = FULL_SIZE
 MainFrame.Position = WINDOW_POSITION
@@ -1043,7 +1283,10 @@ RunService.Heartbeat:Connect(function()
 					-- Taller to fit three stacked lines (name / health / distance)
 					-- instead of two.
 					espGui.Size = UDim2.new(0, 200, 0, 52)
-					espGui.StudsOffset = Vector3.new(0, 2.8, 0)
+					-- Well clear of the head -- Outline ESP's highlight was reaching high
+					-- enough that the old, smaller offset let it poke up into the label
+					-- text and make it hard to read.
+					espGui.StudsOffset = Vector3.new(0, 4.75, 0)
 					espGui.AlwaysOnTop = true
 					espGui.Parent = labelPart
 					local text = Instance.new("TextLabel")
@@ -1885,180 +2128,4 @@ dragChangedConnection = UserInputService.InputChanged:Connect(function(input)
 	if not dragging or (input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch) then return end
 	local delta = input.Position - dragStart
 	MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-end)
-
--- Title sequence: the real UI (MainFrame) stays invisible the entire time -- this is a
--- fully separate panel occupying the same spot, so nothing underneath is built-but-
--- hidden, it just doesn't exist visually yet. Emblem spins + grows + fades into the
--- center (matching the old hub's intro), then a fake ~3s "loading" runs with a status
--- line that cycles through nonsense messages and a progress bar that fills unevenly.
-local SplashFrame = Instance.new("CanvasGroup")
-SplashFrame.Name = "SplashFrame"
-SplashFrame.Size = FULL_SIZE
-SplashFrame.Position = WINDOW_POSITION
-SplashFrame.AnchorPoint = Vector2.new(0, 0)
-SplashFrame.BackgroundColor3 = FrameColor
-SplashFrame.BackgroundTransparency = 0
-SplashFrame.BorderSizePixel = 0
-SplashFrame.Active = true
-SplashFrame.Parent = ScreenGui
-Instance.new("UICorner", SplashFrame).CornerRadius = UDim.new(0, 14)
-
-local SplashImage = Instance.new("ImageLabel")
-SplashImage.Name = "SplashImage"
-SplashImage.AnchorPoint = Vector2.new(0.5, 0.5)
-SplashImage.Position = UDim2.new(0.5, 0, 0, 160)
-SplashImage.Size = UDim2.new(0, 0, 0, 0)
-SplashImage.Rotation = -540
-SplashImage.BackgroundTransparency = 1
-SplashImage.ImageTransparency = 1
-SplashImage.Image = "rbxassetid://130985618733437"
-SplashImage.Parent = SplashFrame
-
--- Wings slide in from the real screen edges, not just the splash panel -- SplashFrame
--- is a CanvasGroup, which clips its own descendants, so a wing parented inside it would
--- just pop into view at the panel edge instead of visibly sweeping in from further out.
--- Parenting them to ScreenGui instead avoids that. EMBLEM_CENTER mirrors the emblem's
--- absolute screen position (WINDOW_POSITION plus its local offset inside SplashFrame).
-local EMBLEM_CENTER_Y = 0.5
-local EMBLEM_CENTER_Y_OFFSET = -55
-local WING_SIZE = UDim2.new(0, 150, 0, 240)
-local WING_HALF_GAP = 150 -- half the emblem's final 300px size, so wings meet its edges exactly
-
-local RightWing = Instance.new("ImageLabel")
-RightWing.Name = "RightWing"
-RightWing.AnchorPoint = Vector2.new(0, 0.5)
-RightWing.Size = WING_SIZE
-RightWing.Position = UDim2.new(1.15, 0, EMBLEM_CENTER_Y, EMBLEM_CENTER_Y_OFFSET)
-RightWing.BackgroundTransparency = 1
-RightWing.ScaleType = Enum.ScaleType.Fit
-RightWing.Image = "rbxassetid://84773586505914"
-RightWing.ZIndex = 5
-RightWing.Parent = ScreenGui
-
-local LeftWing = Instance.new("ImageLabel")
-LeftWing.Name = "LeftWing"
-LeftWing.AnchorPoint = Vector2.new(1, 0.5)
-LeftWing.Size = WING_SIZE
-LeftWing.Position = UDim2.new(-0.15, 0, EMBLEM_CENTER_Y, EMBLEM_CENTER_Y_OFFSET)
-LeftWing.BackgroundTransparency = 1
-LeftWing.ScaleType = Enum.ScaleType.Fit
-LeftWing.Image = "rbxassetid://82311031044938"
-LeftWing.ZIndex = 5
-LeftWing.Parent = ScreenGui
-
-local LoadingLabel = Instance.new("TextLabel")
-LoadingLabel.Name = "LoadingLabel"
-LoadingLabel.AnchorPoint = Vector2.new(0.5, 0)
-LoadingLabel.Size = UDim2.new(0, 340, 0, 20)
-LoadingLabel.Position = UDim2.new(0.5, 0, 0, 322)
-LoadingLabel.BackgroundTransparency = 1
-LoadingLabel.Text = ""
-LoadingLabel.Font = UIFont
-LoadingLabel.TextSize = 14
-LoadingLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
-LoadingLabel.Parent = SplashFrame
-
-local LoadingTrack = Instance.new("Frame")
-LoadingTrack.Name = "LoadingTrack"
-LoadingTrack.AnchorPoint = Vector2.new(0.5, 0)
-LoadingTrack.Size = UDim2.new(0, 300, 0, 6)
-LoadingTrack.Position = UDim2.new(0.5, 0, 0, 350)
-LoadingTrack.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-LoadingTrack.BorderSizePixel = 0
-LoadingTrack.Parent = SplashFrame
-Instance.new("UICorner", LoadingTrack).CornerRadius = UDim.new(1, 0)
-
-local LoadingFill = Instance.new("Frame")
-LoadingFill.Name = "LoadingFill"
-LoadingFill.Size = UDim2.new(0, 0, 1, 0)
-LoadingFill.BackgroundColor3 = AccentColor
-LoadingFill.BorderSizePixel = 0
-LoadingFill.Parent = LoadingTrack
-Instance.new("UICorner", LoadingFill).CornerRadius = UDim.new(1, 0)
-
-local FakeLoadingMessages = {
-	"Loading assets...",
-	"Loading scripts...",
-	"Initializing modules...",
-	"Compiling shaders...",
-	"Fetching configuration...",
-	"Optimizing textures...",
-	"Establishing connection...",
-	"Warming up cache...",
-	"Resolving dependencies...",
-	"Finalizing setup...",
-}
-
-local function RunFakeLoading(totalDuration)
-	local stepCount = math.random(9, 13)
-	local progressWeights, durationWeights = {}, {}
-	local progressSum, durationSum = 0, 0
-	for i = 1, stepCount do
-		progressWeights[i] = math.random(4, 20)
-		durationWeights[i] = math.random(4, 20)
-		progressSum += progressWeights[i]
-		durationSum += durationWeights[i]
-	end
-	local cumulativeProgress = 0
-	for i = 1, stepCount do
-		local stepDuration = (durationWeights[i] / durationSum) * totalDuration
-		cumulativeProgress = math.min(1, cumulativeProgress + (progressWeights[i] / progressSum))
-		LoadingLabel.Text = FakeLoadingMessages[math.random(1, #FakeLoadingMessages)]
-		TweenService:Create(LoadingFill, TweenInfo.new(math.min(stepDuration, 0.2), Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			Size = UDim2.new(cumulativeProgress, 0, 1, 0),
-		}):Play()
-		task.wait(stepDuration)
-	end
-	LoadingFill.Size = UDim2.new(1, 0, 1, 0)
-end
-
-task.spawn(function()
-	local spinIn = TweenService:Create(SplashImage, TweenInfo.new(0.7, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-		Size = UDim2.new(0, 300, 0, 300),
-		Rotation = 0,
-		ImageTransparency = 0,
-	})
-	spinIn:Play()
-	spinIn.Completed:Wait()
-
-	-- Wings slam in fast from the screen edges and stop exactly at the emblem's sides.
-	-- Quint/Out decelerates hard into place with no overshoot, so they never overlap it
-	-- even briefly.
-	local wingTweenInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-	local rightWingIn = TweenService:Create(RightWing, wingTweenInfo, {
-		Position = UDim2.new(0.5, WING_HALF_GAP, EMBLEM_CENTER_Y, EMBLEM_CENTER_Y_OFFSET),
-	})
-	local leftWingIn = TweenService:Create(LeftWing, wingTweenInfo, {
-		Position = UDim2.new(0.5, -WING_HALF_GAP, EMBLEM_CENTER_Y, EMBLEM_CENTER_Y_OFFSET),
-	})
-	rightWingIn:Play()
-	leftWingIn:Play()
-	rightWingIn.Completed:Wait()
-
-	-- A small, contained drift once the wings have landed -- never reads as major
-	-- movement, just some life in the emblem while it waits.
-	local floatTween = TweenService:Create(SplashImage, TweenInfo.new(2.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
-		Position = UDim2.new(0.5, 6, 0, 152),
-	})
-	floatTween:Play()
-
-	RunFakeLoading(3)
-	task.wait(0.25)
-
-	floatTween:Cancel()
-	local fadeOut = TweenService:Create(SplashFrame, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		GroupTransparency = 1,
-	})
-	local fadeOutTweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-	local rightWingOut = TweenService:Create(RightWing, fadeOutTweenInfo, {ImageTransparency = 1})
-	local leftWingOut = TweenService:Create(LeftWing, fadeOutTweenInfo, {ImageTransparency = 1})
-	fadeOut:Play()
-	rightWingOut:Play()
-	leftWingOut:Play()
-	fadeOut.Completed:Wait()
-	SplashFrame:Destroy()
-	RightWing:Destroy()
-	LeftWing:Destroy()
-	MainFrame.Visible = true
 end)
