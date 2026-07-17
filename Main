@@ -430,10 +430,29 @@ end
 
 -- Right-click a keybind button to clear it: a small "Remove keybind?" popup with
 -- Remove/Cancel, ported from the old feature-rich hub. Singleton -- opening a new one
--- closes whichever is already open.
+-- closes whichever is already open. Tracks the button it's anchored to so it stays
+-- attached if the window gets dragged, and CloseKeybindClearPrompt lets the minimize
+-- handler force it shut instead of leaving it stranded over a shrunk window.
 local ActiveKeybindClearPrompt = nil
+local ActiveKeybindClearButton = nil
+
+local function CloseKeybindClearPrompt()
+	if ActiveKeybindClearPrompt then ActiveKeybindClearPrompt:Destroy() end
+	ActiveKeybindClearPrompt = nil
+	ActiveKeybindClearButton = nil
+end
+
+local function RepositionKeybindClearPrompt()
+	if not (ActiveKeybindClearPrompt and ActiveKeybindClearButton) then return end
+	ActiveKeybindClearPrompt.Position = UDim2.fromOffset(
+		ActiveKeybindClearButton.AbsolutePosition.X,
+		ActiveKeybindClearButton.AbsolutePosition.Y + ActiveKeybindClearButton.AbsoluteSize.Y + 6
+	)
+end
+MainFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(RepositionKeybindClearPrompt)
+
 local function ShowKeybindClearPrompt(button, onCleared)
-	if ActiveKeybindClearPrompt then ActiveKeybindClearPrompt:Destroy() ActiveKeybindClearPrompt = nil end
+	CloseKeybindClearPrompt()
 
 	local prompt = Instance.new("Frame")
 	prompt.Name = "KeybindClearPrompt"
@@ -449,6 +468,7 @@ local function ShowKeybindClearPrompt(button, onCleared)
 	promptStroke.Thickness = 1
 	promptStroke.Parent = prompt
 	ActiveKeybindClearPrompt = prompt
+	ActiveKeybindClearButton = button
 
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.new(1, -16, 0, 28)
@@ -491,13 +511,11 @@ local function ShowKeybindClearPrompt(button, onCleared)
 	removeBtn.MouseButton1Click:Connect(function()
 		PlayClick()
 		onCleared()
-		if ActiveKeybindClearPrompt == prompt then ActiveKeybindClearPrompt = nil end
-		prompt:Destroy()
+		CloseKeybindClearPrompt()
 	end)
 	cancelBtn.MouseButton1Click:Connect(function()
 		PlayClick()
-		if ActiveKeybindClearPrompt == prompt then ActiveKeybindClearPrompt = nil end
-		prompt:Destroy()
+		CloseKeybindClearPrompt()
 	end)
 end
 
@@ -849,23 +867,27 @@ ESPAdornmentRoot.Parent = ScreenGui
 
 local OutlineESPEnabled = false
 local OutlineESPKeybind = Enum.KeyCode.Unknown
-local OutlineHighlights = {}
+local OutlineHighlights = {} -- [Player] = Highlight
 
 local BoxESPEnabled = false
 local BoxESPKeybind = Enum.KeyCode.Unknown
-local BoxAdornments = {} -- [character] = {[part] = BoxHandleAdornment}
+local BoxAdornments = {} -- [Player] = {[part] = BoxHandleAdornment}
 
 local ESPLabelsEnabled = false
 local ESPLabelsKeybind = Enum.KeyCode.Unknown
 
-local function RemoveOutlineHighlight(character)
-	local highlight = OutlineHighlights[character]
+-- Keyed by Player rather than Character: a Player persists across deaths/respawns, so
+-- tracking by Player (matching the old feature-rich hub) means a stale highlight or box
+-- set from a previous life is always reachable to clear, even after its Character is
+-- long gone.
+local function RemoveOutlineHighlight(plr)
+	local highlight = OutlineHighlights[plr]
 	if highlight then highlight:Destroy() end
-	OutlineHighlights[character] = nil
+	OutlineHighlights[plr] = nil
 end
 
-local function AddOutlineHighlight(character)
-	if OutlineHighlights[character] then return end
+local function AddOutlineHighlight(plr, character)
+	if OutlineHighlights[plr] then return end
 	local highlight = Instance.new("Highlight")
 	highlight.Name = "SerenityOutlineESP"
 	highlight.FillColor = ESPColor
@@ -874,7 +896,7 @@ local function AddOutlineHighlight(character)
 	highlight.OutlineTransparency = 0
 	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 	highlight.Parent = character
-	OutlineHighlights[character] = highlight
+	OutlineHighlights[plr] = highlight
 end
 
 -- Body-part names covered by Body ESP, matching both R15 and R6 rigs.
@@ -891,23 +913,23 @@ local function IsBodyESPPart(part, character)
 	return part:IsA("BasePart") and part.Parent == character and BodyESPPartNames[part.Name] == true
 end
 
-local function RemoveBoxAdornments(character)
-	local adornments = BoxAdornments[character]
+local function RemoveBoxAdornments(plr)
+	local adornments = BoxAdornments[plr]
 	if not adornments then return end
 	for _, adornment in pairs(adornments) do
 		if adornment then adornment:Destroy() end
 	end
-	BoxAdornments[character] = nil
+	BoxAdornments[plr] = nil
 end
 
 -- Per-limb boxes rather than one box around the root. A BoxHandleAdornment tracks its
 -- Adornee's position/size automatically, so this only needs to run once per character
 -- instead of every frame.
-local function AddBoxAdornments(character)
-	local adornments = BoxAdornments[character]
+local function AddBoxAdornments(plr, character)
+	local adornments = BoxAdornments[plr]
 	if not adornments then
 		adornments = {}
-		BoxAdornments[character] = adornments
+		BoxAdornments[plr] = adornments
 	end
 	for _, part in ipairs(character:GetChildren()) do
 		if IsBodyESPPart(part, character) and not adornments[part] then
@@ -935,7 +957,7 @@ end
 local function RefreshOutlineESP()
 	for _, plr in ipairs(Players:GetPlayers()) do
 		if plr ~= Player and plr.Character then
-			if OutlineESPEnabled then AddOutlineHighlight(plr.Character) else RemoveOutlineHighlight(plr.Character) end
+			if OutlineESPEnabled then AddOutlineHighlight(plr, plr.Character) else RemoveOutlineHighlight(plr) end
 		end
 	end
 end
@@ -943,7 +965,7 @@ end
 local function RefreshBoxESP()
 	for _, plr in ipairs(Players:GetPlayers()) do
 		if plr ~= Player and plr.Character then
-			if BoxESPEnabled then AddBoxAdornments(plr.Character) else RemoveBoxAdornments(plr.Character) end
+			if BoxESPEnabled then AddBoxAdornments(plr, plr.Character) else RemoveBoxAdornments(plr) end
 		end
 	end
 end
@@ -955,8 +977,32 @@ local function RefreshESPLabels()
 	end
 end
 
+-- Continuously clears Outline/Body ESP for anyone who's died or lost their character,
+-- so ESP never lingers on a corpse or an empty slot -- the same maintenance-loop
+-- approach the old feature-rich hub used, since a one-time apply-on-toggle plus
+-- apply-on-respawn (below) has no way to notice a death in between.
+local ESPMaintenanceInterval = 0.15
+local lastESPMaintenance = 0
+RunService.Heartbeat:Connect(function()
+	if not (OutlineESPEnabled or BoxESPEnabled or next(OutlineHighlights) or next(BoxAdornments)) then return end
+	local now = os.clock()
+	if now - lastESPMaintenance < ESPMaintenanceInterval then return end
+	lastESPMaintenance = now
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= Player then
+			local character = plr.Character
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			if not character or not humanoid or humanoid.Health <= 0 then
+				RemoveOutlineHighlight(plr)
+				RemoveBoxAdornments(plr)
+			end
+		end
+	end
+end)
+
 -- Name / health / distance billboard, throttled instead of updated every frame -- the
--- text only needs to look live, not actually be per-frame.
+-- text only needs to look live, not actually be per-frame. Already self-cleans on death
+-- (the else branch below) since it's parented straight to the character's own body part.
 local ESPLabelUpdateInterval = 0.15
 local lastESPLabelUpdate = 0
 RunService.Heartbeat:Connect(function()
@@ -976,8 +1022,10 @@ RunService.Heartbeat:Connect(function()
 				if not espGui then
 					espGui = Instance.new("BillboardGui")
 					espGui.Name = "SerenityESPLabel"
-					espGui.Size = UDim2.new(0, 200, 0, 36)
-					espGui.StudsOffset = Vector3.new(0, 2.5, 0)
+					-- Taller to fit three stacked lines (name / health / distance)
+					-- instead of two.
+					espGui.Size = UDim2.new(0, 200, 0, 52)
+					espGui.StudsOffset = Vector3.new(0, 2.8, 0)
 					espGui.AlwaysOnTop = true
 					espGui.Parent = labelPart
 					local text = Instance.new("TextLabel")
@@ -988,14 +1036,15 @@ RunService.Heartbeat:Connect(function()
 					-- label needs to read clearly at a distance, and the menu font looked
 					-- out of place rendered in 3D space.
 					text.Font = Enum.Font.GothamBold
-					text.TextSize = 13
+					text.TextSize = 12
 					text.TextStrokeTransparency = 0
 					text.Parent = espGui
 				end
 				local dist = myRoot and (myRoot.Position - root.Position).Magnitude or 0
 				local label = espGui.Label
 				label.TextColor3 = ESPColor
-				label.Text = string.format("%s\nHP: %d | %d Studs", plr.DisplayName, math.floor(humanoid.Health), math.floor(dist))
+				-- Name, health, distance -- one per line instead of crammed onto two.
+				label.Text = string.format("%s\nHP: %d\n%d studs away", plr.DisplayName, math.floor(humanoid.Health), math.floor(dist))
 			else
 				RemoveESPLabel(character)
 			end
@@ -1007,8 +1056,12 @@ local function HookOtherPlayerCharacters(plr)
 	if plr == Player then return end
 	plr.CharacterAdded:Connect(function(character)
 		task.wait(0.1)
-		if OutlineESPEnabled then AddOutlineHighlight(character) end
-		if BoxESPEnabled then AddBoxAdornments(character) end
+		-- Clear anything left over from the previous life before re-applying, in case
+		-- the maintenance loop hasn't caught up yet.
+		RemoveOutlineHighlight(plr)
+		RemoveBoxAdornments(plr)
+		if OutlineESPEnabled then AddOutlineHighlight(plr, character) end
+		if BoxESPEnabled then AddBoxAdornments(plr, character) end
 	end)
 end
 for _, plr in ipairs(Players:GetPlayers()) do
@@ -1016,10 +1069,9 @@ for _, plr in ipairs(Players:GetPlayers()) do
 end
 Players.PlayerAdded:Connect(HookOtherPlayerCharacters)
 Players.PlayerRemoving:Connect(function(leavingPlayer)
-	if leavingPlayer.Character then
-		RemoveBoxAdornments(leavingPlayer.Character)
-		RemoveESPLabel(leavingPlayer.Character)
-	end
+	RemoveOutlineHighlight(leavingPlayer)
+	RemoveBoxAdornments(leavingPlayer)
+	if leavingPlayer.Character then RemoveESPLabel(leavingPlayer.Character) end
 end)
 
 CreateSectionHeading(VisualsPage, 8, "ESP")
@@ -1337,12 +1389,22 @@ for index, swatch in ipairs(SavedColorButtons) do
 	end)
 end
 
+local function CloseESPColorPicker()
+	ESPColorPicker.Visible = false
+end
+
 ESPColorButton.MouseButton1Click:Connect(function()
 	PlayClick()
 	if ESPColorPicker.Visible then
-		ESPColorPicker.Visible = false
+		CloseESPColorPicker()
 		return
 	end
+	-- Recompute position on open rather than relying only on the AbsolutePosition-changed
+	-- signal from setup: that signal may have fired once before Roblox finished laying
+	-- out the freshly-built GUI, leaving MainFrame.AbsolutePosition read as (0,0) and the
+	-- picker parked off the left edge of the screen -- functional but invisible. By the
+	-- time someone has clicked this button, layout has long since settled.
+	UpdateESPColorPickerPosition()
 	PickerH, PickerS, PickerV = Color3.toHSV(ESPColor)
 	RefreshPickerMarkers()
 	RefreshSavedColorButtons()
@@ -1701,6 +1763,10 @@ local function ToggleGUI()
 	ContentArea.Visible = not minimized
 	if minimized then
 		preMinimizePosition = MainFrame.Position
+		-- Both popups anchor to controls that are about to shrink/disappear -- rather
+		-- than have them awkwardly follow a minimizing window, just close them.
+		CloseKeybindClearPrompt()
+		CloseESPColorPicker()
 	end
 	local targetPosition = minimized and GetSnappedMinimizedPosition() or (preMinimizePosition or WINDOW_POSITION)
 	TweenService:Create(MainFrame, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
@@ -1736,8 +1802,8 @@ local function DestroyGui()
 	OutlineESPEnabled = false
 	BoxESPEnabled = false
 	ESPLabelsEnabled = false
-	for character in pairs(OutlineHighlights) do RemoveOutlineHighlight(character) end
-	for character in pairs(BoxAdornments) do RemoveBoxAdornments(character) end
+	for plr in pairs(OutlineHighlights) do RemoveOutlineHighlight(plr) end
+	for plr in pairs(BoxAdornments) do RemoveBoxAdornments(plr) end
 	for _, plr in ipairs(Players:GetPlayers()) do
 		if plr.Character then RemoveESPLabel(plr.Character) end
 	end
@@ -1828,8 +1894,40 @@ SplashImage.Size = UDim2.new(0, 0, 0, 0)
 SplashImage.Rotation = -540
 SplashImage.BackgroundTransparency = 1
 SplashImage.ImageTransparency = 1
-SplashImage.Image = "rbxassetid://80871305904541"
+SplashImage.Image = "rbxassetid://130985618733437"
 SplashImage.Parent = SplashFrame
+
+-- Wings slide in from the real screen edges, not just the splash panel -- SplashFrame
+-- is a CanvasGroup, which clips its own descendants, so a wing parented inside it would
+-- just pop into view at the panel edge instead of visibly sweeping in from further out.
+-- Parenting them to ScreenGui instead avoids that. EMBLEM_CENTER mirrors the emblem's
+-- absolute screen position (WINDOW_POSITION plus its local offset inside SplashFrame).
+local EMBLEM_CENTER_Y = 0.5
+local EMBLEM_CENTER_Y_OFFSET = -55
+local WING_SIZE = UDim2.new(0, 150, 0, 240)
+local WING_HALF_GAP = 150 -- half the emblem's final 300px size, so wings meet its edges exactly
+
+local RightWing = Instance.new("ImageLabel")
+RightWing.Name = "RightWing"
+RightWing.AnchorPoint = Vector2.new(0, 0.5)
+RightWing.Size = WING_SIZE
+RightWing.Position = UDim2.new(1.15, 0, EMBLEM_CENTER_Y, EMBLEM_CENTER_Y_OFFSET)
+RightWing.BackgroundTransparency = 1
+RightWing.ScaleType = Enum.ScaleType.Fit
+RightWing.Image = "rbxassetid://84773586505914"
+RightWing.ZIndex = 5
+RightWing.Parent = ScreenGui
+
+local LeftWing = Instance.new("ImageLabel")
+LeftWing.Name = "LeftWing"
+LeftWing.AnchorPoint = Vector2.new(1, 0.5)
+LeftWing.Size = WING_SIZE
+LeftWing.Position = UDim2.new(-0.15, 0, EMBLEM_CENTER_Y, EMBLEM_CENTER_Y_OFFSET)
+LeftWing.BackgroundTransparency = 1
+LeftWing.ScaleType = Enum.ScaleType.Fit
+LeftWing.Image = "rbxassetid://82311031044938"
+LeftWing.ZIndex = 5
+LeftWing.Parent = ScreenGui
 
 local LoadingLabel = Instance.new("TextLabel")
 LoadingLabel.Name = "LoadingLabel"
@@ -1906,14 +2004,43 @@ task.spawn(function()
 	spinIn:Play()
 	spinIn.Completed:Wait()
 
+	-- Wings slam in fast from the screen edges and stop exactly at the emblem's sides.
+	-- Quint/Out decelerates hard into place with no overshoot, so they never overlap it
+	-- even briefly.
+	local wingTweenInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+	local rightWingIn = TweenService:Create(RightWing, wingTweenInfo, {
+		Position = UDim2.new(0.5, WING_HALF_GAP, EMBLEM_CENTER_Y, EMBLEM_CENTER_Y_OFFSET),
+	})
+	local leftWingIn = TweenService:Create(LeftWing, wingTweenInfo, {
+		Position = UDim2.new(0.5, -WING_HALF_GAP, EMBLEM_CENTER_Y, EMBLEM_CENTER_Y_OFFSET),
+	})
+	rightWingIn:Play()
+	leftWingIn:Play()
+	rightWingIn.Completed:Wait()
+
+	-- A small, contained drift once the wings have landed -- never reads as major
+	-- movement, just some life in the emblem while it waits.
+	local floatTween = TweenService:Create(SplashImage, TweenInfo.new(2.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+		Position = UDim2.new(0.5, 6, 0, 152),
+	})
+	floatTween:Play()
+
 	RunFakeLoading(3)
 	task.wait(0.25)
 
+	floatTween:Cancel()
 	local fadeOut = TweenService:Create(SplashFrame, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 		GroupTransparency = 1,
 	})
+	local fadeOutTweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local rightWingOut = TweenService:Create(RightWing, fadeOutTweenInfo, {ImageTransparency = 1})
+	local leftWingOut = TweenService:Create(LeftWing, fadeOutTweenInfo, {ImageTransparency = 1})
 	fadeOut:Play()
+	rightWingOut:Play()
+	leftWingOut:Play()
 	fadeOut.Completed:Wait()
 	SplashFrame:Destroy()
+	RightWing:Destroy()
+	LeftWing:Destroy()
 	MainFrame.Visible = true
 end)
