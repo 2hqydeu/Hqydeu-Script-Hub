@@ -381,17 +381,30 @@ local MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = UDim.new(0, 14)
 MainCorner.Parent = MainFrame
 
+-- Header backdrop: a lighter-gray panel behind just the emblem/timer/minimize area, so
+-- that strip reads as its own contrasted band instead of blending into the rest of the
+-- window's background. Created first (and left un-rounded) so MainFrame's own
+-- ClipsDescendants + corner radius crops its top edge to match the window's shape, and
+-- everything header-related drawn after it in the script renders on top automatically.
+local HeaderBackdrop = Instance.new("Frame")
+HeaderBackdrop.Name = "HeaderBackdrop"
+HeaderBackdrop.Size = UDim2.new(1, 0, 0, HEADER_HEIGHT)
+HeaderBackdrop.Position = UDim2.new(0, 0, 0, 0)
+HeaderBackdrop.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+HeaderBackdrop.BorderSizePixel = 0
+HeaderBackdrop.Parent = MainFrame
+
 -- Header: title emblem (same mark as the splash screen, in place of the "Serenity" text),
 -- live local clock underneath it, minimize, and a plain "L Ctrl" hint -- all top-anchored
 -- so a minimize shrinks the window straight up toward this row instead of shrinking from
 -- the center.
 local TitleEmblem = Instance.new("ImageLabel")
 TitleEmblem.Name = "TitleEmblem"
--- Sized well past the header row on purpose -- background is transparent and everything
--- drawn after this (tab bar, content area, etc.) sits on top of it in the same parent, so
--- the overflow is covered rather than visibly clipped. Header/window size stay untouched.
-TitleEmblem.Size = UDim2.new(0, 100, 0, 100)
-TitleEmblem.Position = UDim2.new(0, 8, 0, 0)
+-- Wide banner instead of a tall square -- sits entirely above TimeLabel (which starts at
+-- y=36) instead of overlapping it. ScaleType.Fit keeps the mark's own proportions inside
+-- this box, so it isn't stretched even though the box itself is wide and short.
+TitleEmblem.Size = UDim2.new(0, 150, 0, 32)
+TitleEmblem.Position = UDim2.new(0, 6, 0, 2)
 TitleEmblem.BackgroundTransparency = 1
 TitleEmblem.Image = "rbxassetid://76652375830768"
 TitleEmblem.ScaleType = Enum.ScaleType.Fit
@@ -405,7 +418,7 @@ TimeLabel.BackgroundTransparency = 1
 TimeLabel.Text = os.date("%I:%M:%S %p")
 TimeLabel.Font = UIFont
 TimeLabel.TextSize = 11
-TimeLabel.TextColor3 = Color3.fromRGB(160, 160, 160)
+TimeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 TimeLabel.TextXAlignment = Enum.TextXAlignment.Left
 TimeLabel.Parent = MainFrame
 
@@ -500,6 +513,32 @@ local function SelectTab(name)
 	end
 end
 
+-- Roblox's native scroll-wheel handling on a ScrollingFrame jumps the canvas an instant,
+-- un-eased fixed amount per notch, which is what reads as "choppy." This replaces that
+-- with a tweened scroll instead: each notch nudges a running target position and eases
+-- toward it, so a burst of notches reads as one smooth glide rather than a stutter.
+-- Trade-off: dragging the scrollbar thumb itself no longer works (ScrollingEnabled has to
+-- be off to stop native wheel handling from fighting the tween) -- wheel and touch still
+-- do, which covers how these lists actually get used.
+local function SmoothScroll(scrollFrame, step)
+	step = step or 90
+	scrollFrame.ScrollingEnabled = false
+	local target = scrollFrame.CanvasPosition
+	local function Clamp(pos)
+		local maxX = math.max(0, scrollFrame.AbsoluteCanvasSize.X - scrollFrame.AbsoluteWindowSize.X)
+		local maxY = math.max(0, scrollFrame.AbsoluteCanvasSize.Y - scrollFrame.AbsoluteWindowSize.Y)
+		return Vector2.new(math.clamp(pos.X, 0, maxX), math.clamp(pos.Y, 0, maxY))
+	end
+	local function ScrollBy(delta)
+		target = Clamp(target + Vector2.new(0, delta))
+		TweenService:Create(scrollFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			CanvasPosition = target,
+		}):Play()
+	end
+	scrollFrame.MouseWheelForward:Connect(function() ScrollBy(-step) end)
+	scrollFrame.MouseWheelBackward:Connect(function() ScrollBy(step) end)
+end
+
 -- Icon + label are grouped as one horizontally-centered unit (via a nested UIListLayout)
 -- so they read as a single "logo + wordmark," not two separately-positioned pieces.
 local function CreateTab(name, order, iconId, scrolling)
@@ -532,7 +571,7 @@ local function CreateTab(name, order, iconId, scrolling)
 	local icon = Instance.new("ImageLabel")
 	icon.Name = "Icon"
 	icon.LayoutOrder = 1
-	icon.Size = UDim2.new(0, 24, 0, 24)
+	icon.Size = UDim2.new(0, 30, 0, 30)
 	icon.BackgroundTransparency = 1
 	if iconId then icon.Image = "rbxassetid://" .. iconId end
 	icon.Parent = content
@@ -556,6 +595,7 @@ local function CreateTab(name, order, iconId, scrolling)
 		page.ScrollBarImageColor3 = AccentColor
 		page.CanvasSize = UDim2.new(0, 0, 0, 0)
 		page.ElasticBehavior = Enum.ElasticBehavior.Never
+		SmoothScroll(page)
 	else
 		page = Instance.new("Frame")
 	end
@@ -2040,8 +2080,17 @@ do
 
 	-- Opens the floating quick-teleport popup (further below) -- same Players/Waypoints
 	-- data as this tab -- without needing to have the hub's Teleport tab open at all.
+	-- TogglePopup itself isn't defined until the popup is actually built further down, so
+	-- it's forward-declared here and the button just calls whatever it ends up pointing to.
 	PopupKeybind = Enum.KeyCode.LeftAlt
-	CreateToggleRow(TeleportPage, 0, "TPMenuKeybind", function(k) PopupKeybind = k end, "TP Menu Popup", Enum.KeyCode.LeftAlt)
+	local TogglePopup
+	local PopupToggleButton
+	PopupToggleButton = CreateToggleRow(TeleportPage, 0, "TPMenuKeybind", function(k) PopupKeybind = k end, "TP Menu Popup", Enum.KeyCode.LeftAlt)
+	PopupToggleButton.Text = "Closed"
+	PopupToggleButton.MouseButton1Click:Connect(function()
+		PlayClick()
+		if TogglePopup then TogglePopup() end
+	end)
 
 	local PlayersTabButton = Instance.new("TextButton")
 	PlayersTabButton.Name = "PlayersTabButton"
@@ -2100,6 +2149,7 @@ do
 	PlayerList.ScrollBarImageColor3 = AccentColor
 	PlayerList.ElasticBehavior = Enum.ElasticBehavior.Never
 	PlayerList.CanvasSize = UDim2.new(0, 0, 0, 0)
+	SmoothScroll(PlayerList)
 	PlayerList.Parent = TeleportPage
 
 	local PlayerListLayout = Instance.new("UIListLayout")
@@ -2167,6 +2217,7 @@ do
 	WaypointList.ScrollBarImageColor3 = AccentColor
 	WaypointList.ElasticBehavior = Enum.ElasticBehavior.Never
 	WaypointList.CanvasSize = UDim2.new(0, 0, 0, 0)
+	SmoothScroll(WaypointList)
 	WaypointList.Visible = false
 	WaypointList.Parent = TeleportPage
 
@@ -2184,57 +2235,69 @@ do
 			if child:IsA("Frame") then child:Destroy() end
 		end
 		local filter = PlayerSearch.Text:lower()
+		local candidates = {}
 		for _, targetPlayer in ipairs(Players:GetPlayers()) do
 			if targetPlayer ~= Player then
 				local displayText = targetPlayer.DisplayName or targetPlayer.Name
 				if filter == "" or displayText:lower():find(filter, 1, true) or targetPlayer.Name:lower():find(filter, 1, true) then
-					local row = Instance.new("Frame")
-					row.Name = "PlayerRow"
-					row.Size = UDim2.new(1, 0, 0, 36)
-					row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-					row.BackgroundTransparency = 0.5
-					row.BorderSizePixel = 0
-					row.Parent = PlayerList
-					Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
-
-					local nameLabel = Instance.new("TextLabel")
-					nameLabel.Size = UDim2.new(1, -16, 0, 18)
-					nameLabel.Position = UDim2.new(0, 10, 0, 2)
-					nameLabel.BackgroundTransparency = 1
-					nameLabel.Text = displayText
-					nameLabel.Font = UIFont
-					nameLabel.TextSize = 13
-					nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-					nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-					nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
-					nameLabel.Parent = row
-
-					local userLabel = Instance.new("TextLabel")
-					userLabel.Size = UDim2.new(1, -16, 0, 14)
-					userLabel.Position = UDim2.new(0, 10, 0, 19)
-					userLabel.BackgroundTransparency = 1
-					userLabel.Text = "@" .. targetPlayer.Name
-					userLabel.Font = UIFont
-					userLabel.TextSize = 10
-					userLabel.TextColor3 = Color3.fromRGB(170, 170, 170)
-					userLabel.TextXAlignment = Enum.TextXAlignment.Left
-					userLabel.Parent = row
-
-					local clickButton = Instance.new("TextButton")
-					clickButton.Size = UDim2.new(1, 0, 1, 0)
-					clickButton.BackgroundTransparency = 1
-					clickButton.Text = ""
-					clickButton.Parent = row
-					clickButton.MouseButton1Click:Connect(function()
-						PlayClick()
-						local targetCharacter = targetPlayer.Character
-						local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
-						local character = Player.Character
-						local root = character and character:FindFirstChild("HumanoidRootPart")
-						if targetRoot and root then root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 3) end
-					end)
+					local isFriend = false
+					pcall(function() isFriend = Player:IsFriendsWith(targetPlayer.UserId) end)
+					table.insert(candidates, {Player = targetPlayer, DisplayText = displayText, IsFriend = isFriend})
 				end
 			end
+		end
+		-- Friends float to the top; everyone else keeps the game's own player order.
+		table.sort(candidates, function(a, b)
+			if a.IsFriend ~= b.IsFriend then return a.IsFriend end
+			return false
+		end)
+		for _, candidate in ipairs(candidates) do
+			local targetPlayer = candidate.Player
+			local row = Instance.new("Frame")
+			row.Name = "PlayerRow"
+			row.Size = UDim2.new(1, 0, 0, 36)
+			row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+			row.BackgroundTransparency = 0.5
+			row.BorderSizePixel = 0
+			row.Parent = PlayerList
+			Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+
+			local nameLabel = Instance.new("TextLabel")
+			nameLabel.Size = UDim2.new(1, -16, 0, 18)
+			nameLabel.Position = UDim2.new(0, 10, 0, 2)
+			nameLabel.BackgroundTransparency = 1
+			nameLabel.Text = candidate.IsFriend and ("\226\152\133 " .. candidate.DisplayText) or candidate.DisplayText
+			nameLabel.Font = UIFont
+			nameLabel.TextSize = 13
+			nameLabel.TextColor3 = candidate.IsFriend and Color3.fromRGB(255, 210, 90) or Color3.fromRGB(255, 255, 255)
+			nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+			nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+			nameLabel.Parent = row
+
+			local userLabel = Instance.new("TextLabel")
+			userLabel.Size = UDim2.new(1, -16, 0, 14)
+			userLabel.Position = UDim2.new(0, 10, 0, 19)
+			userLabel.BackgroundTransparency = 1
+			userLabel.Text = "@" .. targetPlayer.Name
+			userLabel.Font = UIFont
+			userLabel.TextSize = 10
+			userLabel.TextColor3 = Color3.fromRGB(170, 170, 170)
+			userLabel.TextXAlignment = Enum.TextXAlignment.Left
+			userLabel.Parent = row
+
+			local clickButton = Instance.new("TextButton")
+			clickButton.Size = UDim2.new(1, 0, 1, 0)
+			clickButton.BackgroundTransparency = 1
+			clickButton.Text = ""
+			clickButton.Parent = row
+			clickButton.MouseButton1Click:Connect(function()
+				PlayClick()
+				local targetCharacter = targetPlayer.Character
+				local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+				local character = Player.Character
+				local root = character and character:FindFirstChild("HumanoidRootPart")
+				if targetRoot and root then root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 3) end
+			end)
 		end
 		PlayerList.CanvasSize = UDim2.new(0, 0, 0, PlayerListLayout.AbsoluteContentSize.Y + 4)
 	end
@@ -2574,6 +2637,7 @@ do
 	PopupPlayerList.ScrollBarImageColor3 = AccentColor
 	PopupPlayerList.ElasticBehavior = Enum.ElasticBehavior.Never
 	PopupPlayerList.CanvasSize = UDim2.new(0, 0, 0, 0)
+	SmoothScroll(PopupPlayerList)
 	PopupPlayerList.ZIndex = 31
 	PopupPlayerList.Parent = PopupFrame
 
@@ -2609,6 +2673,7 @@ do
 	PopupWaypointList.ScrollBarImageColor3 = AccentColor
 	PopupWaypointList.ElasticBehavior = Enum.ElasticBehavior.Never
 	PopupWaypointList.CanvasSize = UDim2.new(0, 0, 0, 0)
+	SmoothScroll(PopupWaypointList)
 	PopupWaypointList.Visible = false
 	PopupWaypointList.ZIndex = 31
 	PopupWaypointList.Parent = PopupFrame
@@ -2623,60 +2688,71 @@ do
 			if child:IsA("Frame") then child:Destroy() end
 		end
 		local filter = PopupPlayerSearch.Text:lower()
+		local candidates = {}
 		for _, targetPlayer in ipairs(Players:GetPlayers()) do
 			if targetPlayer ~= Player then
 				local displayText = targetPlayer.DisplayName or targetPlayer.Name
 				if filter == "" or displayText:lower():find(filter, 1, true) or targetPlayer.Name:lower():find(filter, 1, true) then
-					local row = Instance.new("Frame")
-					row.Size = UDim2.new(1, 0, 0, 30)
-					row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-					row.BackgroundTransparency = 0.5
-					row.BorderSizePixel = 0
-					row.ZIndex = 31
-					row.Parent = PopupPlayerList
-					Instance.new("UICorner", row).CornerRadius = UDim.new(0, 5)
-
-					local nameLabel = Instance.new("TextLabel")
-					nameLabel.Size = UDim2.new(1, -12, 0, 16)
-					nameLabel.Position = UDim2.new(0, 8, 0, 1)
-					nameLabel.BackgroundTransparency = 1
-					nameLabel.Text = displayText
-					nameLabel.Font = UIFont
-					nameLabel.TextSize = 11
-					nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-					nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-					nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
-					nameLabel.ZIndex = 32
-					nameLabel.Parent = row
-
-					local userLabel = Instance.new("TextLabel")
-					userLabel.Size = UDim2.new(1, -12, 0, 12)
-					userLabel.Position = UDim2.new(0, 8, 0, 16)
-					userLabel.BackgroundTransparency = 1
-					userLabel.Text = "@" .. targetPlayer.Name
-					userLabel.Font = UIFont
-					userLabel.TextSize = 8
-					userLabel.TextColor3 = Color3.fromRGB(170, 170, 170)
-					userLabel.TextXAlignment = Enum.TextXAlignment.Left
-					userLabel.ZIndex = 32
-					userLabel.Parent = row
-
-					local clickButton = Instance.new("TextButton")
-					clickButton.Size = UDim2.new(1, 0, 1, 0)
-					clickButton.BackgroundTransparency = 1
-					clickButton.Text = ""
-					clickButton.ZIndex = 32
-					clickButton.Parent = row
-					clickButton.MouseButton1Click:Connect(function()
-						PlayClick()
-						local targetCharacter = targetPlayer.Character
-						local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
-						local character = Player.Character
-						local root = character and character:FindFirstChild("HumanoidRootPart")
-						if targetRoot and root then root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 3) end
-					end)
+					local isFriend = false
+					pcall(function() isFriend = Player:IsFriendsWith(targetPlayer.UserId) end)
+					table.insert(candidates, {Player = targetPlayer, DisplayText = displayText, IsFriend = isFriend})
 				end
 			end
+		end
+		table.sort(candidates, function(a, b)
+			if a.IsFriend ~= b.IsFriend then return a.IsFriend end
+			return false
+		end)
+		for _, candidate in ipairs(candidates) do
+			local targetPlayer = candidate.Player
+			local row = Instance.new("Frame")
+			row.Size = UDim2.new(1, 0, 0, 30)
+			row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+			row.BackgroundTransparency = 0.5
+			row.BorderSizePixel = 0
+			row.ZIndex = 31
+			row.Parent = PopupPlayerList
+			Instance.new("UICorner", row).CornerRadius = UDim.new(0, 5)
+
+			local nameLabel = Instance.new("TextLabel")
+			nameLabel.Size = UDim2.new(1, -12, 0, 16)
+			nameLabel.Position = UDim2.new(0, 8, 0, 1)
+			nameLabel.BackgroundTransparency = 1
+			nameLabel.Text = candidate.IsFriend and ("\226\152\133 " .. candidate.DisplayText) or candidate.DisplayText
+			nameLabel.Font = UIFont
+			nameLabel.TextSize = 11
+			nameLabel.TextColor3 = candidate.IsFriend and Color3.fromRGB(255, 210, 90) or Color3.fromRGB(255, 255, 255)
+			nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+			nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+			nameLabel.ZIndex = 32
+			nameLabel.Parent = row
+
+			local userLabel = Instance.new("TextLabel")
+			userLabel.Size = UDim2.new(1, -12, 0, 12)
+			userLabel.Position = UDim2.new(0, 8, 0, 16)
+			userLabel.BackgroundTransparency = 1
+			userLabel.Text = "@" .. targetPlayer.Name
+			userLabel.Font = UIFont
+			userLabel.TextSize = 8
+			userLabel.TextColor3 = Color3.fromRGB(170, 170, 170)
+			userLabel.TextXAlignment = Enum.TextXAlignment.Left
+			userLabel.ZIndex = 32
+			userLabel.Parent = row
+
+			local clickButton = Instance.new("TextButton")
+			clickButton.Size = UDim2.new(1, 0, 1, 0)
+			clickButton.BackgroundTransparency = 1
+			clickButton.Text = ""
+			clickButton.ZIndex = 32
+			clickButton.Parent = row
+			clickButton.MouseButton1Click:Connect(function()
+				PlayClick()
+				local targetCharacter = targetPlayer.Character
+				local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+				local character = Player.Character
+				local root = character and character:FindFirstChild("HumanoidRootPart")
+				if targetRoot and root then root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 3) end
+			end)
 		end
 		PopupPlayerList.CanvasSize = UDim2.new(0, 0, 0, PopupPlayerListLayout.AbsoluteContentSize.Y + 4)
 	end
@@ -2830,11 +2906,15 @@ do
 		if PopupFrame.Visible and PopupActiveTab == "Players" then RefreshPopupPlayerList() end
 	end))
 
-	local function TogglePopup()
-		PopupFrame.Visible = not PopupFrame.Visible
-		if PopupFrame.Visible then ShowPopupTab(PopupActiveTab) end
+	local function SetPopupVisible(visible)
+		PopupFrame.Visible = visible
+		PopupToggleButton.Text = visible and "Open" or "Closed"
+		if visible then ShowPopupTab(PopupActiveTab) end
 	end
-	PopupClose.MouseButton1Click:Connect(function() PlayClick() PopupFrame.Visible = false end)
+	TogglePopup = function()
+		SetPopupVisible(not PopupFrame.Visible)
+	end
+	PopupClose.MouseButton1Click:Connect(function() PlayClick() SetPopupVisible(false) end)
 	table.insert(looseConnections, UserInputService.InputBegan:Connect(function(input, processed)
 		if processed or UserInputService:GetFocusedTextBox() or bindingInProgress then return end
 		if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
@@ -2955,7 +3035,112 @@ local function CreateGameRow(parent, y, gameTitle, url)
 end
 
 CreateGameRow(ScriptsPage, 8, "Undead Expedition", "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/UE")
-ScriptsPage.CanvasSize = UDim2.new(0, 0, 0, 60)
+
+-- Infinite Yield / Dex Explorer: standalone utility scripts (not per-game modules), so
+-- unlike CreateGameRow above they get their own row with a separate Destroy button --
+-- same idea as the old hub's Infinite Yield destroy button, simplified from its old
+-- connection-snapshot/baseline system to a before/after CoreGui diff, since these are just
+-- external tools this hub doesn't need to track any deeper state for. Destroy removes
+-- whatever GUI the load created and resets Execute so it can be loaded fresh again.
+local function CreateUtilityRow(parent, y, title, url)
+	local row = Instance.new("Frame")
+	row.Name = title:gsub("%s+", "") .. "Row"
+	row.Size = UDim2.new(1, 0, 0, 44)
+	row.Position = UDim2.new(0, 0, 0, y)
+	row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	row.BackgroundTransparency = 0.5
+	row.BorderSizePixel = 0
+	row.Parent = parent
+	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+
+	local titleLabel = Instance.new("TextLabel")
+	titleLabel.Name = "TitleLabel"
+	titleLabel.Size = UDim2.new(0, 200, 1, 0)
+	titleLabel.Position = UDim2.new(0, 16, 0, 0)
+	titleLabel.BackgroundTransparency = 1
+	titleLabel.Text = title
+	titleLabel.Font = UIFont
+	titleLabel.TextSize = 15
+	titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+	titleLabel.TextYAlignment = Enum.TextYAlignment.Center
+	titleLabel.Parent = row
+
+	local destroyBtn = Instance.new("TextButton")
+	destroyBtn.Name = "DestroyButton"
+	destroyBtn.Size = UDim2.new(0, 74, 0, 32)
+	destroyBtn.Position = UDim2.new(1, -188, 0.5, -16)
+	destroyBtn.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+	destroyBtn.BackgroundTransparency = 0.2
+	destroyBtn.BorderSizePixel = 0
+	destroyBtn.Text = "Destroy"
+	destroyBtn.Font = UIFont
+	destroyBtn.TextSize = 14
+	destroyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	destroyBtn.Visible = false
+	destroyBtn.Parent = row
+	Instance.new("UICorner", destroyBtn).CornerRadius = UDim.new(0, 6)
+
+	local executeBtn = Instance.new("TextButton")
+	executeBtn.Name = "ExecuteButton"
+	executeBtn.Size = UDim2.new(0, 90, 0, 32)
+	executeBtn.Position = UDim2.new(1, -106, 0.5, -16)
+	executeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	executeBtn.BackgroundTransparency = 0.2
+	executeBtn.BorderSizePixel = 0
+	executeBtn.Text = "Execute"
+	executeBtn.Font = UIFont
+	executeBtn.TextSize = 15
+	executeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	executeBtn.Parent = row
+	Instance.new("UICorner", executeBtn).CornerRadius = UDim.new(0, 6)
+
+	local trackedInstances = {}
+	local busy = false
+
+	local function DestroyLoaded()
+		for _, inst in ipairs(trackedInstances) do
+			if inst and inst.Parent then pcall(function() inst:Destroy() end) end
+		end
+		trackedInstances = {}
+		destroyBtn.Visible = false
+		executeBtn.Text = "Execute"
+	end
+
+	executeBtn.MouseButton1Click:Connect(function()
+		PlayClick()
+		if busy then return end
+		busy = true
+		executeBtn.Text = "Loading..."
+		local before = {}
+		for _, inst in ipairs(CoreGui:GetChildren()) do before[inst] = true end
+		local ok = pcall(function()
+			local source = game:HttpGet(url)
+			local chunk = loadstring(source)
+			if chunk then chunk() end
+		end)
+		task.wait(0.5)
+		trackedInstances = {}
+		for _, inst in ipairs(CoreGui:GetChildren()) do
+			if not before[inst] then table.insert(trackedInstances, inst) end
+		end
+		executeBtn.Text = ok and "Open" or "Execute"
+		destroyBtn.Visible = ok and #trackedInstances > 0
+		busy = false
+	end)
+
+	destroyBtn.MouseButton1Click:Connect(function()
+		PlayClick()
+		DestroyLoaded()
+	end)
+
+	return row
+end
+
+CreateUtilityRow(ScriptsPage, 60, "Infinite Yield", "https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source")
+CreateUtilityRow(ScriptsPage, 112, "Dex Explorer", "https://github.com/AZYsGithub/DexPlusPlus/releases/latest/download/out.lua")
+
+ScriptsPage.CanvasSize = UDim2.new(0, 0, 0, 164)
 
 SelectTab("Home")
 
