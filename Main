@@ -336,36 +336,42 @@ local function CreateTab(name, order, iconId, scrolling)
 	return page
 end
 
--- Home tab
-local HomePage = CreateTab("Home", 1, "96269089530329")
+-- Home tab. Scoped in a do block (like every other tab section below): Luau caps a
+-- single function -- and the whole top-level script counts as one -- at 200 live locals,
+-- and this file's now well past that between every tab's UI elements. Blocks let the
+-- compiler free a section's locals once it ends instead of holding them all open for the
+-- rest of the script; nothing here is referenced outside this block.
+do
+	local HomePage = CreateTab("Home", 1, "96269089530329")
 
-local AvatarImage = Instance.new("ImageLabel")
-AvatarImage.Name = "Avatar"
-AvatarImage.Size = UDim2.new(0, 96, 0, 96)
-AvatarImage.Position = UDim2.new(0.5, -48, 0, 24)
-AvatarImage.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-AvatarImage.BorderSizePixel = 0
-AvatarImage.Parent = HomePage
-Instance.new("UICorner", AvatarImage).CornerRadius = UDim.new(1, 0)
-task.spawn(function()
-	local success, content = pcall(function()
-		return Players:GetUserThumbnailAsync(Player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
+	local AvatarImage = Instance.new("ImageLabel")
+	AvatarImage.Name = "Avatar"
+	AvatarImage.Size = UDim2.new(0, 96, 0, 96)
+	AvatarImage.Position = UDim2.new(0.5, -48, 0, 24)
+	AvatarImage.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	AvatarImage.BorderSizePixel = 0
+	AvatarImage.Parent = HomePage
+	Instance.new("UICorner", AvatarImage).CornerRadius = UDim.new(1, 0)
+	task.spawn(function()
+		local success, content = pcall(function()
+			return Players:GetUserThumbnailAsync(Player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
+		end)
+		if success then AvatarImage.Image = content end
 	end)
-	if success then AvatarImage.Image = content end
-end)
 
-local WelcomeLabel = Instance.new("TextLabel")
-WelcomeLabel.Name = "WelcomeLabel"
-WelcomeLabel.Size = UDim2.new(1, 0, 0, 40)
-WelcomeLabel.Position = UDim2.new(0, 0, 0, 136)
-WelcomeLabel.BackgroundTransparency = 1
-WelcomeLabel.Text = "Welcome " .. Player.DisplayName .. "!"
-WelcomeLabel.Font = UIFont
-WelcomeLabel.TextSize = 26
-WelcomeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-WelcomeLabel.TextXAlignment = Enum.TextXAlignment.Center
-WelcomeLabel.TextYAlignment = Enum.TextYAlignment.Center
-WelcomeLabel.Parent = HomePage
+	local WelcomeLabel = Instance.new("TextLabel")
+	WelcomeLabel.Name = "WelcomeLabel"
+	WelcomeLabel.Size = UDim2.new(1, 0, 0, 40)
+	WelcomeLabel.Position = UDim2.new(0, 0, 0, 136)
+	WelcomeLabel.BackgroundTransparency = 1
+	WelcomeLabel.Text = "Welcome " .. Player.DisplayName .. "!"
+	WelcomeLabel.Font = UIFont
+	WelcomeLabel.TextSize = 26
+	WelcomeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	WelcomeLabel.TextXAlignment = Enum.TextXAlignment.Center
+	WelcomeLabel.TextYAlignment = Enum.TextYAlignment.Center
+	WelcomeLabel.Parent = HomePage
+end
 
 -- Player tab (scrolling: three feature sections stack well past one screen's height)
 local PlayerPage = CreateTab("Player", 2, "87870052960106", true)
@@ -623,95 +629,129 @@ end
 local DEFAULT_WALKSPEED = 16
 local SECTION_GAP = 16
 
--- Speed
-local SpeedEnabled = false
-local SpeedValue = 3
-local SpeedMode = "CFrame" -- "CFrame" (old hub's root-nudge movement) or "WalkSpeed"
-local SpeedKeybind = Enum.KeyCode.Unknown
+-- Speed/Jump/Fly state and connections that DestroyGui and the keybind dispatcher (both
+-- far below) need to reach by name have to stay true top-level locals; everything else
+-- for this section is scoped inside the do block below so its registers free up
+-- afterward (see the Home tab comment above for why that matters).
+local SpeedEnabled, SpeedKeybind
+local JumpEnabled, JumpKeybind, JumpOriginal
+local FlyEnabled, FlyKeybind, FlyBodyVelocity, FlyBodyGyro
+local ToggleSpeed, ToggleJump, ToggleFly
+local speedRenderConnection, flyRenderConnection, characterAddedConnection
 
-CreateSectionHeading(PlayerPage, 8, "Speed")
-local SpeedInput = CreateStrengthRow(PlayerPage, 38, "Speed Strength", SpeedValue)
-local SpeedToggle = CreateToggleRow(PlayerPage, 86, "SpeedKeybind", function(k) SpeedKeybind = k end)
+do
+	-- Speed
+	SpeedEnabled = false
+	local SpeedValue = 3
+	local SpeedMode = "CFrame" -- "CFrame" (old hub's root-nudge movement) or "WalkSpeed"
+	SpeedKeybind = Enum.KeyCode.Unknown
 
-local SpeedModeButton = Instance.new("TextButton")
-SpeedModeButton.Name = "SpeedModeButton"
-SpeedModeButton.Size = UDim2.new(1, 0, 0, 36)
-SpeedModeButton.Position = UDim2.new(0, 0, 0, 134)
-SpeedModeButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-SpeedModeButton.BackgroundTransparency = 0.5
-SpeedModeButton.BorderSizePixel = 0
-SpeedModeButton.Text = "Mode: CFrame Movement"
-SpeedModeButton.Font = UIFont
-SpeedModeButton.TextSize = 14
-SpeedModeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-SpeedModeButton.Parent = PlayerPage
-Instance.new("UICorner", SpeedModeButton).CornerRadius = UDim.new(0, 8)
+	CreateSectionHeading(PlayerPage, 8, "Speed")
+	local SpeedInput = CreateStrengthRow(PlayerPage, 38, "Speed Strength", SpeedValue)
+	local SpeedToggle = CreateToggleRow(PlayerPage, 86, "SpeedKeybind", function(k) SpeedKeybind = k end)
 
-local function ApplySpeed()
-	local character = Player.Character
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if not humanoid then return end
-	if SpeedMode == "WalkSpeed" then
-		humanoid.WalkSpeed = SpeedEnabled and SpeedValue or DEFAULT_WALKSPEED
-	else
-		-- CFrame mode drives movement itself every frame below; keep WalkSpeed normal
-		-- so the two approaches never stack.
-		humanoid.WalkSpeed = DEFAULT_WALKSPEED
+	local SpeedModeButton = Instance.new("TextButton")
+	SpeedModeButton.Name = "SpeedModeButton"
+	SpeedModeButton.Size = UDim2.new(1, 0, 0, 36)
+	SpeedModeButton.Position = UDim2.new(0, 0, 0, 134)
+	SpeedModeButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	SpeedModeButton.BackgroundTransparency = 0.5
+	SpeedModeButton.BorderSizePixel = 0
+	SpeedModeButton.Text = "Mode: CFrame Movement"
+	SpeedModeButton.Font = UIFont
+	SpeedModeButton.TextSize = 14
+	SpeedModeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	SpeedModeButton.Parent = PlayerPage
+	Instance.new("UICorner", SpeedModeButton).CornerRadius = UDim.new(0, 8)
+
+	local function ApplySpeed()
+		local character = Player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if not humanoid then return end
+		if SpeedMode == "WalkSpeed" then
+			humanoid.WalkSpeed = SpeedEnabled and SpeedValue or DEFAULT_WALKSPEED
+		else
+			-- CFrame mode drives movement itself every frame below; keep WalkSpeed normal
+			-- so the two approaches never stack.
+			humanoid.WalkSpeed = DEFAULT_WALKSPEED
+		end
 	end
-end
 
-local speedRenderConnection = RunService.RenderStepped:Connect(function()
-	if not (SpeedEnabled and SpeedMode == "CFrame") then return end
-	local character = Player.Character
-	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if not (rootPart and humanoid) then return end
-	local moveDir = humanoid.MoveDirection
-	if moveDir.Magnitude > 0 then
-		rootPart.CFrame = rootPart.CFrame + (moveDir * (SpeedValue / 10))
+	speedRenderConnection = RunService.RenderStepped:Connect(function()
+		if not (SpeedEnabled and SpeedMode == "CFrame") then return end
+		local character = Player.Character
+		local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if not (rootPart and humanoid) then return end
+		local moveDir = humanoid.MoveDirection
+		if moveDir.Magnitude > 0 then
+			rootPart.CFrame = rootPart.CFrame + (moveDir * (SpeedValue / 10))
+		end
+	end)
+
+	ToggleSpeed = function()
+		SpeedEnabled = not SpeedEnabled
+		SpeedToggle.Text = SpeedEnabled and "On" or "Off"
+		ApplySpeed()
 	end
-end)
+	SpeedToggle.MouseButton1Click:Connect(function() PlayClick() ToggleSpeed() end)
 
-local function ToggleSpeed()
-	SpeedEnabled = not SpeedEnabled
-	SpeedToggle.Text = SpeedEnabled and "On" or "Off"
-	ApplySpeed()
-end
-SpeedToggle.MouseButton1Click:Connect(function() PlayClick() ToggleSpeed() end)
+	SpeedInput.FocusLost:Connect(function()
+		local value = tonumber(SpeedInput.Text)
+		if value then SpeedValue = value end
+		SpeedInput.Text = tostring(SpeedValue)
+		ApplySpeed()
+	end)
 
-SpeedInput.FocusLost:Connect(function()
-	local value = tonumber(SpeedInput.Text)
-	if value then SpeedValue = value end
-	SpeedInput.Text = tostring(SpeedValue)
-	ApplySpeed()
-end)
+	SpeedModeButton.MouseButton1Click:Connect(function()
+		PlayClick()
+		SpeedMode = SpeedMode == "CFrame" and "WalkSpeed" or "CFrame"
+		SpeedModeButton.Text = SpeedMode == "CFrame" and "Mode: CFrame Movement" or "Mode: WalkSpeed"
+		ApplySpeed()
+	end)
 
-SpeedModeButton.MouseButton1Click:Connect(function()
-	PlayClick()
-	SpeedMode = SpeedMode == "CFrame" and "WalkSpeed" or "CFrame"
-	SpeedModeButton.Text = SpeedMode == "CFrame" and "Mode: CFrame Movement" or "Mode: WalkSpeed"
-	ApplySpeed()
-end)
+	local SPEED_SECTION_BOTTOM = 134 + 36 -- heading(8) + strength(38..78) + toggle(86..126) + mode(134..170)
 
-local SPEED_SECTION_BOTTOM = 134 + 36 -- heading(8) + strength(38..78) + toggle(86..126) + mode(134..170)
+	-- Jump
+	JumpEnabled = false
+	local JumpValue = 50
+	JumpOriginal = nil -- captured Humanoid jump settings, restored exactly when toggled off
+	JumpKeybind = Enum.KeyCode.Unknown
 
--- Jump
-local JumpEnabled = false
-local JumpValue = 50
-local JumpOriginal = nil -- captured Humanoid jump settings, restored exactly when toggled off
-local JumpKeybind = Enum.KeyCode.Unknown
+	local JUMP_TOP = SPEED_SECTION_BOTTOM + SECTION_GAP
+	CreateSectionHeading(PlayerPage, JUMP_TOP, "Jump")
+	local JumpInput = CreateStrengthRow(PlayerPage, JUMP_TOP + 30, "Jump Strength", JumpValue)
+	local JumpToggle = CreateToggleRow(PlayerPage, JUMP_TOP + 78, "JumpKeybind", function(k) JumpKeybind = k end)
+	local JUMP_SECTION_BOTTOM = JUMP_TOP + 78 + 40
 
-local JUMP_TOP = SPEED_SECTION_BOTTOM + SECTION_GAP
-CreateSectionHeading(PlayerPage, JUMP_TOP, "Jump")
-local JumpInput = CreateStrengthRow(PlayerPage, JUMP_TOP + 30, "Jump Strength", JumpValue)
-local JumpToggle = CreateToggleRow(PlayerPage, JUMP_TOP + 78, "JumpKeybind", function(k) JumpKeybind = k end)
-local JUMP_SECTION_BOTTOM = JUMP_TOP + 78 + 40
+	local function ApplyJump()
+		local character = Player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if not humanoid then return end
+		if JumpEnabled then
+			if not JumpOriginal then
+				JumpOriginal = {
+					UseJumpPower = humanoid.UseJumpPower,
+					JumpPower = humanoid.JumpPower,
+					JumpHeight = humanoid.JumpHeight,
+				}
+			end
+			humanoid.UseJumpPower = true
+			humanoid.JumpPower = JumpValue
+		elseif JumpOriginal then
+			humanoid.UseJumpPower = JumpOriginal.UseJumpPower
+			humanoid.JumpPower = JumpOriginal.JumpPower
+			humanoid.JumpHeight = JumpOriginal.JumpHeight
+		end
+	end
 
-local function ApplyJump()
-	local character = Player.Character
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if not humanoid then return end
-	if JumpEnabled then
+	-- Continuously re-asserts JumpPower while enabled, in case anything else (the game's own
+	-- scripts, a respawn, etc.) overwrites it -- a one-time set wasn't holding reliably.
+	RunService.Heartbeat:Connect(function()
+		if not JumpEnabled then return end
+		local character = Player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if not humanoid then return end
 		if not JumpOriginal then
 			JumpOriginal = {
 				UseJumpPower = humanoid.UseJumpPower,
@@ -719,135 +759,113 @@ local function ApplyJump()
 				JumpHeight = humanoid.JumpHeight,
 			}
 		end
-		humanoid.UseJumpPower = true
-		humanoid.JumpPower = JumpValue
-	elseif JumpOriginal then
-		humanoid.UseJumpPower = JumpOriginal.UseJumpPower
-		humanoid.JumpPower = JumpOriginal.JumpPower
-		humanoid.JumpHeight = JumpOriginal.JumpHeight
+		if not humanoid.UseJumpPower then humanoid.UseJumpPower = true end
+		if humanoid.JumpPower ~= JumpValue then humanoid.JumpPower = JumpValue end
+	end)
+
+	ToggleJump = function()
+		JumpEnabled = not JumpEnabled
+		JumpToggle.Text = JumpEnabled and "On" or "Off"
+		ApplyJump()
 	end
-end
+	JumpToggle.MouseButton1Click:Connect(function() PlayClick() ToggleJump() end)
 
--- Continuously re-asserts JumpPower while enabled, in case anything else (the game's own
--- scripts, a respawn, etc.) overwrites it -- a one-time set wasn't holding reliably.
-RunService.Heartbeat:Connect(function()
-	if not JumpEnabled then return end
-	local character = Player.Character
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if not humanoid then return end
-	if not JumpOriginal then
-		JumpOriginal = {
-			UseJumpPower = humanoid.UseJumpPower,
-			JumpPower = humanoid.JumpPower,
-			JumpHeight = humanoid.JumpHeight,
-		}
+	JumpInput.FocusLost:Connect(function()
+		local value = tonumber(JumpInput.Text)
+		if value then JumpValue = value end
+		JumpInput.Text = tostring(JumpValue)
+		if JumpEnabled then ApplyJump() end
+	end)
+
+	-- Fly (ported from the old feature-rich hub): BodyVelocity locks the root part's
+	-- velocity at zero -- acting as a zero-G anchor against gravity -- while a BodyGyro
+	-- keeps it upright and turned to the camera's yaw each frame. Actual movement is still
+	-- a direct CFrame nudge, same as Speed, but the BodyGyro means the character no longer
+	-- tumbles while airborne.
+	FlyEnabled = false
+	local FlyValue = 10
+	FlyKeybind = Enum.KeyCode.Unknown
+	FlyBodyVelocity = nil
+	FlyBodyGyro = nil
+
+	local FLY_TOP = JUMP_SECTION_BOTTOM + SECTION_GAP
+	CreateSectionHeading(PlayerPage, FLY_TOP, "Fly")
+	local FlyInput = CreateStrengthRow(PlayerPage, FLY_TOP + 30, "Fly Strength", FlyValue)
+	local FlyToggle = CreateToggleRow(PlayerPage, FLY_TOP + 78, "FlyKeybind", function(k) FlyKeybind = k end)
+	local FLY_SECTION_BOTTOM = FLY_TOP + 78 + 40
+
+	local function UprightCFrame(sourceCFrame, position)
+		local _, yaw = sourceCFrame:ToOrientation()
+		return CFrame.new(position or sourceCFrame.Position) * CFrame.Angles(0, yaw, 0)
 	end
-	if not humanoid.UseJumpPower then humanoid.UseJumpPower = true end
-	if humanoid.JumpPower ~= JumpValue then humanoid.JumpPower = JumpValue end
-end)
 
-local function ToggleJump()
-	JumpEnabled = not JumpEnabled
-	JumpToggle.Text = JumpEnabled and "On" or "Off"
-	ApplyJump()
-end
-JumpToggle.MouseButton1Click:Connect(function() PlayClick() ToggleJump() end)
-
-JumpInput.FocusLost:Connect(function()
-	local value = tonumber(JumpInput.Text)
-	if value then JumpValue = value end
-	JumpInput.Text = tostring(JumpValue)
-	if JumpEnabled then ApplyJump() end
-end)
-
--- Fly (ported from the old feature-rich hub): BodyVelocity locks the root part's
--- velocity at zero -- acting as a zero-G anchor against gravity -- while a BodyGyro
--- keeps it upright and turned to the camera's yaw each frame. Actual movement is still
--- a direct CFrame nudge, same as Speed, but the BodyGyro means the character no longer
--- tumbles while airborne.
-local FlyEnabled = false
-local FlyValue = 10
-local FlyKeybind = Enum.KeyCode.Unknown
-local FlyBodyVelocity = nil
-local FlyBodyGyro = nil
-
-local FLY_TOP = JUMP_SECTION_BOTTOM + SECTION_GAP
-CreateSectionHeading(PlayerPage, FLY_TOP, "Fly")
-local FlyInput = CreateStrengthRow(PlayerPage, FLY_TOP + 30, "Fly Strength", FlyValue)
-local FlyToggle = CreateToggleRow(PlayerPage, FLY_TOP + 78, "FlyKeybind", function(k) FlyKeybind = k end)
-local FLY_SECTION_BOTTOM = FLY_TOP + 78 + 40
-
-local function UprightCFrame(sourceCFrame, position)
-	local _, yaw = sourceCFrame:ToOrientation()
-	return CFrame.new(position or sourceCFrame.Position) * CFrame.Angles(0, yaw, 0)
-end
-
-local function ToggleFly()
-	FlyEnabled = not FlyEnabled
-	FlyToggle.Text = FlyEnabled and "On" or "Off"
-	local character = Player.Character
-	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-	if FlyEnabled then
-		if rootPart then
-			FlyBodyVelocity = Instance.new("BodyVelocity")
-			FlyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
-			FlyBodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-			FlyBodyVelocity.Parent = rootPart
-			FlyBodyGyro = Instance.new("BodyGyro")
-			FlyBodyGyro.P = 9e4
-			FlyBodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-			FlyBodyGyro.CFrame = rootPart.CFrame
-			FlyBodyGyro.Parent = rootPart
-		end
-	else
-		if FlyBodyVelocity then FlyBodyVelocity:Destroy() FlyBodyVelocity = nil end
-		if FlyBodyGyro then FlyBodyGyro:Destroy() FlyBodyGyro = nil end
-		if rootPart then
-			rootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-			rootPart.CFrame = UprightCFrame(rootPart.CFrame, rootPart.Position)
-			rootPart.AssemblyAngularVelocity = Vector3.zero
+	ToggleFly = function()
+		FlyEnabled = not FlyEnabled
+		FlyToggle.Text = FlyEnabled and "On" or "Off"
+		local character = Player.Character
+		local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+		if FlyEnabled then
+			if rootPart then
+				FlyBodyVelocity = Instance.new("BodyVelocity")
+				FlyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
+				FlyBodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+				FlyBodyVelocity.Parent = rootPart
+				FlyBodyGyro = Instance.new("BodyGyro")
+				FlyBodyGyro.P = 9e4
+				FlyBodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+				FlyBodyGyro.CFrame = rootPart.CFrame
+				FlyBodyGyro.Parent = rootPart
+			end
+		else
+			if FlyBodyVelocity then FlyBodyVelocity:Destroy() FlyBodyVelocity = nil end
+			if FlyBodyGyro then FlyBodyGyro:Destroy() FlyBodyGyro = nil end
+			if rootPart then
+				rootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+				rootPart.CFrame = UprightCFrame(rootPart.CFrame, rootPart.Position)
+				rootPart.AssemblyAngularVelocity = Vector3.zero
+			end
 		end
 	end
+	FlyToggle.MouseButton1Click:Connect(function() PlayClick() ToggleFly() end)
+
+	FlyInput.FocusLost:Connect(function()
+		local value = tonumber(FlyInput.Text)
+		if value then FlyValue = value end
+		FlyInput.Text = tostring(FlyValue)
+	end)
+
+	flyRenderConnection = RunService.RenderStepped:Connect(function()
+		if not FlyEnabled then return end
+		local character = Player.Character
+		local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+		local camera = workspace.CurrentCamera
+		if not (rootPart and FlyBodyGyro and camera) then return end
+		local moveDir = Vector3.new(0, 0, 0)
+		if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir += camera.CFrame.LookVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir -= camera.CFrame.LookVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir -= camera.CFrame.RightVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir += camera.CFrame.RightVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir += Vector3.new(0, 1, 0) end
+		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir -= Vector3.new(0, 1, 0) end
+		if moveDir.Magnitude > 0 then
+			rootPart.CFrame = rootPart.CFrame + (moveDir * (FlyValue / 50))
+		end
+		local _, yaw = camera.CFrame:ToOrientation()
+		FlyBodyGyro.CFrame = CFrame.new(rootPart.Position) * CFrame.Angles(0, yaw, 0)
+		rootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+		rootPart.AssemblyAngularVelocity = Vector3.zero
+	end)
+
+	PlayerPage.CanvasSize = UDim2.new(0, 0, 0, FLY_SECTION_BOTTOM + 16)
+
+	-- Re-apply active effects whenever the character (re)spawns.
+	characterAddedConnection = Player.CharacterAdded:Connect(function()
+		task.wait(0.1)
+		ApplySpeed()
+		JumpOriginal = nil
+		if JumpEnabled then ApplyJump() end
+	end)
 end
-FlyToggle.MouseButton1Click:Connect(function() PlayClick() ToggleFly() end)
-
-FlyInput.FocusLost:Connect(function()
-	local value = tonumber(FlyInput.Text)
-	if value then FlyValue = value end
-	FlyInput.Text = tostring(FlyValue)
-end)
-
-local flyRenderConnection = RunService.RenderStepped:Connect(function()
-	if not FlyEnabled then return end
-	local character = Player.Character
-	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-	local camera = workspace.CurrentCamera
-	if not (rootPart and FlyBodyGyro and camera) then return end
-	local moveDir = Vector3.new(0, 0, 0)
-	if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir += camera.CFrame.LookVector end
-	if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir -= camera.CFrame.LookVector end
-	if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir -= camera.CFrame.RightVector end
-	if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir += camera.CFrame.RightVector end
-	if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir += Vector3.new(0, 1, 0) end
-	if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir -= Vector3.new(0, 1, 0) end
-	if moveDir.Magnitude > 0 then
-		rootPart.CFrame = rootPart.CFrame + (moveDir * (FlyValue / 50))
-	end
-	local _, yaw = camera.CFrame:ToOrientation()
-	FlyBodyGyro.CFrame = CFrame.new(rootPart.Position) * CFrame.Angles(0, yaw, 0)
-	rootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-	rootPart.AssemblyAngularVelocity = Vector3.zero
-end)
-
-PlayerPage.CanvasSize = UDim2.new(0, 0, 0, FLY_SECTION_BOTTOM + 16)
-
--- Re-apply active effects whenever the character (re)spawns.
-local characterAddedConnection = Player.CharacterAdded:Connect(function()
-	task.wait(0.1)
-	ApplySpeed()
-	JumpOriginal = nil
-	if JumpEnabled then ApplyJump() end
-end)
 
 -- Visuals tab: Outline ESP, Body ESP (per-limb boxes, Infinite Yield-style, ported from
 -- the old feature-rich hub), ESP Labels (name/health/distance), and Camera (Free Cam +
