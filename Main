@@ -63,6 +63,32 @@ local function SaveFeatureKeybind(storageKey, keyCode)
 	SavePersistentSettings()
 end
 
+-- Colors aren't JSON-serializable, so they're packed to/from plain {R,G,B} tables --
+-- same trick as keybinds, stored in the same settings file.
+local function PackColor(color)
+	return {
+		R = math.floor(color.R * 255 + 0.5),
+		G = math.floor(color.G * 255 + 0.5),
+		B = math.floor(color.B * 255 + 0.5),
+	}
+end
+
+local function UnpackColor(saved, fallback)
+	if type(saved) == "table" and tonumber(saved.R) and tonumber(saved.G) and tonumber(saved.B) then
+		return Color3.fromRGB(saved.R, saved.G, saved.B)
+	end
+	return fallback
+end
+
+local function LoadFeatureColor(storageKey, fallback)
+	return UnpackColor(SavedKeybinds[storageKey], fallback)
+end
+
+local function SaveFeatureColor(storageKey, color)
+	SavedKeybinds[storageKey] = PackColor(color)
+	SavePersistentSettings()
+end
+
 local function KeybindText(keyCode)
 	if keyCode == Enum.KeyCode.Unknown then return "..." end
 	if keyCode == Enum.KeyCode.LeftControl then return "L Ctrl" end
@@ -402,8 +428,82 @@ local function CreateStrengthRow(parent, y, rowLabelText, defaultValue)
 	return input
 end
 
+-- Right-click a keybind button to clear it: a small "Remove keybind?" popup with
+-- Remove/Cancel, ported from the old feature-rich hub. Singleton -- opening a new one
+-- closes whichever is already open.
+local ActiveKeybindClearPrompt = nil
+local function ShowKeybindClearPrompt(button, onCleared)
+	if ActiveKeybindClearPrompt then ActiveKeybindClearPrompt:Destroy() ActiveKeybindClearPrompt = nil end
+
+	local prompt = Instance.new("Frame")
+	prompt.Name = "KeybindClearPrompt"
+	prompt.Size = UDim2.new(0, 160, 0, 74)
+	prompt.Position = UDim2.fromOffset(button.AbsolutePosition.X, button.AbsolutePosition.Y + button.AbsoluteSize.Y + 6)
+	prompt.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+	prompt.BorderSizePixel = 0
+	prompt.ZIndex = 50
+	prompt.Parent = ScreenGui
+	Instance.new("UICorner", prompt).CornerRadius = UDim.new(0, 10)
+	local promptStroke = Instance.new("UIStroke")
+	promptStroke.Color = Color3.fromRGB(0, 0, 0)
+	promptStroke.Thickness = 1
+	promptStroke.Parent = prompt
+	ActiveKeybindClearPrompt = prompt
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -16, 0, 28)
+	label.Position = UDim2.new(0, 8, 0, 6)
+	label.BackgroundTransparency = 1
+	label.Text = "Remove keybind?"
+	label.Font = UIFont
+	label.TextSize = 13
+	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.ZIndex = 51
+	label.Parent = prompt
+
+	local removeBtn = Instance.new("TextButton")
+	removeBtn.Size = UDim2.new(0, 68, 0, 26)
+	removeBtn.Position = UDim2.new(0, 8, 0, 38)
+	removeBtn.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+	removeBtn.BorderSizePixel = 0
+	removeBtn.Text = "Remove"
+	removeBtn.Font = UIFont
+	removeBtn.TextSize = 13
+	removeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	removeBtn.ZIndex = 51
+	removeBtn.Parent = prompt
+	Instance.new("UICorner", removeBtn).CornerRadius = UDim.new(0, 6)
+
+	local cancelBtn = Instance.new("TextButton")
+	cancelBtn.Size = UDim2.new(0, 68, 0, 26)
+	cancelBtn.Position = UDim2.new(0, 84, 0, 38)
+	cancelBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	cancelBtn.BorderSizePixel = 0
+	cancelBtn.Text = "Cancel"
+	cancelBtn.Font = UIFont
+	cancelBtn.TextSize = 13
+	cancelBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	cancelBtn.ZIndex = 51
+	cancelBtn.Parent = prompt
+	Instance.new("UICorner", cancelBtn).CornerRadius = UDim.new(0, 6)
+
+	removeBtn.MouseButton1Click:Connect(function()
+		PlayClick()
+		onCleared()
+		if ActiveKeybindClearPrompt == prompt then ActiveKeybindClearPrompt = nil end
+		prompt:Destroy()
+	end)
+	cancelBtn.MouseButton1Click:Connect(function()
+		PlayClick()
+		if ActiveKeybindClearPrompt == prompt then ActiveKeybindClearPrompt = nil end
+		prompt:Destroy()
+	end)
+end
+
 -- A rebindable keybind button: click, press a key, it saves to the settings file and
 -- calls onKeybindChanged with the new KeyCode so the caller can update its own state.
+-- Right-click clears it via ShowKeybindClearPrompt above.
 local function CreateKeybindButton(parent, storageKey, onKeybindChanged)
 	local btn = Instance.new("TextButton")
 	btn.Name = "KeybindButton"
@@ -445,11 +545,21 @@ local function CreateKeybindButton(parent, storageKey, onKeybindChanged)
 		end)
 	end)
 
+	btn.MouseButton2Click:Connect(function()
+		ShowKeybindClearPrompt(btn, function()
+			SaveFeatureKeybind(storageKey, Enum.KeyCode.Unknown)
+			btn.Text = "..."
+			onKeybindChanged(Enum.KeyCode.Unknown)
+		end)
+	end)
+
 	return btn
 end
 
 -- On/Off toggle plus its keybind button, in their own row below the strength row.
-local function CreateToggleRow(parent, y, storageKey, onKeybindChanged)
+-- labelText overrides the row's own label (defaults to "Toggle" for rows that already
+-- have their feature name shown above, e.g. via CreateStrengthRow).
+local function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText)
 	local row = Instance.new("Frame")
 	row.Name = "ToggleRow"
 	row.Size = UDim2.new(1, 0, 0, 40)
@@ -465,7 +575,7 @@ local function CreateToggleRow(parent, y, storageKey, onKeybindChanged)
 	rowLabel.Size = UDim2.new(0, 200, 1, 0)
 	rowLabel.Position = UDim2.new(0, 16, 0, 0)
 	rowLabel.BackgroundTransparency = 1
-	rowLabel.Text = "Toggle"
+	rowLabel.Text = labelText or "Toggle"
 	rowLabel.Font = UIFont
 	rowLabel.TextSize = 15
 	rowLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -490,70 +600,6 @@ local function CreateToggleRow(parent, y, storageKey, onKeybindChanged)
 	local keybindBtn = CreateKeybindButton(row, storageKey, onKeybindChanged)
 
 	return toggle, keybindBtn
-end
-
--- Single-row ESP control: label, then (left to right) a color swatch, a keybind button,
--- and the On/Off toggle -- one merged row per feature instead of a separate color row
--- stacked on top of a separate toggle row. The swatch is still a placeholder -- it shows
--- the current ESP color but isn't wired up to an actual picker yet.
-local function CreateESPRow(parent, y, rowLabelText, defaultColor, storageKey, onKeybindChanged)
-	local row = Instance.new("Frame")
-	row.Name = rowLabelText:gsub("%s+", "") .. "Row"
-	row.Size = UDim2.new(1, 0, 0, 40)
-	row.Position = UDim2.new(0, 0, 0, y)
-	row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-	row.BackgroundTransparency = 0.5
-	row.BorderSizePixel = 0
-	row.Parent = parent
-	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
-
-	local rowLabel = Instance.new("TextLabel")
-	rowLabel.Name = "RowLabel"
-	rowLabel.Size = UDim2.new(0, 200, 1, 0)
-	rowLabel.Position = UDim2.new(0, 16, 0, 0)
-	rowLabel.BackgroundTransparency = 1
-	rowLabel.Text = rowLabelText
-	rowLabel.Font = UIFont
-	rowLabel.TextSize = 15
-	rowLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-	rowLabel.TextXAlignment = Enum.TextXAlignment.Left
-	rowLabel.TextYAlignment = Enum.TextYAlignment.Center
-	rowLabel.Parent = row
-
-	local swatch = Instance.new("TextButton")
-	swatch.Name = "ColorSwatch"
-	swatch.Size = UDim2.new(0, 30, 0, 30)
-	swatch.Position = UDim2.new(1, -214, 0.5, -15)
-	swatch.BackgroundColor3 = defaultColor
-	swatch.AutoButtonColor = false
-	swatch.BorderSizePixel = 0
-	swatch.Text = ""
-	swatch.Parent = row
-	Instance.new("UICorner", swatch).CornerRadius = UDim.new(0, 6)
-	local swatchStroke = Instance.new("UIStroke")
-	swatchStroke.Color = Color3.fromRGB(0, 0, 0)
-	swatchStroke.Thickness = 1
-	swatchStroke.Parent = swatch
-
-	-- CreateKeybindButton's default position (1, -176, 0.5, -15) already sits directly
-	-- left of the toggle button below, so it needs no repositioning here.
-	local keybindBtn = CreateKeybindButton(row, storageKey, onKeybindChanged)
-
-	local toggle = Instance.new("TextButton")
-	toggle.Name = "Toggle"
-	toggle.Size = UDim2.new(0, 80, 0, 30)
-	toggle.Position = UDim2.new(1, -88, 0.5, -15)
-	toggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-	toggle.BackgroundTransparency = 0.2
-	toggle.BorderSizePixel = 0
-	toggle.Text = "Off"
-	toggle.Font = UIFont
-	toggle.TextSize = 16
-	toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-	toggle.Parent = row
-	Instance.new("UICorner", toggle).CornerRadius = UDim.new(0, 6)
-
-	return toggle, swatch, keybindBtn
 end
 
 local DEFAULT_WALKSPEED = 16
@@ -775,6 +821,538 @@ local flyRenderConnection = RunService.RenderStepped:Connect(function()
 	rootPart.AssemblyAngularVelocity = Vector3.zero
 end)
 
+PlayerPage.CanvasSize = UDim2.new(0, 0, 0, FLY_SECTION_BOTTOM + 16)
+
+-- Re-apply active effects whenever the character (re)spawns.
+local characterAddedConnection = Player.CharacterAdded:Connect(function()
+	task.wait(0.1)
+	ApplySpeed()
+	JumpOriginal = nil
+	if JumpEnabled then ApplyJump() end
+end)
+
+-- Visuals tab: Outline ESP, Body ESP (per-limb boxes, Infinite Yield-style, ported from
+-- the old feature-rich hub), ESP Labels (name/health/distance), and Camera (Free Cam +
+-- FOV, also ported). All three ESP effects share one color, set from the ESP Color row's
+-- picker below the feature rows.
+local VisualsPage = CreateTab("Visuals", 3, "90467794700971", true)
+
+local ESPDefaultColor = Color3.fromRGB(100, 255, 100)
+local ESPColor = LoadFeatureColor("ESPColor", ESPDefaultColor)
+
+-- Box/label adornments live under this folder instead of the character itself, so they
+-- keep rendering even if something else on the character (e.g. a local transparency
+-- effect) tries to hide its own children.
+local ESPAdornmentRoot = Instance.new("Folder")
+ESPAdornmentRoot.Name = "SerenityESPAdornments"
+ESPAdornmentRoot.Parent = ScreenGui
+
+local OutlineESPEnabled = false
+local OutlineESPKeybind = Enum.KeyCode.Unknown
+local OutlineHighlights = {}
+
+local BoxESPEnabled = false
+local BoxESPKeybind = Enum.KeyCode.Unknown
+local BoxAdornments = {} -- [character] = {[part] = BoxHandleAdornment}
+
+local ESPLabelsEnabled = false
+local ESPLabelsKeybind = Enum.KeyCode.Unknown
+
+local function RemoveOutlineHighlight(character)
+	local highlight = OutlineHighlights[character]
+	if highlight then highlight:Destroy() end
+	OutlineHighlights[character] = nil
+end
+
+local function AddOutlineHighlight(character)
+	if OutlineHighlights[character] then return end
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "SerenityOutlineESP"
+	highlight.FillColor = ESPColor
+	highlight.FillTransparency = 0.72
+	highlight.OutlineColor = ESPColor
+	highlight.OutlineTransparency = 0
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.Parent = character
+	OutlineHighlights[character] = highlight
+end
+
+-- Body-part names covered by Body ESP, matching both R15 and R6 rigs.
+local BodyESPPartNames = {
+	HumanoidRootPart = true, Head = true, Torso = true, UpperTorso = true, LowerTorso = true,
+	LeftUpperArm = true, LeftLowerArm = true, LeftHand = true,
+	RightUpperArm = true, RightLowerArm = true, RightHand = true,
+	LeftUpperLeg = true, LeftLowerLeg = true, LeftFoot = true,
+	RightUpperLeg = true, RightLowerLeg = true, RightFoot = true,
+	["Left Arm"] = true, ["Right Arm"] = true, ["Left Leg"] = true, ["Right Leg"] = true,
+}
+
+local function IsBodyESPPart(part, character)
+	return part:IsA("BasePart") and part.Parent == character and BodyESPPartNames[part.Name] == true
+end
+
+local function RemoveBoxAdornments(character)
+	local adornments = BoxAdornments[character]
+	if not adornments then return end
+	for _, adornment in pairs(adornments) do
+		if adornment then adornment:Destroy() end
+	end
+	BoxAdornments[character] = nil
+end
+
+-- Per-limb boxes rather than one box around the root. A BoxHandleAdornment tracks its
+-- Adornee's position/size automatically, so this only needs to run once per character
+-- instead of every frame.
+local function AddBoxAdornments(character)
+	local adornments = BoxAdornments[character]
+	if not adornments then
+		adornments = {}
+		BoxAdornments[character] = adornments
+	end
+	for _, part in ipairs(character:GetChildren()) do
+		if IsBodyESPPart(part, character) and not adornments[part] then
+			local adornment = Instance.new("BoxHandleAdornment")
+			adornment.Name = "SerenityBoxESP"
+			adornment.Adornee = part
+			adornment.Size = part.Size
+			adornment.Color3 = ESPColor
+			adornment.Transparency = 0.5
+			adornment.AlwaysOnTop = true
+			adornment.ZIndex = 10
+			adornment.Parent = ESPAdornmentRoot
+			adornments[part] = adornment
+		end
+	end
+end
+
+local function RemoveESPLabel(character)
+	local head = character:FindFirstChild("Head")
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if head and head:FindFirstChild("SerenityESPLabel") then head.SerenityESPLabel:Destroy() end
+	if root and root:FindFirstChild("SerenityESPLabel") then root.SerenityESPLabel:Destroy() end
+end
+
+local function RefreshOutlineESP()
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= Player and plr.Character then
+			if OutlineESPEnabled then AddOutlineHighlight(plr.Character) else RemoveOutlineHighlight(plr.Character) end
+		end
+	end
+end
+
+local function RefreshBoxESP()
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= Player and plr.Character then
+			if BoxESPEnabled then AddBoxAdornments(plr.Character) else RemoveBoxAdornments(plr.Character) end
+		end
+	end
+end
+
+local function RefreshESPLabels()
+	if ESPLabelsEnabled then return end
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= Player and plr.Character then RemoveESPLabel(plr.Character) end
+	end
+end
+
+-- Name / health / distance billboard, throttled instead of updated every frame -- the
+-- text only needs to look live, not actually be per-frame.
+local ESPLabelUpdateInterval = 0.15
+local lastESPLabelUpdate = 0
+RunService.Heartbeat:Connect(function()
+	if not ESPLabelsEnabled then return end
+	local now = os.clock()
+	if now - lastESPLabelUpdate < ESPLabelUpdateInterval then return end
+	lastESPLabelUpdate = now
+	local myRoot = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= Player and plr.Character then
+			local character = plr.Character
+			local humanoid = character:FindFirstChildOfClass("Humanoid")
+			local root = character:FindFirstChild("HumanoidRootPart")
+			local labelPart = character:FindFirstChild("Head") or root
+			if humanoid and root and labelPart and humanoid.Health > 0 then
+				local espGui = labelPart:FindFirstChild("SerenityESPLabel")
+				if not espGui then
+					espGui = Instance.new("BillboardGui")
+					espGui.Name = "SerenityESPLabel"
+					espGui.Size = UDim2.new(0, 200, 0, 36)
+					espGui.StudsOffset = Vector3.new(0, 2.5, 0)
+					espGui.AlwaysOnTop = true
+					espGui.Parent = labelPart
+					local text = Instance.new("TextLabel")
+					text.Name = "Label"
+					text.Size = UDim2.new(1, 0, 1, 0)
+					text.BackgroundTransparency = 1
+					-- Bold Gotham instead of the menu's Ubuntu -- a floating world-space
+					-- label needs to read clearly at a distance, and the menu font looked
+					-- out of place rendered in 3D space.
+					text.Font = Enum.Font.GothamBold
+					text.TextSize = 13
+					text.TextStrokeTransparency = 0
+					text.Parent = espGui
+				end
+				local dist = myRoot and (myRoot.Position - root.Position).Magnitude or 0
+				local label = espGui.Label
+				label.TextColor3 = ESPColor
+				label.Text = string.format("%s\nHP: %d | %d Studs", plr.DisplayName, math.floor(humanoid.Health), math.floor(dist))
+			else
+				RemoveESPLabel(character)
+			end
+		end
+	end
+end)
+
+local function HookOtherPlayerCharacters(plr)
+	if plr == Player then return end
+	plr.CharacterAdded:Connect(function(character)
+		task.wait(0.1)
+		if OutlineESPEnabled then AddOutlineHighlight(character) end
+		if BoxESPEnabled then AddBoxAdornments(character) end
+	end)
+end
+for _, plr in ipairs(Players:GetPlayers()) do
+	HookOtherPlayerCharacters(plr)
+end
+Players.PlayerAdded:Connect(HookOtherPlayerCharacters)
+Players.PlayerRemoving:Connect(function(leavingPlayer)
+	if leavingPlayer.Character then
+		RemoveBoxAdornments(leavingPlayer.Character)
+		RemoveESPLabel(leavingPlayer.Character)
+	end
+end)
+
+CreateSectionHeading(VisualsPage, 8, "ESP")
+
+local OutlineESPToggle = CreateToggleRow(VisualsPage, 38, "OutlineESPKeybind", function(k) OutlineESPKeybind = k end, "Outline ESP")
+local BoxESPToggle = CreateToggleRow(VisualsPage, 86, "BoxESPKeybind", function(k) BoxESPKeybind = k end, "Box ESP")
+local ESPLabelsToggle = CreateToggleRow(VisualsPage, 134, "ESPLabelsKeybind", function(k) ESPLabelsKeybind = k end, "ESP Labels")
+
+local function ToggleOutlineESP()
+	OutlineESPEnabled = not OutlineESPEnabled
+	OutlineESPToggle.Text = OutlineESPEnabled and "On" or "Off"
+	RefreshOutlineESP()
+end
+OutlineESPToggle.MouseButton1Click:Connect(function() PlayClick() ToggleOutlineESP() end)
+
+local function ToggleBoxESP()
+	BoxESPEnabled = not BoxESPEnabled
+	BoxESPToggle.Text = BoxESPEnabled and "On" or "Off"
+	RefreshBoxESP()
+end
+BoxESPToggle.MouseButton1Click:Connect(function() PlayClick() ToggleBoxESP() end)
+
+local function ToggleESPLabels()
+	ESPLabelsEnabled = not ESPLabelsEnabled
+	ESPLabelsToggle.Text = ESPLabelsEnabled and "On" or "Off"
+	RefreshESPLabels()
+end
+ESPLabelsToggle.MouseButton1Click:Connect(function() PlayClick() ToggleESPLabels() end)
+
+-- ESP Color: one shared row/button below the three feature rows instead of a swatch on
+-- each row -- picking a color here updates Outline ESP, Body ESP, and ESP Labels together.
+local ESPColorRow = Instance.new("Frame")
+ESPColorRow.Name = "ESPColorRow"
+ESPColorRow.Size = UDim2.new(1, 0, 0, 40)
+ESPColorRow.Position = UDim2.new(0, 0, 0, 182)
+ESPColorRow.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+ESPColorRow.BackgroundTransparency = 0.5
+ESPColorRow.BorderSizePixel = 0
+ESPColorRow.Parent = VisualsPage
+Instance.new("UICorner", ESPColorRow).CornerRadius = UDim.new(0, 8)
+
+local ESPColorRowLabel = Instance.new("TextLabel")
+ESPColorRowLabel.Name = "RowLabel"
+ESPColorRowLabel.Size = UDim2.new(0, 200, 1, 0)
+ESPColorRowLabel.Position = UDim2.new(0, 16, 0, 0)
+ESPColorRowLabel.BackgroundTransparency = 1
+ESPColorRowLabel.Text = "ESP Color"
+ESPColorRowLabel.Font = UIFont
+ESPColorRowLabel.TextSize = 15
+ESPColorRowLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+ESPColorRowLabel.TextXAlignment = Enum.TextXAlignment.Left
+ESPColorRowLabel.TextYAlignment = Enum.TextYAlignment.Center
+ESPColorRowLabel.Parent = ESPColorRow
+
+local ESPColorButton = Instance.new("TextButton")
+ESPColorButton.Name = "ColorButton"
+ESPColorButton.Size = UDim2.new(0, 80, 0, 30)
+ESPColorButton.Position = UDim2.new(1, -88, 0.5, -15)
+ESPColorButton.BackgroundColor3 = ESPColor
+ESPColorButton.AutoButtonColor = false
+ESPColorButton.BorderSizePixel = 0
+ESPColorButton.Text = ""
+ESPColorButton.Parent = ESPColorRow
+Instance.new("UICorner", ESPColorButton).CornerRadius = UDim.new(0, 6)
+local ESPColorButtonStroke = Instance.new("UIStroke")
+ESPColorButtonStroke.Color = Color3.fromRGB(0, 0, 0)
+ESPColorButtonStroke.Thickness = 1
+ESPColorButtonStroke.Parent = ESPColorButton
+
+local function ApplyESPColor()
+	ESPColorButton.BackgroundColor3 = ESPColor
+	for _, highlight in pairs(OutlineHighlights) do
+		if highlight then
+			highlight.FillColor = ESPColor
+			highlight.OutlineColor = ESPColor
+		end
+	end
+	for _, adornments in pairs(BoxAdornments) do
+		for _, adornment in pairs(adornments) do
+			if adornment then adornment.Color3 = ESPColor end
+		end
+	end
+	-- ESP Labels reads ESPColor directly on its own throttled refresh, so it doesn't
+	-- need updating here.
+end
+
+local function SetESPColor(color)
+	ESPColor = color
+	SaveFeatureColor("ESPColor", ESPColor)
+	ApplyESPColor()
+end
+
+-- Color picker: an SV square + hue bar + a 5-slot saved-color palette, ported from the
+-- old feature-rich hub's theme picker but restyled plain and flat to match Serenity's
+-- rows instead of that hub's accent-heavy chrome. Docks to the left of MainFrame and
+-- tracks it while dragged. ESP is the only picker target here, so this skips all of the
+-- old hub's per-target (Accent/Frame/ESP) plumbing.
+local PickerH, PickerS, PickerV = Color3.toHSV(ESPColor)
+local DraggingSV = false
+local DraggingHue = false
+
+local ESPColorPicker = Instance.new("Frame")
+ESPColorPicker.Name = "ESPColorPicker"
+ESPColorPicker.Size = UDim2.new(0, 130, 0, 196)
+ESPColorPicker.AnchorPoint = Vector2.new(1, 0)
+ESPColorPicker.BackgroundColor3 = FrameColor
+ESPColorPicker.BorderSizePixel = 0
+ESPColorPicker.Visible = false
+ESPColorPicker.ZIndex = 50
+ESPColorPicker.Parent = ScreenGui
+Instance.new("UICorner", ESPColorPicker).CornerRadius = UDim.new(0, 10)
+local ESPColorPickerStroke = Instance.new("UIStroke")
+ESPColorPickerStroke.Color = Color3.fromRGB(0, 0, 0)
+ESPColorPickerStroke.Thickness = 1
+ESPColorPickerStroke.Parent = ESPColorPicker
+
+local function UpdateESPColorPickerPosition()
+	ESPColorPicker.Position = UDim2.fromOffset(MainFrame.AbsolutePosition.X - 8, MainFrame.AbsolutePosition.Y + 36)
+end
+MainFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(UpdateESPColorPickerPosition)
+MainFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdateESPColorPickerPosition)
+UpdateESPColorPickerPosition()
+
+local SVSquare = Instance.new("Frame")
+SVSquare.Name = "SVSquare"
+SVSquare.Size = UDim2.new(0, 84, 0, 84)
+SVSquare.Position = UDim2.new(0, 8, 0, 10)
+SVSquare.BorderSizePixel = 0
+SVSquare.Parent = ESPColorPicker
+Instance.new("UICorner", SVSquare).CornerRadius = UDim.new(0, 6)
+
+local SVWhite = Instance.new("Frame")
+SVWhite.Size = UDim2.new(1, 0, 1, 0)
+SVWhite.BackgroundColor3 = Color3.new(1, 1, 1)
+SVWhite.BorderSizePixel = 0
+SVWhite.Parent = SVSquare
+Instance.new("UICorner", SVWhite).CornerRadius = UDim.new(0, 6)
+local SVWhiteGradient = Instance.new("UIGradient")
+SVWhiteGradient.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1)})
+SVWhiteGradient.Parent = SVWhite
+
+local SVBlack = Instance.new("Frame")
+SVBlack.Size = UDim2.new(1, 0, 1, 0)
+SVBlack.BackgroundColor3 = Color3.new(0, 0, 0)
+SVBlack.BorderSizePixel = 0
+SVBlack.Parent = SVSquare
+Instance.new("UICorner", SVBlack).CornerRadius = UDim.new(0, 6)
+local SVBlackGradient = Instance.new("UIGradient")
+SVBlackGradient.Rotation = 90
+SVBlackGradient.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0)})
+SVBlackGradient.Parent = SVBlack
+
+local SVInput = Instance.new("TextButton")
+SVInput.Size = UDim2.new(1, 0, 1, 0)
+SVInput.BackgroundTransparency = 1
+SVInput.Text = ""
+SVInput.Parent = SVSquare
+
+local SVMarker = Instance.new("Frame")
+SVMarker.Size = UDim2.new(0, 8, 0, 8)
+SVMarker.AnchorPoint = Vector2.new(0.5, 0.5)
+SVMarker.BackgroundTransparency = 1
+SVMarker.Parent = SVInput
+Instance.new("UICorner", SVMarker).CornerRadius = UDim.new(1, 0)
+local SVMarkerStroke = Instance.new("UIStroke")
+SVMarkerStroke.Color = Color3.new(1, 1, 1)
+SVMarkerStroke.Thickness = 1.5
+SVMarkerStroke.Parent = SVMarker
+
+local HueBar = Instance.new("Frame")
+HueBar.Size = UDim2.new(0, 18, 0, 84)
+HueBar.Position = UDim2.new(0, 104, 0, 10)
+HueBar.BackgroundColor3 = Color3.new(1, 1, 1)
+HueBar.BorderSizePixel = 0
+HueBar.Parent = ESPColorPicker
+Instance.new("UICorner", HueBar).CornerRadius = UDim.new(0, 4)
+local HueGradient = Instance.new("UIGradient")
+HueGradient.Rotation = 90
+HueGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromHSV(0, 1, 1)),
+	ColorSequenceKeypoint.new(0.17, Color3.fromHSV(0.17, 1, 1)),
+	ColorSequenceKeypoint.new(0.33, Color3.fromHSV(0.33, 1, 1)),
+	ColorSequenceKeypoint.new(0.5, Color3.fromHSV(0.5, 1, 1)),
+	ColorSequenceKeypoint.new(0.67, Color3.fromHSV(0.67, 1, 1)),
+	ColorSequenceKeypoint.new(0.83, Color3.fromHSV(0.83, 1, 1)),
+	ColorSequenceKeypoint.new(1, Color3.fromHSV(1, 1, 1)),
+})
+HueGradient.Parent = HueBar
+
+local HueInput = Instance.new("TextButton")
+HueInput.Size = UDim2.new(1, 0, 1, 0)
+HueInput.BackgroundTransparency = 1
+HueInput.Text = ""
+HueInput.Parent = HueBar
+
+local HueMarker = Instance.new("Frame")
+HueMarker.Size = UDim2.new(1, 4, 0, 2)
+HueMarker.Position = UDim2.new(0, -2, 0, 0)
+HueMarker.BackgroundColor3 = Color3.new(1, 1, 1)
+HueMarker.BorderSizePixel = 0
+HueMarker.Parent = HueInput
+
+local SaveColorButton = Instance.new("TextButton")
+SaveColorButton.Name = "SaveColorButton"
+SaveColorButton.Size = UDim2.new(0, 114, 0, 24)
+SaveColorButton.Position = UDim2.new(0, 8, 0, 102)
+SaveColorButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+SaveColorButton.BorderSizePixel = 0
+SaveColorButton.Text = "Save Color"
+SaveColorButton.Font = UIFont
+SaveColorButton.TextSize = 13
+SaveColorButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+SaveColorButton.Parent = ESPColorPicker
+Instance.new("UICorner", SaveColorButton).CornerRadius = UDim.new(0, 6)
+
+local SavedColorButtons = {}
+for index = 1, 5 do
+	local swatch = Instance.new("TextButton")
+	swatch.Name = "SavedColorSlot" .. index
+	swatch.Size = UDim2.new(0, 18, 0, 18)
+	swatch.Position = UDim2.new(0, 8 + ((index - 1) * 24), 0, 138)
+	swatch.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	swatch.BorderSizePixel = 0
+	swatch.Text = "+"
+	swatch.Font = UIFont
+	swatch.TextSize = 12
+	swatch.TextColor3 = Color3.fromRGB(255, 255, 255)
+	swatch.Parent = ESPColorPicker
+	Instance.new("UICorner", swatch).CornerRadius = UDim.new(0, 4)
+	local swatchStroke = Instance.new("UIStroke")
+	swatchStroke.Color = Color3.fromRGB(0, 0, 0)
+	swatchStroke.Thickness = 1
+	swatchStroke.Parent = swatch
+	SavedColorButtons[index] = swatch
+end
+
+local function RefreshPickerMarkers()
+	SVSquare.BackgroundColor3 = Color3.fromHSV(PickerH, 1, 1)
+	SVMarker.Position = UDim2.new(PickerS, 0, 1 - PickerV, 0)
+	HueMarker.Position = UDim2.new(0, -2, PickerH, -1)
+end
+
+local function RefreshSavedColorButtons()
+	local savedColors = type(SavedKeybinds.ESPSavedColors) == "table" and SavedKeybinds.ESPSavedColors or {}
+	for index, swatch in ipairs(SavedColorButtons) do
+		local color = UnpackColor(savedColors[index], nil)
+		swatch.BackgroundColor3 = color or Color3.fromRGB(60, 60, 60)
+		swatch.Text = color and "" or "+"
+	end
+end
+
+local function ApplyPickerColor()
+	SetESPColor(Color3.fromHSV(PickerH, PickerS, PickerV))
+	RefreshPickerMarkers()
+end
+
+local function UpdateSVFromPosition(position)
+	local x = math.clamp((position.X - SVInput.AbsolutePosition.X) / SVInput.AbsoluteSize.X, 0, 1)
+	local y = math.clamp((position.Y - SVInput.AbsolutePosition.Y) / SVInput.AbsoluteSize.Y, 0, 1)
+	PickerS = x
+	PickerV = 1 - y
+	ApplyPickerColor()
+end
+
+local function UpdateHueFromPosition(position)
+	PickerH = math.clamp((position.Y - HueInput.AbsolutePosition.Y) / HueInput.AbsoluteSize.Y, 0, 1)
+	ApplyPickerColor()
+end
+
+SVInput.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		DraggingSV = true
+		UpdateSVFromPosition(input.Position)
+	end
+end)
+HueInput.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		DraggingHue = true
+		UpdateHueFromPosition(input.Position)
+	end
+end)
+UserInputService.InputChanged:Connect(function(input)
+	if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then return end
+	if DraggingSV then
+		UpdateSVFromPosition(input.Position)
+	elseif DraggingHue then
+		UpdateHueFromPosition(input.Position)
+	end
+end)
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		DraggingSV = false
+		DraggingHue = false
+	end
+end)
+
+SaveColorButton.MouseButton1Click:Connect(function()
+	PlayClick()
+	local savedColors = type(SavedKeybinds.ESPSavedColors) == "table" and SavedKeybinds.ESPSavedColors or {}
+	table.insert(savedColors, 1, PackColor(ESPColor))
+	while #savedColors > 5 do table.remove(savedColors) end
+	SavedKeybinds.ESPSavedColors = savedColors
+	SavePersistentSettings()
+	RefreshSavedColorButtons()
+end)
+
+for index, swatch in ipairs(SavedColorButtons) do
+	swatch.MouseButton1Click:Connect(function()
+		PlayClick()
+		local savedColors = type(SavedKeybinds.ESPSavedColors) == "table" and SavedKeybinds.ESPSavedColors or {}
+		local color = UnpackColor(savedColors[index], nil)
+		if not color then return end
+		PickerH, PickerS, PickerV = Color3.toHSV(color)
+		ApplyPickerColor()
+	end)
+end
+
+ESPColorButton.MouseButton1Click:Connect(function()
+	PlayClick()
+	if ESPColorPicker.Visible then
+		ESPColorPicker.Visible = false
+		return
+	end
+	PickerH, PickerS, PickerV = Color3.toHSV(ESPColor)
+	RefreshPickerMarkers()
+	RefreshSavedColorButtons()
+	ESPColorPicker.Visible = true
+end)
+
+RefreshPickerMarkers()
+
+local ESP_SECTION_BOTTOM = 182 + 40
+
 -- Camera (ported from the old feature-rich hub): Free Cam detaches the camera from the
 -- character (right-click-drag to look, WASD/Q/E to move, Shift to go faster) and sinks
 -- the movement keys so the character doesn't also walk. Since you can't see your own
@@ -788,9 +1366,9 @@ local FreeCamOriginalType, FreeCamOriginalSubject, FreeCamOriginalCFrame, FreeCa
 local FreeCamSelfColor = Color3.fromRGB(34, 139, 34)
 local FreeCamSelfHighlight, FreeCamSelfLabel, FreeCamSelfAdornee
 
-local CAMERA_TOP = FLY_SECTION_BOTTOM + SECTION_GAP
-CreateSectionHeading(PlayerPage, CAMERA_TOP, "Camera")
-local FreeCamToggle = CreateToggleRow(PlayerPage, CAMERA_TOP + 30, "FreeCamKeybind", function(k) FreeCamKeybind = k end)
+local CAMERA_TOP = ESP_SECTION_BOTTOM + SECTION_GAP
+CreateSectionHeading(VisualsPage, CAMERA_TOP, "Camera")
+local FreeCamToggle = CreateToggleRow(VisualsPage, CAMERA_TOP + 30, "FreeCamKeybind", function(k) FreeCamKeybind = k end, "Free Cam")
 
 local DEFAULT_FOV = 70
 local FOVValue = (workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView) or DEFAULT_FOV
@@ -802,7 +1380,7 @@ FOVRow.Position = UDim2.new(0, 0, 0, CAMERA_TOP + 78)
 FOVRow.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 FOVRow.BackgroundTransparency = 0.5
 FOVRow.BorderSizePixel = 0
-FOVRow.Parent = PlayerPage
+FOVRow.Parent = VisualsPage
 Instance.new("UICorner", FOVRow).CornerRadius = UDim.new(0, 8)
 
 local FOVRowLabel = Instance.new("TextLabel")
@@ -848,6 +1426,8 @@ FOVResetButton.Parent = FOVRow
 Instance.new("UICorner", FOVResetButton).CornerRadius = UDim.new(0, 6)
 
 local CAMERA_SECTION_BOTTOM = CAMERA_TOP + 78 + 40
+
+VisualsPage.CanvasSize = UDim2.new(0, 0, 0, CAMERA_SECTION_BOTTOM + 16)
 
 FOVInput.FocusLost:Connect(function()
 	local value = tonumber(FOVInput.Text)
@@ -1014,234 +1594,6 @@ local freeCamRenderConnection = RunService.RenderStepped:Connect(function(deltaT
 	camera.CFrame = cameraCFrame
 	camera.Focus = cameraCFrame * CFrame.new(0, 0, -512)
 end)
-
-PlayerPage.CanvasSize = UDim2.new(0, 0, 0, CAMERA_SECTION_BOTTOM + 16)
-
--- Re-apply active effects whenever the character (re)spawns.
-local characterAddedConnection = Player.CharacterAdded:Connect(function()
-	task.wait(0.1)
-	ApplySpeed()
-	JumpOriginal = nil
-	if JumpEnabled then ApplyJump() end
-end)
-
--- Visuals tab: Outline ESP, Body ESP (per-limb boxes, Infinite Yield-style, ported from
--- the old feature-rich hub), and ESP Labels (name/health/distance). Color swatches are
--- placeholders only -- no picker wired up yet, just a static outlined square.
-local VisualsPage = CreateTab("Visuals", 3, "90467794700971", true)
-
-local ESPDefaultColor = Color3.fromRGB(100, 255, 100)
-
--- Box/label adornments live under this folder instead of the character itself, so they
--- keep rendering even if something else on the character (e.g. a local transparency
--- effect) tries to hide its own children.
-local ESPAdornmentRoot = Instance.new("Folder")
-ESPAdornmentRoot.Name = "SerenityESPAdornments"
-ESPAdornmentRoot.Parent = ScreenGui
-
-local OutlineESPEnabled = false
-local OutlineESPKeybind = Enum.KeyCode.Unknown
-local OutlineESPColor = ESPDefaultColor
-local OutlineHighlights = {}
-
-local BoxESPEnabled = false
-local BoxESPKeybind = Enum.KeyCode.Unknown
-local BoxESPColor = ESPDefaultColor
-local BoxAdornments = {} -- [character] = {[part] = BoxHandleAdornment}
-
-local ESPLabelsEnabled = false
-local ESPLabelsKeybind = Enum.KeyCode.Unknown
-local ESPLabelsColor = ESPDefaultColor
-
-local function RemoveOutlineHighlight(character)
-	local highlight = OutlineHighlights[character]
-	if highlight then highlight:Destroy() end
-	OutlineHighlights[character] = nil
-end
-
-local function AddOutlineHighlight(character)
-	if OutlineHighlights[character] then return end
-	local highlight = Instance.new("Highlight")
-	highlight.Name = "SerenityOutlineESP"
-	highlight.FillColor = OutlineESPColor
-	highlight.FillTransparency = 0.72
-	highlight.OutlineColor = OutlineESPColor
-	highlight.OutlineTransparency = 0
-	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-	highlight.Parent = character
-	OutlineHighlights[character] = highlight
-end
-
--- Body-part names covered by Body ESP, matching both R15 and R6 rigs.
-local BodyESPPartNames = {
-	HumanoidRootPart = true, Head = true, Torso = true, UpperTorso = true, LowerTorso = true,
-	LeftUpperArm = true, LeftLowerArm = true, LeftHand = true,
-	RightUpperArm = true, RightLowerArm = true, RightHand = true,
-	LeftUpperLeg = true, LeftLowerLeg = true, LeftFoot = true,
-	RightUpperLeg = true, RightLowerLeg = true, RightFoot = true,
-	["Left Arm"] = true, ["Right Arm"] = true, ["Left Leg"] = true, ["Right Leg"] = true,
-}
-
-local function IsBodyESPPart(part, character)
-	return part:IsA("BasePart") and part.Parent == character and BodyESPPartNames[part.Name] == true
-end
-
-local function RemoveBoxAdornments(character)
-	local adornments = BoxAdornments[character]
-	if not adornments then return end
-	for _, adornment in pairs(adornments) do
-		if adornment then adornment:Destroy() end
-	end
-	BoxAdornments[character] = nil
-end
-
--- Per-limb boxes rather than one box around the root. A BoxHandleAdornment tracks its
--- Adornee's position/size automatically, so this only needs to run once per character
--- instead of every frame.
-local function AddBoxAdornments(character)
-	local adornments = BoxAdornments[character]
-	if not adornments then
-		adornments = {}
-		BoxAdornments[character] = adornments
-	end
-	for _, part in ipairs(character:GetChildren()) do
-		if IsBodyESPPart(part, character) and not adornments[part] then
-			local adornment = Instance.new("BoxHandleAdornment")
-			adornment.Name = "SerenityBoxESP"
-			adornment.Adornee = part
-			adornment.Size = part.Size
-			adornment.Color3 = BoxESPColor
-			adornment.Transparency = 0.5
-			adornment.AlwaysOnTop = true
-			adornment.ZIndex = 10
-			adornment.Parent = ESPAdornmentRoot
-			adornments[part] = adornment
-		end
-	end
-end
-
-local function RemoveESPLabel(character)
-	local head = character:FindFirstChild("Head")
-	local root = character:FindFirstChild("HumanoidRootPart")
-	if head and head:FindFirstChild("SerenityESPLabel") then head.SerenityESPLabel:Destroy() end
-	if root and root:FindFirstChild("SerenityESPLabel") then root.SerenityESPLabel:Destroy() end
-end
-
-local function RefreshOutlineESP()
-	for _, plr in ipairs(Players:GetPlayers()) do
-		if plr ~= Player and plr.Character then
-			if OutlineESPEnabled then AddOutlineHighlight(plr.Character) else RemoveOutlineHighlight(plr.Character) end
-		end
-	end
-end
-
-local function RefreshBoxESP()
-	for _, plr in ipairs(Players:GetPlayers()) do
-		if plr ~= Player and plr.Character then
-			if BoxESPEnabled then AddBoxAdornments(plr.Character) else RemoveBoxAdornments(plr.Character) end
-		end
-	end
-end
-
-local function RefreshESPLabels()
-	if ESPLabelsEnabled then return end
-	for _, plr in ipairs(Players:GetPlayers()) do
-		if plr ~= Player and plr.Character then RemoveESPLabel(plr.Character) end
-	end
-end
-
--- Name / health / distance billboard, throttled instead of updated every frame -- the
--- text only needs to look live, not actually be per-frame.
-local ESPLabelUpdateInterval = 0.15
-local lastESPLabelUpdate = 0
-RunService.Heartbeat:Connect(function()
-	if not ESPLabelsEnabled then return end
-	local now = os.clock()
-	if now - lastESPLabelUpdate < ESPLabelUpdateInterval then return end
-	lastESPLabelUpdate = now
-	local myRoot = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
-	for _, plr in ipairs(Players:GetPlayers()) do
-		if plr ~= Player and plr.Character then
-			local character = plr.Character
-			local humanoid = character:FindFirstChildOfClass("Humanoid")
-			local root = character:FindFirstChild("HumanoidRootPart")
-			local labelPart = character:FindFirstChild("Head") or root
-			if humanoid and root and labelPart and humanoid.Health > 0 then
-				local espGui = labelPart:FindFirstChild("SerenityESPLabel")
-				if not espGui then
-					espGui = Instance.new("BillboardGui")
-					espGui.Name = "SerenityESPLabel"
-					espGui.Size = UDim2.new(0, 200, 0, 36)
-					espGui.StudsOffset = Vector3.new(0, 2.5, 0)
-					espGui.AlwaysOnTop = true
-					espGui.Parent = labelPart
-					local text = Instance.new("TextLabel")
-					text.Name = "Label"
-					text.Size = UDim2.new(1, 0, 1, 0)
-					text.BackgroundTransparency = 1
-					text.Font = UIFont
-					text.TextSize = 13
-					text.TextStrokeTransparency = 0
-					text.Parent = espGui
-				end
-				local dist = myRoot and (myRoot.Position - root.Position).Magnitude or 0
-				local label = espGui.Label
-				label.TextColor3 = ESPLabelsColor
-				label.Text = string.format("%s\nHP: %d | %d Studs", plr.DisplayName, math.floor(humanoid.Health), math.floor(dist))
-			else
-				RemoveESPLabel(character)
-			end
-		end
-	end
-end)
-
-local function HookOtherPlayerCharacters(plr)
-	if plr == Player then return end
-	plr.CharacterAdded:Connect(function(character)
-		task.wait(0.1)
-		if OutlineESPEnabled then AddOutlineHighlight(character) end
-		if BoxESPEnabled then AddBoxAdornments(character) end
-	end)
-end
-for _, plr in ipairs(Players:GetPlayers()) do
-	HookOtherPlayerCharacters(plr)
-end
-Players.PlayerAdded:Connect(HookOtherPlayerCharacters)
-Players.PlayerRemoving:Connect(function(leavingPlayer)
-	if leavingPlayer.Character then
-		RemoveBoxAdornments(leavingPlayer.Character)
-		RemoveESPLabel(leavingPlayer.Character)
-	end
-end)
-
-CreateSectionHeading(VisualsPage, 8, "ESP")
-
-local OutlineESPToggle, OutlineESPSwatch = CreateESPRow(VisualsPage, 38, "Outline ESP", OutlineESPColor, "OutlineESPKeybind", function(k) OutlineESPKeybind = k end)
-local BoxESPToggle, BoxESPSwatch = CreateESPRow(VisualsPage, 86, "Box ESP", BoxESPColor, "BoxESPKeybind", function(k) BoxESPKeybind = k end)
-local ESPLabelsToggle, ESPLabelsSwatch = CreateESPRow(VisualsPage, 134, "ESP Labels", ESPLabelsColor, "ESPLabelsKeybind", function(k) ESPLabelsKeybind = k end)
-
-VisualsPage.CanvasSize = UDim2.new(0, 0, 0, 190)
-
-local function ToggleOutlineESP()
-	OutlineESPEnabled = not OutlineESPEnabled
-	OutlineESPToggle.Text = OutlineESPEnabled and "On" or "Off"
-	RefreshOutlineESP()
-end
-OutlineESPToggle.MouseButton1Click:Connect(function() PlayClick() ToggleOutlineESP() end)
-
-local function ToggleBoxESP()
-	BoxESPEnabled = not BoxESPEnabled
-	BoxESPToggle.Text = BoxESPEnabled and "On" or "Off"
-	RefreshBoxESP()
-end
-BoxESPToggle.MouseButton1Click:Connect(function() PlayClick() ToggleBoxESP() end)
-
-local function ToggleESPLabels()
-	ESPLabelsEnabled = not ESPLabelsEnabled
-	ESPLabelsToggle.Text = ESPLabelsEnabled and "On" or "Off"
-	RefreshESPLabels()
-end
-ESPLabelsToggle.MouseButton1Click:Connect(function() PlayClick() ToggleESPLabels() end)
 
 -- Teleport tab (blank for now)
 local TeleportPage = CreateTab("Teleport", 4, "90261647722333", true)
@@ -1412,21 +1764,15 @@ mainInputConnection = UserInputService.InputBegan:Connect(function(input, proces
 		return
 	end
 	if input.KeyCode == MinimizeKeybind then ToggleGUI() return end
-	if SpeedKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == SpeedKeybind then
-		ToggleSpeed()
-	elseif JumpKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == JumpKeybind then
-		ToggleJump()
-	elseif FlyKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == FlyKeybind then
-		ToggleFly()
-	elseif FreeCamKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == FreeCamKeybind then
-		ToggleFreeCam()
-	elseif OutlineESPKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == OutlineESPKeybind then
-		ToggleOutlineESP()
-	elseif BoxESPKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == BoxESPKeybind then
-		ToggleBoxESP()
-	elseif ESPLabelsKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == ESPLabelsKeybind then
-		ToggleESPLabels()
-	end
+	-- Independent ifs, not elseif -- multiple features can share the same keybind, and
+	-- all of them should fire on that single keypress instead of just the first match.
+	if SpeedKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == SpeedKeybind then ToggleSpeed() end
+	if JumpKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == JumpKeybind then ToggleJump() end
+	if FlyKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == FlyKeybind then ToggleFly() end
+	if FreeCamKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == FreeCamKeybind then ToggleFreeCam() end
+	if OutlineESPKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == OutlineESPKeybind then ToggleOutlineESP() end
+	if BoxESPKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == BoxESPKeybind then ToggleBoxESP() end
+	if ESPLabelsKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == ESPLabelsKeybind then ToggleESPLabels() end
 end)
 
 -- Dragging
