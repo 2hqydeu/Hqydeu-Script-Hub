@@ -59,45 +59,171 @@ local function TeleportToBase()
 	return StableTeleport(CFrame.new(BASE_POSITION + Vector3.new(0, 4, 0)))
 end
 
--- Full Bright: same Lighting overrides the old hub used, reasserted twice a second while
--- enabled (some games reset Lighting periodically) and restored to whatever the game had
--- originally when toggled off or the panel is closed.
-local FullBrightEnabled = false
-local FullBrightOriginal = {
-	Brightness = Lighting.Brightness,
-	ClockTime = Lighting.ClockTime,
-	FogEnd = Lighting.FogEnd,
-	GlobalShadows = Lighting.GlobalShadows,
-	Ambient = Lighting.Ambient,
-	OutdoorAmbient = Lighting.OutdoorAmbient,
-	ExposureCompensation = Lighting.ExposureCompensation,
-}
+-- No Darkness: ported from the old hub verbatim (not the simpler generic Full Bright this
+-- panel had before). Snapshots the real Lighting state -- including per-effect Atmosphere/
+-- ColorCorrection/Bloom/etc properties, not just a handful of top-level Lighting properties
+-- -- the first time it's turned on (skipped if Lighting already happens to look "no
+-- darkness" already, so it never captures its own applied state as the "original"),
+-- reasserts every 1.5s in case the game resets Lighting on its own, and restores everything
+-- (including those per-effect properties) exactly when toggled off.
+local SafeGet, SafeSet, SetNoDarkness, ApplyNoDarkness
+do
+	SafeGet = function(instance, property)
+		local ok, value = pcall(function()
+			return instance[property]
+		end)
+		if ok then return value end
+		return nil
+	end
 
-local function ApplyFullBright()
-	pcall(function()
-		Lighting.Brightness = 3
-		Lighting.ClockTime = 14
-		Lighting.FogEnd = 100000
-		Lighting.GlobalShadows = false
-		Lighting.Ambient = Color3.fromRGB(255, 255, 255)
-		Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
-		Lighting.ExposureCompensation = 0.35
+	SafeSet = function(instance, property, value)
+		pcall(function()
+			instance[property] = value
+		end)
+	end
+
+	local NoDarknessEnabled = false
+	local OriginalLighting = nil
+
+	local lightingEffectProperties = {
+		Atmosphere = {"Density", "Offset", "Color", "Decay", "Glare", "Haze"},
+		ColorCorrectionEffect = {"Enabled", "Brightness", "Contrast", "Saturation", "TintColor"},
+		BloomEffect = {"Enabled", "Intensity", "Size", "Threshold"},
+		BlurEffect = {"Enabled", "Size"},
+		DepthOfFieldEffect = {"Enabled", "FarIntensity", "FocusDistance", "InFocusRadius", "NearIntensity"},
+		SunRaysEffect = {"Enabled", "Intensity", "Spread"},
+	}
+
+	local function LightingEffectClass(instance)
+		for className in pairs(lightingEffectProperties) do
+			if instance:IsA(className) then return className end
+		end
+		return nil
+	end
+
+	local function CaptureLightingEffectDefaults(effect, original)
+		local className = LightingEffectClass(effect)
+		if not className then return end
+		original.Effects = original.Effects or {}
+		if original.Effects[effect] then return end
+		local saved = {}
+		for _, property in ipairs(lightingEffectProperties[className]) do
+			local value = SafeGet(effect, property)
+			if value ~= nil then saved[property] = value end
+		end
+		original.Effects[effect] = saved
+	end
+
+	local function IsNoDarknessLighting()
+		return Lighting.Brightness >= 3.8
+			and Lighting.FogEnd >= 900000
+			and Lighting.Ambient.R > 0.95
+			and Lighting.OutdoorAmbient.R > 0.95
+	end
+
+	local function BuildLightingSnapshot()
+		local snapshot = {
+			ClockTime = Lighting.ClockTime,
+			TimeOfDay = SafeGet(Lighting, "TimeOfDay"),
+			Brightness = Lighting.Brightness,
+			FogEnd = Lighting.FogEnd,
+			FogStart = Lighting.FogStart,
+			FogColor = Lighting.FogColor,
+			Ambient = Lighting.Ambient,
+			OutdoorAmbient = Lighting.OutdoorAmbient,
+			ExposureCompensation = Lighting.ExposureCompensation,
+			GlobalShadows = SafeGet(Lighting, "GlobalShadows"),
+			Effects = {},
+		}
+		for _, child in ipairs(Lighting:GetChildren()) do
+			CaptureLightingEffectDefaults(child, snapshot)
+		end
+		return snapshot
+	end
+
+	local function SaveLightingDefaults()
+		if not IsNoDarknessLighting() then
+			OriginalLighting = BuildLightingSnapshot()
+		end
+	end
+
+	ApplyNoDarkness = function()
+		SaveLightingDefaults()
+		SafeSet(Lighting, "ClockTime", 14)
+		SafeSet(Lighting, "TimeOfDay", "14:00:00")
+		SafeSet(Lighting, "Brightness", 4)
+		SafeSet(Lighting, "FogStart", 0)
+		SafeSet(Lighting, "FogEnd", 1000000)
+		SafeSet(Lighting, "FogColor", Color3.fromRGB(255, 255, 255))
+		SafeSet(Lighting, "Ambient", Color3.fromRGB(255, 255, 255))
+		SafeSet(Lighting, "OutdoorAmbient", Color3.fromRGB(255, 255, 255))
+		SafeSet(Lighting, "ExposureCompensation", 0.45)
+		SafeSet(Lighting, "GlobalShadows", false)
+		for _, child in ipairs(Lighting:GetChildren()) do
+			CaptureLightingEffectDefaults(child, OriginalLighting)
+			if child:IsA("Atmosphere") then
+				SafeSet(child, "Density", 0)
+				SafeSet(child, "Haze", 0)
+				SafeSet(child, "Glare", 0)
+				SafeSet(child, "Offset", 0)
+				SafeSet(child, "Color", Color3.fromRGB(255, 255, 255))
+				SafeSet(child, "Decay", Color3.fromRGB(255, 255, 255))
+			elseif child:IsA("ColorCorrectionEffect") then
+				SafeSet(child, "Enabled", false)
+				SafeSet(child, "Brightness", 0)
+				SafeSet(child, "Contrast", 0)
+				SafeSet(child, "Saturation", 0)
+				SafeSet(child, "TintColor", Color3.fromRGB(255, 255, 255))
+			elseif child:IsA("BloomEffect") or child:IsA("BlurEffect") or child:IsA("DepthOfFieldEffect") or child:IsA("SunRaysEffect") then
+				SafeSet(child, "Enabled", false)
+			end
+		end
+	end
+
+	local function RestoreLighting()
+		local original = OriginalLighting
+		if not original then
+			SafeSet(Lighting, "ClockTime", 12)
+			SafeSet(Lighting, "TimeOfDay", "12:00:00")
+			SafeSet(Lighting, "Brightness", 2)
+			SafeSet(Lighting, "FogStart", 0)
+			SafeSet(Lighting, "FogEnd", 100000)
+			SafeSet(Lighting, "Ambient", Color3.fromRGB(128, 128, 128))
+			SafeSet(Lighting, "OutdoorAmbient", Color3.fromRGB(128, 128, 128))
+			SafeSet(Lighting, "ExposureCompensation", 0)
+			SafeSet(Lighting, "GlobalShadows", true)
+			return
+		end
+		for property, value in pairs(original) do
+			if property ~= "Effects" then SafeSet(Lighting, property, value) end
+		end
+		for effect, properties in pairs(original.Effects or {}) do
+			if typeof(effect) == "Instance" and effect.Parent then
+				for property, value in pairs(properties) do
+					SafeSet(effect, property, value)
+				end
+			end
+		end
+	end
+
+	SetNoDarkness = function(enabled)
+		NoDarknessEnabled = enabled == true
+		if NoDarknessEnabled then
+			ApplyNoDarkness()
+		else
+			RestoreLighting()
+			OriginalLighting = nil
+		end
+	end
+
+	local lastLightingApply = 0
+	RunService.Heartbeat:Connect(function()
+		if not NoDarknessEnabled then return end
+		if os.clock() - lastLightingApply < 1.5 then return end
+		lastLightingApply = os.clock()
+		ApplyNoDarkness()
 	end)
 end
-
-local function RestoreFullBright()
-	for property, value in pairs(FullBrightOriginal) do
-		pcall(function() Lighting[property] = value end)
-	end
-end
-
-local lastFullBrightApply = 0
-RunService.Heartbeat:Connect(function()
-	if not FullBrightEnabled then return end
-	if os.clock() - lastFullBrightApply < 0.5 then return end
-	lastFullBrightApply = os.clock()
-	ApplyFullBright()
-end)
 
 -- UI: a small standalone panel, matching Serenity's look for consistency.
 local ScreenGui = Instance.new("ScreenGui")
@@ -105,7 +231,7 @@ ScreenGui.Name = "SerenityUE"
 ScreenGui.Parent = CoreGui
 ScreenGui.ResetOnSpawn = false
 
-local FULL_HEIGHT = 246
+local FULL_HEIGHT = 294
 local MINI_HEIGHT = 44
 
 local PanelFrame = Instance.new("Frame")
@@ -233,8 +359,11 @@ local function CreateFeatureRow(y, labelText)
 	return row, toggle
 end
 
--- Layout only for now -- no ESP logic wired up yet.
+-- ESP: this row just opens the Filter popup (further below) -- every actual ESP toggle
+-- (Box/Structures/Items/Mobs) and their type/rarity filters live inside that popup instead
+-- of on the page itself.
 local _, ESPToggle = CreateFeatureRow(96, "ESP")
+ESPToggle.Text = "Filter"
 
 -- Auto Farm: wired to the ported Auto Trap logic further down this file. The row is
 -- grown a bit taller than the standard feature row to fit a phase/kill-count status line.
@@ -252,16 +381,16 @@ AutoFarmStatus.TextColor3 = Color3.fromRGB(190, 190, 190)
 AutoFarmStatus.TextXAlignment = Enum.TextXAlignment.Left
 AutoFarmStatus.Parent = AutoFarmRow
 
-local _, FullBrightToggle = CreateFeatureRow(198, "Full Bright")
-FullBrightToggle.MouseButton1Click:Connect(function()
-	FullBrightEnabled = not FullBrightEnabled
-	FullBrightToggle.Text = FullBrightEnabled and "On" or "Off"
-	if FullBrightEnabled then
-		ApplyFullBright()
-	else
-		RestoreFullBright()
-	end
+local _, NoDarknessToggle = CreateFeatureRow(198, "No Darkness")
+local NoDarknessEnabledUI = false
+NoDarknessToggle.MouseButton1Click:Connect(function()
+	NoDarknessEnabledUI = not NoDarknessEnabledUI
+	NoDarknessToggle.Text = NoDarknessEnabledUI and "On" or "Off"
+	SetNoDarkness(NoDarknessEnabledUI)
 end)
+
+local _, StructureAlertsToggle = CreateFeatureRow(242, "Structure Alerts")
+StructureAlertsToggle.Text = "On"
 
 -- ============================================================================
 -- Auto Farm: ported line-for-line from the old hub's Undead Expedition "Auto Trap"
@@ -1261,14 +1390,24 @@ end
 
 AutoFarmToggle.MouseButton1Click:Connect(ToggleAutoFarm)
 
+-- ESP category updaters and structure-alert hooks are defined further below (in their own
+-- scoped block, to keep this file's top-level local count down) but need to be reachable
+-- from the structure watcher right here, so they're forward-declared now and assigned later.
+local UpdateBoxESP, RefreshBoxDistances, UpdateStructuresESP, UpdateItemsESP, UpdateMobsESP
+local RegisterKnownStructureType, PushStructureAlert, SetStructureMessage, ShowStructureMarker
+
 local function WatchFarmStructures()
 	local folder = StructuresFolder()
 	if not folder then return end
 	for _, structure in ipairs(folder:GetChildren()) do
 		HandleFarmStructureSpawn(structure)
+		if RegisterKnownStructureType then RegisterKnownStructureType(StructureDisplayName(structure)) end
 	end
 	folder.ChildAdded:Connect(function(structure)
 		HandleFarmStructureSpawn(structure)
+		if RegisterKnownStructureType then RegisterKnownStructureType(StructureDisplayName(structure)) end
+		if SetStructureMessage then SetStructureMessage(StructureDisplayName(structure)) end
+		if ShowStructureMarker then ShowStructureMarker(structure) end
 	end)
 end
 WatchFarmStructures()
@@ -1361,6 +1500,893 @@ task.spawn(function()
 	end
 end)
 
+-- ============================================================================
+-- ESP + Structure Alerts: ported from the old hub's Undead Expedition module. Box ESP
+-- highlights loot crates by type; Structures/Items ESP highlight anything matching a
+-- selected type/rarity; Mobs ESP highlights active enemies. Structure Alerts pop a
+-- fading on-screen line (plus a floating "!" marker) whenever a new structure spawns.
+-- Everything here is reached through the single "Filter" popup opened from the ESP row
+-- above -- there's no separate always-visible row per category like the old hub had,
+-- since this standalone panel doesn't have room for one.
+-- ============================================================================
+do
+	local BOX_TYPE_COLORS = {
+		Wooden = Color3.fromRGB(178, 119, 62),
+		Rusty = Color3.fromRGB(202, 84, 46),
+		Silver = Color3.fromRGB(188, 215, 235),
+		Golden = Color3.fromRGB(255, 194, 54),
+		Ancient = Color3.fromRGB(172, 107, 255),
+		Grounder = Color3.fromRGB(95, 215, 120),
+		["Hunter Trap"] = Color3.fromRGB(255, 72, 72),
+	}
+	local MAX_BOX_OBJECTS = 40
+	local ESP_SCAN_INTERVAL = 0.75
+
+	local function StructureFilterKey(name)
+		name = tostring(name or "")
+		local lower = string.lower(name)
+		if lower:find("hunter", 1, true) and lower:find("trap", 1, true) then
+			return "Hunter Trap"
+		end
+		if lower:find("cave", 1, true) then
+			return "Cave"
+		end
+		return name
+	end
+
+	local function DiscoverRarityTiers()
+		local tiers = {}
+		local itemsFolder = ReplicatedStorage:FindFirstChild("Items")
+		local dropsFolder = itemsFolder and itemsFolder:FindFirstChild("Drops")
+		if dropsFolder then
+			for _, child in ipairs(dropsFolder:GetChildren()) do
+				if child:IsA("Folder") then
+					table.insert(tiers, child.Name)
+				end
+			end
+		end
+		return tiers
+	end
+	local RARITY_TIERS = DiscoverRarityTiers()
+	local KNOWN_RARITY_SET = {}
+	for _, tier in ipairs(RARITY_TIERS) do
+		KNOWN_RARITY_SET[tier] = true
+	end
+
+	local function GetDropRarity(part)
+		for _, descendant in ipairs(part:GetDescendants()) do
+			if (descendant:IsA("TextLabel") or descendant:IsA("TextButton")) and KNOWN_RARITY_SET[tostring(descendant.Text)] then
+				return tostring(descendant.Text)
+			end
+		end
+		return nil
+	end
+
+	local RARITY_COLOR_PRESETS = {
+		Common = Color3.fromRGB(190, 190, 190),
+		Uncommon = Color3.fromRGB(120, 200, 120),
+		Rare = Color3.fromRGB(90, 150, 255),
+		Epic = Color3.fromRGB(190, 100, 255),
+		Legendary = Color3.fromRGB(255, 170, 40),
+		Mythic = Color3.fromRGB(255, 70, 70),
+	}
+	local function GetRarityColor(rarity)
+		return (rarity and RARITY_COLOR_PRESETS[rarity]) or Color3.fromRGB(255, 255, 255)
+	end
+
+	local STRUCTURE_COLOR_PALETTE = {
+		Color3.fromRGB(255, 99, 97), Color3.fromRGB(255, 170, 66), Color3.fromRGB(255, 214, 82),
+		Color3.fromRGB(139, 214, 94), Color3.fromRGB(76, 209, 155), Color3.fromRGB(84, 190, 235),
+		Color3.fromRGB(99, 149, 255), Color3.fromRGB(151, 122, 255), Color3.fromRGB(224, 108, 235),
+		Color3.fromRGB(255, 121, 198), Color3.fromRGB(199, 163, 96), Color3.fromRGB(158, 209, 217),
+	}
+	local StructureColorAssignments = {}
+	local StructureColorNextIndex = 0
+	local function GetStructureColor(name)
+		name = tostring(name or "")
+		local index = StructureColorAssignments[name]
+		if not index then
+			StructureColorNextIndex = StructureColorNextIndex + 1
+			index = StructureColorNextIndex
+			StructureColorAssignments[name] = index
+		end
+		return STRUCTURE_COLOR_PALETTE[((index - 1) % #STRUCTURE_COLOR_PALETTE) + 1]
+	end
+
+	-- State
+	local BoxESPEnabled = false
+	local ESPMobsEnabled = false
+	local SelectedBoxTypes = {}
+	for _, boxType in ipairs(BOX_TYPES) do SelectedBoxTypes[boxType] = true end
+	local KnownStructureTypes = {"Hunter Trap", "Graveyard", "Ancient Ruins"}
+	local SelectedStructureTypes = {}
+	for _, name in ipairs(KnownStructureTypes) do SelectedStructureTypes[name] = false end
+	local ESPSelectedRarities = {}
+	for _, tier in ipairs(RARITY_TIERS) do ESPSelectedRarities[tier] = false end
+	local StructureNotificationsEnabled = true
+
+	local BoxObjects = {}
+	local StructuresESPObjects = {}
+	local ItemsESPObjects = {}
+	local MobsESPObjects = {}
+
+	local espFolder = Instance.new("Folder")
+	espFolder.Name = "UndeadExpeditionESPHolders"
+	espFolder.Parent = ScreenGui
+
+	-- Box ESP
+	local function BoxColor(box)
+		return BOX_TYPE_COLORS[BoxType(box) or ""] or AccentColor
+	end
+	local function BoxHighlightTarget(box, root)
+		if BoxType(box) == "Hunter Trap" and root then return root end
+		return box
+	end
+	local function BoxDisplayName(box)
+		local displayType = BoxType(box) or "Loot"
+		return displayType == "Hunter Trap" and displayType or (displayType .. " Box")
+	end
+	local function IsBoxAllowed(box)
+		local boxType = BoxType(box)
+		return boxType ~= nil and SelectedBoxTypes[boxType] ~= false
+	end
+
+	local function CollectLootBoxes()
+		local folder = StructuresFolder()
+		local boxes = {}
+		local seen = {}
+		if not folder then return boxes end
+		local function hasTrackedAncestor(candidate)
+			local parent = candidate and candidate.Parent
+			while parent and parent ~= folder do
+				if seen[parent] then return true end
+				parent = parent.Parent
+			end
+			return false
+		end
+		local function addCandidate(candidate)
+			if not candidate or seen[candidate] then return end
+			if hasTrackedAncestor(candidate) then return end
+			if BoxRoot(candidate) and IsBoxAllowed(candidate) then
+				seen[candidate] = true
+				table.insert(boxes, candidate)
+			end
+		end
+		for _, structure in ipairs(folder:GetChildren()) do
+			local lootFolder = structure:FindFirstChild("Loot")
+			if lootFolder then
+				for _, box in ipairs(lootFolder:GetChildren()) do addCandidate(box) end
+			end
+			for _, child in ipairs(structure:GetChildren()) do
+				if child.Name ~= "Loot" and BoxTypeFromName(child.Name) then addCandidate(child) end
+			end
+			if SelectedBoxTypes["Hunter Trap"] ~= false then
+				for _, candidate in ipairs(structure:GetDescendants()) do
+					if HasHunterTrapText(candidate.Name) then addCandidate(candidate) end
+				end
+			end
+		end
+		return boxes
+	end
+
+	local function RemoveBoxESP(box)
+		local entry = BoxObjects[box]
+		if entry and entry.Holder then entry.Holder:Destroy() end
+		BoxObjects[box] = nil
+	end
+
+	local function CreateBoxESP(box)
+		local root = BoxRoot(box)
+		if not root then return nil end
+		local boxColor = BoxColor(box)
+		local holder = Instance.new("Folder")
+		holder.Name = "BoxESP_" .. tostring(box.Name)
+		holder.Parent = espFolder
+
+		local highlight = Instance.new("Highlight")
+		highlight.Adornee = BoxHighlightTarget(box, root)
+		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		highlight.FillColor = boxColor
+		highlight.OutlineColor = boxColor
+		highlight.FillTransparency = 0.9
+		highlight.OutlineTransparency = 0.03
+		highlight.Parent = holder
+
+		local billboard = Instance.new("BillboardGui")
+		billboard.Adornee = root
+		billboard.Size = UDim2.new(0, 150, 0, 28)
+		billboard.StudsOffset = Vector3.new(0, 3.15, 0)
+		billboard.AlwaysOnTop = true
+		billboard.LightInfluence = 0
+		billboard.MaxDistance = 1200
+		billboard.Parent = holder
+
+		local label = Instance.new("TextLabel")
+		label.Size = UDim2.new(1, 0, 1, 0)
+		label.BackgroundTransparency = 1
+		label.Text = BoxType(box) or "Box"
+		label.Font = Enum.Font.GothamBold
+		label.TextSize = 10
+		label.TextColor3 = boxColor
+		label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+		label.TextStrokeTransparency = 0.1
+		label.TextWrapped = true
+		label.Parent = billboard
+
+		return {Holder = holder, Highlight = highlight, Billboard = billboard, Label = label}
+	end
+
+	local function UpdateBoxEntryVisual(entry, box, root, playerRoot)
+		if not entry or not box or not root then return end
+		entry.Billboard.Adornee = root
+		entry.Highlight.Adornee = BoxHighlightTarget(box, root)
+		local boxColor = BoxColor(box)
+		entry.Highlight.FillColor = boxColor
+		entry.Highlight.OutlineColor = boxColor
+		entry.Label.TextColor3 = boxColor
+		local distance = playerRoot and math.floor((root.Position - playerRoot.Position).Magnitude) or 0
+		entry.Label.Text = ("%s [%d Studs]"):format(BoxDisplayName(box), distance)
+	end
+
+	RefreshBoxDistances = function()
+		if not BoxESPEnabled then return end
+		local playerRoot = PlayerRoot()
+		for box, entry in pairs(BoxObjects) do
+			local root = BoxRoot(box)
+			if root and entry and entry.Holder and entry.Holder.Parent then
+				UpdateBoxEntryVisual(entry, box, root, playerRoot)
+			else
+				RemoveBoxESP(box)
+			end
+		end
+	end
+
+	UpdateBoxESP = function()
+		if not BoxESPEnabled then
+			for box in pairs(BoxObjects) do RemoveBoxESP(box) end
+			return
+		end
+		local playerRoot = PlayerRoot()
+		local boxes = CollectLootBoxes()
+		table.sort(boxes, function(a, b)
+			local rootA, rootB = BoxRoot(a), BoxRoot(b)
+			local distA = playerRoot and rootA and (rootA.Position - playerRoot.Position).Magnitude or 0
+			local distB = playerRoot and rootB and (rootB.Position - playerRoot.Position).Magnitude or 0
+			return distA < distB
+		end)
+		local seen = {}
+		local shown = 0
+		for _, box in ipairs(boxes) do
+			if shown >= MAX_BOX_OBJECTS then break end
+			local root = BoxRoot(box)
+			if root then
+				seen[box] = true
+				shown += 1
+				local entry = BoxObjects[box]
+				if not entry or not entry.Holder or not entry.Holder.Parent then
+					entry = CreateBoxESP(box)
+					BoxObjects[box] = entry
+				end
+			end
+		end
+		for box in pairs(BoxObjects) do
+			if not seen[box] then RemoveBoxESP(box) end
+		end
+		RefreshBoxDistances()
+	end
+
+	-- Generic ESP (Structures / Items / Mobs)
+	local function CreateGenericESPEntry(root, color, text)
+		local holder = Instance.new("Folder")
+		holder.Parent = espFolder
+		local highlight = Instance.new("Highlight")
+		highlight.Adornee = root
+		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		highlight.FillColor = color
+		highlight.OutlineColor = color
+		highlight.FillTransparency = 0.9
+		highlight.OutlineTransparency = 0.03
+		highlight.Parent = holder
+		local billboard = Instance.new("BillboardGui")
+		billboard.Adornee = root
+		billboard.Size = UDim2.new(0, 150, 0, 28)
+		billboard.StudsOffset = Vector3.new(0, 3.15, 0)
+		billboard.AlwaysOnTop = true
+		billboard.LightInfluence = 0
+		billboard.MaxDistance = 1500
+		billboard.Parent = holder
+		local label = Instance.new("TextLabel")
+		label.Size = UDim2.new(1, 0, 1, 0)
+		label.BackgroundTransparency = 1
+		label.Text = text
+		label.Font = Enum.Font.GothamBold
+		label.TextSize = 10
+		label.TextColor3 = color
+		label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+		label.TextStrokeTransparency = 0.1
+		label.TextWrapped = true
+		label.Parent = billboard
+		return {Holder = holder, Highlight = highlight, Billboard = billboard, Label = label}
+	end
+
+	local function RunESPCategory(objects, config)
+		if not config.IsEnabled() then
+			for target in pairs(objects) do
+				if objects[target].Holder then objects[target].Holder:Destroy() end
+				objects[target] = nil
+			end
+			return
+		end
+		local playerRoot = PlayerRoot()
+		local ok, targets = pcall(config.GetTargets)
+		if not ok or type(targets) ~= "table" then targets = {} end
+		local seen = {}
+		for _, target in ipairs(targets) do
+			local root = config.GetRoot(target)
+			if root then
+				seen[target] = true
+				local color = config.GetColor(target)
+				local text = config.GetLabel(target, root, playerRoot)
+				local entry = objects[target]
+				if not entry or not entry.Holder or not entry.Holder.Parent then
+					entry = CreateGenericESPEntry(root, color, text)
+					objects[target] = entry
+				else
+					entry.Highlight.Adornee = root
+					entry.Billboard.Adornee = root
+					entry.Highlight.FillColor = color
+					entry.Highlight.OutlineColor = color
+					entry.Label.TextColor3 = color
+					entry.Label.Text = text
+				end
+			end
+		end
+		for target in pairs(objects) do
+			if not seen[target] then
+				if objects[target].Holder then objects[target].Holder:Destroy() end
+				objects[target] = nil
+			end
+		end
+	end
+
+	local function GetAllMobs()
+		local enemiesFolder = workspace:FindFirstChild("Enemies")
+		if not enemiesFolder then return {} end
+		local mobs = {}
+		for _, child in ipairs(enemiesFolder:GetChildren()) do
+			local humanoid = child:FindFirstChildOfClass("Humanoid")
+			if humanoid and humanoid.Health > 0 then table.insert(mobs, child) end
+		end
+		return mobs
+	end
+	local function GetMobRoot(mob)
+		if not mob then return nil end
+		return mob.PrimaryPart or mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChildWhichIsA("BasePart", true)
+	end
+	local function IsAnyStructureTypeSelected()
+		for _, name in ipairs(KnownStructureTypes) do
+			if SelectedStructureTypes[name] == true then return true end
+		end
+		return false
+	end
+	local function IsAnyESPRaritySelected()
+		for _, tier in ipairs(RARITY_TIERS) do
+			if ESPSelectedRarities[tier] == true then return true end
+		end
+		return false
+	end
+
+	UpdateStructuresESP = function()
+		RunESPCategory(StructuresESPObjects, {
+			IsEnabled = IsAnyStructureTypeSelected,
+			GetTargets = function()
+				local filtered = {}
+				local folder = StructuresFolder()
+				if folder then
+					for _, structure in ipairs(folder:GetChildren()) do
+						local key = StructureFilterKey(StructureDisplayName(structure))
+						if SelectedStructureTypes[key] == true then table.insert(filtered, structure) end
+					end
+				end
+				return filtered
+			end,
+			GetRoot = StructureRoot,
+			GetColor = function(structure) return GetStructureColor(StructureFilterKey(StructureDisplayName(structure))) end,
+			GetLabel = function(structure, root, playerRoot)
+				local distance = playerRoot and math.floor((root.Position - playerRoot.Position).Magnitude) or 0
+				return ("%s [%d Studs]"):format(StructureDisplayName(structure), distance)
+			end,
+		})
+	end
+
+	UpdateItemsESP = function()
+		RunESPCategory(ItemsESPObjects, {
+			IsEnabled = IsAnyESPRaritySelected,
+			GetTargets = function()
+				local filtered = {}
+				for _, part in ipairs(GetAllGroundItems()) do
+					local rarity = GetDropRarity(part)
+					if rarity and ESPSelectedRarities[rarity] == true then table.insert(filtered, part) end
+				end
+				return filtered
+			end,
+			GetRoot = function(part) return part end,
+			GetColor = function(part) return GetRarityColor(GetDropRarity(part)) end,
+			GetLabel = function(part, root, playerRoot)
+				local distance = playerRoot and math.floor((root.Position - playerRoot.Position).Magnitude) or 0
+				local rarity = GetDropRarity(part)
+				return ("%s%s [%d Studs]"):format(part.Name, rarity and (" (" .. rarity .. ")") or "", distance)
+			end,
+		})
+	end
+
+	UpdateMobsESP = function()
+		RunESPCategory(MobsESPObjects, {
+			IsEnabled = function() return ESPMobsEnabled end,
+			GetTargets = GetAllMobs,
+			GetRoot = GetMobRoot,
+			GetColor = function() return Color3.fromRGB(220, 60, 60) end,
+			GetLabel = function(mob, root, playerRoot)
+				local distance = playerRoot and math.floor((root.Position - playerRoot.Position).Magnitude) or 0
+				return ("%s [%d Studs]"):format(mob.Name, distance)
+			end,
+		})
+	end
+
+	-- Structure Alerts: fading on-screen lines (up to 3 at once) plus a floating "!"
+	-- marker over the structure itself for a few seconds.
+	local STRUCTURE_ALERT_SLOTS = 3
+	local STRUCTURE_ALERT_DURATION = 4.5
+	local STRUCTURE_ALERT_FADE = 0.5
+	local markerFolder = Instance.new("Folder")
+	markerFolder.Name = "UndeadExpeditionStructureMarkers"
+	markerFolder.Parent = ScreenGui
+
+	local structureNotificationLabels = {}
+	for slotIndex = 1, STRUCTURE_ALERT_SLOTS do
+		local label = Instance.new("TextLabel")
+		label.Name = "Alert" .. slotIndex
+		label.Size = UDim2.new(0, 320, 0, 24)
+		label.Position = UDim2.new(0.5, -160, 0, 20 + (slotIndex - 1) * 26)
+		label.BackgroundTransparency = 1
+		label.Text = ""
+		label.RichText = true
+		label.Font = Enum.Font.GothamBold
+		label.TextSize = 13
+		label.TextColor3 = Color3.fromRGB(255, 255, 255)
+		label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+		label.TextStrokeTransparency = 1
+		label.TextTransparency = 1
+		label.TextXAlignment = Enum.TextXAlignment.Center
+		label.TextTruncate = Enum.TextTruncate.AtEnd
+		label.ZIndex = 210
+		label.Visible = false
+		label.Parent = ScreenGui
+		structureNotificationLabels[slotIndex] = label
+	end
+
+	local structureAlertEntries = {}
+	local structureAlertTokenCounter = 0
+	local lastStructureName, lastStructureCount = nil, 0
+
+	local function RenderStructureAlerts()
+		for slotIndex = 1, STRUCTURE_ALERT_SLOTS do
+			local label = structureNotificationLabels[slotIndex]
+			local entry = structureAlertEntries[slotIndex]
+			if entry then
+				local suffix = entry.Count > 1 and (" x" .. tostring(entry.Count)) or ""
+				label.Text = ("A <font color=\"#%s\">%s</font> has generated%s"):format(entry.Color:ToHex(), entry.Name, suffix)
+				label.Visible = true
+				label.TextTransparency = 0
+				label.TextStrokeTransparency = 0.16
+			else
+				label.TextTransparency = 1
+				label.TextStrokeTransparency = 1
+				label.Visible = false
+			end
+		end
+	end
+
+	local function ExpireStructureAlertEntry(token)
+		for slotIndex, entry in ipairs(structureAlertEntries) do
+			if entry.Token == token then
+				local label = structureNotificationLabels[slotIndex]
+				local tween = TweenService:Create(label, TweenInfo.new(STRUCTURE_ALERT_FADE, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					TextTransparency = 1,
+					TextStrokeTransparency = 1,
+				})
+				tween:Play()
+				tween.Completed:Connect(function()
+					for slotIndex2, entry2 in ipairs(structureAlertEntries) do
+						if entry2.Token == token then
+							table.remove(structureAlertEntries, slotIndex2)
+							RenderStructureAlerts()
+							break
+						end
+					end
+				end)
+				return
+			end
+		end
+	end
+
+	PushStructureAlert = function(name, color)
+		if not StructureNotificationsEnabled then return end
+		for _, entry in ipairs(structureAlertEntries) do
+			if entry.Name == name then
+				entry.Count = entry.Count + 1
+				entry.Color = color
+				structureAlertTokenCounter = structureAlertTokenCounter + 1
+				entry.Token = structureAlertTokenCounter
+				local token = entry.Token
+				RenderStructureAlerts()
+				task.delay(STRUCTURE_ALERT_DURATION, function() ExpireStructureAlertEntry(token) end)
+				return
+			end
+		end
+		structureAlertTokenCounter = structureAlertTokenCounter + 1
+		local token = structureAlertTokenCounter
+		table.insert(structureAlertEntries, 1, {Name = name, Count = 1, Color = color, Token = token})
+		while #structureAlertEntries > STRUCTURE_ALERT_SLOTS do
+			table.remove(structureAlertEntries)
+		end
+		RenderStructureAlerts()
+		task.delay(STRUCTURE_ALERT_DURATION, function() ExpireStructureAlertEntry(token) end)
+	end
+
+	SetStructureMessage = function(name)
+		name = CleanStructureName(name)
+		if lastStructureName == name then
+			lastStructureCount = lastStructureCount + 1
+		else
+			lastStructureName = name
+			lastStructureCount = 1
+		end
+		PushStructureAlert(name, GetStructureColor(StructureFilterKey(name)))
+	end
+
+	ShowStructureMarker = function(structure)
+		local root = StructureRoot(structure)
+		if not root then return end
+		local billboard = Instance.new("BillboardGui")
+		billboard.Name = "StructureSpawnMarker"
+		billboard.Adornee = root
+		billboard.Size = UDim2.new(0, 54, 0, 54)
+		billboard.StudsOffset = Vector3.new(0, 8, 0)
+		billboard.AlwaysOnTop = true
+		billboard.LightInfluence = 0
+		billboard.MaxDistance = 2000
+		billboard.Parent = markerFolder
+		local label = Instance.new("TextLabel")
+		label.Size = UDim2.new(1, 0, 1, 0)
+		label.BackgroundTransparency = 1
+		label.Text = "!"
+		label.Font = Enum.Font.GothamBlack
+		label.TextSize = 34
+		label.TextColor3 = AccentColor
+		label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+		label.TextStrokeTransparency = 0.12
+		label.Parent = billboard
+		task.delay(7.5, function()
+			if billboard and billboard.Parent then billboard:Destroy() end
+		end)
+	end
+
+	local function ClearStructureAlerts()
+		for index = #structureAlertEntries, 1, -1 do
+			table.remove(structureAlertEntries, index)
+		end
+		RenderStructureAlerts()
+	end
+
+	StructureAlertsToggle.MouseButton1Click:Connect(function()
+		StructureNotificationsEnabled = not StructureNotificationsEnabled
+		StructureAlertsToggle.Text = StructureNotificationsEnabled and "On" or "Off"
+		if not StructureNotificationsEnabled then ClearStructureAlerts() end
+	end)
+
+	-- Filter popup: opened by the ESP row's "Filter" button. UIListLayout/UIGridLayout
+	-- handle all the positioning here (including the dynamically-growing structure type
+	-- list) instead of the old hub's manually-computed row/column offsets.
+	local Green = Color3.fromRGB(38, 190, 92)
+	local Red = Color3.fromRGB(220, 42, 58)
+
+	local FilterPopup = Instance.new("Frame")
+	FilterPopup.Name = "UndeadExpeditionFilterPopup"
+	FilterPopup.Size = UDim2.new(0, 240, 0, 320)
+	FilterPopup.BackgroundColor3 = FrameColor
+	FilterPopup.BorderSizePixel = 0
+	FilterPopup.Visible = false
+	FilterPopup.ZIndex = 40
+	FilterPopup.Parent = ScreenGui
+	Instance.new("UICorner", FilterPopup).CornerRadius = UDim.new(0, 10)
+	local filterStroke = Instance.new("UIStroke")
+	filterStroke.Color = AccentColor
+	filterStroke.Thickness = 1
+	filterStroke.Transparency = 0.4
+	filterStroke.Parent = FilterPopup
+
+	local function UpdateFilterPopupPosition()
+		FilterPopup.Position = UDim2.fromOffset(PanelFrame.AbsolutePosition.X - 248, PanelFrame.AbsolutePosition.Y)
+	end
+	PanelFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(UpdateFilterPopupPosition)
+	UpdateFilterPopupPosition()
+
+	local filterHeader = Instance.new("TextLabel")
+	filterHeader.Size = UDim2.new(1, -40, 0, 26)
+	filterHeader.Position = UDim2.new(0, 12, 0, 4)
+	filterHeader.BackgroundTransparency = 1
+	filterHeader.Text = "ESP Filters"
+	filterHeader.Font = UIFont
+	filterHeader.TextSize = 14
+	filterHeader.TextColor3 = Color3.fromRGB(255, 255, 255)
+	filterHeader.TextXAlignment = Enum.TextXAlignment.Left
+	filterHeader.ZIndex = 41
+	filterHeader.Parent = FilterPopup
+
+	local filterCloseButton = Instance.new("TextButton")
+	filterCloseButton.Size = UDim2.new(0, 22, 0, 22)
+	filterCloseButton.Position = UDim2.new(1, -30, 0, 6)
+	filterCloseButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	filterCloseButton.BackgroundTransparency = 0.4
+	filterCloseButton.BorderSizePixel = 0
+	filterCloseButton.Text = "×"
+	filterCloseButton.Font = UIFont
+	filterCloseButton.TextSize = 15
+	filterCloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	filterCloseButton.ZIndex = 41
+	filterCloseButton.Parent = FilterPopup
+	Instance.new("UICorner", filterCloseButton).CornerRadius = UDim.new(0, 6)
+	filterCloseButton.MouseButton1Click:Connect(function() FilterPopup.Visible = false end)
+
+	local filterScroll = Instance.new("ScrollingFrame")
+	filterScroll.Size = UDim2.new(1, -16, 1, -38)
+	filterScroll.Position = UDim2.new(0, 8, 0, 34)
+	filterScroll.BackgroundTransparency = 1
+	filterScroll.BorderSizePixel = 0
+	filterScroll.ScrollBarThickness = 3
+	filterScroll.ScrollBarImageColor3 = AccentColor
+	filterScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+	filterScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	filterScroll.ZIndex = 41
+	filterScroll.Parent = FilterPopup
+
+	local scrollLayout = Instance.new("UIListLayout")
+	scrollLayout.Padding = UDim.new(0, 10)
+	scrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	scrollLayout.Parent = filterScroll
+
+	local function CreateFilterSectionLabel(order, text)
+		local label = Instance.new("TextLabel")
+		label.LayoutOrder = order
+		label.Size = UDim2.new(1, 0, 0, 16)
+		label.BackgroundTransparency = 1
+		label.Text = text
+		label.Font = UIFont
+		label.TextSize = 12
+		label.TextColor3 = AccentColor
+		label.TextXAlignment = Enum.TextXAlignment.Left
+		label.ZIndex = 41
+		label.Parent = filterScroll
+		return label
+	end
+
+	local function CreateChipButton(parent, text, selected)
+		local button = Instance.new("TextButton")
+		button.Size = UDim2.new(0, 68, 0, 22)
+		button.BackgroundColor3 = selected and Green or Red
+		button.BorderSizePixel = 0
+		button.Font = UIFont
+		button.TextSize = 10
+		button.TextColor3 = Color3.fromRGB(255, 255, 255)
+		button.TextTruncate = Enum.TextTruncate.AtEnd
+		button.ZIndex = 41
+		button.Parent = parent
+		Instance.new("UICorner", button).CornerRadius = UDim.new(0, 5)
+		return button
+	end
+
+	local function CreateChipGrid(order)
+		local grid = Instance.new("Frame")
+		grid.LayoutOrder = order
+		grid.Size = UDim2.new(1, 0, 0, 0)
+		grid.AutomaticSize = Enum.AutomaticSize.Y
+		grid.BackgroundTransparency = 1
+		grid.ZIndex = 41
+		grid.Parent = filterScroll
+		local gridLayout = Instance.new("UIGridLayout")
+		gridLayout.CellSize = UDim2.new(0, 68, 0, 22)
+		gridLayout.CellPadding = UDim2.new(0, 4, 0, 4)
+		gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		gridLayout.Parent = grid
+		return grid
+	end
+
+	local function CreateAllNoneRow(order, onAll, onNone)
+		local row = Instance.new("Frame")
+		row.LayoutOrder = order
+		row.Size = UDim2.new(1, 0, 0, 22)
+		row.BackgroundTransparency = 1
+		row.ZIndex = 41
+		row.Parent = filterScroll
+		local allButton = Instance.new("TextButton")
+		allButton.Size = UDim2.new(0, 68, 0, 22)
+		allButton.Position = UDim2.new(0, 0, 0, 0)
+		allButton.BackgroundColor3 = Green
+		allButton.BorderSizePixel = 0
+		allButton.Text = "All"
+		allButton.Font = UIFont
+		allButton.TextSize = 10
+		allButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+		allButton.ZIndex = 41
+		allButton.Parent = row
+		Instance.new("UICorner", allButton).CornerRadius = UDim.new(0, 5)
+		allButton.MouseButton1Click:Connect(onAll)
+		local noneButton = Instance.new("TextButton")
+		noneButton.Size = UDim2.new(0, 68, 0, 22)
+		noneButton.Position = UDim2.new(0, 76, 0, 0)
+		noneButton.BackgroundColor3 = Red
+		noneButton.BorderSizePixel = 0
+		noneButton.Text = "None"
+		noneButton.Font = UIFont
+		noneButton.TextSize = 10
+		noneButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+		noneButton.ZIndex = 41
+		noneButton.Parent = row
+		Instance.new("UICorner", noneButton).CornerRadius = UDim.new(0, 5)
+		noneButton.MouseButton1Click:Connect(onNone)
+	end
+
+	-- Mobs ESP (single on/off, no filters)
+	CreateFilterSectionLabel(1, "Mobs ESP")
+	local mobsToggleRow = Instance.new("Frame")
+	mobsToggleRow.LayoutOrder = 2
+	mobsToggleRow.Size = UDim2.new(1, 0, 0, 22)
+	mobsToggleRow.BackgroundTransparency = 1
+	mobsToggleRow.ZIndex = 41
+	mobsToggleRow.Parent = filterScroll
+	local mobsEspToggleButton = CreateChipButton(mobsToggleRow, "Off", false)
+	mobsEspToggleButton.Size = UDim2.new(0, 68, 0, 22)
+	mobsEspToggleButton.MouseButton1Click:Connect(function()
+		ESPMobsEnabled = not ESPMobsEnabled
+		mobsEspToggleButton.Text = ESPMobsEnabled and "On" or "Off"
+		mobsEspToggleButton.BackgroundColor3 = ESPMobsEnabled and Green or Red
+	end)
+
+	-- Box ESP
+	CreateFilterSectionLabel(3, "Box ESP")
+	local boxToggleRow = Instance.new("Frame")
+	boxToggleRow.LayoutOrder = 4
+	boxToggleRow.Size = UDim2.new(1, 0, 0, 22)
+	boxToggleRow.BackgroundTransparency = 1
+	boxToggleRow.ZIndex = 41
+	boxToggleRow.Parent = filterScroll
+	local boxEspToggleButton = CreateChipButton(boxToggleRow, "Off", false)
+	boxEspToggleButton.Size = UDim2.new(0, 68, 0, 22)
+	boxEspToggleButton.MouseButton1Click:Connect(function()
+		BoxESPEnabled = not BoxESPEnabled
+		boxEspToggleButton.Text = BoxESPEnabled and "On" or "Off"
+		boxEspToggleButton.BackgroundColor3 = BoxESPEnabled and Green or Red
+		if not BoxESPEnabled then UpdateBoxESP() end
+	end)
+	local boxGrid = CreateChipGrid(5)
+	local boxFilterButtons = {}
+	for _, boxType in ipairs(BOX_TYPES) do
+		local button = CreateChipButton(boxGrid, boxType, SelectedBoxTypes[boxType] ~= false)
+		button.Text = boxType
+		button.MouseButton1Click:Connect(function()
+			SelectedBoxTypes[boxType] = not (SelectedBoxTypes[boxType] ~= false)
+			button.BackgroundColor3 = SelectedBoxTypes[boxType] ~= false and Green or Red
+		end)
+		boxFilterButtons[boxType] = button
+	end
+
+	-- Structures ESP (dynamic, grows as new structure types are seen)
+	CreateFilterSectionLabel(6, "Structures ESP")
+	CreateAllNoneRow(7,
+		function()
+			for _, name in ipairs(KnownStructureTypes) do SelectedStructureTypes[name] = true end
+		end,
+		function()
+			for _, name in ipairs(KnownStructureTypes) do SelectedStructureTypes[name] = false end
+		end
+	)
+	local structuresGrid = CreateChipGrid(8)
+	local structureFilterButtons = {}
+	local function CreateStructureFilterButton(name)
+		local button = CreateChipButton(structuresGrid, name, SelectedStructureTypes[name] == true)
+		button.MouseButton1Click:Connect(function()
+			SelectedStructureTypes[name] = not (SelectedStructureTypes[name] == true)
+			button.BackgroundColor3 = SelectedStructureTypes[name] == true and Green or Red
+		end)
+		structureFilterButtons[name] = button
+	end
+	for _, name in ipairs(KnownStructureTypes) do
+		CreateStructureFilterButton(name)
+	end
+
+	RegisterKnownStructureType = function(rawName)
+		local name = StructureFilterKey(rawName)
+		if not name or name == "" then return end
+		if not table.find(KnownStructureTypes, name) then
+			table.insert(KnownStructureTypes, name)
+			table.sort(KnownStructureTypes)
+		end
+		if SelectedStructureTypes[name] == nil then SelectedStructureTypes[name] = false end
+		if not structureFilterButtons[name] then
+			CreateStructureFilterButton(name)
+		end
+	end
+
+	-- Item ESP (by rarity, discovered from the game's own drop tiers)
+	CreateFilterSectionLabel(9, "Item ESP")
+	CreateAllNoneRow(10,
+		function()
+			for _, tier in ipairs(RARITY_TIERS) do ESPSelectedRarities[tier] = true end
+		end,
+		function()
+			for _, tier in ipairs(RARITY_TIERS) do ESPSelectedRarities[tier] = false end
+		end
+	)
+	local itemsGrid = CreateChipGrid(11)
+	local itemFilterButtons = {}
+	for _, tier in ipairs(RARITY_TIERS) do
+		local button = CreateChipButton(itemsGrid, tier, ESPSelectedRarities[tier] == true)
+		button.MouseButton1Click:Connect(function()
+			ESPSelectedRarities[tier] = not (ESPSelectedRarities[tier] == true)
+			button.BackgroundColor3 = ESPSelectedRarities[tier] == true and Green or Red
+		end)
+		itemFilterButtons[tier] = button
+	end
+
+	local function RefreshAllChipColors()
+		mobsEspToggleButton.Text = ESPMobsEnabled and "On" or "Off"
+		mobsEspToggleButton.BackgroundColor3 = ESPMobsEnabled and Green or Red
+		boxEspToggleButton.Text = BoxESPEnabled and "On" or "Off"
+		boxEspToggleButton.BackgroundColor3 = BoxESPEnabled and Green or Red
+		for boxType, button in pairs(boxFilterButtons) do
+			button.BackgroundColor3 = SelectedBoxTypes[boxType] ~= false and Green or Red
+		end
+		for name, button in pairs(structureFilterButtons) do
+			button.BackgroundColor3 = SelectedStructureTypes[name] == true and Green or Red
+		end
+		for tier, button in pairs(itemFilterButtons) do
+			button.BackgroundColor3 = ESPSelectedRarities[tier] == true and Green or Red
+		end
+	end
+
+	ESPToggle.MouseButton1Click:Connect(function()
+		FilterPopup.Visible = not FilterPopup.Visible
+		if FilterPopup.Visible then
+			UpdateFilterPopupPosition()
+			RefreshAllChipColors()
+		end
+	end)
+
+	-- Periodic scan: keeps ESP highlights, distances, and the filter dock's growing
+	-- structure type list up to date without needing every click to trigger a refresh.
+	local lastESPScan = 0
+	RunService.Heartbeat:Connect(function()
+		if not ScreenGui.Parent then return end
+		if BoxESPEnabled then RefreshBoxDistances() end
+		local now = os.clock()
+		if now - lastESPScan >= ESP_SCAN_INTERVAL then
+			lastESPScan = now
+			UpdateBoxESP()
+			UpdateStructuresESP()
+			UpdateItemsESP()
+			UpdateMobsESP()
+		end
+	end)
+
+	-- Close: hide the filter popup and clear ESP/alerts along with everything else.
+	CloseButton.MouseButton1Click:Connect(function()
+		FilterPopup.Visible = false
+		StructureNotificationsEnabled = false
+		ClearStructureAlerts()
+	end)
+end
+
 -- Minimize: shrinks to just the header, matching Serenity's own minimize behavior.
 local minimized = false
 local function ToggleMinimize()
@@ -1377,10 +2403,9 @@ local function ToggleMinimize()
 end
 MinimizeButton.MouseButton1Click:Connect(ToggleMinimize)
 
--- Close: reverses Full Bright before tearing down, regardless of what else is toggled.
+-- Close: reverses No Darkness before tearing down, regardless of what else is toggled.
 CloseButton.MouseButton1Click:Connect(function()
-	FullBrightEnabled = false
-	RestoreFullBright()
+	SetNoDarkness(false)
 	ScreenGui:Destroy()
 end)
 
