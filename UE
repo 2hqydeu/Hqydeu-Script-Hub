@@ -368,6 +368,17 @@ end
 local Green = Color3.fromRGB(38, 190, 92)
 local Red = Color3.fromRGB(220, 42, 58)
 
+-- Only one docked popup (Auto Farm's Pickup Filter, ESP's Options) is ever open at once --
+-- opening one force-closes whichever other one was already open.
+local ManagedPopups = {}
+local function ToggleManagedPopup(dock)
+	local opening = not dock.Visible
+	for _, other in ipairs(ManagedPopups) do
+		other.Visible = false
+	end
+	dock.Visible = opening
+end
+
 local function CreatePopupDock(title, width, height)
 	local dock = Instance.new("Frame")
 	dock.Name = title:gsub("%s+", "") .. "Popup"
@@ -434,12 +445,20 @@ local function CreatePopupDock(title, width, height)
 	PanelFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(UpdatePosition)
 	UpdatePosition()
 
-	return dock, scroll
+	table.insert(ManagedPopups, dock)
+	local function Toggle()
+		UpdatePosition()
+		ToggleManagedPopup(dock)
+	end
+
+	return dock, scroll, Toggle
 end
 
--- A rounded card with its own header + underline, so each filter section (Mobs/Box/
+-- A rounded card with its own header row + underline, so each filter section (Mobs/Box/
 -- Structures/Item, or the pickup rarity list) reads as a distinct grouped block instead of
--- everything running together in one flat list.
+-- everything running together in one flat list. The header row has a right-aligned
+-- "actions" slot (used for All/None, or a single On/Off for sections with no chip list)
+-- so those controls sit next to the title instead of taking up their own row.
 local function CreateFilterCard(scroll, order, title)
 	local card = Instance.new("Frame")
 	card.LayoutOrder = order
@@ -464,17 +483,39 @@ local function CreateFilterCard(scroll, order, title)
 	cardLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	cardLayout.Parent = card
 
-	local header = Instance.new("TextLabel")
-	header.LayoutOrder = 0
-	header.Size = UDim2.new(1, 0, 0, 16)
-	header.BackgroundTransparency = 1
-	header.Text = title
-	header.Font = Enum.Font.GothamBold
-	header.TextSize = 13
-	header.TextColor3 = AccentColor
-	header.TextXAlignment = Enum.TextXAlignment.Left
-	header.ZIndex = 42
-	header.Parent = card
+	local headerRow = Instance.new("Frame")
+	headerRow.LayoutOrder = 0
+	headerRow.Size = UDim2.new(1, 0, 0, 20)
+	headerRow.BackgroundTransparency = 1
+	headerRow.ZIndex = 42
+	headerRow.Parent = card
+
+	local headerLabel = Instance.new("TextLabel")
+	headerLabel.Size = UDim2.new(0.5, 0, 1, 0)
+	headerLabel.BackgroundTransparency = 1
+	headerLabel.Text = title
+	headerLabel.Font = Enum.Font.GothamBold
+	headerLabel.TextSize = 13
+	headerLabel.TextColor3 = AccentColor
+	headerLabel.TextXAlignment = Enum.TextXAlignment.Left
+	headerLabel.TextYAlignment = Enum.TextYAlignment.Center
+	headerLabel.ZIndex = 43
+	headerLabel.Parent = headerRow
+
+	local actions = Instance.new("Frame")
+	actions.Name = "Actions"
+	actions.Size = UDim2.new(0.5, 0, 1, 0)
+	actions.Position = UDim2.new(0.5, 0, 0, 0)
+	actions.BackgroundTransparency = 1
+	actions.ZIndex = 43
+	actions.Parent = headerRow
+	local actionsLayout = Instance.new("UIListLayout")
+	actionsLayout.FillDirection = Enum.FillDirection.Horizontal
+	actionsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+	actionsLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+	actionsLayout.Padding = UDim.new(0, 4)
+	actionsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	actionsLayout.Parent = actions
 
 	local divider = Instance.new("Frame")
 	divider.LayoutOrder = 1
@@ -485,7 +526,7 @@ local function CreateFilterCard(scroll, order, title)
 	divider.ZIndex = 42
 	divider.Parent = card
 
-	return card
+	return card, actions
 end
 
 local function CreateChipButton(parent, order, text, selected)
@@ -521,54 +562,37 @@ local function CreateChipGrid(card, order)
 	return grid
 end
 
-local function CreateAllNoneRow(card, order, onAll, onNone)
-	local row = Instance.new("Frame")
-	row.LayoutOrder = order
-	row.Size = UDim2.new(1, 0, 0, 22)
-	row.BackgroundTransparency = 1
-	row.ZIndex = 41
-	row.Parent = card
-	local allButton = CreateChipButton(row, 1, "All", true)
-	allButton.Position = UDim2.new(0, 0, 0, 0)
-	allButton.BackgroundColor3 = Green
-	allButton.MouseButton1Click:Connect(onAll)
-	local noneButton = CreateChipButton(row, 2, "None", false)
-	noneButton.Position = UDim2.new(0, 72, 0, 0)
-	noneButton.BackgroundColor3 = Red
-	noneButton.MouseButton1Click:Connect(onNone)
+-- A small button for a card's header-action slot (All/None, or a lone On/Off for
+-- sections without a chip list).
+local function CreateMiniButton(actions, order, text, color)
+	local button = Instance.new("TextButton")
+	button.LayoutOrder = order
+	button.Size = UDim2.new(0, 42, 0, 20)
+	button.BackgroundColor3 = color
+	button.BorderSizePixel = 0
+	button.Text = text
+	button.Font = UIFont
+	button.TextSize = 10
+	button.TextColor3 = Color3.fromRGB(255, 255, 255)
+	button.ZIndex = 44
+	button.Parent = actions
+	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 5)
+	return button
 end
 
--- Label + On/Off pill, for single-toggle sections (Mobs ESP, Box ESP) instead of a bare
--- chip sitting alone in an otherwise-empty row.
-local function CreateToggleChipRow(card, order, labelText, initialOn)
-	local row = Instance.new("Frame")
-	row.LayoutOrder = order
-	row.Size = UDim2.new(1, 0, 0, 24)
-	row.BackgroundTransparency = 1
-	row.ZIndex = 41
-	row.Parent = card
-	local rowLabel = Instance.new("TextLabel")
-	rowLabel.Size = UDim2.new(1, -60, 1, 0)
-	rowLabel.BackgroundTransparency = 1
-	rowLabel.Text = labelText
-	rowLabel.Font = UIFont
-	rowLabel.TextSize = 11
-	rowLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
-	rowLabel.TextXAlignment = Enum.TextXAlignment.Left
-	rowLabel.ZIndex = 42
-	rowLabel.Parent = row
-	local toggle = Instance.new("TextButton")
-	toggle.Size = UDim2.new(0, 52, 0, 22)
-	toggle.Position = UDim2.new(1, -52, 0.5, -11)
-	toggle.BackgroundColor3 = initialOn and Green or Red
-	toggle.BorderSizePixel = 0
-	toggle.Text = initialOn and "On" or "Off"
-	toggle.Font = UIFont
-	toggle.TextSize = 11
-	toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-	toggle.ZIndex = 42
-	toggle.Parent = row
-	Instance.new("UICorner", toggle).CornerRadius = UDim.new(0, 5)
+local function CreateAllNoneActions(actions, onAll, onNone)
+	local allButton = CreateMiniButton(actions, 1, "All", Green)
+	allButton.MouseButton1Click:Connect(onAll)
+	local noneButton = CreateMiniButton(actions, 2, "None", Red)
+	noneButton.MouseButton1Click:Connect(onNone)
+	return allButton, noneButton
+end
+
+-- A single On/Off pill in a card's header-action slot, for sections with no chip list
+-- (currently just Mobs ESP).
+local function CreateToggleAction(actions, initialOn)
+	local toggle = CreateMiniButton(actions, 1, initialOn and "On" or "Off", initialOn and Green or Red)
+	toggle.Size = UDim2.new(0, 48, 0, 20)
 	return toggle
 end
 
@@ -687,25 +711,27 @@ local function IsRarityAllowed(rarity)
 	return SelectedRarities[rarity] ~= false
 end
 
+-- Styled and sized to match the row's own toggle button exactly (CreateFeatureRow's
+-- toggle above), just parked to its left instead of using its own one-off look.
 local PickupFilterButton = Instance.new("TextButton")
 PickupFilterButton.Name = "PickupFilterButton"
-PickupFilterButton.Size = UDim2.new(0, 44, 0, 22)
-PickupFilterButton.Position = UDim2.new(1, -150, 0, 8)
+PickupFilterButton.Size = UDim2.new(0, 64, 0, 26)
+PickupFilterButton.Position = UDim2.new(1, -146, 0.5, -13)
 PickupFilterButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 PickupFilterButton.BackgroundTransparency = 0.2
 PickupFilterButton.BorderSizePixel = 0
 PickupFilterButton.Text = "Filter"
 PickupFilterButton.Font = UIFont
-PickupFilterButton.TextSize = 10
+PickupFilterButton.TextSize = 14
 PickupFilterButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 PickupFilterButton.Parent = AutoFarmRow
-Instance.new("UICorner", PickupFilterButton).CornerRadius = UDim.new(0, 5)
+Instance.new("UICorner", PickupFilterButton).CornerRadius = UDim.new(0, 6)
 
 do
-	local dock, scroll = CreatePopupDock("Pickup Filter", 210, 260)
-	local card = CreateFilterCard(scroll, 1, "Item Rarity")
+	local dock, scroll, Toggle = CreatePopupDock("Pickup Filter", 210, 260)
+	local card, actions = CreateFilterCard(scroll, 1, "Item Rarity")
 	local rarityFilterButtons = {}
-	CreateAllNoneRow(card, 1,
+	CreateAllNoneActions(actions,
 		function()
 			for _, tier in ipairs(RARITY_TIERS) do SelectedRarities[tier] = true end
 			for _, button in pairs(rarityFilterButtons) do button.BackgroundColor3 = Green end
@@ -725,9 +751,7 @@ do
 		rarityFilterButtons[tier] = button
 	end
 
-	PickupFilterButton.MouseButton1Click:Connect(function()
-		dock.Visible = not dock.Visible
-	end)
+	PickupFilterButton.MouseButton1Click:Connect(Toggle)
 end
 
 local BOX_OPEN_HOLD_DURATION = 3
@@ -1862,24 +1886,25 @@ do
 		Color3.fromRGB(99, 149, 255), Color3.fromRGB(151, 122, 255), Color3.fromRGB(224, 108, 235),
 		Color3.fromRGB(255, 121, 198), Color3.fromRGB(199, 163, 96), Color3.fromRGB(158, 209, 217),
 	}
-	local StructureColorAssignments = {}
-	local StructureColorNextIndex = 0
+	-- Hashes the name itself instead of assigning colors in first-seen order -- first-seen
+	-- order depends on random spawn order, so the same structure type got a different color
+	-- every run; hashing the name means "Graveyard" (for example) is always the same color,
+	-- every session.
 	local function GetStructureColor(name)
 		name = tostring(name or "")
-		local index = StructureColorAssignments[name]
-		if not index then
-			StructureColorNextIndex = StructureColorNextIndex + 1
-			index = StructureColorNextIndex
-			StructureColorAssignments[name] = index
+		local hash = 0
+		for i = 1, #name do
+			hash = (hash * 31 + string.byte(name, i)) % 1000000007
 		end
-		return STRUCTURE_COLOR_PALETTE[((index - 1) % #STRUCTURE_COLOR_PALETTE) + 1]
+		return STRUCTURE_COLOR_PALETTE[(hash % #STRUCTURE_COLOR_PALETTE) + 1]
 	end
 
-	-- State
-	local BoxESPEnabled = false
+	-- State. Box ESP has no separate on/off switch -- like Structures/Item ESP, it's simply
+	-- "on" for whichever types have at least one chip selected, so it defaults to nothing
+	-- selected/visible until the player actually picks a box type.
 	local ESPMobsEnabled = false
 	local SelectedBoxTypes = {}
-	for _, boxType in ipairs(BOX_TYPES) do SelectedBoxTypes[boxType] = true end
+	for _, boxType in ipairs(BOX_TYPES) do SelectedBoxTypes[boxType] = false end
 	local KnownStructureTypes = {"Hunter Trap", "Graveyard", "Ancient Ruins"}
 	local SelectedStructureTypes = {}
 	for _, name in ipairs(KnownStructureTypes) do SelectedStructureTypes[name] = false end
@@ -1896,7 +1921,16 @@ do
 	espFolder.Name = "UndeadExpeditionESPHolders"
 	espFolder.Parent = ScreenGui
 
-	-- Box ESP
+	-- Box ESP has no separate on/off switch -- "on" whenever at least one type chip is
+	-- selected, same as Structures/Item ESP below. Declared up here since RefreshBoxDistances/
+	-- UpdateBoxESP (just below) need it before Lua would otherwise see it declared.
+	local function IsAnyBoxTypeSelected()
+		for _, boxType in ipairs(BOX_TYPES) do
+			if SelectedBoxTypes[boxType] == true then return true end
+		end
+		return false
+	end
+
 	local function BoxColor(box)
 		return BOX_TYPE_COLORS[BoxType(box) or ""] or AccentColor
 	end
@@ -2011,7 +2045,7 @@ do
 	end
 
 	RefreshBoxDistances = function()
-		if not BoxESPEnabled then return end
+		if not IsAnyBoxTypeSelected() then return end
 		local playerRoot = PlayerRoot()
 		for box, entry in pairs(BoxObjects) do
 			local root = BoxRoot(box)
@@ -2024,7 +2058,7 @@ do
 	end
 
 	UpdateBoxESP = function()
-		if not BoxESPEnabled then
+		if not IsAnyBoxTypeSelected() then
 			for box in pairs(BoxObjects) do RemoveBoxESP(box) end
 			return
 		end
@@ -2371,49 +2405,62 @@ do
 	-- shared dock/card/chip helpers as the Auto Farm Pickup Filter popup, so both read as
 	-- one consistent design instead of two different one-off layouts -- each category
 	-- (Mobs/Box/Structures/Item) gets its own clearly separated card with a proper header.
-	local ESPDock, ESPScroll = CreatePopupDock("ESP Options", 250, 360)
+	local ESPDock, ESPScroll, ESPToggleDock = CreatePopupDock("ESP Options", 250, 360)
 
-	-- Mobs ESP (single on/off, no filters)
-	local mobsCard = CreateFilterCard(ESPScroll, 1, "Mobs ESP")
-	local mobsEspToggleButton = CreateToggleChipRow(mobsCard, 2, "Highlight enemies", ESPMobsEnabled)
+	-- Mobs ESP: no chip list, so its one On/Off pill just sits in the header itself.
+	local mobsCard, mobsActions = CreateFilterCard(ESPScroll, 1, "Mobs ESP")
+	local mobsEspToggleButton = CreateToggleAction(mobsActions, ESPMobsEnabled)
 	mobsEspToggleButton.MouseButton1Click:Connect(function()
 		ESPMobsEnabled = not ESPMobsEnabled
 		mobsEspToggleButton.Text = ESPMobsEnabled and "On" or "Off"
 		mobsEspToggleButton.BackgroundColor3 = ESPMobsEnabled and Green or Red
 	end)
 
-	-- Box ESP
-	local boxCard = CreateFilterCard(ESPScroll, 2, "Box ESP")
-	local boxEspToggleButton = CreateToggleChipRow(boxCard, 2, "Highlight crates", BoxESPEnabled)
-	boxEspToggleButton.MouseButton1Click:Connect(function()
-		BoxESPEnabled = not BoxESPEnabled
-		boxEspToggleButton.Text = BoxESPEnabled and "On" or "Off"
-		boxEspToggleButton.BackgroundColor3 = BoxESPEnabled and Green or Red
-		if not BoxESPEnabled then UpdateBoxESP() end
-	end)
-	local boxGrid = CreateChipGrid(boxCard, 3)
+	-- Box ESP: no on/off switch -- All/None plus the chips themselves drive visibility.
+	local boxCard, boxActions = CreateFilterCard(ESPScroll, 2, "Box ESP")
 	local boxFilterButtons = {}
+	CreateAllNoneActions(boxActions,
+		function()
+			for _, boxType in ipairs(BOX_TYPES) do
+				SelectedBoxTypes[boxType] = true
+				boxFilterButtons[boxType].BackgroundColor3 = Green
+			end
+		end,
+		function()
+			for _, boxType in ipairs(BOX_TYPES) do
+				SelectedBoxTypes[boxType] = false
+				boxFilterButtons[boxType].BackgroundColor3 = Red
+			end
+		end
+	)
+	local boxGrid = CreateChipGrid(boxCard, 3)
 	for index, boxType in ipairs(BOX_TYPES) do
-		local button = CreateChipButton(boxGrid, index, boxType, SelectedBoxTypes[boxType] ~= false)
+		local button = CreateChipButton(boxGrid, index, boxType, SelectedBoxTypes[boxType] == true)
 		button.MouseButton1Click:Connect(function()
-			SelectedBoxTypes[boxType] = not (SelectedBoxTypes[boxType] ~= false)
-			button.BackgroundColor3 = SelectedBoxTypes[boxType] ~= false and Green or Red
+			SelectedBoxTypes[boxType] = not (SelectedBoxTypes[boxType] == true)
+			button.BackgroundColor3 = SelectedBoxTypes[boxType] == true and Green or Red
 		end)
 		boxFilterButtons[boxType] = button
 	end
 
 	-- Structures ESP (dynamic, grows as new structure types are seen)
-	local structuresCard = CreateFilterCard(ESPScroll, 3, "Structures ESP")
-	CreateAllNoneRow(structuresCard, 2,
+	local structuresCard, structuresActions = CreateFilterCard(ESPScroll, 3, "Structures ESP")
+	local structureFilterButtons = {}
+	CreateAllNoneActions(structuresActions,
 		function()
-			for _, name in ipairs(KnownStructureTypes) do SelectedStructureTypes[name] = true end
+			for _, name in ipairs(KnownStructureTypes) do
+				SelectedStructureTypes[name] = true
+				if structureFilterButtons[name] then structureFilterButtons[name].BackgroundColor3 = Green end
+			end
 		end,
 		function()
-			for _, name in ipairs(KnownStructureTypes) do SelectedStructureTypes[name] = false end
+			for _, name in ipairs(KnownStructureTypes) do
+				SelectedStructureTypes[name] = false
+				if structureFilterButtons[name] then structureFilterButtons[name].BackgroundColor3 = Red end
+			end
 		end
 	)
 	local structuresGrid = CreateChipGrid(structuresCard, 3)
-	local structureFilterButtons = {}
 	local structureFilterCount = 0
 	local function CreateStructureFilterButton(name)
 		structureFilterCount = structureFilterCount + 1
@@ -2441,18 +2488,36 @@ do
 		end
 	end
 
+	-- WatchFarmStructures ran its initial scan before this function existed (it's assigned
+	-- here, well after that first pass), so anything already in workspace.Structures at that
+	-- point was silently skipped -- catch up on it now that registration actually works.
+	do
+		local existingFolder = StructuresFolder()
+		if existingFolder then
+			for _, structure in ipairs(existingFolder:GetChildren()) do
+				RegisterKnownStructureType(StructureDisplayName(structure))
+			end
+		end
+	end
+
 	-- Item ESP (by rarity, discovered from the game's own drop tiers)
-	local itemsCard = CreateFilterCard(ESPScroll, 4, "Item ESP")
-	CreateAllNoneRow(itemsCard, 2,
+	local itemsCard, itemsActions = CreateFilterCard(ESPScroll, 4, "Item ESP")
+	local itemFilterButtons = {}
+	CreateAllNoneActions(itemsActions,
 		function()
-			for _, tier in ipairs(RARITY_TIERS) do ESPSelectedRarities[tier] = true end
+			for _, tier in ipairs(RARITY_TIERS) do
+				ESPSelectedRarities[tier] = true
+				itemFilterButtons[tier].BackgroundColor3 = Green
+			end
 		end,
 		function()
-			for _, tier in ipairs(RARITY_TIERS) do ESPSelectedRarities[tier] = false end
+			for _, tier in ipairs(RARITY_TIERS) do
+				ESPSelectedRarities[tier] = false
+				itemFilterButtons[tier].BackgroundColor3 = Red
+			end
 		end
 	)
 	local itemsGrid = CreateChipGrid(itemsCard, 3)
-	local itemFilterButtons = {}
 	for index, tier in ipairs(RARITY_TIERS) do
 		local button = CreateChipButton(itemsGrid, index, tier, ESPSelectedRarities[tier] == true)
 		button.MouseButton1Click:Connect(function()
@@ -2465,10 +2530,8 @@ do
 	local function RefreshAllChipColors()
 		mobsEspToggleButton.Text = ESPMobsEnabled and "On" or "Off"
 		mobsEspToggleButton.BackgroundColor3 = ESPMobsEnabled and Green or Red
-		boxEspToggleButton.Text = BoxESPEnabled and "On" or "Off"
-		boxEspToggleButton.BackgroundColor3 = BoxESPEnabled and Green or Red
 		for boxType, button in pairs(boxFilterButtons) do
-			button.BackgroundColor3 = SelectedBoxTypes[boxType] ~= false and Green or Red
+			button.BackgroundColor3 = SelectedBoxTypes[boxType] == true and Green or Red
 		end
 		for name, button in pairs(structureFilterButtons) do
 			button.BackgroundColor3 = SelectedStructureTypes[name] == true and Green or Red
@@ -2479,7 +2542,7 @@ do
 	end
 
 	ESPToggle.MouseButton1Click:Connect(function()
-		ESPDock.Visible = not ESPDock.Visible
+		ESPToggleDock()
 		if ESPDock.Visible then RefreshAllChipColors() end
 	end)
 
@@ -2488,7 +2551,7 @@ do
 	local lastESPScan = 0
 	RunService.Heartbeat:Connect(function()
 		if not ScreenGui.Parent then return end
-		if BoxESPEnabled then RefreshBoxDistances() end
+		RefreshBoxDistances()
 		local now = os.clock()
 		if now - lastESPScan >= ESP_SCAN_INTERVAL then
 			lastESPScan = now
