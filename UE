@@ -372,23 +372,12 @@ local Red = Color3.fromRGB(220, 42, 58)
 -- target instead of relying on Roblox's default instant per-notch jump. Trades away
 -- scrollbar-thumb dragging (ScrollingEnabled has to be off so native handling doesn't
 -- fight the tween) for wheel/touch scrolling that doesn't stutter.
-local function SmoothScroll(scrollFrame, step)
-	step = step or 90
-	scrollFrame.ScrollingEnabled = false
-	local target = scrollFrame.CanvasPosition
-	local function Clamp(pos)
-		local maxX = math.max(0, scrollFrame.AbsoluteCanvasSize.X - scrollFrame.AbsoluteWindowSize.X)
-		local maxY = math.max(0, scrollFrame.AbsoluteCanvasSize.Y - scrollFrame.AbsoluteWindowSize.Y)
-		return Vector2.new(math.clamp(pos.X, 0, maxX), math.clamp(pos.Y, 0, maxY))
-	end
-	local function ScrollBy(delta)
-		target = Clamp(target + Vector2.new(0, delta))
-		TweenService:Create(scrollFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			CanvasPosition = target,
-		}):Play()
-	end
-	scrollFrame.MouseWheelForward:Connect(function() ScrollBy(-step) end)
-	scrollFrame.MouseWheelBackward:Connect(function() ScrollBy(step) end)
+-- Disabling native ScrollingEnabled to replace wheel input with a tween turned out to kill
+-- scrolling entirely in-game (neither wheel nor the scrollbar worked) rather than just
+-- losing thumb-drag as expected, so this is back to native scrolling. Left as a named
+-- no-op (rather than ripping out the call site) in case a safer smoothing approach is
+-- worth trying later.
+local function SmoothScroll(_scrollFrame, _step)
 end
 
 -- Only one docked popup (Auto Farm's Pickup Filter, ESP's Options) is ever open at once --
