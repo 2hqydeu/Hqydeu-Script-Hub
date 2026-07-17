@@ -94,6 +94,8 @@ local function KeybindText(keyCode)
 	if keyCode == Enum.KeyCode.LeftControl then return "L Ctrl" end
 	if keyCode == Enum.KeyCode.RightControl then return "R Ctrl" end
 	if keyCode == Enum.KeyCode.LeftShift then return "L Shift" end
+	if keyCode == Enum.KeyCode.LeftAlt then return "L Alt" end
+	if keyCode == Enum.KeyCode.RightAlt then return "R Alt" end
 	return keyCode.Name
 end
 
@@ -313,22 +315,23 @@ do
 		rightWingIn.Completed:Wait()
 		spinIn.Completed:Wait() -- spin-in runs a little longer than the wings; let it finish
 
-		-- Angel-like idle float: each piece drifts up and down on its own slow loop, with
-		-- a different period and a staggered start so the three never move in lockstep --
-		-- reads as ambient motion rather than one rigid block bobbing as a unit.
+		-- Angel-like idle float: all three pieces drift up and down together -- same period,
+		-- same start, no stagger -- so they read as one synced motion rather than drifting
+		-- in and out of phase with each other.
 		local FLOAT_AMPLITUDE = 12
-		local emblemFloat = TweenService:Create(SplashImage, TweenInfo.new(2.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+		local floatTweenInfo = TweenInfo.new(1.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+		local emblemFloat = TweenService:Create(SplashImage, floatTweenInfo, {
 			Position = UDim2.new(0.5, 0, CENTER_Y, EMBLEM_Y_OFFSET - FLOAT_AMPLITUDE),
 		})
-		local rightWingFloat = TweenService:Create(RightWing, TweenInfo.new(2.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+		local rightWingFloat = TweenService:Create(RightWing, floatTweenInfo, {
 			Position = UDim2.new(0.5, WING_HALF_GAP, CENTER_Y, EMBLEM_Y_OFFSET - FLOAT_AMPLITUDE),
 		})
-		local leftWingFloat = TweenService:Create(LeftWing, TweenInfo.new(2.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+		local leftWingFloat = TweenService:Create(LeftWing, floatTweenInfo, {
 			Position = UDim2.new(0.5, -WING_HALF_GAP, CENTER_Y, EMBLEM_Y_OFFSET - FLOAT_AMPLITUDE),
 		})
 		emblemFloat:Play()
-		task.delay(0.3, function() rightWingFloat:Play() end)
-		task.delay(0.6, function() leftWingFloat:Play() end)
+		rightWingFloat:Play()
+		leftWingFloat:Play()
 
 		-- Fake ~3s "loading" runs while the three pieces keep gently floating.
 		RunFakeLoading(3)
@@ -378,20 +381,18 @@ local MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = UDim.new(0, 14)
 MainCorner.Parent = MainFrame
 
--- Header: title, live local clock (plain text, no icon), minimize, and a plain "L Ctrl"
--- hint -- all top-anchored so a minimize shrinks the window straight up toward this row
--- instead of shrinking from the center.
-local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Name = "TitleLabel"
-TitleLabel.Size = UDim2.new(0, 260, 0, 24)
-TitleLabel.Position = UDim2.new(0, 18, 0, 8)
-TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "Serenity"
-TitleLabel.Font = UIFont
-TitleLabel.TextSize = 20
-TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-TitleLabel.Parent = MainFrame
+-- Header: title emblem (same mark as the splash screen, in place of the "Serenity" text),
+-- live local clock underneath it, minimize, and a plain "L Ctrl" hint -- all top-anchored
+-- so a minimize shrinks the window straight up toward this row instead of shrinking from
+-- the center.
+local TitleEmblem = Instance.new("ImageLabel")
+TitleEmblem.Name = "TitleEmblem"
+TitleEmblem.Size = UDim2.new(0, 26, 0, 26)
+TitleEmblem.Position = UDim2.new(0, 18, 0, 7)
+TitleEmblem.BackgroundTransparency = 1
+TitleEmblem.Image = "rbxassetid://130985618733437"
+TitleEmblem.ScaleType = Enum.ScaleType.Fit
+TitleEmblem.Parent = MainFrame
 
 local TimeLabel = Instance.new("TextLabel")
 TimeLabel.Name = "TimeLabel"
@@ -761,8 +762,10 @@ end
 
 -- A rebindable keybind button: click, press a key, it saves to the settings file and
 -- calls onKeybindChanged with the new KeyCode so the caller can update its own state.
--- Right-click clears it via ShowKeybindClearPrompt above.
-local function CreateKeybindButton(parent, storageKey, onKeybindChanged)
+-- Right-click clears it via ShowKeybindClearPrompt above. defaultKeyCode (optional) is
+-- only used the very first time -- once anything (including Unknown, from clearing it)
+-- has been saved under storageKey, that saved value always wins.
+local function CreateKeybindButton(parent, storageKey, onKeybindChanged, defaultKeyCode)
 	local btn = Instance.new("TextButton")
 	btn.Name = "KeybindButton"
 	btn.Size = UDim2.new(0, 80, 0, 30)
@@ -776,7 +779,7 @@ local function CreateKeybindButton(parent, storageKey, onKeybindChanged)
 	btn.Parent = parent
 	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
 
-	local loadedKey = LoadFeatureKeybind(storageKey)
+	local loadedKey = (defaultKeyCode and SavedKeybinds[storageKey] == nil) and defaultKeyCode or LoadFeatureKeybind(storageKey)
 	btn.Text = KeybindText(loadedKey)
 	onKeybindChanged(loadedKey)
 
@@ -817,7 +820,7 @@ end
 -- On/Off toggle plus its keybind button, in their own row below the strength row.
 -- labelText overrides the row's own label (defaults to "Toggle" for rows that already
 -- have their feature name shown above, e.g. via CreateStrengthRow).
-local function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText)
+local function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, defaultKeyCode)
 	local row = Instance.new("Frame")
 	row.Name = "ToggleRow"
 	row.Size = UDim2.new(1, 0, 0, 40)
@@ -855,7 +858,7 @@ local function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelTex
 	toggle.Parent = row
 	Instance.new("UICorner", toggle).CornerRadius = UDim.new(0, 6)
 
-	local keybindBtn = CreateKeybindButton(row, storageKey, onKeybindChanged)
+	local keybindBtn = CreateKeybindButton(row, storageKey, onKeybindChanged, defaultKeyCode)
 
 	return toggle, keybindBtn
 end
@@ -1958,24 +1961,89 @@ local freeCamRenderConnection = RunService.RenderStepped:Connect(function(deltaT
 	camera.Focus = cameraCFrame * CFrame.new(0, 0, -512)
 end)
 
+-- Waypoint data + persistence, shared between the Teleport tab and the floating TP menu
+-- popup further down -- adding/renaming/deleting from either place has to stay in sync in
+-- the other, so both read/write this same table instead of keeping their own copies.
+SavedKeybinds.WaypointsByPlace = type(SavedKeybinds.WaypointsByPlace) == "table" and SavedKeybinds.WaypointsByPlace or {}
+local WaypointStorageKey = tostring(game.PlaceId)
+local Waypoints = type(SavedKeybinds.WaypointsByPlace[WaypointStorageKey]) == "table"
+	and SavedKeybinds.WaypointsByPlace[WaypointStorageKey] or {}
+local WaypointRefreshCallbacks = {}
+
+local function GetWaypointSegments(instance)
+	local segments = {}
+	local current = instance
+	while current and current ~= game do
+		table.insert(segments, 1, current.Name)
+		current = current.Parent
+	end
+	return segments
+end
+
+local function ResolveWaypoint(waypoint)
+	local segments = waypoint.Segments
+	if type(segments) ~= "table" or #segments == 0 then return nil end
+	local current = game
+	for _, name in ipairs(segments) do
+		if current == game then
+			local success, service = pcall(function() return game:GetService(name) end)
+			current = success and service or game:FindFirstChild(name)
+		else
+			current = current and current:FindFirstChild(name)
+		end
+		if not current then return nil end
+	end
+	if current:IsA("BasePart") then return current end
+	return nil
+end
+
+local function GetWaypointCFrame(waypoint)
+	if type(waypoint.CFrame) == "table" and #waypoint.CFrame >= 12 then
+		return CFrame.new(table.unpack(waypoint.CFrame, 1, 12))
+	end
+	local part = ResolveWaypoint(waypoint)
+	return part and part.CFrame or nil
+end
+
+local function SaveWaypoints()
+	local serializable = {}
+	for _, waypoint in ipairs(Waypoints) do
+		table.insert(serializable, {Segments = waypoint.Segments, CFrame = waypoint.CFrame, Name = waypoint.Name, Kind = waypoint.Kind})
+	end
+	SavedKeybinds.WaypointsByPlace[WaypointStorageKey] = serializable
+	SavePersistentSettings()
+end
+
+local function BroadcastWaypointsChanged()
+	for _, callback in ipairs(WaypointRefreshCallbacks) do
+		callback()
+	end
+end
+
 -- Teleport tab: Players (search + click-to-teleport) and Waypoints (select a world part,
 -- or save your current position, then click any saved entry later to teleport back).
 -- Ported from the old hub's floating PlayerTP menu + WaypointUI panel -- same search/
 -- filter, click-to-teleport CFrame math, and waypoint add/resolve/save/load/rename/delete
--- logic -- consolidated into this one embedded tab (no separate popup-menu system here)
--- and restyled to match this hub's rows instead of the old hub's floating-card look.
+-- logic -- restyled to match this hub's rows instead of the old hub's floating-card look.
 local TeleportPage = CreateTab("Teleport", 4, "90261647722333", true)
+local PopupKeybind
 do
 	local TAB_ROW_H = 30
 	local ROW_H = 26
 	local ROW_GAP = 6
 	local LIST_BOTTOM_PAD = 8
-	local CONTENT_HEIGHT = 360
+	local HEADER_H = 40 + 8
+	local CONTENT_HEIGHT = 360 + HEADER_H
+
+	-- Opens the floating quick-teleport popup (further below) -- same Players/Waypoints
+	-- data as this tab -- without needing to have the hub's Teleport tab open at all.
+	PopupKeybind = Enum.KeyCode.LeftAlt
+	CreateToggleRow(TeleportPage, 0, "TPMenuKeybind", function(k) PopupKeybind = k end, "TP Menu Popup", Enum.KeyCode.LeftAlt)
 
 	local PlayersTabButton = Instance.new("TextButton")
 	PlayersTabButton.Name = "PlayersTabButton"
 	PlayersTabButton.Size = UDim2.new(0.5, -3, 0, TAB_ROW_H)
-	PlayersTabButton.Position = UDim2.new(0, 0, 0, 0)
+	PlayersTabButton.Position = UDim2.new(0, 0, 0, HEADER_H)
 	PlayersTabButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	PlayersTabButton.BackgroundTransparency = 0.2
 	PlayersTabButton.BorderSizePixel = 0
@@ -1989,7 +2057,7 @@ do
 	local WaypointsTabButton = Instance.new("TextButton")
 	WaypointsTabButton.Name = "WaypointsTabButton"
 	WaypointsTabButton.Size = UDim2.new(0.5, -3, 0, TAB_ROW_H)
-	WaypointsTabButton.Position = UDim2.new(0.5, 3, 0, 0)
+	WaypointsTabButton.Position = UDim2.new(0.5, 3, 0, HEADER_H)
 	WaypointsTabButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	WaypointsTabButton.BackgroundTransparency = 0.5
 	WaypointsTabButton.BorderSizePixel = 0
@@ -2004,7 +2072,7 @@ do
 	local PlayerSearch = Instance.new("TextBox")
 	PlayerSearch.Name = "PlayerSearch"
 	PlayerSearch.Size = UDim2.new(1, 0, 0, ROW_H)
-	PlayerSearch.Position = UDim2.new(0, 0, 0, TAB_ROW_H + ROW_GAP)
+	PlayerSearch.Position = UDim2.new(0, 0, 0, HEADER_H + TAB_ROW_H + ROW_GAP)
 	PlayerSearch.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	PlayerSearch.BackgroundTransparency = 0.5
 	PlayerSearch.BorderSizePixel = 0
@@ -2018,7 +2086,7 @@ do
 	PlayerSearch.Parent = TeleportPage
 	Instance.new("UICorner", PlayerSearch).CornerRadius = UDim.new(0, 6)
 
-	local PLAYER_LIST_TOP = TAB_ROW_H + ROW_GAP + ROW_H + ROW_GAP
+	local PLAYER_LIST_TOP = HEADER_H + TAB_ROW_H + ROW_GAP + ROW_H + ROW_GAP
 	local PlayerList = Instance.new("ScrollingFrame")
 	PlayerList.Name = "PlayerList"
 	PlayerList.Size = UDim2.new(1, 0, 0, CONTENT_HEIGHT - PLAYER_LIST_TOP - LIST_BOTTOM_PAD)
@@ -2040,7 +2108,7 @@ do
 	local AddWaypointButton = Instance.new("TextButton")
 	AddWaypointButton.Name = "AddWaypointButton"
 	AddWaypointButton.Size = UDim2.new(0.5, -3, 0, ROW_H)
-	AddWaypointButton.Position = UDim2.new(0, 0, 0, TAB_ROW_H + ROW_GAP)
+	AddWaypointButton.Position = UDim2.new(0, 0, 0, HEADER_H + TAB_ROW_H + ROW_GAP)
 	AddWaypointButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	AddWaypointButton.BackgroundTransparency = 0.5
 	AddWaypointButton.BorderSizePixel = 0
@@ -2055,7 +2123,7 @@ do
 	local SetHereButton = Instance.new("TextButton")
 	SetHereButton.Name = "SetHereButton"
 	SetHereButton.Size = UDim2.new(0.5, -3, 0, ROW_H)
-	SetHereButton.Position = UDim2.new(0.5, 3, 0, TAB_ROW_H + ROW_GAP)
+	SetHereButton.Position = UDim2.new(0.5, 3, 0, HEADER_H + TAB_ROW_H + ROW_GAP)
 	SetHereButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	SetHereButton.BackgroundTransparency = 0.5
 	SetHereButton.BorderSizePixel = 0
@@ -2070,7 +2138,7 @@ do
 	local WaypointSearch = Instance.new("TextBox")
 	WaypointSearch.Name = "WaypointSearch"
 	WaypointSearch.Size = UDim2.new(1, 0, 0, ROW_H)
-	WaypointSearch.Position = UDim2.new(0, 0, 0, TAB_ROW_H + ROW_GAP + ROW_H + ROW_GAP)
+	WaypointSearch.Position = UDim2.new(0, 0, 0, HEADER_H + TAB_ROW_H + ROW_GAP + ROW_H + ROW_GAP)
 	WaypointSearch.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	WaypointSearch.BackgroundTransparency = 0.5
 	WaypointSearch.BorderSizePixel = 0
@@ -2085,7 +2153,7 @@ do
 	WaypointSearch.Parent = TeleportPage
 	Instance.new("UICorner", WaypointSearch).CornerRadius = UDim.new(0, 6)
 
-	local WAYPOINT_LIST_TOP = TAB_ROW_H + ROW_GAP + ROW_H + ROW_GAP + ROW_H + ROW_GAP
+	local WAYPOINT_LIST_TOP = HEADER_H + TAB_ROW_H + ROW_GAP + ROW_H + ROW_GAP + ROW_H + ROW_GAP
 	local WaypointList = Instance.new("ScrollingFrame")
 	WaypointList.Name = "WaypointList"
 	WaypointList.Size = UDim2.new(1, 0, 0, CONTENT_HEIGHT - WAYPOINT_LIST_TOP - LIST_BOTTOM_PAD)
@@ -2105,57 +2173,6 @@ do
 	WaypointListLayout.Parent = WaypointList
 
 	TeleportPage.CanvasSize = UDim2.new(0, 0, 0, CONTENT_HEIGHT)
-
-	-- Persistence: same SavedKeybinds/SavePersistentSettings file the keybinds already use,
-	-- keyed per place so waypoints saved in one game don't show up in another.
-	SavedKeybinds.WaypointsByPlace = type(SavedKeybinds.WaypointsByPlace) == "table" and SavedKeybinds.WaypointsByPlace or {}
-	local WaypointStorageKey = tostring(game.PlaceId)
-	local Waypoints = type(SavedKeybinds.WaypointsByPlace[WaypointStorageKey]) == "table"
-		and SavedKeybinds.WaypointsByPlace[WaypointStorageKey] or {}
-
-	local function GetWaypointSegments(instance)
-		local segments = {}
-		local current = instance
-		while current and current ~= game do
-			table.insert(segments, 1, current.Name)
-			current = current.Parent
-		end
-		return segments
-	end
-
-	local function ResolveWaypoint(waypoint)
-		local segments = waypoint.Segments
-		if type(segments) ~= "table" or #segments == 0 then return nil end
-		local current = game
-		for _, name in ipairs(segments) do
-			if current == game then
-				local success, service = pcall(function() return game:GetService(name) end)
-				current = success and service or game:FindFirstChild(name)
-			else
-				current = current and current:FindFirstChild(name)
-			end
-			if not current then return nil end
-		end
-		if current:IsA("BasePart") then return current end
-		return nil
-	end
-
-	local function GetWaypointCFrame(waypoint)
-		if type(waypoint.CFrame) == "table" and #waypoint.CFrame >= 12 then
-			return CFrame.new(table.unpack(waypoint.CFrame, 1, 12))
-		end
-		local part = ResolveWaypoint(waypoint)
-		return part and part.CFrame or nil
-	end
-
-	local function SaveWaypoints()
-		local serializable = {}
-		for _, waypoint in ipairs(Waypoints) do
-			table.insert(serializable, {Segments = waypoint.Segments, CFrame = waypoint.CFrame, Name = waypoint.Name, Kind = waypoint.Kind})
-		end
-		SavedKeybinds.WaypointsByPlace[WaypointStorageKey] = serializable
-		SavePersistentSettings()
-	end
 
 	-- Players sub-tab: list + search + click-to-teleport (lands 3 studs behind the target
 	-- so you don't spawn inside them).
@@ -2324,7 +2341,7 @@ do
 						local newName = editBox.Text:match("^%s*(.-)%s*$")
 						if newName and newName ~= "" then waypoint.Name = string.sub(newName, 1, 32) end
 						SaveWaypoints()
-						RefreshWaypointList()
+						BroadcastWaypointsChanged()
 					end)
 					task.defer(function() editBox:CaptureFocus() end)
 				end)
@@ -2333,12 +2350,13 @@ do
 					PlayClick()
 					table.remove(Waypoints, index)
 					SaveWaypoints()
-					RefreshWaypointList()
+					BroadcastWaypointsChanged()
 				end)
 			end
 		end
 		WaypointList.CanvasSize = UDim2.new(0, 0, 0, WaypointListLayout.AbsoluteContentSize.Y + 4)
 	end
+	table.insert(WaypointRefreshCallbacks, RefreshWaypointList)
 
 	local function AddWaypoint(part)
 		if not part or not part:IsA("BasePart") then return end
@@ -2350,7 +2368,7 @@ do
 		end
 		table.insert(Waypoints, {Segments = segments, CFrame = components, Name = part.Name})
 		SaveWaypoints()
-		RefreshWaypointList()
+		BroadcastWaypointsChanged()
 	end
 
 	-- Select-part tool: click "Select Part", then click any BasePart in the world to save
@@ -2397,7 +2415,7 @@ do
 		end
 		table.insert(Waypoints, {Segments = {}, CFrame = components, Name = "Current Position", Kind = "Position"})
 		SaveWaypoints()
-		RefreshWaypointList()
+		BroadcastWaypointsChanged()
 	end)
 
 	table.insert(looseConnections, RunService.RenderStepped:Connect(function()
@@ -2446,9 +2464,402 @@ do
 	ShowTeleportTab("Players")
 end
 
+-- Floating TP menu popup: a small quick-access version of the Teleport tab above (same
+-- Players/Waypoints data, no "Select Part"/"Set Here" -- adding still happens from the
+-- tab) that opens over whatever you're doing without needing the hub window open at all.
+-- Ported from the old hub's floating PlayerTP menu; toggled by the keybind row set up in
+-- the Teleport tab above (default L Alt).
+do
+	local ROW_H = 26
+	local TAB_ROW_H = 28
+
+	local PopupFrame = Instance.new("Frame")
+	PopupFrame.Name = "TPMenuPopup"
+	PopupFrame.Size = UDim2.new(0, 230, 0, 260)
+	PopupFrame.Position = UDim2.new(0.5, -115, 0.5, -130)
+	PopupFrame.BackgroundColor3 = FrameColor
+	PopupFrame.BackgroundTransparency = 0
+	PopupFrame.BorderSizePixel = 0
+	PopupFrame.Visible = false
+	PopupFrame.Active = true
+	PopupFrame.ZIndex = 30
+	PopupFrame.Parent = ScreenGui
+	Instance.new("UICorner", PopupFrame).CornerRadius = UDim.new(0, 12)
+	local popupStroke = Instance.new("UIStroke")
+	popupStroke.Color = AccentColor
+	popupStroke.Thickness = 1
+	popupStroke.Transparency = 0.6
+	popupStroke.Parent = PopupFrame
+
+	local PopupHeader = Instance.new("TextLabel")
+	PopupHeader.Size = UDim2.new(1, -36, 0, 26)
+	PopupHeader.Position = UDim2.new(0, 12, 0, 6)
+	PopupHeader.BackgroundTransparency = 1
+	PopupHeader.Text = "Teleport"
+	PopupHeader.Font = UIFont
+	PopupHeader.TextSize = 15
+	PopupHeader.TextColor3 = Color3.fromRGB(255, 255, 255)
+	PopupHeader.TextXAlignment = Enum.TextXAlignment.Left
+	PopupHeader.ZIndex = 31
+	PopupHeader.Parent = PopupFrame
+
+	local PopupClose = Instance.new("TextButton")
+	PopupClose.Size = UDim2.new(0, 22, 0, 22)
+	PopupClose.Position = UDim2.new(1, -30, 0, 8)
+	PopupClose.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	PopupClose.BackgroundTransparency = 0.4
+	PopupClose.BorderSizePixel = 0
+	PopupClose.Text = "×"
+	PopupClose.Font = UIFont
+	PopupClose.TextSize = 15
+	PopupClose.TextColor3 = Color3.fromRGB(255, 255, 255)
+	PopupClose.ZIndex = 31
+	PopupClose.Parent = PopupFrame
+	Instance.new("UICorner", PopupClose).CornerRadius = UDim.new(0, 6)
+
+	local PopupPlayersTab = Instance.new("TextButton")
+	PopupPlayersTab.Size = UDim2.new(0.5, -15, 0, TAB_ROW_H)
+	PopupPlayersTab.Position = UDim2.new(0, 12, 0, 36)
+	PopupPlayersTab.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	PopupPlayersTab.BackgroundTransparency = 0.2
+	PopupPlayersTab.BorderSizePixel = 0
+	PopupPlayersTab.Text = "Players"
+	PopupPlayersTab.Font = UIFont
+	PopupPlayersTab.TextSize = 12
+	PopupPlayersTab.TextColor3 = Color3.fromRGB(255, 255, 255)
+	PopupPlayersTab.ZIndex = 31
+	PopupPlayersTab.Parent = PopupFrame
+	Instance.new("UICorner", PopupPlayersTab).CornerRadius = UDim.new(0, 6)
+
+	local PopupWaypointsTab = Instance.new("TextButton")
+	PopupWaypointsTab.Size = UDim2.new(0.5, -15, 0, TAB_ROW_H)
+	PopupWaypointsTab.Position = UDim2.new(0.5, 3, 0, 36)
+	PopupWaypointsTab.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	PopupWaypointsTab.BackgroundTransparency = 0.5
+	PopupWaypointsTab.BorderSizePixel = 0
+	PopupWaypointsTab.Text = "Waypoints"
+	PopupWaypointsTab.Font = UIFont
+	PopupWaypointsTab.TextSize = 12
+	PopupWaypointsTab.TextColor3 = Color3.fromRGB(255, 255, 255)
+	PopupWaypointsTab.ZIndex = 31
+	PopupWaypointsTab.Parent = PopupFrame
+	Instance.new("UICorner", PopupWaypointsTab).CornerRadius = UDim.new(0, 6)
+
+	local PopupPlayerSearch = Instance.new("TextBox")
+	PopupPlayerSearch.Size = UDim2.new(1, -24, 0, ROW_H)
+	PopupPlayerSearch.Position = UDim2.new(0, 12, 0, 70)
+	PopupPlayerSearch.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	PopupPlayerSearch.BackgroundTransparency = 0.5
+	PopupPlayerSearch.BorderSizePixel = 0
+	PopupPlayerSearch.ClearTextOnFocus = false
+	PopupPlayerSearch.PlaceholderText = "Search players..."
+	PopupPlayerSearch.Text = ""
+	PopupPlayerSearch.Font = UIFont
+	PopupPlayerSearch.TextSize = 12
+	PopupPlayerSearch.TextColor3 = Color3.fromRGB(255, 255, 255)
+	PopupPlayerSearch.PlaceholderColor3 = Color3.fromRGB(160, 160, 160)
+	PopupPlayerSearch.ZIndex = 31
+	PopupPlayerSearch.Parent = PopupFrame
+	Instance.new("UICorner", PopupPlayerSearch).CornerRadius = UDim.new(0, 6)
+
+	local PopupPlayerList = Instance.new("ScrollingFrame")
+	PopupPlayerList.Size = UDim2.new(1, -24, 1, -108)
+	PopupPlayerList.Position = UDim2.new(0, 12, 0, 102)
+	PopupPlayerList.BackgroundTransparency = 1
+	PopupPlayerList.BorderSizePixel = 0
+	PopupPlayerList.ScrollBarThickness = 3
+	PopupPlayerList.ScrollBarImageColor3 = AccentColor
+	PopupPlayerList.ElasticBehavior = Enum.ElasticBehavior.Never
+	PopupPlayerList.CanvasSize = UDim2.new(0, 0, 0, 0)
+	PopupPlayerList.ZIndex = 31
+	PopupPlayerList.Parent = PopupFrame
+
+	local PopupPlayerListLayout = Instance.new("UIListLayout")
+	PopupPlayerListLayout.Padding = UDim.new(0, 3)
+	PopupPlayerListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	PopupPlayerListLayout.Parent = PopupPlayerList
+
+	local PopupWaypointSearch = Instance.new("TextBox")
+	PopupWaypointSearch.Size = UDim2.new(1, -24, 0, ROW_H)
+	PopupWaypointSearch.Position = UDim2.new(0, 12, 0, 70)
+	PopupWaypointSearch.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	PopupWaypointSearch.BackgroundTransparency = 0.5
+	PopupWaypointSearch.BorderSizePixel = 0
+	PopupWaypointSearch.ClearTextOnFocus = false
+	PopupWaypointSearch.PlaceholderText = "Search waypoints..."
+	PopupWaypointSearch.Text = ""
+	PopupWaypointSearch.Font = UIFont
+	PopupWaypointSearch.TextSize = 12
+	PopupWaypointSearch.TextColor3 = Color3.fromRGB(255, 255, 255)
+	PopupWaypointSearch.PlaceholderColor3 = Color3.fromRGB(160, 160, 160)
+	PopupWaypointSearch.Visible = false
+	PopupWaypointSearch.ZIndex = 31
+	PopupWaypointSearch.Parent = PopupFrame
+	Instance.new("UICorner", PopupWaypointSearch).CornerRadius = UDim.new(0, 6)
+
+	local PopupWaypointList = Instance.new("ScrollingFrame")
+	PopupWaypointList.Size = UDim2.new(1, -24, 1, -108)
+	PopupWaypointList.Position = UDim2.new(0, 12, 0, 102)
+	PopupWaypointList.BackgroundTransparency = 1
+	PopupWaypointList.BorderSizePixel = 0
+	PopupWaypointList.ScrollBarThickness = 3
+	PopupWaypointList.ScrollBarImageColor3 = AccentColor
+	PopupWaypointList.ElasticBehavior = Enum.ElasticBehavior.Never
+	PopupWaypointList.CanvasSize = UDim2.new(0, 0, 0, 0)
+	PopupWaypointList.Visible = false
+	PopupWaypointList.ZIndex = 31
+	PopupWaypointList.Parent = PopupFrame
+
+	local PopupWaypointListLayout = Instance.new("UIListLayout")
+	PopupWaypointListLayout.Padding = UDim.new(0, 3)
+	PopupWaypointListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	PopupWaypointListLayout.Parent = PopupWaypointList
+
+	local function RefreshPopupPlayerList()
+		for _, child in ipairs(PopupPlayerList:GetChildren()) do
+			if child:IsA("Frame") then child:Destroy() end
+		end
+		local filter = PopupPlayerSearch.Text:lower()
+		for _, targetPlayer in ipairs(Players:GetPlayers()) do
+			if targetPlayer ~= Player then
+				local displayText = targetPlayer.DisplayName or targetPlayer.Name
+				if filter == "" or displayText:lower():find(filter, 1, true) or targetPlayer.Name:lower():find(filter, 1, true) then
+					local row = Instance.new("Frame")
+					row.Size = UDim2.new(1, 0, 0, 30)
+					row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+					row.BackgroundTransparency = 0.5
+					row.BorderSizePixel = 0
+					row.ZIndex = 31
+					row.Parent = PopupPlayerList
+					Instance.new("UICorner", row).CornerRadius = UDim.new(0, 5)
+
+					local nameLabel = Instance.new("TextLabel")
+					nameLabel.Size = UDim2.new(1, -12, 0, 16)
+					nameLabel.Position = UDim2.new(0, 8, 0, 1)
+					nameLabel.BackgroundTransparency = 1
+					nameLabel.Text = displayText
+					nameLabel.Font = UIFont
+					nameLabel.TextSize = 11
+					nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+					nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+					nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+					nameLabel.ZIndex = 32
+					nameLabel.Parent = row
+
+					local userLabel = Instance.new("TextLabel")
+					userLabel.Size = UDim2.new(1, -12, 0, 12)
+					userLabel.Position = UDim2.new(0, 8, 0, 16)
+					userLabel.BackgroundTransparency = 1
+					userLabel.Text = "@" .. targetPlayer.Name
+					userLabel.Font = UIFont
+					userLabel.TextSize = 8
+					userLabel.TextColor3 = Color3.fromRGB(170, 170, 170)
+					userLabel.TextXAlignment = Enum.TextXAlignment.Left
+					userLabel.ZIndex = 32
+					userLabel.Parent = row
+
+					local clickButton = Instance.new("TextButton")
+					clickButton.Size = UDim2.new(1, 0, 1, 0)
+					clickButton.BackgroundTransparency = 1
+					clickButton.Text = ""
+					clickButton.ZIndex = 32
+					clickButton.Parent = row
+					clickButton.MouseButton1Click:Connect(function()
+						PlayClick()
+						local targetCharacter = targetPlayer.Character
+						local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+						local character = Player.Character
+						local root = character and character:FindFirstChild("HumanoidRootPart")
+						if targetRoot and root then root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 3) end
+					end)
+				end
+			end
+		end
+		PopupPlayerList.CanvasSize = UDim2.new(0, 0, 0, PopupPlayerListLayout.AbsoluteContentSize.Y + 4)
+	end
+
+	local function RefreshPopupWaypointList()
+		for _, child in ipairs(PopupWaypointList:GetChildren()) do
+			if child:IsA("Frame") then child:Destroy() end
+		end
+		local filter = PopupWaypointSearch.Text:lower()
+		for index, waypoint in ipairs(Waypoints) do
+			local waypointName = waypoint.Name or "Waypoint"
+			if filter == "" or waypointName:lower():find(filter, 1, true) then
+				local row = Instance.new("Frame")
+				row.Size = UDim2.new(1, 0, 0, 30)
+				row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+				row.BackgroundTransparency = 0.5
+				row.BorderSizePixel = 0
+				row.ZIndex = 31
+				row.Parent = PopupWaypointList
+				Instance.new("UICorner", row).CornerRadius = UDim.new(0, 5)
+
+				local nameLabel = Instance.new("TextLabel")
+				nameLabel.Size = UDim2.new(1, -60, 0, 16)
+				nameLabel.Position = UDim2.new(0, 8, 0, 1)
+				nameLabel.BackgroundTransparency = 1
+				nameLabel.Text = waypointName
+				nameLabel.Font = UIFont
+				nameLabel.TextSize = 11
+				nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+				nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+				nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+				nameLabel.ZIndex = 32
+				nameLabel.Parent = row
+
+				local kindLabel = Instance.new("TextLabel")
+				kindLabel.Size = UDim2.new(1, -60, 0, 12)
+				kindLabel.Position = UDim2.new(0, 8, 0, 16)
+				kindLabel.BackgroundTransparency = 1
+				kindLabel.Text = waypoint.Kind == "Position" and "Saved position" or "Saved part"
+				kindLabel.Font = UIFont
+				kindLabel.TextSize = 8
+				kindLabel.TextColor3 = Color3.fromRGB(170, 170, 170)
+				kindLabel.TextXAlignment = Enum.TextXAlignment.Left
+				kindLabel.ZIndex = 32
+				kindLabel.Parent = row
+
+				local deleteButton = Instance.new("TextButton")
+				deleteButton.Size = UDim2.new(0, 22, 0, 22)
+				deleteButton.Position = UDim2.new(1, -26, 0.5, -11)
+				deleteButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+				deleteButton.BorderSizePixel = 0
+				deleteButton.Text = "×"
+				deleteButton.Font = UIFont
+				deleteButton.TextSize = 13
+				deleteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+				deleteButton.ZIndex = 32
+				deleteButton.Parent = row
+				Instance.new("UICorner", deleteButton).CornerRadius = UDim.new(0, 5)
+
+				local editButton = Instance.new("TextButton")
+				editButton.Size = UDim2.new(0, 26, 0, 22)
+				editButton.Position = UDim2.new(1, -56, 0.5, -11)
+				editButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+				editButton.BorderSizePixel = 0
+				editButton.Text = "Edit"
+				editButton.Font = UIFont
+				editButton.TextSize = 8
+				editButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+				editButton.ZIndex = 32
+				editButton.Parent = row
+				Instance.new("UICorner", editButton).CornerRadius = UDim.new(0, 5)
+
+				local clickButton = Instance.new("TextButton")
+				clickButton.Size = UDim2.new(1, -58, 1, 0)
+				clickButton.BackgroundTransparency = 1
+				clickButton.Text = ""
+				clickButton.ZIndex = 32
+				clickButton.Parent = row
+				clickButton.MouseButton1Click:Connect(function()
+					PlayClick()
+					local waypointCFrame = GetWaypointCFrame(waypoint)
+					local character = Player.Character
+					local root = character and character:FindFirstChild("HumanoidRootPart")
+					if waypointCFrame and root then
+						root.CFrame = waypoint.Kind == "Position" and waypointCFrame or waypointCFrame * CFrame.new(0, 3, 0)
+					end
+				end)
+
+				editButton.MouseButton1Click:Connect(function()
+					PlayClick()
+					nameLabel.Visible = false
+					kindLabel.Visible = false
+					editButton.Visible = false
+					clickButton.Visible = false
+					local editBox = Instance.new("TextBox")
+					editBox.Size = UDim2.new(1, -64, 1, -6)
+					editBox.Position = UDim2.new(0, 6, 0, 3)
+					editBox.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+					editBox.BackgroundTransparency = 0.2
+					editBox.BorderSizePixel = 0
+					editBox.Text = waypointName
+					editBox.ClearTextOnFocus = false
+					editBox.Font = UIFont
+					editBox.TextSize = 10
+					editBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+					editBox.ZIndex = 32
+					editBox.Parent = row
+					Instance.new("UICorner", editBox).CornerRadius = UDim.new(0, 5)
+					editBox.FocusLost:Connect(function()
+						local newName = editBox.Text:match("^%s*(.-)%s*$")
+						if newName and newName ~= "" then waypoint.Name = string.sub(newName, 1, 32) end
+						SaveWaypoints()
+						BroadcastWaypointsChanged()
+					end)
+					task.defer(function() editBox:CaptureFocus() end)
+				end)
+
+				deleteButton.MouseButton1Click:Connect(function()
+					PlayClick()
+					table.remove(Waypoints, index)
+					SaveWaypoints()
+					BroadcastWaypointsChanged()
+				end)
+			end
+		end
+		PopupWaypointList.CanvasSize = UDim2.new(0, 0, 0, PopupWaypointListLayout.AbsoluteContentSize.Y + 4)
+	end
+	table.insert(WaypointRefreshCallbacks, RefreshPopupWaypointList)
+
+	local PopupActiveTab = "Players"
+	local function ShowPopupTab(tabName)
+		PopupActiveTab = tabName
+		local showingWaypoints = tabName == "Waypoints"
+		PopupPlayerSearch.Visible = not showingWaypoints
+		PopupPlayerList.Visible = not showingWaypoints
+		PopupWaypointSearch.Visible = showingWaypoints
+		PopupWaypointList.Visible = showingWaypoints
+		PopupPlayersTab.BackgroundTransparency = showingWaypoints and 0.5 or 0.2
+		PopupWaypointsTab.BackgroundTransparency = showingWaypoints and 0.2 or 0.5
+		if showingWaypoints then RefreshPopupWaypointList() else RefreshPopupPlayerList() end
+	end
+
+	PopupPlayersTab.MouseButton1Click:Connect(function() PlayClick() ShowPopupTab("Players") end)
+	PopupWaypointsTab.MouseButton1Click:Connect(function() PlayClick() ShowPopupTab("Waypoints") end)
+	PopupPlayerSearch:GetPropertyChangedSignal("Text"):Connect(RefreshPopupPlayerList)
+	PopupWaypointSearch:GetPropertyChangedSignal("Text"):Connect(RefreshPopupWaypointList)
+	table.insert(looseConnections, Players.PlayerAdded:Connect(function()
+		if PopupFrame.Visible and PopupActiveTab == "Players" then RefreshPopupPlayerList() end
+	end))
+	table.insert(looseConnections, Players.PlayerRemoving:Connect(function()
+		if PopupFrame.Visible and PopupActiveTab == "Players" then RefreshPopupPlayerList() end
+	end))
+
+	local function TogglePopup()
+		PopupFrame.Visible = not PopupFrame.Visible
+		if PopupFrame.Visible then ShowPopupTab(PopupActiveTab) end
+	end
+	PopupClose.MouseButton1Click:Connect(function() PlayClick() PopupFrame.Visible = false end)
+	table.insert(looseConnections, UserInputService.InputBegan:Connect(function(input, processed)
+		if processed or UserInputService:GetFocusedTextBox() or bindingInProgress then return end
+		if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+		if PopupKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == PopupKeybind then TogglePopup() end
+	end))
+
+	-- Dragging, same pattern as MainFrame.
+	local dragging = false
+	local dragStart, startPos
+	PopupHeader.InputBegan:Connect(function(input)
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+		dragging = true
+		dragStart = input.Position
+		startPos = PopupFrame.Position
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then dragging = false end
+		end)
+	end)
+	table.insert(looseConnections, UserInputService.InputChanged:Connect(function(input)
+		if not dragging or (input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch) then return end
+		local delta = input.Position - dragStart
+		PopupFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	end))
+end
+
 -- Scripts tab: launches the separate game modules (loadstring + HttpGet, same as the
 -- old hub). Each module only ever gets fetched once per execution.
-local ScriptsPage = CreateTab("Scripts", 5, "77194728508403", true)
+local ScriptsPage = CreateTab("Scripts", 5, "79977771810097", true)
 
 -- Caches the fetched source per game so re-running it (see below) never re-hits the
 -- network, but still actually executes the chunk again each time -- these game modules
