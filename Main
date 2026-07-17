@@ -134,14 +134,15 @@ local WINDOW_POSITION = UDim2.new(0.5, -280, 0.5, -215)
 -- construction (further down) actually assigns it.
 local MainFrame
 
--- Title sequence: the real UI (MainFrame) stays invisible until this finishes. No
--- background panel -- every piece (emblem, wings, loading bar/label) sits directly on
--- ScreenGui at its own absolute screen position and fades out on its own tween, so
--- nothing is bounded by an invisible box that could clip the (larger-than-the-emblem)
+-- Title sequence: the real UI (MainFrame) stays invisible until this finishes. A full-
+-- screen backdrop sits behind everything (so the splash reads as its own screen rather
+-- than elements floating over the game); the emblem, wings, and loading bar/label are
+-- otherwise still unbounded on top of it, so nothing clips the (larger-than-the-emblem)
 -- wings. Emblem spins/grows/fades in while the wings slide in from the screen edges at
--- the same time (not after), meeting at its sides, then everything holds still (no
--- ripple, no idle float) through a fake ~3s "loading" (status line + progress bar),
--- at which point the whole thing fades out together.
+-- the same time (not after), meeting at its sides; once landed, all three drift gently
+-- up and down on their own out-of-phase loop (an idle "float", not a synced bob) through
+-- a fake ~3s "loading" (status line + progress bar), at which point the whole thing
+-- fades out together.
 do
 	-- Shared vertical anchor for the whole composition (screen-center scale + this pixel
 	-- offset) -- everything below is positioned relative to it, tight enough that the
@@ -150,6 +151,16 @@ do
 	local CENTER_Y = 0.5
 	local EMBLEM_Y_OFFSET = -70
 	local EMBLEM_SIZE = 380 -- final width/height once grown in
+
+	local SplashBackdrop = Instance.new("Frame")
+	SplashBackdrop.Name = "SplashBackdrop"
+	SplashBackdrop.Size = UDim2.new(1, 0, 1, 0)
+	SplashBackdrop.Position = UDim2.new(0, 0, 0, 0)
+	SplashBackdrop.BackgroundColor3 = FrameColor
+	SplashBackdrop.BackgroundTransparency = 0
+	SplashBackdrop.BorderSizePixel = 0
+	SplashBackdrop.ZIndex = 1
+	SplashBackdrop.Parent = ScreenGui
 
 	local SplashImage = Instance.new("ImageLabel")
 	SplashImage.Name = "SplashImage"
@@ -194,9 +205,11 @@ do
 	LeftWing.ZIndex = 5
 	LeftWing.Parent = ScreenGui
 
-	-- Loading bar/label sit close beneath the emblem -- tight gap, no enclosing panel.
-	local LOADING_LABEL_Y_OFFSET = EMBLEM_Y_OFFSET + (EMBLEM_SIZE / 2) + 30
-	local LOADING_TRACK_Y_OFFSET = LOADING_LABEL_Y_OFFSET + 28
+	-- Loading bar/label sit close beneath the emblem. The emblem art has a good amount of
+	-- transparent padding inside its bounding box, so anchoring off the full EMBLEM_SIZE / 2
+	-- read as an awkward gap in practice -- pulled both offsets in to close it up.
+	local LOADING_LABEL_Y_OFFSET = EMBLEM_Y_OFFSET + 138
+	local LOADING_TRACK_Y_OFFSET = LOADING_LABEL_Y_OFFSET + 22
 
 	local LoadingLabel = Instance.new("TextLabel")
 	LoadingLabel.Name = "LoadingLabel"
@@ -290,14 +303,36 @@ do
 		rightWingIn.Completed:Wait()
 		spinIn.Completed:Wait() -- spin-in runs a little longer than the wings; let it finish
 
-		-- Everything holds still once landed -- no ripple, no idle float -- while the
-		-- fake ~3s "loading" runs.
+		-- Angel-like idle float: each piece drifts up and down on its own slow loop, with
+		-- a different period and a staggered start so the three never move in lockstep --
+		-- reads as ambient motion rather than one rigid block bobbing as a unit.
+		local FLOAT_AMPLITUDE = 12
+		local emblemFloat = TweenService:Create(SplashImage, TweenInfo.new(2.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+			Position = UDim2.new(0.5, 0, CENTER_Y, EMBLEM_Y_OFFSET - FLOAT_AMPLITUDE),
+		})
+		local rightWingFloat = TweenService:Create(RightWing, TweenInfo.new(2.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+			Position = UDim2.new(0.5, WING_HALF_GAP, CENTER_Y, EMBLEM_Y_OFFSET - FLOAT_AMPLITUDE),
+		})
+		local leftWingFloat = TweenService:Create(LeftWing, TweenInfo.new(2.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+			Position = UDim2.new(0.5, -WING_HALF_GAP, CENTER_Y, EMBLEM_Y_OFFSET - FLOAT_AMPLITUDE),
+		})
+		emblemFloat:Play()
+		task.delay(0.3, function() rightWingFloat:Play() end)
+		task.delay(0.6, function() leftWingFloat:Play() end)
+
+		-- Fake ~3s "loading" runs while the three pieces keep gently floating.
 		RunFakeLoading(3)
+
+		-- Stop the float in place (rather than letting it fight the fade-out) before fading.
+		emblemFloat:Cancel()
+		rightWingFloat:Cancel()
+		leftWingFloat:Cancel()
 
 		-- Fade starts the instant loading finishes -- no pause in between -- so there's
 		-- never a moment where the bar looks done but nothing's actually happening yet.
 		-- Every piece fades on its own tween (no shared background to fade as a group).
 		local fadeOutTweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		TweenService:Create(SplashBackdrop, fadeOutTweenInfo, {BackgroundTransparency = 1}):Play()
 		TweenService:Create(SplashImage, fadeOutTweenInfo, {ImageTransparency = 1}):Play()
 		TweenService:Create(RightWing, fadeOutTweenInfo, {ImageTransparency = 1}):Play()
 		TweenService:Create(LeftWing, fadeOutTweenInfo, {ImageTransparency = 1}):Play()
@@ -306,6 +341,7 @@ do
 		local fillFadeOut = TweenService:Create(LoadingFill, fadeOutTweenInfo, {BackgroundTransparency = 1})
 		fillFadeOut:Play()
 		fillFadeOut.Completed:Wait()
+		SplashBackdrop:Destroy()
 		SplashImage:Destroy()
 		RightWing:Destroy()
 		LeftWing:Destroy()
