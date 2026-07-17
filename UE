@@ -1,13 +1,19 @@
 -- Undead Expedition module for Serenity. Wiped down to a blank slate to match the new
 -- hub's approach -- full copy of the old feature-rich version kept in
 -- UE_Legacy_Full.lua. This loads standalone (Serenity no longer exposes a shared
--- runtime/theme table for modules to hook into). Base TP works; ESP and Auto Farm are
--- laid out but not wired up yet; Full Bright is wired up.
+-- runtime/theme table for modules to hook into). Base TP and Full Bright are wired up.
+-- Auto Farm runs the old hub's "Auto Trap" logic verbatim (Hunter Trap / Graveyard /
+-- Ancient Ruins detection, fight the wave, collect drops, open key-gated crates,
+-- auto-sell, self-defense, idle crate sweep) -- only the ESP/HubState/keybind/rarity-
+-- filter plumbing around it was dropped since this panel doesn't have that shared UI.
+-- ESP itself is still just laid out, not wired up.
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local CoreGui = game:GetService("CoreGui")
 local Lighting = game:GetService("Lighting")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 
 local Player = Players.LocalPlayer
 local FrameColor = Color3.fromRGB(0x1E, 0x1E, 0x1E)
@@ -99,7 +105,7 @@ ScreenGui.Name = "SerenityUE"
 ScreenGui.Parent = CoreGui
 ScreenGui.ResetOnSpawn = false
 
-local FULL_HEIGHT = 232
+local FULL_HEIGHT = 246
 local MINI_HEIGHT = 44
 
 local PanelFrame = Instance.new("Frame")
@@ -184,8 +190,8 @@ BaseTPButton.MouseButton1Click:Connect(function()
 	TeleportToBase()
 end)
 
--- Feature row layout: label left, toggle right. Reused for ESP / Auto Farm (not wired up
--- yet) and Full Bright (wired up below).
+-- Feature row layout: label left, toggle right. Reused for ESP (not wired up yet),
+-- Auto Farm (wired up below), and Full Bright (wired up below).
 local function CreateFeatureRow(y, labelText)
 	local row = Instance.new("Frame")
 	row.Name = labelText:gsub("%s+", "") .. "Row"
@@ -227,11 +233,26 @@ local function CreateFeatureRow(y, labelText)
 	return row, toggle
 end
 
--- Layout only for now -- no ESP or Auto Farm logic wired up yet.
+-- Layout only for now -- no ESP logic wired up yet.
 local _, ESPToggle = CreateFeatureRow(96, "ESP")
-local _, AutoFarmToggle = CreateFeatureRow(140, "Auto Farm")
 
-local _, FullBrightToggle = CreateFeatureRow(184, "Full Bright")
+-- Auto Farm: wired to the ported Auto Trap logic further down this file. The row is
+-- grown a bit taller than the standard feature row to fit a phase/kill-count status line.
+local AutoFarmRow, AutoFarmToggle = CreateFeatureRow(140, "Auto Farm")
+AutoFarmRow.Size = UDim2.new(1, -32, 0, 50)
+local AutoFarmStatus = Instance.new("TextLabel")
+AutoFarmStatus.Name = "Status"
+AutoFarmStatus.Size = UDim2.new(1, -24, 0, 14)
+AutoFarmStatus.Position = UDim2.new(0, 12, 0, 32)
+AutoFarmStatus.BackgroundTransparency = 1
+AutoFarmStatus.Text = "0 cleared"
+AutoFarmStatus.Font = UIFont
+AutoFarmStatus.TextSize = 11
+AutoFarmStatus.TextColor3 = Color3.fromRGB(190, 190, 190)
+AutoFarmStatus.TextXAlignment = Enum.TextXAlignment.Left
+AutoFarmStatus.Parent = AutoFarmRow
+
+local _, FullBrightToggle = CreateFeatureRow(198, "Full Bright")
 FullBrightToggle.MouseButton1Click:Connect(function()
 	FullBrightEnabled = not FullBrightEnabled
 	FullBrightToggle.Text = FullBrightEnabled and "On" or "Off"
@@ -239,6 +260,1003 @@ FullBrightToggle.MouseButton1Click:Connect(function()
 		ApplyFullBright()
 	else
 		RestoreFullBright()
+	end
+end)
+
+-- ============================================================================
+-- Auto Farm: ported line-for-line from the old hub's Undead Expedition "Auto Trap"
+-- feature (UE_Legacy_Full.lua). Detects Hunter Trap / Graveyard / Ancient Ruins
+-- structures as they spawn, teleports to trigger them, fights the enemy wave, claims
+-- ground drops, opens any key-gated loot crate, returns to base, and repeats. Sweeps
+-- leftover crates when idle, auto-sells the backpack once it fills up, and fights back
+-- against anything that gets close while farming.
+--
+-- The only things dropped from the original are the pieces that depended on the old
+-- hub's shared HubState/ThemeObjects/keybind/rarity-filter-dock plumbing, which this
+-- standalone panel doesn't have: pickup rarity filtering now always allows every drop
+-- (matching the old default of every rarity being enabled), and there's no keybind or
+-- ESP-alert wiring. The actual farming state machine below is unchanged.
+-- ============================================================================
+local AutoFarmEnabled = false
+local AutoFarmKilled = 0
+local AutoFarmPhase = "Idle"
+local AutoFarmQueue = {}
+local AutoFarmHandled = {}
+local AutoFarmSweepSkipped = {}
+local ToolInteractionActive = false
+
+local BOX_TYPES = {"Rusty", "Wooden", "Silver", "Golden", "Ancient", "Grounder", "Hunter Trap"}
+local BOX_TYPE_REQUIRED_KEY = {
+	Grounder = "Grounder Key",
+	Ancient = "Ancient Key",
+}
+local KEY_TOOL_NAMES = {}
+for _, keyName in pairs(BOX_TYPE_REQUIRED_KEY) do
+	KEY_TOOL_NAMES[keyName] = true
+end
+
+local BOX_OPEN_HOLD_DURATION = 3
+local FARM_MOVE_HOLD_INTERVAL = 0.05
+local FARM_OPEN_SAFETY_BUFFER = 1.5
+local FARM_CLAIM_SEARCH_RADIUS = 35
+local FARM_CLAIM_SEARCH_TIMEOUT = 3
+local FARM_CLAIM_POST_FIRE_WAIT = 0.5
+local FARM_SKIP_COOLDOWN = 6
+local TRAP2_LAND_OFFSET = Vector3.new(6, 0, 0)
+local TRAP_TRIGGER_WAIT = 2
+local TRAP_HUNTER_SCAN_WINDOW = 10
+local TRAP_TRIGGER_ATTEMPTS = 3
+local TRAP_COMBAT_FIRE_INTERVAL = 0.2
+local TRAP_COMBAT_STANDOFF = 6
+local TRAP_RESPAWN_WAIT = 1
+local TRAP_IDLE_WAIT = 0.5
+local TRAP_WAVE_CLEAR_GRACE = 4
+
+local function PlayerRoot()
+	local character = Player and Player.Character
+	return character and character:FindFirstChild("HumanoidRootPart")
+end
+
+local function CleanStructureName(name)
+	name = tostring(name or "Structure")
+	name = name:gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
+	name = name:gsub("%s*%(%d+%)$", ""):gsub("[%s_%-%#]*%d+$", "")
+	name = name:gsub("^%s+", ""):gsub("%s+$", "")
+	return name ~= "" and name or "Structure"
+end
+
+local function StructureDisplayName(structure)
+	if not structure then return "Structure" end
+	if structure.Name == "CaveDungeon" then return "Cave" end
+	local displayName = structure:GetAttribute("DisplayName") or structure:GetAttribute("StructureName") or structure:GetAttribute("Name")
+	if displayName and tostring(displayName) ~= "" then return CleanStructureName(displayName) end
+	local stringValue = structure:FindFirstChild("Name")
+	if stringValue and stringValue:IsA("StringValue") and tostring(stringValue.Value) ~= "" then
+		return CleanStructureName(stringValue.Value)
+	end
+	return CleanStructureName(structure.Name)
+end
+
+local function StructureRoot(structure)
+	if not structure then return nil end
+	if structure:IsA("BasePart") then return structure end
+	if structure:IsA("Model") then return structure.PrimaryPart or structure:FindFirstChildWhichIsA("BasePart", true) end
+	return structure:FindFirstChildWhichIsA("BasePart", true)
+end
+
+local function StructuresFolder()
+	return workspace:FindFirstChild("Structures")
+end
+
+local function HasHunterTrapText(value)
+	local lower = string.lower(tostring(value or ""))
+	return lower:find("hunter", 1, true) ~= nil and lower:find("trap", 1, true) ~= nil
+end
+
+local function HunterTrapPart(box)
+	if not box then return nil end
+	if box:IsA("BasePart") and string.lower(box.Name) == "string" then return box end
+	local direct = box:FindFirstChild("string")
+	if direct and direct:IsA("BasePart") then return direct end
+	for _, child in ipairs(box:GetDescendants()) do
+		if child:IsA("BasePart") and string.lower(child.Name) == "string" then
+			return child
+		end
+	end
+	return nil
+end
+
+local function BoxRoot(box)
+	if not box then return nil end
+	if HasHunterTrapText(box.Name) then
+		local trapPart = HunterTrapPart(box)
+		if trapPart then return trapPart end
+	end
+	if box:IsA("BasePart") then return box end
+	if box:IsA("Model") then return box.PrimaryPart or box:FindFirstChildWhichIsA("BasePart", true) end
+	return box:FindFirstChildWhichIsA("BasePart", true)
+end
+
+local function BoxTypeFromName(name)
+	local lower = string.lower(tostring(name or ""))
+	if HasHunterTrapText(lower) then return "Hunter Trap" end
+	for _, boxType in ipairs(BOX_TYPES) do
+		if lower:find(string.lower(boxType), 1, true) then return boxType end
+	end
+	return nil
+end
+
+local function BoxType(box)
+	local nameType = BoxTypeFromName(box and box.Name)
+	if nameType then return nameType end
+	for _, child in ipairs(box:GetDescendants()) do
+		if child:IsA("StringValue") or child:IsA("TextLabel") or child:IsA("TextButton") then
+			local value = child:IsA("StringValue") and tostring(child.Value or "") or tostring(child.Text or "")
+			local valueLower = string.lower(value)
+			if HasHunterTrapText(valueLower) then return "Hunter Trap" end
+			local textType = BoxTypeFromName(valueLower)
+			if textType then return textType end
+		end
+	end
+	return nil
+end
+
+local function FindOpenPrompt(box)
+	local fallback
+	for _, child in ipairs(box:GetDescendants()) do
+		if child:IsA("ProximityPrompt") then
+			local action = string.lower(tostring(child.ActionText or ""))
+			if action:find("open", 1, true) then return child end
+			fallback = fallback or child
+		end
+	end
+	return fallback
+end
+
+local function FindNearbyClaimPrompt(position, radius)
+	-- Rarity filtering was dropped here (no filter dock in this standalone panel); this
+	-- claims any claimable drop in range, matching the old hub's all-rarities-enabled default.
+	local bestPrompt, bestPart, bestDist
+	for _, inst in ipairs(workspace:GetDescendants()) do
+		if inst:IsA("ProximityPrompt") and inst.Enabled then
+			local action = string.lower(tostring(inst.ActionText or ""))
+			if action:find("claim", 1, true) then
+				local part = inst.Parent
+				if part and part:IsA("BasePart") then
+					local dist = (part.Position - position).Magnitude
+					if dist <= radius and (not bestDist or dist < bestDist) then
+						bestDist = dist
+						bestPrompt = inst
+						bestPart = part
+					end
+				end
+			end
+		end
+	end
+	return bestPrompt, bestPart
+end
+
+local function PressInteractKey(keyCode)
+	if type(keypress) == "function" then
+		local ok = pcall(keypress, keyCode)
+		if ok then return true end
+	end
+	return pcall(function()
+		VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
+	end)
+end
+
+local function ReleaseInteractKey(keyCode)
+	if type(keyrelease) == "function" then
+		local ok = pcall(keyrelease, keyCode)
+		if ok then return end
+	end
+	pcall(function()
+		VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
+	end)
+end
+
+local function FindKeyTool(keyName)
+	local character = Player and Player.Character
+	if character then
+		local tool = character:FindFirstChild(keyName)
+		if tool and tool:IsA("Tool") then return tool, true end
+	end
+	local backpack = Player and Player:FindFirstChildOfClass("Backpack")
+	if backpack then
+		local tool = backpack:FindFirstChild(keyName)
+		if tool and tool:IsA("Tool") then return tool, false end
+	end
+	return nil, false
+end
+
+local function EquipKeyTool(keyName)
+	local character = Player and Player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return false end
+	local tool, alreadyEquipped = FindKeyTool(keyName)
+	if not tool then return false end
+	if not alreadyEquipped then
+		humanoid:EquipTool(tool)
+	end
+	return true
+end
+
+local function HoldOnBox(target, targetRoot, options)
+	options = options or {}
+	local statusLabel = options.StatusLabel
+	local logPrefix = options.LogPrefix or "[Auto Farm]"
+	local isEnabled = options.IsEnabled or function() return true end
+
+	local requiredKey = BOX_TYPE_REQUIRED_KEY[BoxType(target)]
+	if requiredKey then
+		if not EquipKeyTool(requiredKey) then
+			warn(logPrefix .. " missing " .. requiredKey .. " for " .. tostring(target.Name))
+			if statusLabel then statusLabel.Text = "Need " .. requiredKey end
+			return false
+		end
+		ToolInteractionActive = true
+	end
+
+	local openPrompt = FindOpenPrompt(target)
+	if not openPrompt then
+		warn(logPrefix .. " no ProximityPrompt found on " .. tostring(target.Name))
+		if statusLabel then statusLabel.Text = "No prompt found" end
+		ToolInteractionActive = false
+		return false
+	end
+
+	local anchorPart = (openPrompt.Parent and openPrompt.Parent:IsA("BasePart")) and openPrompt.Parent or targetRoot
+	local anchorPosition = anchorPart.Position + Vector3.new(0, 1, 0)
+	local DRIFT_TOLERANCE = 4
+
+	local function HasDriftedAway()
+		local root = PlayerRoot()
+		if not root then return true end
+		return (root.Position - anchorPosition).Magnitude > DRIFT_TOLERANCE
+	end
+
+	local function AimCameraAtPrompt()
+		local camera = workspace.CurrentCamera
+		local root = PlayerRoot()
+		if not camera or not root then return end
+		pcall(function()
+			camera.CameraType = Enum.CameraType.Scriptable
+			camera.CFrame = CFrame.new(root.Position + Vector3.new(0, 2.5, 0), anchorPosition)
+		end)
+	end
+
+	local function RestoreCamera()
+		local camera = workspace.CurrentCamera
+		if not camera then return end
+		local character = Player and Player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		pcall(function()
+			camera.CameraType = Enum.CameraType.Custom
+			if humanoid then camera.CameraSubject = humanoid end
+		end)
+	end
+
+	if not StableTeleport(CFrame.new(anchorPosition)) then
+		ToolInteractionActive = false
+		return false
+	end
+	task.wait(0.15)
+	AimCameraAtPrompt()
+
+	local waitDeadline = os.clock() + 1
+	while os.clock() < waitDeadline and openPrompt.Parent and not openPrompt.Enabled do
+		if HasDriftedAway() then StableTeleport(CFrame.new(anchorPosition)) end
+		AimCameraAtPrompt()
+		task.wait(0.1)
+	end
+	if not openPrompt.Enabled then
+		warn(logPrefix .. " prompt on " .. tostring(target.Name) .. " never became Enabled (out of range?)")
+	end
+
+	if statusLabel then statusLabel.Text = "Opening..." end
+	local holdDuration = (openPrompt.HoldDuration and openPrompt.HoldDuration > 0) and openPrompt.HoldDuration or BOX_OPEN_HOLD_DURATION
+	local keyCode = openPrompt.KeyboardKeyCode
+	if not keyCode or keyCode == Enum.KeyCode.Unknown then
+		keyCode = Enum.KeyCode.E
+	end
+
+	local pressedAtLeastOnce = false
+	local usedFireFallback = false
+	ToolInteractionActive = true
+	local deadline = os.clock() + holdDuration + FARM_OPEN_SAFETY_BUFFER
+	while isEnabled() and ScreenGui.Parent and target.Parent and BoxRoot(target) and os.clock() < deadline do
+		if HasDriftedAway() then StableTeleport(CFrame.new(anchorPosition)) end
+		AimCameraAtPrompt()
+		if PressInteractKey(keyCode) then
+			pressedAtLeastOnce = true
+		elseif not usedFireFallback then
+			usedFireFallback = true
+			warn(logPrefix .. " key simulation unavailable on " .. tostring(target.Name) .. " -- falling back to fireproximityprompt")
+			if type(fireproximityprompt) == "function" then
+				pcall(fireproximityprompt, openPrompt, holdDuration)
+			end
+		end
+		task.wait(FARM_MOVE_HOLD_INTERVAL)
+	end
+
+	if pressedAtLeastOnce then
+		ReleaseInteractKey(keyCode)
+	end
+	ToolInteractionActive = false
+	RestoreCamera()
+	local success = not (target.Parent and BoxRoot(target))
+	if not success then
+		warn(logPrefix .. " " .. tostring(target.Name) .. " did not open after firing the prompt")
+	end
+	return success
+end
+
+local function ClaimNearbyDrop(boxPosition, options)
+	options = options or {}
+	local isEnabled = options.IsEnabled or function() return true end
+	local claimDeadline = os.clock() + FARM_CLAIM_SEARCH_TIMEOUT
+	while isEnabled() and ScreenGui.Parent and os.clock() < claimDeadline do
+		local claimPrompt, claimPart = FindNearbyClaimPrompt(boxPosition, FARM_CLAIM_SEARCH_RADIUS)
+		if claimPrompt and claimPart then
+			ToolInteractionActive = true
+			local anchorPosition = claimPart.Position + Vector3.new(0, 1, 0)
+			if not StableTeleport(CFrame.new(anchorPosition)) then
+				ToolInteractionActive = false
+				return false
+			end
+			task.wait(0.1)
+
+			local keyCode = claimPrompt.KeyboardKeyCode
+			if not keyCode or keyCode == Enum.KeyCode.Unknown then keyCode = Enum.KeyCode.E end
+			if PressInteractKey(keyCode) then
+				task.wait(0.3)
+				ReleaseInteractKey(keyCode)
+			elseif type(fireproximityprompt) == "function" then
+				pcall(fireproximityprompt, claimPrompt)
+			end
+
+			task.wait(FARM_CLAIM_POST_FIRE_WAIT)
+			ToolInteractionActive = false
+			if not claimPrompt.Parent then return true end
+		else
+			task.wait(0.15)
+		end
+	end
+	return false
+end
+
+local function FindNamedTriggerPart(structure, partName)
+	local direct = structure:FindFirstChild(partName)
+	if direct and direct:IsA("BasePart") then return direct end
+	local lowerName = string.lower(partName)
+	for _, child in ipairs(structure:GetDescendants()) do
+		if child:IsA("BasePart") and string.lower(child.Name) == lowerName then
+			return child
+		end
+	end
+	return StructureRoot(structure)
+end
+
+local ENCOUNTERS = {
+	{
+		Id = "Hunter Trap",
+		Matches = function(structure)
+			return HasHunterTrapText(StructureDisplayName(structure)) or HasHunterTrapText(structure.Name)
+		end,
+		GetTriggerPosition = function(structure)
+			local isTrap2 = string.lower(StructureDisplayName(structure)):find("2", 1, true) ~= nil
+				or string.lower(structure.Name):find("2", 1, true) ~= nil
+			local part = FindNamedTriggerPart(structure, isTrap2 and "Trap" or "string")
+			if not part then return nil end
+			local position = part.Position
+			if isTrap2 then position = position + TRAP2_LAND_OFFSET end
+			return position
+		end,
+		EnemyNames = {"hunter"},
+		LootAttempts = 4,
+	},
+	{
+		Id = "Graveyard",
+		Matches = function(structure)
+			return string.lower(StructureDisplayName(structure)):find("graveyard", 1, true) ~= nil
+		end,
+		GetTriggerPosition = function(structure)
+			local part = FindNamedTriggerPart(structure, "Trap")
+			return part and part.Position
+		end,
+		EnemyNames = {"grounder"},
+		LootAttempts = 6,
+	},
+	{
+		Id = "Ancient Ruins",
+		Matches = function(structure)
+			return string.lower(StructureDisplayName(structure)):find("ancient", 1, true) ~= nil
+		end,
+		GetTriggerPosition = function(structure)
+			local part = FindNamedTriggerPart(structure, "Trap")
+			return part and part.Position
+		end,
+		EnemyNames = {"pharaon", "mummy"},
+		LootAttempts = 6,
+	},
+}
+
+local function FindMatchingEncounter(structure)
+	for _, encounter in ipairs(ENCOUNTERS) do
+		if encounter.Matches(structure) then
+			return encounter
+		end
+	end
+	return nil
+end
+
+local function IsMatchingEnemy(instance, nameFilters)
+	local lowerName = string.lower(instance.Name)
+	for _, filter in ipairs(nameFilters) do
+		if lowerName:find(filter, 1, true) then return true end
+	end
+	return false
+end
+
+local function EnemyRoot(enemy)
+	if not enemy then return nil end
+	return enemy.PrimaryPart or enemy:FindFirstChild("HumanoidRootPart") or enemy:FindFirstChildWhichIsA("BasePart", true)
+end
+
+local function GetActiveEnemies(nameFilters)
+	local enemiesFolder = workspace:FindFirstChild("Enemies")
+	if not enemiesFolder then return {} end
+	local enemies = {}
+	for _, child in ipairs(enemiesFolder:GetChildren()) do
+		if IsMatchingEnemy(child, nameFilters) then
+			local humanoid = child:FindFirstChildOfClass("Humanoid")
+			if humanoid and humanoid.Health > 0 then
+				table.insert(enemies, child)
+			end
+		end
+	end
+	return enemies
+end
+
+local function EquipAnyWeapon()
+	local character = Player and Player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return nil end
+	local equipped = character:FindFirstChildOfClass("Tool")
+	if equipped and not KEY_TOOL_NAMES[equipped.Name] then return equipped end
+	local backpack = Player and Player:FindFirstChildOfClass("Backpack")
+	if backpack then
+		for _, tool in ipairs(backpack:GetChildren()) do
+			if tool:IsA("Tool") and not KEY_TOOL_NAMES[tool.Name] then
+				humanoid:EquipTool(tool)
+				return tool
+			end
+		end
+	end
+	return nil
+end
+
+local function FightEnemies(trapPosition, nameFilters)
+	local mouseClick = ReplicatedStorage:FindFirstChild("MouseClick")
+	if not mouseClick then
+		warn("[Auto Farm] MouseClick remote not found; cannot attack enemies")
+	end
+	local hadRoot = true
+	local emptySince = nil
+	while AutoFarmEnabled and ScreenGui.Parent do
+		local enemies = GetActiveEnemies(nameFilters)
+		if #enemies == 0 then
+			if not emptySince then
+				emptySince = os.clock()
+			elseif os.clock() - emptySince >= TRAP_WAVE_CLEAR_GRACE then
+				return true
+			end
+			task.wait(0.5)
+		else
+			emptySince = nil
+			local root = PlayerRoot()
+			if not root then
+				hadRoot = false
+				task.wait(TRAP_RESPAWN_WAIT)
+			else
+				if not hadRoot then
+					hadRoot = true
+					task.wait(TRAP_RESPAWN_WAIT)
+					root = PlayerRoot()
+					if root then
+						warn("[Auto Farm] respawned, returning to trap site")
+						StableTeleport(CFrame.new(trapPosition + Vector3.new(0, 4, 0)))
+						task.wait(0.2)
+						root = PlayerRoot()
+					end
+				end
+				if root then
+					table.sort(enemies, function(a, b)
+						local rootA, rootB = EnemyRoot(a), EnemyRoot(b)
+						if not rootA then return false end
+						if not rootB then return true end
+						return (root.Position - rootA.Position).Magnitude < (root.Position - rootB.Position).Magnitude
+					end)
+					local target = enemies[1]
+					local targetRoot = EnemyRoot(target)
+					if targetRoot then
+						local flatOffset = Vector3.new(root.Position.X - targetRoot.Position.X, 0, root.Position.Z - targetRoot.Position.Z)
+						if flatOffset.Magnitude < 0.1 then flatOffset = Vector3.new(TRAP_COMBAT_STANDOFF, 0, 0) end
+						local standPosition = targetRoot.Position + flatOffset.Unit * TRAP_COMBAT_STANDOFF
+						local facePosition = Vector3.new(standPosition.X, targetRoot.Position.Y, standPosition.Z)
+						local lookAt = Vector3.new(targetRoot.Position.X, facePosition.Y, targetRoot.Position.Z)
+						if (lookAt - facePosition).Magnitude > 0.05 then
+							root.CFrame = CFrame.new(facePosition, lookAt)
+						else
+							root.CFrame = CFrame.new(facePosition)
+						end
+						root.AssemblyLinearVelocity = Vector3.zero
+						root.AssemblyAngularVelocity = Vector3.zero
+						local tool = EquipAnyWeapon()
+						if tool and mouseClick then
+							pcall(function()
+								mouseClick:FireServer(tool.Name, CFrame.new(targetRoot.Position))
+							end)
+						elseif not tool then
+							warn("[Auto Farm] no weapon Tool available to attack with")
+						end
+					end
+				end
+				task.wait(TRAP_COMBAT_FIRE_INTERVAL)
+			end
+		end
+	end
+	return false
+end
+
+local function ClaimDropsNearArea(fallbackPosition, attempts)
+	task.wait(0.75)
+	local consecutiveMisses = 0
+	for _ = 1, (attempts or 6) do
+		if not (AutoFarmEnabled and ScreenGui.Parent) then break end
+		local root = PlayerRoot()
+		local searchPosition = root and root.Position or fallbackPosition
+		local claimed = ClaimNearbyDrop(searchPosition, {IsEnabled = function() return AutoFarmEnabled end})
+		if claimed then
+			consecutiveMisses = 0
+		else
+			consecutiveMisses = consecutiveMisses + 1
+			if consecutiveMisses >= 2 then break end
+		end
+	end
+end
+
+local function GetIdleSweepBoxTargets()
+	local folder = StructuresFolder()
+	if not folder then return {} end
+	local targets = {}
+	for _, structure in ipairs(folder:GetChildren()) do
+		local isUnhandledEncounter = FindMatchingEncounter(structure) and not AutoFarmHandled[structure]
+		if not isUnhandledEncounter then
+			local lootFolder = structure:FindFirstChild("Loot")
+			if lootFolder then
+				for _, box in ipairs(lootFolder:GetChildren()) do
+					if BoxRoot(box) and BoxType(box) ~= "Hunter Trap" then
+						table.insert(targets, box)
+					end
+				end
+			end
+			for _, child in ipairs(structure:GetChildren()) do
+				if child.Name ~= "Loot" and BoxTypeFromName(child.Name) and BoxType(child) ~= "Hunter Trap" then
+					table.insert(targets, child)
+				end
+			end
+		end
+	end
+	return targets
+end
+
+local RefreshAutoFarmUI
+
+local function RunIdleCrateSweepStep()
+	local root = PlayerRoot()
+	if not root then return end
+
+	local now = os.clock()
+	local available = {}
+	for _, box in ipairs(GetIdleSweepBoxTargets()) do
+		local skipUntil = AutoFarmSweepSkipped[box]
+		if not skipUntil or now >= skipUntil then
+			table.insert(available, box)
+		end
+	end
+	if #available == 0 then return end
+
+	table.sort(available, function(a, b)
+		local rootA, rootB = BoxRoot(a), BoxRoot(b)
+		return (root.Position - rootA.Position).Magnitude < (root.Position - rootB.Position).Magnitude
+	end)
+
+	local target = available[1]
+	local targetRoot = BoxRoot(target)
+	if not targetRoot then return end
+
+	AutoFarmPhase = "Clearing crates"
+	RefreshAutoFarmUI()
+	local boxPosition = targetRoot.Position
+	local opened = HoldOnBox(target, targetRoot, {
+		StatusLabel = AutoFarmStatus,
+		LogPrefix = "[Auto Farm]",
+		IsEnabled = function() return AutoFarmEnabled end,
+	})
+	if opened then
+		if AutoFarmEnabled and ScreenGui.Parent then
+			ClaimDropsNearArea(boxPosition, 6)
+		end
+	else
+		AutoFarmSweepSkipped[target] = os.clock() + FARM_SKIP_COOLDOWN
+	end
+	if AutoFarmEnabled and #AutoFarmQueue == 0 then
+		AutoFarmPhase = "Idle"
+		RefreshAutoFarmUI()
+	end
+end
+
+local function RunAutoFarmStep()
+	if #AutoFarmQueue == 0 then
+		RunIdleCrateSweepStep()
+		return
+	end
+	local entry = table.remove(AutoFarmQueue, 1)
+	if not entry then return end
+	local structure, encounter = entry.Structure, entry.Encounter
+	AutoFarmHandled[structure] = true
+	if not structure.Parent then return end
+
+	local targetPosition = encounter.GetTriggerPosition(structure)
+	if not targetPosition then
+		warn("[Auto Farm] could not find a trigger part on " .. tostring(structure.Name) .. " (" .. encounter.Id .. ")")
+		return
+	end
+
+	local enemiesFound = false
+	for attempt = 1, TRAP_TRIGGER_ATTEMPTS do
+		if not AutoFarmEnabled then break end
+		AutoFarmPhase = "Triggering " .. encounter.Id
+		RefreshAutoFarmUI()
+		local root = PlayerRoot()
+		if not root then break end
+		StableTeleport(CFrame.new(targetPosition + Vector3.new(0, 4, 0)))
+		task.wait(TRAP_TRIGGER_WAIT)
+
+		AutoFarmPhase = "Waiting for enemies"
+		RefreshAutoFarmUI()
+		local waveDeadline = os.clock() + TRAP_HUNTER_SCAN_WINDOW
+		while #GetActiveEnemies(encounter.EnemyNames) == 0 and os.clock() < waveDeadline and AutoFarmEnabled do
+			task.wait(0.25)
+		end
+		if #GetActiveEnemies(encounter.EnemyNames) > 0 then
+			enemiesFound = true
+			break
+		end
+		warn("[Auto Farm] no enemies spawned after triggering " .. tostring(structure.Name) .. " (" .. encounter.Id .. "), attempt " .. attempt .. "/" .. TRAP_TRIGGER_ATTEMPTS)
+	end
+
+	if not enemiesFound then
+		warn("[Auto Farm] giving up on " .. tostring(structure.Name) .. " (" .. encounter.Id .. ") after " .. TRAP_TRIGGER_ATTEMPTS .. " attempts")
+		AutoFarmPhase = "Idle"
+		RefreshAutoFarmUI()
+		return
+	end
+
+	AutoFarmPhase = "Fighting"
+	RefreshAutoFarmUI()
+	FightEnemies(targetPosition, encounter.EnemyNames)
+
+	if encounter.LootAttempts and encounter.LootAttempts > 0 then
+		AutoFarmPhase = "Collecting drops"
+		RefreshAutoFarmUI()
+		ClaimDropsNearArea(targetPosition, encounter.LootAttempts)
+
+		AutoFarmPhase = "Opening " .. encounter.Id .. " crate"
+		RefreshAutoFarmUI()
+		local lootFolder = structure:FindFirstChild("Loot")
+		if lootFolder then
+			for _, box in ipairs(lootFolder:GetChildren()) do
+				if BOX_TYPE_REQUIRED_KEY[BoxType(box)] then
+					local boxRoot = BoxRoot(box)
+					if boxRoot then
+						local boxPosition = boxRoot.Position
+						local opened = HoldOnBox(box, boxRoot, {
+							StatusLabel = AutoFarmStatus,
+							LogPrefix = "[Auto Farm]",
+							IsEnabled = function() return AutoFarmEnabled end,
+						})
+						if opened then
+							ClaimDropsNearArea(boxPosition, 6)
+						end
+					end
+				end
+			end
+		end
+	end
+
+	AutoFarmPhase = "Returning to base"
+	RefreshAutoFarmUI()
+	local root2 = PlayerRoot()
+	if root2 then TeleportToBase() end
+	AutoFarmKilled = AutoFarmKilled + 1
+	AutoFarmPhase = "Idle"
+	RefreshAutoFarmUI()
+end
+
+local function IsQueuedForAutoFarm(structure)
+	for _, entry in ipairs(AutoFarmQueue) do
+		if entry.Structure == structure then return true end
+	end
+	return false
+end
+
+local function HandleFarmStructureSpawn(structure)
+	if AutoFarmHandled[structure] or IsQueuedForAutoFarm(structure) then return end
+	local encounter = FindMatchingEncounter(structure)
+	if encounter then
+		table.insert(AutoFarmQueue, {Structure = structure, Encounter = encounter})
+	end
+end
+
+local function ScanForExistingTrapStructures()
+	local folder = StructuresFolder()
+	if not folder then return end
+	for _, structure in ipairs(folder:GetChildren()) do
+		if not AutoFarmHandled[structure] and not IsQueuedForAutoFarm(structure) then
+			local encounter = FindMatchingEncounter(structure)
+			if encounter then
+				table.insert(AutoFarmQueue, {Structure = structure, Encounter = encounter})
+			end
+		end
+	end
+end
+
+local SELLER_POSITION = Vector3.new(124, 53, -383)
+local AUTO_SELL_THRESHOLD = 25
+local AUTO_SELL_SETTLE_WAIT = 0.75
+
+local function GetBackpackItemCount()
+	local backpack = Player and Player:FindFirstChildOfClass("Backpack")
+	if not backpack then return 0 end
+	local count = 0
+	for _, tool in ipairs(backpack:GetChildren()) do
+		if tool:IsA("Tool") then count = count + 1 end
+	end
+	return count
+end
+
+local function GetAllGroundItems()
+	local items = {}
+	for _, inst in ipairs(workspace:GetDescendants()) do
+		if inst:IsA("ProximityPrompt") and inst.Enabled then
+			local action = string.lower(tostring(inst.ActionText or ""))
+			if action:find("claim", 1, true) then
+				local part = inst.Parent
+				if part and part:IsA("BasePart") then
+					table.insert(items, part)
+				end
+			end
+		end
+	end
+	return items
+end
+
+local MAX_SWEEP_TARGETS = 10
+
+local function RunMissedItemSweep()
+	local ok = pcall(function()
+		local candidates = {}
+		for _, part in ipairs(GetAllGroundItems()) do
+			if part and part.Parent then
+				table.insert(candidates, part)
+			end
+		end
+		if #candidates == 0 then return end
+
+		local root = PlayerRoot()
+		if root then
+			table.sort(candidates, function(a, b)
+				return (a.Position - root.Position).Magnitude < (b.Position - root.Position).Magnitude
+			end)
+		end
+
+		AutoFarmPhase = "Sweeping missed items"
+		RefreshAutoFarmUI()
+
+		for index, part in ipairs(candidates) do
+			if index > MAX_SWEEP_TARGETS then break end
+			if not (AutoFarmEnabled and ScreenGui.Parent) then break end
+			if part and part.Parent then
+				StableTeleport(CFrame.new(part.Position + Vector3.new(0, 3, 0)))
+				task.wait(0.2)
+				ClaimNearbyDrop(part.Position, {IsEnabled = function() return AutoFarmEnabled end})
+			end
+		end
+	end)
+	if not ok then
+		warn("[Auto Farm] missed-item sweep failed, continuing")
+	end
+end
+
+local function RunAutoSellStep()
+	local backpack = Player and Player:FindFirstChildOfClass("Backpack")
+	if not backpack then return end
+
+	ToolInteractionActive = true
+	AutoFarmPhase = "Selling inventory"
+	RefreshAutoFarmUI()
+
+	local ok = pcall(function()
+		-- protect the currently equipped weapon and any quest keys from being swept up by the "sell everything" remote
+		local protectedTools = {}
+		local character = Player and Player.Character
+		local equipped = character and character:FindFirstChildOfClass("Tool")
+		if equipped then
+			table.insert(protectedTools, {Tool = equipped, WasEquipped = true})
+			equipped.Parent = nil
+		end
+		for _, tool in ipairs(backpack:GetChildren()) do
+			if tool:IsA("Tool") and KEY_TOOL_NAMES[tool.Name] then
+				table.insert(protectedTools, {Tool = tool, WasEquipped = false})
+				tool.Parent = nil
+			end
+		end
+
+		StableTeleport(CFrame.new(SELLER_POSITION))
+		task.wait(0.3)
+
+		local base = workspace:FindFirstChild("Base")
+		local seller = base and base:FindFirstChild("Seller")
+		local prompt = seller and seller:FindFirstChildOfClass("ProximityPrompt")
+		if prompt then
+			pcall(function() fireproximityprompt(prompt) end)
+			task.wait(0.3)
+		end
+
+		local sellRemote = ReplicatedStorage:FindFirstChild("SellRemote")
+		if sellRemote then
+			pcall(function() sellRemote:FireServer("AllItems") end)
+		end
+		task.wait(AUTO_SELL_SETTLE_WAIT)
+
+		for _, entry in ipairs(protectedTools) do
+			pcall(function()
+				if entry.Tool and entry.Tool.Parent == nil then
+					local currentCharacter = Player and Player.Character
+					local currentBackpack = Player and Player:FindFirstChildOfClass("Backpack")
+					entry.Tool.Parent = (entry.WasEquipped and currentCharacter) or currentBackpack or currentCharacter
+				end
+			end)
+		end
+	end)
+	if not ok then
+		warn("[Auto Farm] auto-sell step failed, resuming normal operation")
+	end
+
+	ToolInteractionActive = false
+	AutoFarmPhase = "Idle"
+	RefreshAutoFarmUI()
+end
+
+RefreshAutoFarmUI = function()
+	AutoFarmToggle.Text = AutoFarmEnabled and "On" or "Off"
+	AutoFarmStatus.Text = AutoFarmEnabled and (tostring(AutoFarmPhase or "Idle") .. (" · %d cleared"):format(AutoFarmKilled)) or ("%d cleared"):format(AutoFarmKilled)
+end
+
+local function SetAutoFarmEnabled(enabled)
+	AutoFarmEnabled = enabled == true
+	if not AutoFarmEnabled then
+		AutoFarmPhase = "Idle"
+	end
+	RefreshAutoFarmUI()
+end
+
+local function ToggleAutoFarm()
+	SetAutoFarmEnabled(not AutoFarmEnabled)
+end
+
+AutoFarmToggle.MouseButton1Click:Connect(ToggleAutoFarm)
+
+local function WatchFarmStructures()
+	local folder = StructuresFolder()
+	if not folder then return end
+	for _, structure in ipairs(folder:GetChildren()) do
+		HandleFarmStructureSpawn(structure)
+	end
+	folder.ChildAdded:Connect(function(structure)
+		HandleFarmStructureSpawn(structure)
+	end)
+end
+WatchFarmStructures()
+workspace.ChildAdded:Connect(function(child)
+	if child.Name == "Structures" then
+		task.defer(WatchFarmStructures)
+	end
+end)
+
+task.spawn(function()
+	while ScreenGui.Parent do
+		if AutoFarmEnabled then
+			local ok, err = pcall(function()
+				if GetBackpackItemCount() >= AUTO_SELL_THRESHOLD then
+					RunMissedItemSweep()
+					RunAutoSellStep()
+				else
+					ScanForExistingTrapStructures()
+					RunAutoFarmStep()
+				end
+			end)
+			if not ok then
+				warn("[Auto Farm] step error: " .. tostring(err))
+				ToolInteractionActive = false
+				AutoFarmPhase = "Idle"
+				RefreshAutoFarmUI()
+			end
+		end
+		task.wait(TRAP_IDLE_WAIT)
+	end
+end)
+
+local SELF_DEFENSE_RADIUS = 12
+local SELF_DEFENSE_FIRE_INTERVAL = 0.3
+
+local function GetNearbyHostileEnemies(radius)
+	local root = PlayerRoot()
+	if not root then return {} end
+	local enemiesFolder = workspace:FindFirstChild("Enemies")
+	if not enemiesFolder then return {} end
+	local nearby = {}
+	for _, child in ipairs(enemiesFolder:GetChildren()) do
+		local humanoid = child:FindFirstChildOfClass("Humanoid")
+		if humanoid and humanoid.Health > 0 then
+			local enemyRoot = EnemyRoot(child)
+			if enemyRoot and (enemyRoot.Position - root.Position).Magnitude <= radius then
+				table.insert(nearby, child)
+			end
+		end
+	end
+	return nearby
+end
+
+task.spawn(function()
+	local lastFire = 0
+	local mouseClick = ReplicatedStorage:FindFirstChild("MouseClick")
+	while ScreenGui.Parent do
+		if AutoFarmEnabled and not ToolInteractionActive then
+			local now = os.clock()
+			if now - lastFire >= SELF_DEFENSE_FIRE_INTERVAL then
+				local nearby = GetNearbyHostileEnemies(SELF_DEFENSE_RADIUS)
+				if #nearby > 0 then
+					local root = PlayerRoot()
+					if root and mouseClick then
+						table.sort(nearby, function(a, b)
+							local rootA, rootB = EnemyRoot(a), EnemyRoot(b)
+							if not rootA then return false end
+							if not rootB then return true end
+							return (root.Position - rootA.Position).Magnitude < (root.Position - rootB.Position).Magnitude
+						end)
+						local closestRoot = EnemyRoot(nearby[1])
+						if closestRoot then
+							lastFire = now
+							local lookAt = Vector3.new(closestRoot.Position.X, root.Position.Y, closestRoot.Position.Z)
+							if (lookAt - root.Position).Magnitude > 0.05 then
+								root.CFrame = CFrame.new(root.Position, lookAt)
+							end
+							local tool = EquipAnyWeapon()
+							if tool then
+								pcall(function()
+									mouseClick:FireServer(tool.Name, CFrame.new(closestRoot.Position))
+								end)
+							end
+						end
+					end
+				end
+			end
+		end
+		task.wait(0.25)
 	end
 end)
 
