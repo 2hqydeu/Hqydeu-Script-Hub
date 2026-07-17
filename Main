@@ -139,9 +139,9 @@ local MainFrame
 -- ScreenGui at its own absolute screen position and fades out on its own tween, so
 -- nothing is bounded by an invisible box that could clip the (larger-than-the-emblem)
 -- wings. Emblem spins/grows/fades in while the wings slide in from the screen edges at
--- the same time (not after), meeting at its sides with a ripple where they land, then
--- everything settles into a quick, contained float until a fake ~3s "loading" (status
--- line + progress bar) finishes, at which point the whole thing fades out together.
+-- the same time (not after), meeting at its sides, then everything holds still (no
+-- ripple, no idle float) through a fake ~3s "loading" (status line + progress bar),
+-- at which point the whole thing fades out together.
 do
 	-- Shared vertical anchor for the whole composition (screen-center scale + this pixel
 	-- offset) -- everything below is positioned relative to it, tight enough that the
@@ -267,33 +267,6 @@ do
 		LoadingFill.Size = UDim2.new(1, 0, 1, 0)
 	end
 
-	-- Ring that blooms outward from the emblem's center and fades, timed to the instant
-	-- the wings land -- a "shockwave" for the meeting point instead of just a hard stop.
-	local function PlayShockwave()
-		local ring = Instance.new("Frame")
-		ring.Name = "Shockwave"
-		ring.AnchorPoint = Vector2.new(0.5, 0.5)
-		ring.Position = UDim2.new(0.5, 0, CENTER_Y, EMBLEM_Y_OFFSET)
-		ring.Size = UDim2.new(0, EMBLEM_SIZE * 0.35, 0, EMBLEM_SIZE * 0.35)
-		ring.BackgroundTransparency = 1
-		ring.BorderSizePixel = 0
-		ring.ZIndex = 6
-		ring.Parent = ScreenGui
-		Instance.new("UICorner", ring).CornerRadius = UDim.new(1, 0)
-		local ringStroke = Instance.new("UIStroke")
-		ringStroke.Color = AccentColor
-		ringStroke.Thickness = 5
-		ringStroke.Transparency = 0.1
-		ringStroke.Parent = ring
-
-		local ringTweenInfo = TweenInfo.new(0.55, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-		TweenService:Create(ring, ringTweenInfo, {
-			Size = UDim2.new(0, EMBLEM_SIZE * 2.3, 0, EMBLEM_SIZE * 2.3),
-		}):Play()
-		TweenService:Create(ringStroke, ringTweenInfo, {Transparency = 1}):Play()
-		task.delay(ringTweenInfo.Time, function() ring:Destroy() end)
-	end
-
 	task.spawn(function()
 		-- Emblem grow/fade and the wings sliding in all start together instead of one
 		-- waiting on the other, so the whole entrance reads as one synced motion.
@@ -315,34 +288,15 @@ do
 		rightWingIn:Play()
 		leftWingIn:Play()
 		rightWingIn.Completed:Wait()
-		PlayShockwave()
 		spinIn.Completed:Wait() -- spin-in runs a little longer than the wings; let it finish
 
-		-- A small, contained, quick float once everything has landed -- applies to the
-		-- emblem and both wings (never the loading bar/label), and is fast enough to read
-		-- as flowing rather than a slow drift.
-		local floatTweenInfo = TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
-		local emblemFloat = TweenService:Create(SplashImage, floatTweenInfo, {
-			Position = UDim2.new(0.5, 6, CENTER_Y, EMBLEM_Y_OFFSET - 8),
-		})
-		local rightWingFloat = TweenService:Create(RightWing, floatTweenInfo, {
-			Position = UDim2.new(0.5, WING_HALF_GAP + 5, CENTER_Y, EMBLEM_Y_OFFSET - 6),
-		})
-		local leftWingFloat = TweenService:Create(LeftWing, floatTweenInfo, {
-			Position = UDim2.new(0.5, -WING_HALF_GAP - 5, CENTER_Y, EMBLEM_Y_OFFSET - 6),
-		})
-		emblemFloat:Play()
-		rightWingFloat:Play()
-		leftWingFloat:Play()
-
+		-- Everything holds still once landed -- no ripple, no idle float -- while the
+		-- fake ~3s "loading" runs.
 		RunFakeLoading(3)
 
 		-- Fade starts the instant loading finishes -- no pause in between -- so there's
 		-- never a moment where the bar looks done but nothing's actually happening yet.
 		-- Every piece fades on its own tween (no shared background to fade as a group).
-		emblemFloat:Cancel()
-		rightWingFloat:Cancel()
-		leftWingFloat:Cancel()
 		local fadeOutTweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 		TweenService:Create(SplashImage, fadeOutTweenInfo, {ImageTransparency = 1}):Play()
 		TweenService:Create(RightWing, fadeOutTweenInfo, {ImageTransparency = 1}):Play()
@@ -1428,10 +1382,12 @@ local PickerH, PickerS, PickerV = Color3.toHSV(ESPColor)
 local DraggingSV = false
 local DraggingHue = false
 
+local ESP_COLOR_PICKER_WIDTH = 130
+
 local ESPColorPicker = Instance.new("Frame")
 ESPColorPicker.Name = "ESPColorPicker"
-ESPColorPicker.Size = UDim2.new(0, 130, 0, 196)
-ESPColorPicker.AnchorPoint = Vector2.new(1, 0)
+ESPColorPicker.Size = UDim2.new(0, ESP_COLOR_PICKER_WIDTH, 0, 196)
+ESPColorPicker.AnchorPoint = Vector2.new(0, 0)
 ESPColorPicker.BackgroundColor3 = FrameColor
 ESPColorPicker.BorderSizePixel = 0
 ESPColorPicker.Visible = false
@@ -1443,8 +1399,17 @@ ESPColorPickerStroke.Color = Color3.fromRGB(0, 0, 0)
 ESPColorPickerStroke.Thickness = 1
 ESPColorPickerStroke.Parent = ESPColorPicker
 
+-- Docked to the ESP Color button itself (right edge aligned, sitting just below it) --
+-- like the keybind-clear prompt -- rather than to the window's left edge: docking off
+-- the side of the whole window meant it could land off-screen entirely depending on
+-- window position and viewport width, which is almost certainly why it read as
+-- "invisible." Anchoring to a button that's already guaranteed to be on-screen fixes
+-- that outright.
 local function UpdateESPColorPickerPosition()
-	ESPColorPicker.Position = UDim2.fromOffset(MainFrame.AbsolutePosition.X - 8, MainFrame.AbsolutePosition.Y + 36)
+	ESPColorPicker.Position = UDim2.fromOffset(
+		ESPColorButton.AbsolutePosition.X + ESPColorButton.AbsoluteSize.X - ESP_COLOR_PICKER_WIDTH,
+		ESPColorButton.AbsolutePosition.Y + ESPColorButton.AbsoluteSize.Y + 6
+	)
 end
 MainFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(UpdateESPColorPickerPosition)
 MainFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdateESPColorPickerPosition)
@@ -1561,6 +1526,12 @@ for index = 1, 5 do
 	swatchStroke.Thickness = 1
 	swatchStroke.Parent = swatch
 	SavedColorButtons[index] = swatch
+end
+
+-- Belt-and-suspenders, matching the old hub exactly: force every descendant to the same
+-- high ZIndex so nothing about sibling ordering inside the picker is left ambiguous.
+for _, pickerObject in ipairs(ESPColorPicker:GetDescendants()) do
+	if pickerObject:IsA("GuiObject") then pickerObject.ZIndex = 51 end
 end
 
 local function RefreshPickerMarkers()
@@ -1923,7 +1894,11 @@ local ScriptsPage = CreateTab("Scripts", 5, "77194728508403", true)
 -- network, but still actually executes the chunk again each time -- these game modules
 -- are built to detect their own already-built UI and reopen it instead of rebuilding
 -- from scratch, so re-running is how you get it back after closing it.
-local ScriptRunner = {Sources = {}}
+-- Buttons/ActiveGame track which single game is considered "open" so opening a
+-- different one resets whichever was previously open back to Execute. Note: this can't
+-- reach into that other game's own script to actually close its live UI -- none of these
+-- modules expose a close hook back to the hub -- it only stops treating it as open here.
+local ScriptRunner = {Sources = {}, Buttons = {}, ActiveGame = nil, Busy = false}
 local function RunScriptOnce(key, url)
 	local source = ScriptRunner.Sources[key]
 	if not source then
@@ -1975,9 +1950,22 @@ local function CreateGameRow(parent, y, gameTitle, url)
 	executeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	executeBtn.Parent = row
 	Instance.new("UICorner", executeBtn).CornerRadius = UDim.new(0, 6)
+	ScriptRunner.Buttons[gameTitle] = executeBtn
 
 	executeBtn.MouseButton1Click:Connect(function()
 		PlayClick()
+		if ScriptRunner.Busy then return end -- debounce: ignore double-clicks mid-launch
+		ScriptRunner.Busy = true
+
+		-- Only one game counts as "open" at a time -- opening a different one resets
+		-- whichever was previously open back to Execute and drops its cached source, so
+		-- it does a full reload (not a quick reopen) if picked again later.
+		if ScriptRunner.ActiveGame and ScriptRunner.ActiveGame ~= gameTitle then
+			local previousButton = ScriptRunner.Buttons[ScriptRunner.ActiveGame]
+			if previousButton then previousButton.Text = "Execute" end
+			ScriptRunner.Sources[ScriptRunner.ActiveGame] = nil
+		end
+
 		-- No "already loaded, do nothing" guard -- once it's run once, this re-runs the
 		-- cached source every click, which lets a closed game UI be reopened. "Open"
 		-- (not "Loaded") reflects that it stays clickable afterward instead of going dead.
@@ -1985,6 +1973,8 @@ local function CreateGameRow(parent, y, gameTitle, url)
 		executeBtn.Text = reopening and "Opening..." or "Loading..."
 		local ok = RunScriptOnce(gameTitle, url)
 		executeBtn.Text = ok and "Open" or "Execute"
+		ScriptRunner.ActiveGame = ok and gameTitle or nil
+		ScriptRunner.Busy = false
 	end)
 
 	return row
