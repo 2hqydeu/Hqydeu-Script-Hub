@@ -129,8 +129,8 @@ ClickSound.Parent = ScreenGui
 local function PlayClick() ClickSound:Play() end
 
 -- Main Window
-local HEADER_HEIGHT = 58
-local FULL_SIZE = UDim2.new(0, 560, 0, 430)
+local HEADER_HEIGHT = 92
+local FULL_SIZE = UDim2.new(0, 560, 0, 464)
 local MINI_SIZE = UDim2.new(0, 220, 0, HEADER_HEIGHT)
 local WINDOW_POSITION = UDim2.new(0.5, -280, 0.5, -215)
 
@@ -387,8 +387,8 @@ MainCorner.Parent = MainFrame
 -- the center.
 local TitleEmblem = Instance.new("ImageLabel")
 TitleEmblem.Name = "TitleEmblem"
-TitleEmblem.Size = UDim2.new(0, 32, 0, 32)
-TitleEmblem.Position = UDim2.new(0, 16, 0, 4)
+TitleEmblem.Size = UDim2.new(0, 68, 0, 68)
+TitleEmblem.Position = UDim2.new(0, 14, 0, 6)
 TitleEmblem.BackgroundTransparency = 1
 TitleEmblem.Image = "rbxassetid://130985618733437"
 TitleEmblem.ScaleType = Enum.ScaleType.Fit
@@ -397,7 +397,7 @@ TitleEmblem.Parent = MainFrame
 local TimeLabel = Instance.new("TextLabel")
 TimeLabel.Name = "TimeLabel"
 TimeLabel.Size = UDim2.new(0, 200, 0, 14)
-TimeLabel.Position = UDim2.new(0, 18, 0, 36)
+TimeLabel.Position = UDim2.new(0, 18, 0, 78)
 TimeLabel.BackgroundTransparency = 1
 TimeLabel.Text = os.date("%I:%M:%S %p")
 TimeLabel.Font = UIFont
@@ -416,7 +416,7 @@ end)
 local MiniButton = Instance.new("TextButton")
 MiniButton.Name = "MiniButton"
 MiniButton.Size = UDim2.new(0, 26, 0, 26)
-MiniButton.Position = UDim2.new(1, -38, 0, 16)
+MiniButton.Position = UDim2.new(1, -38, 0, 33)
 MiniButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 MiniButton.BackgroundTransparency = 0.4
 MiniButton.BorderSizePixel = 0
