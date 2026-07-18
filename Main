@@ -386,33 +386,37 @@ MainCorner.Parent = MainFrame
 -- window's background. Rounded to match MainFrame's own corner radius -- ClipsDescendants
 -- clips to MainFrame's rectangular bounds, not its rounded shape, so without its own
 -- UICorner this would show square corners poking out past the window's rounded top.
-local HeaderBackdrop = Instance.new("ImageLabel")
-HeaderBackdrop.Name = "HeaderBackdrop"
-HeaderBackdrop.Size = UDim2.new(1, 0, 0, HEADER_HEIGHT)
-HeaderBackdrop.Position = UDim2.new(0, 0, 0, 0)
-HeaderBackdrop.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-HeaderBackdrop.BorderSizePixel = 0
-HeaderBackdrop.Image = "rbxassetid://104572575724201"
-HeaderBackdrop.ScaleType = Enum.ScaleType.Crop
-HeaderBackdrop.Parent = MainFrame
-local headerBackdropCorner = Instance.new("UICorner")
-headerBackdropCorner.CornerRadius = UDim.new(0, 14)
-headerBackdropCorner.Parent = HeaderBackdrop
+-- Wrapped in do...end: these locals are never referenced past this block, so scoping
+-- them here frees their slots instead of counting against the script's 200-local cap.
+do
+	local HeaderBackdrop = Instance.new("ImageLabel")
+	HeaderBackdrop.Name = "HeaderBackdrop"
+	HeaderBackdrop.Size = UDim2.new(1, 0, 0, HEADER_HEIGHT)
+	HeaderBackdrop.Position = UDim2.new(0, 0, 0, 0)
+	HeaderBackdrop.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	HeaderBackdrop.BorderSizePixel = 0
+	HeaderBackdrop.Image = "rbxassetid://104572575724201"
+	HeaderBackdrop.ScaleType = Enum.ScaleType.Crop
+	HeaderBackdrop.Parent = MainFrame
+	local headerBackdropCorner = Instance.new("UICorner")
+	headerBackdropCorner.CornerRadius = UDim.new(0, 14)
+	headerBackdropCorner.Parent = HeaderBackdrop
 
--- Body backdrop: same idea, covering everything below the header strip (tab bar +
--- content area both draw on top of it, same as the header's own contents do).
-local BodyBackdrop = Instance.new("ImageLabel")
-BodyBackdrop.Name = "BodyBackdrop"
-BodyBackdrop.Size = UDim2.new(1, 0, 1, -HEADER_HEIGHT)
-BodyBackdrop.Position = UDim2.new(0, 0, 0, HEADER_HEIGHT)
-BodyBackdrop.BackgroundColor3 = FrameColor
-BodyBackdrop.BorderSizePixel = 0
-BodyBackdrop.Image = "rbxassetid://123770684089952"
-BodyBackdrop.ScaleType = Enum.ScaleType.Crop
-BodyBackdrop.Parent = MainFrame
-local bodyBackdropCorner = Instance.new("UICorner")
-bodyBackdropCorner.CornerRadius = UDim.new(0, 14)
-bodyBackdropCorner.Parent = BodyBackdrop
+	-- Body backdrop: same idea, covering everything below the header strip (tab bar +
+	-- content area both draw on top of it, same as the header's own contents do).
+	local BodyBackdrop = Instance.new("ImageLabel")
+	BodyBackdrop.Name = "BodyBackdrop"
+	BodyBackdrop.Size = UDim2.new(1, 0, 1, -HEADER_HEIGHT)
+	BodyBackdrop.Position = UDim2.new(0, 0, 0, HEADER_HEIGHT)
+	BodyBackdrop.BackgroundColor3 = FrameColor
+	BodyBackdrop.BorderSizePixel = 0
+	BodyBackdrop.Image = "rbxassetid://123770684089952"
+	BodyBackdrop.ScaleType = Enum.ScaleType.Crop
+	BodyBackdrop.Parent = MainFrame
+	local bodyBackdropCorner = Instance.new("UICorner")
+	bodyBackdropCorner.CornerRadius = UDim.new(0, 14)
+	bodyBackdropCorner.Parent = BodyBackdrop
+end
 
 -- Header: title emblem (same mark as the splash screen, in place of the "Serenity" text),
 -- live local clock underneath it, minimize, and a plain "L Ctrl" hint -- all top-anchored
@@ -1194,6 +1198,23 @@ end
 -- the old feature-rich hub), ESP Labels (name/health/distance), and Camera (Free Cam +
 -- FOV, also ported). All three ESP effects share one color, set from the ESP Color row's
 -- picker below the feature rows.
+-- Forward-declared here (not inside the do block below) because DestroyGui and the global
+-- keybind dispatcher, both much further down the file, need to read/call these.
+local OutlineESPEnabled, OutlineESPKeybind, OutlineHighlights
+local BoxESPEnabled, BoxESPKeybind, BoxAdornments
+local ESPLabelsEnabled, ESPLabelsKeybind
+local RemoveOutlineHighlight, RemoveBoxAdornments, RemoveESPLabel
+local ToggleOutlineESP, ToggleBoxESP, ToggleESPLabels
+local CloseESPColorPicker
+local FreeCamKeybind, DEFAULT_FOV
+local DisableFreeCam, ToggleFreeCam
+local freeCamRenderConnection
+
+-- Wrapped in do...end: everything else in this section is only ever used while building
+-- the Visuals tab, so scoping it here frees its locals instead of them all counting
+-- against the script's 200-local cap for the rest of the file.
+do
+
 local VisualsPage = CreateTab("Visuals", 3, "90467794700971", true)
 
 local ESPDefaultColor = Color3.fromRGB(100, 255, 100)
@@ -1206,22 +1227,22 @@ local ESPAdornmentRoot = Instance.new("Folder")
 ESPAdornmentRoot.Name = "SerenityESPAdornments"
 ESPAdornmentRoot.Parent = ScreenGui
 
-local OutlineESPEnabled = false
-local OutlineESPKeybind = Enum.KeyCode.Unknown
-local OutlineHighlights = {} -- [Player] = Highlight
+OutlineESPEnabled = false
+OutlineESPKeybind = Enum.KeyCode.Unknown
+OutlineHighlights = {} -- [Player] = Highlight
 
-local BoxESPEnabled = false
-local BoxESPKeybind = Enum.KeyCode.Unknown
-local BoxAdornments = {} -- [Player] = {[part] = BoxHandleAdornment}
+BoxESPEnabled = false
+BoxESPKeybind = Enum.KeyCode.Unknown
+BoxAdornments = {} -- [Player] = {[part] = BoxHandleAdornment}
 
-local ESPLabelsEnabled = false
-local ESPLabelsKeybind = Enum.KeyCode.Unknown
+ESPLabelsEnabled = false
+ESPLabelsKeybind = Enum.KeyCode.Unknown
 
 -- Keyed by Player rather than Character: a Player persists across deaths/respawns, so
 -- tracking by Player (matching the old feature-rich hub) means a stale highlight or box
 -- set from a previous life is always reachable to clear, even after its Character is
 -- long gone.
-local function RemoveOutlineHighlight(plr)
+function RemoveOutlineHighlight(plr)
 	local highlight = OutlineHighlights[plr]
 	if highlight then highlight:Destroy() end
 	OutlineHighlights[plr] = nil
@@ -1254,7 +1275,7 @@ local function IsBodyESPPart(part, character)
 	return part:IsA("BasePart") and part.Parent == character and BodyESPPartNames[part.Name] == true
 end
 
-local function RemoveBoxAdornments(plr)
+function RemoveBoxAdornments(plr)
 	local adornments = BoxAdornments[plr]
 	if not adornments then return end
 	for _, adornment in pairs(adornments) do
@@ -1288,7 +1309,7 @@ local function AddBoxAdornments(plr, character)
 	end
 end
 
-local function RemoveESPLabel(character)
+function RemoveESPLabel(character)
 	local head = character:FindFirstChild("Head")
 	local root = character:FindFirstChild("HumanoidRootPart")
 	if head and head:FindFirstChild("SerenityESPLabel") then head.SerenityESPLabel:Destroy() end
@@ -1424,21 +1445,21 @@ local OutlineESPToggle = CreateToggleRow(VisualsPage, 38, "OutlineESPKeybind", f
 local BoxESPToggle = CreateToggleRow(VisualsPage, 86, "BoxESPKeybind", function(k) BoxESPKeybind = k end, "Box ESP")
 local ESPLabelsToggle = CreateToggleRow(VisualsPage, 134, "ESPLabelsKeybind", function(k) ESPLabelsKeybind = k end, "ESP Labels")
 
-local function ToggleOutlineESP()
+function ToggleOutlineESP()
 	OutlineESPEnabled = not OutlineESPEnabled
 	OutlineESPToggle.Text = OutlineESPEnabled and "On" or "Off"
 	RefreshOutlineESP()
 end
 OutlineESPToggle.MouseButton1Click:Connect(function() PlayClick() ToggleOutlineESP() end)
 
-local function ToggleBoxESP()
+function ToggleBoxESP()
 	BoxESPEnabled = not BoxESPEnabled
 	BoxESPToggle.Text = BoxESPEnabled and "On" or "Off"
 	RefreshBoxESP()
 end
 BoxESPToggle.MouseButton1Click:Connect(function() PlayClick() ToggleBoxESP() end)
 
-local function ToggleESPLabels()
+function ToggleESPLabels()
 	ESPLabelsEnabled = not ESPLabelsEnabled
 	ESPLabelsToggle.Text = ESPLabelsEnabled and "On" or "Off"
 	RefreshESPLabels()
@@ -1750,7 +1771,7 @@ for index, swatch in ipairs(SavedColorButtons) do
 	end)
 end
 
-local function CloseESPColorPicker()
+function CloseESPColorPicker()
 	ESPColorPicker.Visible = false
 end
 
@@ -1782,7 +1803,7 @@ local ESP_SECTION_BOTTOM = 182 + 40
 -- screen-space body anymore, it highlights + labels your own character while active.
 -- FOV is unrelated to Free Cam -- just a direct camera.FieldOfView setter with a reset.
 local FreeCamEnabled = false
-local FreeCamKeybind = Enum.KeyCode.Unknown
+FreeCamKeybind = Enum.KeyCode.Unknown
 local FreeCamPosition = Vector3.new()
 local FreeCamPitch, FreeCamYaw = 0, 0
 local FreeCamOriginalType, FreeCamOriginalSubject, FreeCamOriginalCFrame, FreeCamOriginalFocus
@@ -1793,7 +1814,7 @@ local CAMERA_TOP = ESP_SECTION_BOTTOM + SECTION_GAP
 CreateSectionHeading(VisualsPage, CAMERA_TOP, "Camera")
 local FreeCamToggle = CreateToggleRow(VisualsPage, CAMERA_TOP + 30, "FreeCamKeybind", function(k) FreeCamKeybind = k end, "Free Cam")
 
-local DEFAULT_FOV = 70
+DEFAULT_FOV = 70
 local FOVValue = (workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView) or DEFAULT_FOV
 
 local FOVRow = Instance.new("Frame")
@@ -1952,7 +1973,7 @@ local function EnableFreeCam()
 	)
 end
 
-local function DisableFreeCam()
+function DisableFreeCam()
 	if not FreeCamEnabled then return end
 	FreeCamEnabled = false
 	ContextActionService:UnbindAction("SerenityFreeCamSink")
@@ -1979,12 +2000,12 @@ local function DisableFreeCam()
 	end)
 end
 
-local function ToggleFreeCam()
+function ToggleFreeCam()
 	if FreeCamEnabled then DisableFreeCam() else EnableFreeCam() end
 end
 FreeCamToggle.MouseButton1Click:Connect(function() PlayClick() ToggleFreeCam() end)
 
-local freeCamRenderConnection = RunService.RenderStepped:Connect(function(deltaTime)
+freeCamRenderConnection = RunService.RenderStepped:Connect(function(deltaTime)
 	if not FreeCamEnabled then return end
 	local camera = workspace.CurrentCamera
 	if not camera then return end
@@ -2017,6 +2038,8 @@ local freeCamRenderConnection = RunService.RenderStepped:Connect(function(deltaT
 	camera.CFrame = cameraCFrame
 	camera.Focus = cameraCFrame * CFrame.new(0, 0, -512)
 end)
+
+end
 
 -- Waypoint data + persistence, shared between the Teleport tab and the floating TP menu
 -- popup further down -- adding/renaming/deleting from either place has to stay in sync in
