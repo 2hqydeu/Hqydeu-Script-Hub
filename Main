@@ -2105,6 +2105,10 @@ end
 -- Ported from the old hub's floating PlayerTP menu + WaypointUI panel -- same search/
 -- filter, click-to-teleport CFrame math, and waypoint add/resolve/save/load/rename/delete
 -- logic -- restyled to match this hub's rows instead of the old hub's floating-card look.
+-- Forward-declared here (not inside the Teleport do block below) because the popup section
+-- further down, in its own separate do block, needs to read/update this button too.
+local PopupToggleButton
+
 local TeleportPage = CreateTab("Teleport", 4, "90261647722333", true)
 local PopupKeybind
 do
@@ -2121,7 +2125,7 @@ do
 	-- -- both it and the button already exist by that point, so there's no forward-reference
 	-- indirection for a click to silently fall through.
 	PopupKeybind = Enum.KeyCode.LeftAlt
-	local PopupToggleButton = CreateToggleRow(TeleportPage, 0, "TPMenuKeybind", function(k) PopupKeybind = k end, "TP Menu Popup", Enum.KeyCode.LeftAlt)
+	PopupToggleButton = CreateToggleRow(TeleportPage, 0, "TPMenuKeybind", function(k) PopupKeybind = k end, "TP Menu Popup", Enum.KeyCode.LeftAlt)
 	PopupToggleButton.Text = "Closed"
 
 	local PlayersTabButton = Instance.new("TextButton")
