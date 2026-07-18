@@ -381,33 +381,16 @@ local MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = UDim.new(0, 14)
 MainCorner.Parent = MainFrame
 
--- Header backdrop: a textured panel behind just the emblem/timer/minimize area, so that
--- strip reads as its own contrasted band instead of blending into the rest of the
--- window's background. Rounded to match MainFrame's own corner radius -- ClipsDescendants
--- clips to MainFrame's rectangular bounds, not its rounded shape, so without its own
--- UICorner this would show square corners poking out past the window's rounded top.
--- Wrapped in do...end: these locals are never referenced past this block, so scoping
--- them here frees their slots instead of counting against the script's 200-local cap.
+-- Body backdrop: covers the ENTIRE window, not just the area below the header -- the header
+-- strip (below) draws on top of its upper portion. Extending underneath the header (instead
+-- of starting exactly at HEADER_HEIGHT) means the header's own rounded bottom corners reveal
+-- this same image behind them rather than MainFrame's plain background color, so the rounded
+-- seam between the two reads as one continuous image instead of a gap of a third color.
 do
-	local HeaderBackdrop = Instance.new("ImageLabel")
-	HeaderBackdrop.Name = "HeaderBackdrop"
-	HeaderBackdrop.Size = UDim2.new(1, 0, 0, HEADER_HEIGHT)
-	HeaderBackdrop.Position = UDim2.new(0, 0, 0, 0)
-	HeaderBackdrop.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-	HeaderBackdrop.BorderSizePixel = 0
-	HeaderBackdrop.Image = "rbxassetid://104572575724201"
-	HeaderBackdrop.ScaleType = Enum.ScaleType.Crop
-	HeaderBackdrop.Parent = MainFrame
-	local headerBackdropCorner = Instance.new("UICorner")
-	headerBackdropCorner.CornerRadius = UDim.new(0, 14)
-	headerBackdropCorner.Parent = HeaderBackdrop
-
-	-- Body backdrop: same idea, covering everything below the header strip (tab bar +
-	-- content area both draw on top of it, same as the header's own contents do).
 	local BodyBackdrop = Instance.new("ImageLabel")
 	BodyBackdrop.Name = "BodyBackdrop"
-	BodyBackdrop.Size = UDim2.new(1, 0, 1, -HEADER_HEIGHT)
-	BodyBackdrop.Position = UDim2.new(0, 0, 0, HEADER_HEIGHT)
+	BodyBackdrop.Size = UDim2.new(1, 0, 1, 0)
+	BodyBackdrop.Position = UDim2.new(0, 0, 0, 0)
 	BodyBackdrop.BackgroundColor3 = FrameColor
 	BodyBackdrop.BorderSizePixel = 0
 	BodyBackdrop.Image = "rbxassetid://99858702993914"
@@ -418,24 +401,29 @@ do
 	bodyBackdropCorner.Parent = BodyBackdrop
 end
 
+-- Header backdrop: a textured panel behind the timer/minimize/keybind-hint row, so that strip
+-- reads as its own contrasted band. Parented after (so it draws on top of) BodyBackdrop above,
+-- same image, same corner radius -- ClipsDescendants clips to MainFrame's rectangular bounds,
+-- not its rounded shape, so without its own UICorner this would show square corners poking out
+-- past the window's rounded top.
+do
+	local HeaderBackdrop = Instance.new("ImageLabel")
+	HeaderBackdrop.Name = "HeaderBackdrop"
+	HeaderBackdrop.Size = UDim2.new(1, 0, 0, HEADER_HEIGHT)
+	HeaderBackdrop.Position = UDim2.new(0, 0, 0, 0)
+	HeaderBackdrop.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	HeaderBackdrop.BorderSizePixel = 0
+	HeaderBackdrop.Image = "rbxassetid://99858702993914"
+	HeaderBackdrop.ScaleType = Enum.ScaleType.Crop
+	HeaderBackdrop.Parent = MainFrame
+	local headerBackdropCorner = Instance.new("UICorner")
+	headerBackdropCorner.CornerRadius = UDim.new(0, 14)
+	headerBackdropCorner.Parent = HeaderBackdrop
+end
+
 -- Header: live local clock (title emblem removed), minimize, and a plain "L Ctrl" hint --
 -- all top-anchored so a minimize shrinks the window straight up toward this row instead of
 -- shrinking from the center.
-do
-	local TimerBackdrop = Instance.new("ImageLabel")
-	TimerBackdrop.Name = "TimerBackdrop"
-	TimerBackdrop.AnchorPoint = Vector2.new(0.5, 0.5)
-	TimerBackdrop.Size = UDim2.new(0, 110, 0, 24)
-	TimerBackdrop.Position = UDim2.new(0, 90, 0, HEADER_HEIGHT / 2)
-	TimerBackdrop.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-	TimerBackdrop.BorderSizePixel = 0
-	TimerBackdrop.Image = "rbxassetid://99858702993914"
-	TimerBackdrop.ScaleType = Enum.ScaleType.Crop
-	TimerBackdrop.Parent = MainFrame
-	local timerBackdropCorner = Instance.new("UICorner")
-	timerBackdropCorner.CornerRadius = UDim.new(0, 8)
-	timerBackdropCorner.Parent = TimerBackdrop
-end
 
 local TimeLabel = Instance.new("TextLabel")
 TimeLabel.Name = "TimeLabel"
