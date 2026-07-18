@@ -410,7 +410,7 @@ do
 	BodyBackdrop.Position = UDim2.new(0, 0, 0, HEADER_HEIGHT)
 	BodyBackdrop.BackgroundColor3 = FrameColor
 	BodyBackdrop.BorderSizePixel = 0
-	BodyBackdrop.Image = "rbxassetid://123770684089952"
+	BodyBackdrop.Image = "rbxassetid://99858702993914"
 	BodyBackdrop.ScaleType = Enum.ScaleType.Crop
 	BodyBackdrop.Parent = MainFrame
 	local bodyBackdropCorner = Instance.new("UICorner")
@@ -418,31 +418,30 @@ do
 	bodyBackdropCorner.Parent = BodyBackdrop
 end
 
--- Header: title emblem (same mark as the splash screen, in place of the "Serenity" text),
--- live local clock underneath it, minimize, and a plain "L Ctrl" hint -- all top-anchored
--- so a minimize shrinks the window straight up toward this row instead of shrinking from
--- the center.
-local TitleEmblem = Instance.new("ImageLabel")
-TitleEmblem.Name = "TitleEmblem"
--- Wide banner instead of a tall square -- sits entirely above TimeLabel (which starts at
--- y=36) instead of overlapping it. ScaleType.Fit keeps the mark's own proportions inside
--- this box, so it isn't stretched even though the box itself is wide and short.
--- AnchorPoint(0.5, 0) + matching X on TimeLabel below keeps the two centered on the same
--- vertical axis, so they read as one stacked unit instead of the emblem sitting off to
--- one side while the timer anchors to the left edge.
-TitleEmblem.AnchorPoint = Vector2.new(0.5, 0)
-TitleEmblem.Size = UDim2.new(0, 140, 0, 30)
-TitleEmblem.Position = UDim2.new(0, 90, 0, 4)
-TitleEmblem.BackgroundTransparency = 1
-TitleEmblem.Image = "rbxassetid://76652375830768"
-TitleEmblem.ScaleType = Enum.ScaleType.Fit
-TitleEmblem.Parent = MainFrame
+-- Header: live local clock (title emblem removed), minimize, and a plain "L Ctrl" hint --
+-- all top-anchored so a minimize shrinks the window straight up toward this row instead of
+-- shrinking from the center.
+do
+	local TimerBackdrop = Instance.new("ImageLabel")
+	TimerBackdrop.Name = "TimerBackdrop"
+	TimerBackdrop.AnchorPoint = Vector2.new(0.5, 0.5)
+	TimerBackdrop.Size = UDim2.new(0, 110, 0, 24)
+	TimerBackdrop.Position = UDim2.new(0, 90, 0, HEADER_HEIGHT / 2)
+	TimerBackdrop.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	TimerBackdrop.BorderSizePixel = 0
+	TimerBackdrop.Image = "rbxassetid://99858702993914"
+	TimerBackdrop.ScaleType = Enum.ScaleType.Crop
+	TimerBackdrop.Parent = MainFrame
+	local timerBackdropCorner = Instance.new("UICorner")
+	timerBackdropCorner.CornerRadius = UDim.new(0, 8)
+	timerBackdropCorner.Parent = TimerBackdrop
+end
 
 local TimeLabel = Instance.new("TextLabel")
 TimeLabel.Name = "TimeLabel"
-TimeLabel.AnchorPoint = Vector2.new(0.5, 0)
+TimeLabel.AnchorPoint = Vector2.new(0.5, 0.5)
 TimeLabel.Size = UDim2.new(0, 160, 0, 12)
-TimeLabel.Position = UDim2.new(0, 90, 0, 36)
+TimeLabel.Position = UDim2.new(0, 90, 0, HEADER_HEIGHT / 2)
 TimeLabel.BackgroundTransparency = 1
 TimeLabel.Text = os.date("%I:%M:%S %p")
 TimeLabel.Font = UIFont
