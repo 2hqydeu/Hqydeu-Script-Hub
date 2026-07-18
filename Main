@@ -131,7 +131,7 @@ ScreenGui.ResetOnSpawn = false
 
 -- Sound Effects
 local StartupSound = Instance.new("Sound")
-StartupSound.SoundId = "rbxassetid://111102990253594"
+StartupSound.SoundId = "rbxassetid://134699420140804"
 StartupSound.Volume = 0.8
 StartupSound.Parent = ScreenGui
 StartupSound:Play()
@@ -149,237 +149,7 @@ local FULL_SIZE = UDim2.new(0, 560, 0, 430)
 local MINI_SIZE = UDim2.new(0, 220, 0, HEADER_HEIGHT)
 local WINDOW_POSITION = UDim2.new(0.5, -280, 0.5, -215)
 
--- MainFrame gets built below, but the title sequence needs to run first -- before any of
--- the (invisible-until-ready) tab/feature construction -- so the emblem starts spinning
--- the instant the script executes instead of only after the whole GUI has finished
--- building. Forward-declared so this section's closures can set MainFrame.Visible once
--- construction (further down) actually assigns it.
-local MainFrame
-
--- Title sequence: the real UI (MainFrame) stays invisible until this finishes. A full-
--- screen backdrop sits behind everything (so the splash reads as its own screen rather
--- than elements floating over the game); the emblem, wings, and loading bar/label are
--- otherwise still unbounded on top of it, so nothing clips the (larger-than-the-emblem)
--- wings. Emblem spins/grows/fades in while the wings slide in from the screen edges at
--- the same time (not after), meeting at its sides; once landed, all three drift gently
--- up and down on their own out-of-phase loop (an idle "float", not a synced bob) through
--- a fake ~3s "loading" (status line + progress bar), at which point the whole thing
--- fades out together.
-do
-	-- Shared vertical anchor for the whole composition (screen-center scale + this pixel
-	-- offset) -- everything below is positioned relative to it, tight enough that the
-	-- emblem, wings, and loading bar read as one compact group instead of being spread
-	-- out with dead space between them.
-	local CENTER_Y = 0.5
-	local EMBLEM_Y_OFFSET = -70
-	local EMBLEM_SIZE = 380 -- final width/height once grown in
-
-	-- Sized to just enclose the wings (the widest/tallest piece of the composition) plus
-	-- a bit of breathing room -- not the full screen -- so it reads as a card behind the
-	-- splash rather than a full takeover of the viewport.
-	local SplashBackdrop = Instance.new("Frame")
-	SplashBackdrop.Name = "SplashBackdrop"
-	SplashBackdrop.AnchorPoint = Vector2.new(0.5, 0.5)
-	SplashBackdrop.Size = UDim2.new(0, 870, 0, 520)
-	SplashBackdrop.Position = UDim2.new(0.5, 0, CENTER_Y, EMBLEM_Y_OFFSET)
-	SplashBackdrop.BackgroundColor3 = FrameColor
-	SplashBackdrop.BackgroundTransparency = 0
-	SplashBackdrop.BorderSizePixel = 0
-	SplashBackdrop.ZIndex = 1
-	SplashBackdrop.Parent = ScreenGui
-	Instance.new("UICorner", SplashBackdrop).CornerRadius = UDim.new(0, 20)
-
-	local SplashImage = Instance.new("ImageLabel")
-	SplashImage.Name = "SplashImage"
-	SplashImage.AnchorPoint = Vector2.new(0.5, 0.5)
-	SplashImage.Position = UDim2.new(0.5, 0, CENTER_Y, EMBLEM_Y_OFFSET)
-	SplashImage.Size = UDim2.new(0, 0, 0, 0)
-	SplashImage.Rotation = -540
-	SplashImage.BackgroundTransparency = 1
-	SplashImage.ImageTransparency = 1
-	SplashImage.Image = "rbxassetid://130985618733437"
-	SplashImage.ZIndex = 4
-	SplashImage.Parent = ScreenGui
-
-	-- Wings are sized larger than the emblem itself, so they read as the dominant shape
-	-- flanking it rather than a small accent.
-	local WING_SIZE = UDim2.new(0, 300, 0, 480)
-	-- Tucked in well inside half the emblem's size -- a clean edge-to-edge meeting point
-	-- left too much dead space between the visible wing art and the emblem (the wing
-	-- images have transparent padding on their inner edge), so the resting position
-	-- overlaps the bounding boxes to close that gap.
-	local WING_HALF_GAP = 105
-
-	local RightWing = Instance.new("ImageLabel")
-	RightWing.Name = "RightWing"
-	RightWing.AnchorPoint = Vector2.new(0, 0.5)
-	RightWing.Size = WING_SIZE
-	RightWing.Position = UDim2.new(1.15, 0, CENTER_Y, EMBLEM_Y_OFFSET)
-	RightWing.BackgroundTransparency = 1
-	RightWing.ScaleType = Enum.ScaleType.Fit
-	RightWing.Image = "rbxassetid://84773586505914"
-	RightWing.ZIndex = 5
-	RightWing.Parent = ScreenGui
-
-	local LeftWing = Instance.new("ImageLabel")
-	LeftWing.Name = "LeftWing"
-	LeftWing.AnchorPoint = Vector2.new(1, 0.5)
-	LeftWing.Size = WING_SIZE
-	LeftWing.Position = UDim2.new(-0.15, 0, CENTER_Y, EMBLEM_Y_OFFSET)
-	LeftWing.BackgroundTransparency = 1
-	LeftWing.ScaleType = Enum.ScaleType.Fit
-	LeftWing.Image = "rbxassetid://82311031044938"
-	LeftWing.ZIndex = 5
-	LeftWing.Parent = ScreenGui
-
-	-- Loading bar/label sit close beneath the emblem. The emblem art has a good amount of
-	-- transparent padding inside its bounding box, so anchoring off the full EMBLEM_SIZE / 2
-	-- read as an awkward gap in practice -- pulled both offsets in to close it up.
-	local LOADING_LABEL_Y_OFFSET = EMBLEM_Y_OFFSET + 138
-	local LOADING_TRACK_Y_OFFSET = LOADING_LABEL_Y_OFFSET + 22
-
-	local LoadingLabel = Instance.new("TextLabel")
-	LoadingLabel.Name = "LoadingLabel"
-	LoadingLabel.AnchorPoint = Vector2.new(0.5, 0)
-	LoadingLabel.Size = UDim2.new(0, 340, 0, 20)
-	LoadingLabel.Position = UDim2.new(0.5, 0, CENTER_Y, LOADING_LABEL_Y_OFFSET)
-	LoadingLabel.BackgroundTransparency = 1
-	LoadingLabel.Text = ""
-	LoadingLabel.Font = UIFont
-	LoadingLabel.TextSize = 14
-	LoadingLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
-	LoadingLabel.ZIndex = 4
-	LoadingLabel.Parent = ScreenGui
-
-	local LoadingTrack = Instance.new("Frame")
-	LoadingTrack.Name = "LoadingTrack"
-	LoadingTrack.AnchorPoint = Vector2.new(0.5, 0)
-	LoadingTrack.Size = UDim2.new(0, 300, 0, 6)
-	LoadingTrack.Position = UDim2.new(0.5, 0, CENTER_Y, LOADING_TRACK_Y_OFFSET)
-	LoadingTrack.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-	LoadingTrack.BorderSizePixel = 0
-	LoadingTrack.ZIndex = 4
-	LoadingTrack.Parent = ScreenGui
-	Instance.new("UICorner", LoadingTrack).CornerRadius = UDim.new(1, 0)
-
-	local LoadingFill = Instance.new("Frame")
-	LoadingFill.Name = "LoadingFill"
-	LoadingFill.Size = UDim2.new(0, 0, 1, 0)
-	LoadingFill.BackgroundColor3 = AccentColor
-	LoadingFill.BorderSizePixel = 0
-	LoadingFill.ZIndex = 4
-	LoadingFill.Parent = LoadingTrack
-	Instance.new("UICorner", LoadingFill).CornerRadius = UDim.new(1, 0)
-
-	local FakeLoadingMessages = {
-		"Loading assets...",
-		"Loading scripts...",
-		"Initializing modules...",
-		"Compiling shaders...",
-		"Fetching configuration...",
-		"Optimizing textures...",
-		"Establishing connection...",
-		"Warming up cache...",
-		"Resolving dependencies...",
-		"Finalizing setup...",
-	}
-
-	local function RunFakeLoading(totalDuration)
-		local stepCount = math.random(9, 13)
-		local progressWeights, durationWeights = {}, {}
-		local progressSum, durationSum = 0, 0
-		for i = 1, stepCount do
-			progressWeights[i] = math.random(4, 20)
-			durationWeights[i] = math.random(4, 20)
-			progressSum += progressWeights[i]
-			durationSum += durationWeights[i]
-		end
-		local cumulativeProgress = 0
-		for i = 1, stepCount do
-			local stepDuration = (durationWeights[i] / durationSum) * totalDuration
-			cumulativeProgress = math.min(1, cumulativeProgress + (progressWeights[i] / progressSum))
-			LoadingLabel.Text = FakeLoadingMessages[math.random(1, #FakeLoadingMessages)]
-			TweenService:Create(LoadingFill, TweenInfo.new(math.min(stepDuration, 0.2), Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-				Size = UDim2.new(cumulativeProgress, 0, 1, 0),
-			}):Play()
-			task.wait(stepDuration)
-		end
-		LoadingFill.Size = UDim2.new(1, 0, 1, 0)
-	end
-
-	task.spawn(function()
-		-- Emblem grow/fade and the wings sliding in all start together instead of one
-		-- waiting on the other, so the whole entrance reads as one synced motion.
-		local spinIn = TweenService:Create(SplashImage, TweenInfo.new(0.7, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-			Size = UDim2.new(0, EMBLEM_SIZE, 0, EMBLEM_SIZE),
-			Rotation = 0,
-			ImageTransparency = 0,
-		})
-		-- Quint/Out decelerates hard into place with no overshoot, so the wings never
-		-- overlap the emblem even briefly.
-		local wingTweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-		local rightWingIn = TweenService:Create(RightWing, wingTweenInfo, {
-			Position = UDim2.new(0.5, WING_HALF_GAP, CENTER_Y, EMBLEM_Y_OFFSET),
-		})
-		local leftWingIn = TweenService:Create(LeftWing, wingTweenInfo, {
-			Position = UDim2.new(0.5, -WING_HALF_GAP, CENTER_Y, EMBLEM_Y_OFFSET),
-		})
-		spinIn:Play()
-		rightWingIn:Play()
-		leftWingIn:Play()
-		rightWingIn.Completed:Wait()
-		spinIn.Completed:Wait() -- spin-in runs a little longer than the wings; let it finish
-
-		-- Angel-like idle float: all three pieces drift up and down together -- same period,
-		-- same start, no stagger -- so they read as one synced motion rather than drifting
-		-- in and out of phase with each other.
-		local FLOAT_AMPLITUDE = 12
-		local floatTweenInfo = TweenInfo.new(1.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
-		local emblemFloat = TweenService:Create(SplashImage, floatTweenInfo, {
-			Position = UDim2.new(0.5, 0, CENTER_Y, EMBLEM_Y_OFFSET - FLOAT_AMPLITUDE),
-		})
-		local rightWingFloat = TweenService:Create(RightWing, floatTweenInfo, {
-			Position = UDim2.new(0.5, WING_HALF_GAP, CENTER_Y, EMBLEM_Y_OFFSET - FLOAT_AMPLITUDE),
-		})
-		local leftWingFloat = TweenService:Create(LeftWing, floatTweenInfo, {
-			Position = UDim2.new(0.5, -WING_HALF_GAP, CENTER_Y, EMBLEM_Y_OFFSET - FLOAT_AMPLITUDE),
-		})
-		emblemFloat:Play()
-		rightWingFloat:Play()
-		leftWingFloat:Play()
-
-		-- Fake ~3s "loading" runs while the three pieces keep gently floating.
-		RunFakeLoading(3)
-
-		-- Stop the float in place (rather than letting it fight the fade-out) before fading.
-		emblemFloat:Cancel()
-		rightWingFloat:Cancel()
-		leftWingFloat:Cancel()
-
-		-- Fade starts the instant loading finishes -- no pause in between -- so there's
-		-- never a moment where the bar looks done but nothing's actually happening yet.
-		-- Every piece fades on its own tween (no shared background to fade as a group).
-		local fadeOutTweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-		TweenService:Create(SplashBackdrop, fadeOutTweenInfo, {BackgroundTransparency = 1}):Play()
-		TweenService:Create(SplashImage, fadeOutTweenInfo, {ImageTransparency = 1}):Play()
-		TweenService:Create(RightWing, fadeOutTweenInfo, {ImageTransparency = 1}):Play()
-		TweenService:Create(LeftWing, fadeOutTweenInfo, {ImageTransparency = 1}):Play()
-		TweenService:Create(LoadingLabel, fadeOutTweenInfo, {TextTransparency = 1}):Play()
-		TweenService:Create(LoadingTrack, fadeOutTweenInfo, {BackgroundTransparency = 1}):Play()
-		local fillFadeOut = TweenService:Create(LoadingFill, fadeOutTweenInfo, {BackgroundTransparency = 1})
-		fillFadeOut:Play()
-		fillFadeOut.Completed:Wait()
-		SplashBackdrop:Destroy()
-		SplashImage:Destroy()
-		RightWing:Destroy()
-		LeftWing:Destroy()
-		LoadingLabel:Destroy()
-		LoadingTrack:Destroy()
-		if MainFrame then MainFrame.Visible = true end
-	end)
-end
-
-MainFrame = Instance.new("Frame")
+local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Size = FULL_SIZE
 MainFrame.Position = WINDOW_POSITION
@@ -389,51 +159,30 @@ MainFrame.BackgroundTransparency = 0
 MainFrame.BorderSizePixel = 0
 MainFrame.ClipsDescendants = true
 MainFrame.Active = true
-MainFrame.Visible = false
+MainFrame.Visible = true
 MainFrame.Parent = ScreenGui
 
 local MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = UDim.new(0, 14)
 MainCorner.Parent = MainFrame
 
--- Body backdrop: covers the ENTIRE window, not just the area below the header -- the header
--- strip (below) draws on top of its upper portion. Extending underneath the header (instead
--- of starting exactly at HEADER_HEIGHT) means the header's own rounded bottom corners reveal
--- this same image behind them rather than MainFrame's plain background color, so the rounded
--- seam between the two reads as one continuous image instead of a gap of a third color.
+-- Backdrop: one image covering the whole window (top bar and body both), so there's no
+-- seam to worry about anymore -- ClipsDescendants clips to MainFrame's rectangular bounds,
+-- not its rounded shape, so without its own UICorner this would show square corners poking
+-- out past the window's rounded top.
 do
-	local BodyBackdrop = Instance.new("ImageLabel")
-	BodyBackdrop.Name = "BodyBackdrop"
-	BodyBackdrop.Size = UDim2.new(1, 0, 1, 0)
-	BodyBackdrop.Position = UDim2.new(0, 0, 0, 0)
-	BodyBackdrop.BackgroundColor3 = FrameColor
-	BodyBackdrop.BorderSizePixel = 0
-	BodyBackdrop.Image = "rbxassetid://99858702993914"
-	BodyBackdrop.ScaleType = Enum.ScaleType.Crop
-	BodyBackdrop.Parent = MainFrame
-	local bodyBackdropCorner = Instance.new("UICorner")
-	bodyBackdropCorner.CornerRadius = UDim.new(0, 14)
-	bodyBackdropCorner.Parent = BodyBackdrop
-end
-
--- Header backdrop: a textured panel behind the timer/minimize/keybind-hint row, so that strip
--- reads as its own contrasted band. Parented after (so it draws on top of) BodyBackdrop above,
--- same image, same corner radius -- ClipsDescendants clips to MainFrame's rectangular bounds,
--- not its rounded shape, so without its own UICorner this would show square corners poking out
--- past the window's rounded top.
-do
-	local HeaderBackdrop = Instance.new("ImageLabel")
-	HeaderBackdrop.Name = "HeaderBackdrop"
-	HeaderBackdrop.Size = UDim2.new(1, 0, 0, HEADER_HEIGHT)
-	HeaderBackdrop.Position = UDim2.new(0, 0, 0, 0)
-	HeaderBackdrop.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-	HeaderBackdrop.BorderSizePixel = 0
-	HeaderBackdrop.Image = "rbxassetid://78295530804521"
-	HeaderBackdrop.ScaleType = Enum.ScaleType.Crop
-	HeaderBackdrop.Parent = MainFrame
-	local headerBackdropCorner = Instance.new("UICorner")
-	headerBackdropCorner.CornerRadius = UDim.new(0, 14)
-	headerBackdropCorner.Parent = HeaderBackdrop
+	local Backdrop = Instance.new("ImageLabel")
+	Backdrop.Name = "Backdrop"
+	Backdrop.Size = UDim2.new(1, 0, 1, 0)
+	Backdrop.Position = UDim2.new(0, 0, 0, 0)
+	Backdrop.BackgroundColor3 = FrameColor
+	Backdrop.BorderSizePixel = 0
+	Backdrop.Image = "rbxassetid://113520431091283"
+	Backdrop.ScaleType = Enum.ScaleType.Crop
+	Backdrop.Parent = MainFrame
+	local backdropCorner = Instance.new("UICorner")
+	backdropCorner.CornerRadius = UDim.new(0, 14)
+	backdropCorner.Parent = Backdrop
 end
 
 -- Header: live local clock (title emblem removed), minimize, and a plain "L Ctrl" hint --
