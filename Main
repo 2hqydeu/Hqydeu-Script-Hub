@@ -428,7 +428,7 @@ do
 	HeaderBackdrop.Position = UDim2.new(0, 0, 0, 0)
 	HeaderBackdrop.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	HeaderBackdrop.BorderSizePixel = 0
-	HeaderBackdrop.Image = "rbxassetid://128521360922564"
+	HeaderBackdrop.Image = "rbxassetid://78295530804521"
 	HeaderBackdrop.ScaleType = Enum.ScaleType.Crop
 	HeaderBackdrop.Parent = MainFrame
 	local headerBackdropCorner = Instance.new("UICorner")
@@ -953,19 +953,21 @@ do
 	local SpeedInput = CreateStrengthRow(PlayerPage, 38, "Speed Strength", SpeedValue)
 	local SpeedToggle = CreateToggleRow(PlayerPage, 86, "SpeedKeybind", function(k) SpeedKeybind = k end)
 
+	-- Mode used to be its own full-width row below; squished down to a single button the
+	-- same size as the strength input, sitting directly to its left, inside that same row.
 	local SpeedModeButton = Instance.new("TextButton")
 	SpeedModeButton.Name = "SpeedModeButton"
-	SpeedModeButton.Size = UDim2.new(1, 0, 0, 36)
-	SpeedModeButton.Position = UDim2.new(0, 0, 0, 134)
-	SpeedModeButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-	SpeedModeButton.BackgroundTransparency = 0.5
+	SpeedModeButton.Size = UDim2.new(0, 70, 0, 30)
+	SpeedModeButton.Position = UDim2.new(1, -164, 0.5, -15)
+	SpeedModeButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	SpeedModeButton.BackgroundTransparency = 0.2
 	SpeedModeButton.BorderSizePixel = 0
-	SpeedModeButton.Text = "Mode: CFrame Movement"
+	SpeedModeButton.Text = "CFrame"
 	SpeedModeButton.Font = UIFont
-	SpeedModeButton.TextSize = 14
+	SpeedModeButton.TextSize = 12
 	SpeedModeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-	SpeedModeButton.Parent = PlayerPage
-	Instance.new("UICorner", SpeedModeButton).CornerRadius = UDim.new(0, 8)
+	SpeedModeButton.Parent = SpeedInput.Parent
+	Instance.new("UICorner", SpeedModeButton).CornerRadius = UDim.new(0, 6)
 
 	local function ApplySpeed()
 		local character = Player.Character
@@ -1009,11 +1011,11 @@ do
 	SpeedModeButton.MouseButton1Click:Connect(function()
 		PlayClick()
 		SpeedMode = SpeedMode == "CFrame" and "WalkSpeed" or "CFrame"
-		SpeedModeButton.Text = SpeedMode == "CFrame" and "Mode: CFrame Movement" or "Mode: WalkSpeed"
+		SpeedModeButton.Text = SpeedMode
 		ApplySpeed()
 	end)
 
-	local SPEED_SECTION_BOTTOM = 134 + 36 -- heading(8) + strength(38..78) + toggle(86..126) + mode(134..170)
+	local SPEED_SECTION_BOTTOM = 126 -- heading(8) + strength(38..78) + toggle(86..126)
 
 	-- Jump
 	JumpEnabled = false
@@ -1477,10 +1479,11 @@ ESPColorRow.Name = "ESPColorRow"
 ESPColorRow.Size = UDim2.new(1, 0, 0, 40)
 ESPColorRow.Position = UDim2.new(0, 0, 0, 182)
 ESPColorRow.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-ESPColorRow.BackgroundTransparency = 0.5
+ESPColorRow.BackgroundTransparency = RowTransparencyValue / 100
 ESPColorRow.BorderSizePixel = 0
 ESPColorRow.Parent = VisualsPage
 Instance.new("UICorner", ESPColorRow).CornerRadius = UDim.new(0, 8)
+table.insert(RowTransparencyTargets, ESPColorRow)
 
 local ESPColorRowLabel = Instance.new("TextLabel")
 ESPColorRowLabel.Name = "RowLabel"
@@ -1826,10 +1829,11 @@ FOVRow.Name = "FOVRow"
 FOVRow.Size = UDim2.new(1, 0, 0, 40)
 FOVRow.Position = UDim2.new(0, 0, 0, CAMERA_TOP + 78)
 FOVRow.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-FOVRow.BackgroundTransparency = 0.5
+FOVRow.BackgroundTransparency = RowTransparencyValue / 100
 FOVRow.BorderSizePixel = 0
 FOVRow.Parent = VisualsPage
 Instance.new("UICorner", FOVRow).CornerRadius = UDim.new(0, 8)
+table.insert(RowTransparencyTargets, FOVRow)
 
 local FOVRowLabel = Instance.new("TextLabel")
 FOVRowLabel.Name = "RowLabel"
@@ -3020,10 +3024,11 @@ local function CreateGameRow(parent, y, gameTitle, url)
 	row.Size = UDim2.new(1, 0, 0, 44)
 	row.Position = UDim2.new(0, 0, 0, y)
 	row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-	row.BackgroundTransparency = 0.5
+	row.BackgroundTransparency = RowTransparencyValue / 100
 	row.BorderSizePixel = 0
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+	table.insert(RowTransparencyTargets, row)
 
 	local titleLabel = Instance.new("TextLabel")
 	titleLabel.Name = "TitleLabel"
@@ -3095,10 +3100,11 @@ local function CreateUtilityRow(parent, y, title, url)
 	row.Size = UDim2.new(1, 0, 0, 44)
 	row.Position = UDim2.new(0, 0, 0, y)
 	row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-	row.BackgroundTransparency = 0.5
+	row.BackgroundTransparency = RowTransparencyValue / 100
 	row.BorderSizePixel = 0
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+	table.insert(RowTransparencyTargets, row)
 
 	local titleLabel = Instance.new("TextLabel")
 	titleLabel.Name = "TitleLabel"
@@ -3195,7 +3201,7 @@ ScriptsPage.CanvasSize = UDim2.new(0, 0, 0, 164)
 -- this point in the file, so wiring it here would silently fall through to nil.
 local DestroyGuiButton
 do
-	local SettingsPage = CreateTab("Settings", 6, "0", true) -- TODO: swap in the real Settings emblem asset id
+	local SettingsPage = CreateTab("Settings", 6, "130203847341927", true)
 
 	local ResetCharacterButton = Instance.new("TextButton")
 	ResetCharacterButton.Name = "ResetCharacterButton"
