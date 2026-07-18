@@ -3087,6 +3087,7 @@ local function CreateGameRow(parent, y, gameTitle, url)
 end
 
 CreateGameRow(ScriptsPage, 8, "Undead Expedition", "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/UE")
+CreateGameRow(ScriptsPage, 60, "Quiet or Die", "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/QOD")
 
 -- Infinite Yield / Dex Explorer: standalone utility scripts (not per-game modules), so
 -- unlike CreateGameRow above they get their own row with a separate Destroy button --
@@ -3190,10 +3191,10 @@ local function CreateUtilityRow(parent, y, title, url)
 	return row
 end
 
-CreateUtilityRow(ScriptsPage, 60, "Infinite Yield", "https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source")
-CreateUtilityRow(ScriptsPage, 112, "Dex Explorer", "https://github.com/AZYsGithub/DexPlusPlus/releases/latest/download/out.lua")
+CreateUtilityRow(ScriptsPage, 112, "Infinite Yield", "https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source")
+CreateUtilityRow(ScriptsPage, 164, "Dex Explorer", "https://github.com/AZYsGithub/DexPlusPlus/releases/latest/download/out.lua")
 
-ScriptsPage.CanvasSize = UDim2.new(0, 0, 0, 164)
+ScriptsPage.CanvasSize = UDim2.new(0, 0, 0, 216)
 
 -- Settings tab: Reset Character / Destroy Gui utility buttons (ported from the old hub)
 -- and the row-transparency control. DestroyGuiButton's click handler is wired further
