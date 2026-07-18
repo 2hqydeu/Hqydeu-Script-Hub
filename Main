@@ -381,24 +381,38 @@ local MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = UDim.new(0, 14)
 MainCorner.Parent = MainFrame
 
--- Header backdrop: a lighter-gray panel behind just the emblem/timer/minimize area, so
--- that strip reads as its own contrasted band instead of blending into the rest of the
--- window's background. Created first (and left un-rounded) so MainFrame's own
--- ClipsDescendants + corner radius crops its top edge to match the window's shape, and
--- everything header-related drawn after it in the script renders on top automatically.
-local HeaderBackdrop = Instance.new("Frame")
+-- Header backdrop: a textured panel behind just the emblem/timer/minimize area, so that
+-- strip reads as its own contrasted band instead of blending into the rest of the
+-- window's background. Rounded to match MainFrame's own corner radius -- ClipsDescendants
+-- clips to MainFrame's rectangular bounds, not its rounded shape, so without its own
+-- UICorner this would show square corners poking out past the window's rounded top.
+local HeaderBackdrop = Instance.new("ImageLabel")
 HeaderBackdrop.Name = "HeaderBackdrop"
 HeaderBackdrop.Size = UDim2.new(1, 0, 0, HEADER_HEIGHT)
 HeaderBackdrop.Position = UDim2.new(0, 0, 0, 0)
 HeaderBackdrop.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 HeaderBackdrop.BorderSizePixel = 0
+HeaderBackdrop.Image = "rbxassetid://104572575724201"
+HeaderBackdrop.ScaleType = Enum.ScaleType.Crop
 HeaderBackdrop.Parent = MainFrame
--- ClipsDescendants clips to MainFrame's rectangular bounds, not its rounded shape, so
--- without its own UICorner this showed square corners poking out past the window's
--- rounded top. Radius matches MainCorner so the top edge lines up with the window exactly.
 local headerBackdropCorner = Instance.new("UICorner")
 headerBackdropCorner.CornerRadius = UDim.new(0, 14)
 headerBackdropCorner.Parent = HeaderBackdrop
+
+-- Body backdrop: same idea, covering everything below the header strip (tab bar +
+-- content area both draw on top of it, same as the header's own contents do).
+local BodyBackdrop = Instance.new("ImageLabel")
+BodyBackdrop.Name = "BodyBackdrop"
+BodyBackdrop.Size = UDim2.new(1, 0, 1, -HEADER_HEIGHT)
+BodyBackdrop.Position = UDim2.new(0, 0, 0, HEADER_HEIGHT)
+BodyBackdrop.BackgroundColor3 = FrameColor
+BodyBackdrop.BorderSizePixel = 0
+BodyBackdrop.Image = "rbxassetid://123770684089952"
+BodyBackdrop.ScaleType = Enum.ScaleType.Crop
+BodyBackdrop.Parent = MainFrame
+local bodyBackdropCorner = Instance.new("UICorner")
+bodyBackdropCorner.CornerRadius = UDim.new(0, 14)
+bodyBackdropCorner.Parent = BodyBackdrop
 
 -- Header: title emblem (same mark as the splash screen, in place of the "Serenity" text),
 -- live local clock underneath it, minimize, and a plain "L Ctrl" hint -- all top-anchored
