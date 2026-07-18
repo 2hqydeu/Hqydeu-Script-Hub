@@ -108,6 +108,21 @@ local bindingInProgress = false
 -- DestroyGui, instead of each needing its own named forward-declared local.
 local looseConnections = {}
 
+-- Settings tab's Transparency control: every standard feature row (CreateStrengthRow,
+-- CreateToggleRow) registers its own background frame here so one shared setter can
+-- restyle all of them at once. Persisted like keybinds/colors, so it survives reloads.
+local RowTransparencyTargets = {}
+local RowTransparencyValue = tonumber(SavedKeybinds["RowTransparency"]) or 50
+local function SetRowTransparency(value)
+	value = math.clamp(math.floor(value + 0.5), 0, 100)
+	RowTransparencyValue = value
+	for _, row in ipairs(RowTransparencyTargets) do
+		if row and row.Parent then row.BackgroundTransparency = value / 100 end
+	end
+	SavedKeybinds["RowTransparency"] = value
+	SavePersistentSettings()
+end
+
 -- Main Container
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "Serenity"
@@ -413,7 +428,7 @@ do
 	HeaderBackdrop.Position = UDim2.new(0, 0, 0, 0)
 	HeaderBackdrop.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	HeaderBackdrop.BorderSizePixel = 0
-	HeaderBackdrop.Image = "rbxassetid://99858702993914"
+	HeaderBackdrop.Image = "rbxassetid://128521360922564"
 	HeaderBackdrop.ScaleType = Enum.ScaleType.Crop
 	HeaderBackdrop.Parent = MainFrame
 	local headerBackdropCorner = Instance.new("UICorner")
@@ -427,15 +442,15 @@ end
 
 local TimeLabel = Instance.new("TextLabel")
 TimeLabel.Name = "TimeLabel"
-TimeLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+TimeLabel.AnchorPoint = Vector2.new(0, 0.5)
 TimeLabel.Size = UDim2.new(0, 160, 0, 12)
-TimeLabel.Position = UDim2.new(0, 90, 0, HEADER_HEIGHT / 2)
+TimeLabel.Position = UDim2.new(0, 16, 0, HEADER_HEIGHT / 2)
 TimeLabel.BackgroundTransparency = 1
 TimeLabel.Text = os.date("%I:%M:%S %p")
 TimeLabel.Font = UIFont
 TimeLabel.TextSize = 10
 TimeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-TimeLabel.TextXAlignment = Enum.TextXAlignment.Center
+TimeLabel.TextXAlignment = Enum.TextXAlignment.Left
 TimeLabel.Parent = MainFrame
 
 task.spawn(function()
@@ -681,10 +696,11 @@ local function CreateStrengthRow(parent, y, rowLabelText, defaultValue)
 	row.Size = UDim2.new(1, 0, 0, 40)
 	row.Position = UDim2.new(0, 0, 0, y)
 	row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-	row.BackgroundTransparency = 0.5
+	row.BackgroundTransparency = RowTransparencyValue / 100
 	row.BorderSizePixel = 0
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+	table.insert(RowTransparencyTargets, row)
 
 	local rowLabel = Instance.new("TextLabel")
 	rowLabel.Name = "RowLabel"
@@ -874,10 +890,11 @@ local function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelTex
 	row.Size = UDim2.new(1, 0, 0, 40)
 	row.Position = UDim2.new(0, 0, 0, y)
 	row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-	row.BackgroundTransparency = 0.5
+	row.BackgroundTransparency = RowTransparencyValue / 100
 	row.BorderSizePixel = 0
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+	table.insert(RowTransparencyTargets, row)
 
 	local rowLabel = Instance.new("TextLabel")
 	rowLabel.Name = "RowLabel"
@@ -3172,6 +3189,59 @@ CreateUtilityRow(ScriptsPage, 112, "Dex Explorer", "https://github.com/AZYsGithu
 
 ScriptsPage.CanvasSize = UDim2.new(0, 0, 0, 164)
 
+-- Settings tab: Reset Character / Destroy Gui utility buttons (ported from the old hub)
+-- and the row-transparency control. DestroyGuiButton's click handler is wired further
+-- down, right after DestroyGui itself is defined -- that function doesn't exist yet at
+-- this point in the file, so wiring it here would silently fall through to nil.
+local DestroyGuiButton
+do
+	local SettingsPage = CreateTab("Settings", 6, "0", true) -- TODO: swap in the real Settings emblem asset id
+
+	local ResetCharacterButton = Instance.new("TextButton")
+	ResetCharacterButton.Name = "ResetCharacterButton"
+	ResetCharacterButton.Size = UDim2.new(1, 0, 0, 40)
+	ResetCharacterButton.Position = UDim2.new(0, 0, 0, 8)
+	ResetCharacterButton.BackgroundColor3 = Color3.fromRGB(255, 230, 0)
+	ResetCharacterButton.BorderSizePixel = 0
+	ResetCharacterButton.Text = "Reset Character"
+	ResetCharacterButton.Font = UIFont
+	ResetCharacterButton.TextSize = 15
+	ResetCharacterButton.TextColor3 = Color3.fromRGB(30, 30, 30)
+	ResetCharacterButton.Parent = SettingsPage
+	Instance.new("UICorner", ResetCharacterButton).CornerRadius = UDim.new(0, 8)
+	ResetCharacterButton.MouseButton1Click:Connect(function()
+		PlayClick()
+		local character = Player.Character
+		if character then character:BreakJoints() end
+	end)
+
+	DestroyGuiButton = Instance.new("TextButton")
+	DestroyGuiButton.Name = "DestroyGuiButton"
+	DestroyGuiButton.Size = UDim2.new(1, 0, 0, 40)
+	DestroyGuiButton.Position = UDim2.new(0, 0, 0, 56)
+	DestroyGuiButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+	DestroyGuiButton.BorderSizePixel = 0
+	DestroyGuiButton.Text = "Destroy Gui"
+	DestroyGuiButton.Font = UIFont
+	DestroyGuiButton.TextSize = 15
+	DestroyGuiButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	DestroyGuiButton.Parent = SettingsPage
+	Instance.new("UICorner", DestroyGuiButton).CornerRadius = UDim.new(0, 8)
+
+	-- 0-100 input driving every feature row's background transparency at once (100 = fully
+	-- invisible). CreateStrengthRow already builds a label + numeric-input row identical to
+	-- every other feature row, so reusing it means the Transparency control is itself one of
+	-- the rows it controls.
+	local TransparencyInput = CreateStrengthRow(SettingsPage, 104, "Transparency", RowTransparencyValue)
+	TransparencyInput.FocusLost:Connect(function()
+		local requested = tonumber(TransparencyInput.Text)
+		if requested then SetRowTransparency(requested) end
+		TransparencyInput.Text = tostring(RowTransparencyValue)
+	end)
+
+	SettingsPage.CanvasSize = UDim2.new(0, 0, 0, 148)
+end
+
 SelectTab("Home")
 
 -- Minimize: hardcoded to Left Control, not user-configurable. Everything below the
@@ -3264,6 +3334,10 @@ local function DestroyGui()
 
 	ScreenGui:Destroy()
 end
+DestroyGuiButton.MouseButton1Click:Connect(function()
+	PlayClick()
+	DestroyGui()
+end)
 
 mainInputConnection = UserInputService.InputBegan:Connect(function(input, processed)
 	if processed or UserInputService:GetFocusedTextBox() or bindingInProgress then return end
