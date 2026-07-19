@@ -1188,40 +1188,22 @@ local function HoldOnBox(target, targetRoot, options)
 		end
 	end
 
-	local function AimCameraAtPrompt()
-		local camera = workspace.CurrentCamera
-		local root = PlayerRoot()
-		if not camera or not root then return end
-		pcall(function()
-			camera.CameraType = Enum.CameraType.Scriptable
-			camera.CFrame = CFrame.new(root.Position + Vector3.new(0, 2.5, 0), anchorPosition)
-		end)
-	end
-
-	local function RestoreCamera()
-		local camera = workspace.CurrentCamera
-		if not camera then return end
-		local character = Player and Player.Character
-		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		pcall(function()
-			camera.CameraType = Enum.CameraType.Custom
-			if humanoid then camera.CameraSubject = humanoid end
-		end)
-	end
-
 	if not StableTeleport(CFrame.new(anchorPosition)) then
 		ToolInteractionActive = false
 		RestoreTargetCollision()
 		return false
 	end
 	task.wait(0.15)
-	AimCameraAtPrompt()
 
+	-- No longer hijacking the camera to Scriptable and re-aiming it every tick here --
+	-- forcing camera.CFrame every ~0.1s based on the character's current position was
+	-- itself a source of visible twitch whenever that position had any jitter at all, and
+	-- the camera's facing has nothing to do with whether the prompt can trigger. Leaving
+	-- the camera on the player's own control removes that whole source of twitch.
 	local waitDeadline = os.clock() + 1
 	while os.clock() < waitDeadline and openPrompt.Parent and not openPrompt.Enabled do
 		HoldStill()
 		CorrectDriftIfNeeded()
-		AimCameraAtPrompt()
 		task.wait(0.1)
 	end
 	if not openPrompt.Enabled then
@@ -1242,25 +1224,27 @@ local function HoldOnBox(target, targetRoot, options)
 		keyCode = Enum.KeyCode.E
 	end
 
-	local pressedAtLeastOnce = false
-	local usedFireFallback = false
 	ToolInteractionActive = true
 	local extraBuffer = requiredKey and KEYED_BOX_EXTRA_HOLD_BUFFER or 0
 	local deadline = os.clock() + holdDuration + FARM_OPEN_SAFETY_BUFFER + extraBuffer
+
+	-- Press ONCE and hold for the whole duration instead of re-firing PressInteractKey
+	-- every tick. That loop used to call VirtualInputManager:SendKeyEvent(true, ...) about
+	-- 20 times a second, which sends a brand new synthetic KeyDown each time -- to the
+	-- game that looks like a fresh press, not a continued hold, which is almost certainly
+	-- what was resetting the prompt's progress right as it looked like it was about to
+	-- finish. One press, hold, one release -- the same shape as an actual human holding
+	-- the key down.
+	local pressedAtLeastOnce = PressInteractKey(keyCode)
+	if not pressedAtLeastOnce and type(fireproximityprompt) == "function" then
+		warn(logPrefix .. " key simulation unavailable on " .. tostring(target.Name) .. " -- falling back to fireproximityprompt")
+		pcall(fireproximityprompt, openPrompt, holdDuration)
+	end
+
 	while isEnabled() and ScreenGui.Parent and target.Parent and BoxRoot(target) and os.clock() < deadline do
 		HoldStill()
 		CorrectDriftIfNeeded()
-		AimCameraAtPrompt()
 		if requiredKey then EquipKeyTool(requiredKey) end
-		if PressInteractKey(keyCode) then
-			pressedAtLeastOnce = true
-		elseif not usedFireFallback then
-			usedFireFallback = true
-			warn(logPrefix .. " key simulation unavailable on " .. tostring(target.Name) .. " -- falling back to fireproximityprompt")
-			if type(fireproximityprompt) == "function" then
-				pcall(fireproximityprompt, openPrompt, holdDuration)
-			end
-		end
 		task.wait(FARM_MOVE_HOLD_INTERVAL)
 	end
 
@@ -1268,7 +1252,6 @@ local function HoldOnBox(target, targetRoot, options)
 		ReleaseInteractKey(keyCode)
 	end
 	ToolInteractionActive = false
-	RestoreCamera()
 	RestoreTargetCollision()
 	local success = not (target.Parent and BoxRoot(target))
 	if not success then
