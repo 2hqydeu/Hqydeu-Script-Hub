@@ -232,13 +232,15 @@ ScreenGui.Name = "SerenityUE"
 ScreenGui.Parent = CoreGui
 ScreenGui.ResetOnSpawn = false
 
-local FULL_HEIGHT = 294
+-- Standardized to the same 280x400 size as QOD/MM2's panels, so one background image size
+-- covers all three game windows.
+local FULL_HEIGHT = 400
 local MINI_HEIGHT = 44
 
 local PanelFrame = Instance.new("Frame")
 PanelFrame.Name = "UEPanel"
 PanelFrame.Size = UDim2.new(0, 280, 0, FULL_HEIGHT)
-PanelFrame.Position = UDim2.new(0.5, -140, 0.5, -116)
+PanelFrame.Position = UDim2.new(0.5, -140, 0.5, -200)
 PanelFrame.AnchorPoint = Vector2.new(0, 0)
 PanelFrame.BackgroundColor3 = FrameColor
 PanelFrame.BorderSizePixel = 0
@@ -656,6 +658,21 @@ StructureAlertsToggle.Text = "On"
 -- (matching the old default of every rarity being enabled), and there's no keybind or
 -- ESP-alert wiring. The actual farming state machine below is unchanged.
 -- ============================================================================
+-- Forward-declared here (not inside the do block below) because the ESP section further
+-- down, in its own do block, needs to read/call these -- same 200-local-cap reason as the
+-- UpdateBoxESP group already forward-declared further into this section.
+local BOX_TYPES
+local RARITY_TIERS
+local GetDropRarity
+local PlayerRoot, CleanStructureName, StructureDisplayName, StructureRoot, StructuresFolder
+local HasHunterTrapText, BoxRoot, BoxTypeFromName, BoxType
+local GetAllGroundItems
+local UpdateBoxESP, RefreshBoxDistances, UpdateStructuresESP, UpdateItemsESP, UpdateMobsESP
+local RegisterKnownStructureType, PushStructureAlert, SetStructureMessage, ShowStructureMarker
+local WatchFarmStructures
+
+do
+
 local AutoFarmEnabled = false
 local AutoFarmKilled = 0
 local AutoFarmPhase = "Idle"
@@ -664,7 +681,7 @@ local AutoFarmHandled = {}
 local AutoFarmSweepSkipped = {}
 local ToolInteractionActive = false
 
-local BOX_TYPES = {"Rusty", "Wooden", "Silver", "Golden", "Ancient", "Grounder", "Hunter Trap"}
+BOX_TYPES = {"Rusty", "Wooden", "Silver", "Golden", "Ancient", "Grounder", "Hunter Trap"}
 local BOX_TYPE_REQUIRED_KEY = {
 	Grounder = "Grounder Key",
 	Ancient = "Ancient Key",
@@ -692,13 +709,13 @@ local function DiscoverRarityTiers()
 	end
 	return tiers
 end
-local RARITY_TIERS = DiscoverRarityTiers()
+RARITY_TIERS = DiscoverRarityTiers()
 local KNOWN_RARITY_SET = {}
 for _, tier in ipairs(RARITY_TIERS) do
 	KNOWN_RARITY_SET[tier] = true
 end
 
-local function GetDropRarity(part)
+function GetDropRarity(part)
 	for _, descendant in ipairs(part:GetDescendants()) do
 		if (descendant:IsA("TextLabel") or descendant:IsA("TextButton")) and KNOWN_RARITY_SET[tostring(descendant.Text)] then
 			return tostring(descendant.Text)
@@ -788,12 +805,12 @@ local TRAP_IDLE_WAIT = 0.5
 local TRAP_WAVE_CLEAR_GRACE = 4
 local KEY_EQUIP_RETRY_WINDOW = 3
 
-local function PlayerRoot()
+function PlayerRoot()
 	local character = Player and Player.Character
 	return character and character:FindFirstChild("HumanoidRootPart")
 end
 
-local function CleanStructureName(name)
+function CleanStructureName(name)
 	name = tostring(name or "Structure")
 	name = name:gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
 	name = name:gsub("%s*%(%d+%)$", ""):gsub("[%s_%-%#]*%d+$", "")
@@ -801,7 +818,7 @@ local function CleanStructureName(name)
 	return name ~= "" and name or "Structure"
 end
 
-local function StructureDisplayName(structure)
+function StructureDisplayName(structure)
 	if not structure then return "Structure" end
 	if structure.Name == "CaveDungeon" then return "Cave" end
 	local displayName = structure:GetAttribute("DisplayName") or structure:GetAttribute("StructureName") or structure:GetAttribute("Name")
@@ -813,18 +830,18 @@ local function StructureDisplayName(structure)
 	return CleanStructureName(structure.Name)
 end
 
-local function StructureRoot(structure)
+function StructureRoot(structure)
 	if not structure then return nil end
 	if structure:IsA("BasePart") then return structure end
 	if structure:IsA("Model") then return structure.PrimaryPart or structure:FindFirstChildWhichIsA("BasePart", true) end
 	return structure:FindFirstChildWhichIsA("BasePart", true)
 end
 
-local function StructuresFolder()
+function StructuresFolder()
 	return workspace:FindFirstChild("Structures")
 end
 
-local function HasHunterTrapText(value)
+function HasHunterTrapText(value)
 	local lower = string.lower(tostring(value or ""))
 	return lower:find("hunter", 1, true) ~= nil and lower:find("trap", 1, true) ~= nil
 end
@@ -842,7 +859,7 @@ local function HunterTrapPart(box)
 	return nil
 end
 
-local function BoxRoot(box)
+function BoxRoot(box)
 	if not box then return nil end
 	if HasHunterTrapText(box.Name) then
 		local trapPart = HunterTrapPart(box)
@@ -853,7 +870,7 @@ local function BoxRoot(box)
 	return box:FindFirstChildWhichIsA("BasePart", true)
 end
 
-local function BoxTypeFromName(name)
+function BoxTypeFromName(name)
 	local lower = string.lower(tostring(name or ""))
 	if HasHunterTrapText(lower) then return "Hunter Trap" end
 	for _, boxType in ipairs(BOX_TYPES) do
@@ -862,7 +879,7 @@ local function BoxTypeFromName(name)
 	return nil
 end
 
-local function BoxType(box)
+function BoxType(box)
 	local nameType = BoxTypeFromName(box and box.Name)
 	if nameType then return nameType end
 	for _, child in ipairs(box:GetDescendants()) do
@@ -1602,7 +1619,7 @@ local function GetBackpackItemCount()
 	return count
 end
 
-local function GetAllGroundItems()
+function GetAllGroundItems()
 	local items = {}
 	for _, inst in ipairs(workspace:GetDescendants()) do
 		if inst:IsA("ProximityPrompt") and inst.Enabled then
@@ -1735,12 +1752,9 @@ end
 AutoFarmToggle.MouseButton1Click:Connect(ToggleAutoFarm)
 
 -- ESP category updaters and structure-alert hooks are defined further below (in their own
--- scoped block, to keep this file's top-level local count down) but need to be reachable
--- from the structure watcher right here, so they're forward-declared now and assigned later.
-local UpdateBoxESP, RefreshBoxDistances, UpdateStructuresESP, UpdateItemsESP, UpdateMobsESP
-local RegisterKnownStructureType, PushStructureAlert, SetStructureMessage, ShowStructureMarker
-
-local function WatchFarmStructures()
+-- scoped block) but need to be reachable from the structure watcher right here -- already
+-- forward-declared with everything else at the top of this section.
+function WatchFarmStructures()
 	local folder = StructuresFolder()
 	if not folder then return end
 	for _, structure in ipairs(folder:GetChildren()) do
@@ -1843,6 +1857,8 @@ task.spawn(function()
 		task.wait(0.25)
 	end
 end)
+
+end
 
 -- ============================================================================
 -- ESP + Structure Alerts: ported from the old hub's Undead Expedition module. Box ESP
