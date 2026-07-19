@@ -101,14 +101,31 @@ local PanelCorner = Instance.new("UICorner")
 PanelCorner.CornerRadius = UDim.new(0, 14)
 PanelCorner.Parent = PanelFrame
 
-local TitleImage = Instance.new("ImageLabel")
-TitleImage.Name = "TitleImage"
-TitleImage.Size = UDim2.new(0, 180, 0, 36)
-TitleImage.Position = UDim2.new(0, 16, 0, 4)
-TitleImage.BackgroundTransparency = 1
-TitleImage.Image = "rbxassetid://112321629674156"
-TitleImage.ScaleType = Enum.ScaleType.Fit
-TitleImage.Parent = PanelFrame
+-- Background image, covering the whole panel -- parented first (before the header/content
+-- below) so it renders behind everything, same pattern as the main hub's own backdrop.
+local Backdrop = Instance.new("ImageLabel")
+Backdrop.Name = "Backdrop"
+Backdrop.Size = UDim2.new(1, 0, 1, 0)
+Backdrop.BackgroundColor3 = FrameColor
+Backdrop.BorderSizePixel = 0
+Backdrop.Image = "rbxassetid://112321629674156"
+Backdrop.ScaleType = Enum.ScaleType.Crop
+Backdrop.Parent = PanelFrame
+local backdropCorner = Instance.new("UICorner")
+backdropCorner.CornerRadius = UDim.new(0, 14)
+backdropCorner.Parent = Backdrop
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Name = "TitleLabel"
+TitleLabel.Size = UDim2.new(0, 160, 0, 24)
+TitleLabel.Position = UDim2.new(0, 16, 0, 10)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "Quiet or Die"
+TitleLabel.Font = UIFont
+TitleLabel.TextSize = 15
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Parent = PanelFrame
 
 local MinimizeButton = Instance.new("TextButton")
 MinimizeButton.Name = "MinimizeButton"
@@ -244,37 +261,37 @@ FarmEditButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 FarmEditButton.Parent = FarmRow
 Instance.new("UICorner", FarmEditButton).CornerRadius = UDim.new(0, 6)
 
+local FARM_POPUP_WIDTH, FARM_POPUP_HEIGHT = 220, 190
 local FarmOptionsPopup = Instance.new("Frame")
 FarmOptionsPopup.Name = "FarmOptionsPopup"
-FarmOptionsPopup.AnchorPoint = Vector2.new(0.5, 0.5)
-FarmOptionsPopup.Size = UDim2.new(0, 220, 0, 190)
-FarmOptionsPopup.Position = UDim2.new(0.5, 0, 0.5, 0)
+FarmOptionsPopup.Size = UDim2.new(0, FARM_POPUP_WIDTH, 0, FARM_POPUP_HEIGHT)
 FarmOptionsPopup.BackgroundColor3 = FrameColor
 FarmOptionsPopup.BorderSizePixel = 0
 FarmOptionsPopup.Visible = false
-FarmOptionsPopup.ZIndex = 10
+FarmOptionsPopup.ZIndex = 40
 FarmOptionsPopup.Parent = ScreenGui
-Instance.new("UICorner", FarmOptionsPopup).CornerRadius = UDim.new(0, 12)
+Instance.new("UICorner", FarmOptionsPopup).CornerRadius = UDim.new(0, 10)
 local farmOptionsStroke = Instance.new("UIStroke")
-farmOptionsStroke.Color = Color3.fromRGB(0, 0, 0)
+farmOptionsStroke.Color = AccentColor
 farmOptionsStroke.Thickness = 1
+farmOptionsStroke.Transparency = 0.4
 farmOptionsStroke.Parent = FarmOptionsPopup
 
 local FarmOptionsTitle = Instance.new("TextLabel")
-FarmOptionsTitle.Size = UDim2.new(1, -40, 0, 30)
-FarmOptionsTitle.Position = UDim2.new(0, 14, 0, 0)
+FarmOptionsTitle.Size = UDim2.new(1, -40, 0, 26)
+FarmOptionsTitle.Position = UDim2.new(0, 12, 0, 4)
 FarmOptionsTitle.BackgroundTransparency = 1
 FarmOptionsTitle.Text = "Auto Farm Options"
 FarmOptionsTitle.Font = UIFont
 FarmOptionsTitle.TextSize = 14
 FarmOptionsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 FarmOptionsTitle.TextXAlignment = Enum.TextXAlignment.Left
-FarmOptionsTitle.ZIndex = 11
+FarmOptionsTitle.ZIndex = 41
 FarmOptionsTitle.Parent = FarmOptionsPopup
 
 local FarmOptionsClose = Instance.new("TextButton")
 FarmOptionsClose.Size = UDim2.new(0, 22, 0, 22)
-FarmOptionsClose.Position = UDim2.new(1, -30, 0, 4)
+FarmOptionsClose.Position = UDim2.new(1, -30, 0, 6)
 FarmOptionsClose.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 FarmOptionsClose.BackgroundTransparency = 0.4
 FarmOptionsClose.BorderSizePixel = 0
@@ -282,20 +299,20 @@ FarmOptionsClose.Text = "x"
 FarmOptionsClose.Font = UIFont
 FarmOptionsClose.TextSize = 13
 FarmOptionsClose.TextColor3 = Color3.fromRGB(255, 255, 255)
-FarmOptionsClose.ZIndex = 11
+FarmOptionsClose.ZIndex = 41
 FarmOptionsClose.Parent = FarmOptionsPopup
 Instance.new("UICorner", FarmOptionsClose).CornerRadius = UDim.new(0, 6)
 
 local FarmOptionsScroll = Instance.new("ScrollingFrame")
-FarmOptionsScroll.Size = UDim2.new(1, 0, 1, -34)
-FarmOptionsScroll.Position = UDim2.new(0, 0, 0, 34)
+FarmOptionsScroll.Size = UDim2.new(1, -16, 1, -38)
+FarmOptionsScroll.Position = UDim2.new(0, 8, 0, 34)
 FarmOptionsScroll.BackgroundTransparency = 1
 FarmOptionsScroll.BorderSizePixel = 0
 FarmOptionsScroll.ScrollBarThickness = 3
 FarmOptionsScroll.ScrollBarImageColor3 = AccentColor
 FarmOptionsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 FarmOptionsScroll.ElasticBehavior = Enum.ElasticBehavior.Never
-FarmOptionsScroll.ZIndex = 11
+FarmOptionsScroll.ZIndex = 41
 FarmOptionsScroll.Parent = FarmOptionsPopup
 
 local farmOptionsLayout = Instance.new("UIListLayout")
@@ -306,20 +323,23 @@ farmOptionsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(functi
 	FarmOptionsScroll.CanvasSize = UDim2.new(0, 0, 0, farmOptionsLayout.AbsoluteContentSize.Y + 12)
 end)
 
-local farmOptionsPadding = Instance.new("UIPadding")
-farmOptionsPadding.PaddingLeft = UDim.new(0, 14)
-farmOptionsPadding.PaddingRight = UDim.new(0, 14)
-farmOptionsPadding.PaddingBottom = UDim.new(0, 10)
-farmOptionsPadding.Parent = FarmOptionsScroll
-
 local EventRow, EventToggle = CreateFeatureRow(1, "Auto Event", FarmOptionsScroll)
 local SafePlaceRow, SafePlaceToggle = CreateFeatureRow(2, "Safe Place", FarmOptionsScroll)
 local MuteRow, MuteToggle = CreateFeatureRow(3, "Mute Audio", FarmOptionsScroll)
 for _, row in ipairs({EventRow, SafePlaceRow, MuteRow}) do
-	row.ZIndex = 11
+	row.ZIndex = 41
 end
 
+-- Docked to the right of the QOD panel (not centered on the whole screen), and follows it
+-- if the panel gets dragged -- same approach UE's popups use.
+local function UpdateFarmOptionsPosition()
+	FarmOptionsPopup.Position = UDim2.fromOffset(PanelFrame.AbsolutePosition.X + PanelFrame.AbsoluteSize.X + 8, PanelFrame.AbsolutePosition.Y)
+end
+PanelFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(UpdateFarmOptionsPosition)
+UpdateFarmOptionsPosition()
+
 FarmEditButton.MouseButton1Click:Connect(function()
+	UpdateFarmOptionsPosition()
 	FarmOptionsPopup.Visible = not FarmOptionsPopup.Visible
 end)
 FarmOptionsClose.MouseButton1Click:Connect(function()
