@@ -262,10 +262,11 @@ MainCorner.Parent = MainFrame
 -- ToggleGUI() (further below) re-anchors both to the top-left, stacked, while minimized,
 -- since there isn't room to keep them centered in the collapsed mini window.
 local NORMAL_TITLE_GOAL = {Position = UDim2.new(0.5, 0, 0, HEADER_HEIGHT / 2), Size = UDim2.new(0, 280, 0, 60)}
--- Left-aligned, same side as the clock, stacked directly above it.
-local MINI_TITLE_GOAL = {Position = UDim2.new(0, 12, 0, 2), Size = UDim2.new(0, 180, 0, 39)}
+-- Centered within the left ~168px of the mini window (buttons occupy the rest on the
+-- right) -- the clock is hidden while minimized now, so the title gets the whole bar's
+-- height to itself instead of splitting it with the clock underneath.
+local MINI_TITLE_GOAL = {Position = UDim2.new(0, 84, 0, 29), Size = UDim2.new(0, 200, 0, 43)}
 local NORMAL_TIME_GOAL = {Position = UDim2.new(0, 16, 0, 23)}
-local MINI_TIME_GOAL = {Position = UDim2.new(0, 12, 0, 44)}
 
 local TitleImage = Instance.new("ImageLabel")
 TitleImage.Name = "TitleImage"
@@ -3306,14 +3307,11 @@ local function ToggleGUI()
 		Size = minimized and MINI_SIZE or FULL_SIZE,
 		Position = targetPosition,
 	}):Play()
-	-- Title/clock swap from centered-with-the-buttons to a stacked top-left corner layout
-	-- while minimized -- there isn't room to keep them centered in the collapsed window.
-	TitleImage.AnchorPoint = minimized and Vector2.new(0, 0) or Vector2.new(0.5, 0.5)
-	TimeLabel.AnchorPoint = Vector2.new(0, 0)
+	-- Clock only makes sense next to the full title bar -- hidden while minimized rather
+	-- than squeezed in somewhere, since the title itself grows to take over that space.
+	TimeLabel.Visible = not minimized
 	local titleGoal = minimized and MINI_TITLE_GOAL or NORMAL_TITLE_GOAL
-	local timeGoal = minimized and MINI_TIME_GOAL or NORMAL_TIME_GOAL
 	TweenService:Create(TitleImage, tweenInfo, titleGoal):Play()
-	TweenService:Create(TimeLabel, tweenInfo, timeGoal):Play()
 	MiniButton.Text = minimized and "+" or "-"
 end
 MiniButton.MouseButton1Click:Connect(function() PlayClick() ToggleGUI() end)
