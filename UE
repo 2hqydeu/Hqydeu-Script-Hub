@@ -1183,37 +1183,18 @@ local function HoldOnBox(target, targetRoot, options)
 	end
 
 	-- Every crate's Open prompt relies on Roblox's default ProximityPrompt.RequiresLineOfSight
-	-- (never overridden anywhere in this game) -- the default camera, wherever it was last
-	-- pointed, very often does NOT have a clear line to the crate at this range, especially
-	-- inside the cluttered structure interiors, which is why the prompt would never even
-	-- enable without this. The earlier per-tick version snapped the camera to the
-	-- character's live position ~10x/second, which was its own source of visible twitch --
-	-- aiming it once up front (and again only on the rare occasions a drift correction
-	-- actually fires) keeps line-of-sight satisfied without re-snapping every frame.
-	local function AimCameraAtPrompt()
-		local camera = workspace.CurrentCamera
-		local root = PlayerRoot()
-		if not camera or not root then return end
-		pcall(function()
-			camera.CameraType = Enum.CameraType.Scriptable
-			camera.CFrame = CFrame.new(root.Position + Vector3.new(0, 2.5, 0), anchorPosition)
-		end)
-	end
-	local function RestoreCamera()
-		local camera = workspace.CurrentCamera
-		if not camera then return end
-		local character = Player and Player.Character
-		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		pcall(function()
-			camera.CameraType = Enum.CameraType.Custom
-			if humanoid then camera.CameraSubject = humanoid end
-		end)
-	end
+	-- (never overridden anywhere in this game). Manually steering a Scriptable camera to
+	-- fake that line of sight kept causing visible twitch one way or another; RunAutoFarmStep
+	-- (further below) instead forces genuine first-person for the whole time Auto Farm is
+	-- running (via CameraMinZoomDistance/MaxZoomDistance = 0), which is Roblox's own
+	-- native, well-tested camera path -- the camera sits at head height and the character's
+	-- own head is hidden from its own view, so there's nothing left that could ever block
+	-- line of sight to a crate right in front of the character. Nothing here needs to touch
+	-- the camera at all anymore.
 	local function CorrectDriftIfNeeded()
 		if HasDriftedAway() and os.clock() - lastCorrectionTime > TELEPORT_CORRECTION_COOLDOWN then
 			lastCorrectionTime = os.clock()
 			StableTeleport(CFrame.new(anchorPosition))
-			AimCameraAtPrompt()
 		end
 	end
 
@@ -1223,7 +1204,6 @@ local function HoldOnBox(target, targetRoot, options)
 		return false
 	end
 	task.wait(0.15)
-	AimCameraAtPrompt()
 
 	local waitDeadline = os.clock() + 1
 	while os.clock() < waitDeadline and openPrompt.Parent and not openPrompt.Enabled do
@@ -1277,7 +1257,6 @@ local function HoldOnBox(target, targetRoot, options)
 		ReleaseInteractKey(keyCode)
 	end
 	ToolInteractionActive = false
-	RestoreCamera()
 	RestoreTargetCollision()
 	local success = not (target.Parent and BoxRoot(target))
 	if not success then
@@ -1897,10 +1876,37 @@ RefreshAutoFarmUI = function()
 	AutoFarmStatus.Text = AutoFarmEnabled and (tostring(AutoFarmPhase or "Idle") .. (" · %d cleared"):format(AutoFarmKilled)) or ("%d cleared"):format(AutoFarmKilled)
 end
 
+-- Forces genuine first-person for the entire time Auto Farm runs, not just mid-hold --
+-- every crate's Open prompt relies on Roblox's default RequiresLineOfSight, and the
+-- character's own animated model swaying into the camera's view was breaking that line of
+-- sight (that's the twitch that kept canceling opens even after everything else was fixed).
+-- Zooming all the way in is Roblox's own native first-person path: the camera sits at head
+-- height and the character's head is hidden from its own view, so there's no longer
+-- anything that could get between the camera and a crate right in front of it.
+local originalMinZoom, originalMaxZoom
+local function ForceFirstPerson()
+	if originalMinZoom == nil then
+		originalMinZoom = Player.CameraMinZoomDistance
+		originalMaxZoom = Player.CameraMaxZoomDistance
+	end
+	Player.CameraMinZoomDistance = 0
+	Player.CameraMaxZoomDistance = 0
+end
+local function RestoreCameraZoom()
+	if originalMinZoom ~= nil then
+		Player.CameraMinZoomDistance = originalMinZoom
+		Player.CameraMaxZoomDistance = originalMaxZoom
+		originalMinZoom, originalMaxZoom = nil, nil
+	end
+end
+
 local function SetAutoFarmEnabled(enabled)
 	AutoFarmEnabled = enabled == true
-	if not AutoFarmEnabled then
+	if AutoFarmEnabled then
+		ForceFirstPerson()
+	else
 		AutoFarmPhase = "Idle"
+		RestoreCameraZoom()
 	end
 	RefreshAutoFarmUI()
 end
@@ -1910,6 +1916,15 @@ local function ToggleAutoFarm()
 end
 
 AutoFarmToggle.MouseButton1Click:Connect(ToggleAutoFarm)
+
+-- Backslash is a manual escape hatch out of the forced first-person lock -- press it any
+-- time to switch Auto Farm off (and get zoom back) without having to dig for the toggle.
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed then return end
+	if input.KeyCode == Enum.KeyCode.Backslash and AutoFarmEnabled then
+		SetAutoFarmEnabled(false)
+	end
+end)
 
 -- ESP category updaters and structure-alert hooks are defined further below (in their own
 -- scoped block) but need to be reachable from the structure watcher right here -- already
@@ -2773,6 +2788,7 @@ MinimizeButton.MouseButton1Click:Connect(ToggleMinimize)
 -- Close: reverses No Darkness before tearing down, regardless of what else is toggled.
 CloseButton.MouseButton1Click:Connect(function()
 	SetNoDarkness(false)
+	SetAutoFarmEnabled(false)
 	ScreenGui:Destroy()
 end)
 
