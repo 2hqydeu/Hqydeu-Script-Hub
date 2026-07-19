@@ -33,13 +33,15 @@ ScreenGui.Name = "SerenityMM2"
 ScreenGui.Parent = CoreGui
 ScreenGui.ResetOnSpawn = false
 
-local FULL_HEIGHT = 358
+-- Standardized to the same 280x400 size as UE/QOD's panels, so one background image size
+-- covers all three game windows.
+local FULL_HEIGHT = 400
 local MINI_HEIGHT = 44
 
 local PanelFrame = Instance.new("Frame")
 PanelFrame.Name = "MM2Panel"
 PanelFrame.Size = UDim2.new(0, 280, 0, FULL_HEIGHT)
-PanelFrame.Position = UDim2.new(0.5, -140, 0.5, -179)
+PanelFrame.Position = UDim2.new(0.5, -140, 0.5, -200)
 PanelFrame.AnchorPoint = Vector2.new(0, 0)
 PanelFrame.BackgroundColor3 = FrameColor
 PanelFrame.BorderSizePixel = 0
