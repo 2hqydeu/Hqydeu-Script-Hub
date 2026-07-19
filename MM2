@@ -3,10 +3,11 @@
 -- from the old hub's MM2 page: Coin Farm, Auto Gun (pickup), Auto Stab, Auto Shoot, and
 -- Murderer/Sheriff role detection + ESP. The old hub's ThemeObjects/HubState wiring,
 -- rebindable keybinds, remote-based role clues (SetMurderer/SetSheriff/round-data polling),
--- the separate draggable "Role Info" popup, and the PC-gui mobile-control repair pass were
--- all dropped -- this panel doesn't have that shared plumbing, and tool-based role
--- detection (who's holding the Knife/Gun) alone covers the same need. Toggles are plain
--- click buttons, same as UE/QOD.
+-- and the PC-gui mobile-control repair pass were all dropped -- this panel doesn't have
+-- that shared plumbing, and tool-based role detection (who's holding the Knife/Gun) alone
+-- covers the same need. Role highlighting is automatic now (no manual ESP toggle) -- as
+-- soon as a murderer/sheriff is detected, they're highlighted; the Murderer/Sheriff avatar
+-- + name reveal lives in its own popup (Role Reveal button) instead of always on the panel.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -53,17 +54,14 @@ local PanelCorner = Instance.new("UICorner")
 PanelCorner.CornerRadius = UDim.new(0, 14)
 PanelCorner.Parent = PanelFrame
 
-local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Name = "TitleLabel"
-TitleLabel.Size = UDim2.new(0, 160, 0, 24)
-TitleLabel.Position = UDim2.new(0, 16, 0, 10)
-TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "Murder Mystery 2"
-TitleLabel.Font = UIFont
-TitleLabel.TextSize = 15
-TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-TitleLabel.Parent = PanelFrame
+local TitleImage = Instance.new("ImageLabel")
+TitleImage.Name = "TitleImage"
+TitleImage.Size = UDim2.new(0, 160, 0, 24)
+TitleImage.Position = UDim2.new(0, 16, 0, 10)
+TitleImage.BackgroundTransparency = 1
+TitleImage.Image = "rbxassetid://112321629674156"
+TitleImage.ScaleType = Enum.ScaleType.Fit
+TitleImage.Parent = PanelFrame
 
 local MinimizeButton = Instance.new("TextButton")
 MinimizeButton.Name = "MinimizeButton"
@@ -101,79 +99,46 @@ HeaderDivider.BackgroundColor3 = AccentColor
 HeaderDivider.BackgroundTransparency = 0.85
 HeaderDivider.Parent = PanelFrame
 
--- Role display: Murderer avatar/name on the left, Sheriff on the right, each with its own
--- ESP toggle. Ported from the old hub's role reveal row.
-local RoleRow = Instance.new("Frame")
-RoleRow.Name = "RoleRow"
-RoleRow.Size = UDim2.new(1, -32, 0, 70)
-RoleRow.Position = UDim2.new(0, 16, 0, 52)
-RoleRow.BackgroundTransparency = 1
-RoleRow.Parent = PanelFrame
+-- Content scrolls (so extra features never get cut off by the fixed panel height) and every
+-- row is spaced out via UIListLayout instead of hand-placed Y offsets.
+local ContentScroll = Instance.new("ScrollingFrame")
+ContentScroll.Name = "ContentScroll"
+ContentScroll.Size = UDim2.new(1, 0, 1, -MINI_HEIGHT - 8)
+ContentScroll.Position = UDim2.new(0, 0, 0, MINI_HEIGHT + 8)
+ContentScroll.BackgroundTransparency = 1
+ContentScroll.BorderSizePixel = 0
+ContentScroll.ScrollBarThickness = 3
+ContentScroll.ScrollBarImageColor3 = AccentColor
+ContentScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+ContentScroll.AutomaticCanvasSize = Enum.AutomaticCanvasSize.Y
+ContentScroll.ElasticBehavior = Enum.ElasticBehavior.Never
+ContentScroll.Parent = PanelFrame
 
-local function CreateRoleDisplay(xScale, roleName, color)
-	local avatar = Instance.new("ImageLabel")
-	avatar.Name = roleName .. "Avatar"
-	avatar.Size = UDim2.new(0, 58, 0, 58)
-	avatar.Position = UDim2.new(xScale, 0, 0, 0)
-	avatar.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-	avatar.BackgroundTransparency = 0.5
-	avatar.BorderSizePixel = 0
-	avatar.Image = ""
-	avatar.Parent = RoleRow
-	Instance.new("UICorner", avatar).CornerRadius = UDim.new(0, 8)
+local ContentLayout = Instance.new("UIListLayout")
+ContentLayout.Padding = UDim.new(0, 12)
+ContentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ContentLayout.Parent = ContentScroll
 
-	local header = Instance.new("TextLabel")
-	header.Size = UDim2.new(0, 90, 0, 12)
-	header.Position = UDim2.new(xScale, 66, 0, 0)
-	header.BackgroundTransparency = 1
-	header.Text = roleName:upper()
-	header.Font = UIFont
-	header.TextSize = 10
-	header.TextColor3 = color
-	header.TextXAlignment = Enum.TextXAlignment.Left
-	header.Parent = RoleRow
+local ContentPadding = Instance.new("UIPadding")
+ContentPadding.PaddingLeft = UDim.new(0, 16)
+ContentPadding.PaddingRight = UDim.new(0, 16)
+ContentPadding.PaddingTop = UDim.new(0, 4)
+ContentPadding.PaddingBottom = UDim.new(0, 12)
+ContentPadding.Parent = ContentScroll
 
-	local nameLabel = Instance.new("TextLabel")
-	nameLabel.Size = UDim2.new(0, 90, 0, 30)
-	nameLabel.Position = UDim2.new(xScale, 66, 0, 14)
-	nameLabel.BackgroundTransparency = 1
-	nameLabel.Text = "Unknown"
-	nameLabel.Font = UIFont
-	nameLabel.TextSize = 11
-	nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-	nameLabel.TextWrapped = true
-	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-	nameLabel.Parent = RoleRow
-
-	local espButton = Instance.new("TextButton")
-	espButton.Size = UDim2.new(0, 50, 0, 19)
-	espButton.Position = UDim2.new(xScale, 66, 0, 46)
-	espButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-	espButton.BackgroundTransparency = 0.2
-	espButton.BorderSizePixel = 0
-	espButton.Text = "ESP"
-	espButton.Font = UIFont
-	espButton.TextSize = 10
-	espButton.TextColor3 = color
-	espButton.Parent = RoleRow
-	Instance.new("UICorner", espButton).CornerRadius = UDim.new(0, 5)
-
-	return avatar, nameLabel, espButton
-end
-
-local MurdererAvatar, MurdererNameLabel, MurdererESPButton = CreateRoleDisplay(0, "Murderer", MurdererColor)
-local SheriffAvatar, SheriffNameLabel, SheriffESPButton = CreateRoleDisplay(0.5, "Sheriff", SheriffColor)
-
--- Feature row layout: label left, toggle right. Same convention as UE/QOD's panels.
-local function CreateFeatureRow(y, labelText)
+-- Feature row layout: label left, toggle right. Same convention as UE/QOD's panels. order
+-- sets LayoutOrder (rows stack in creation order if not given one).
+local nextRowOrder = 1
+local function CreateFeatureRow(order, labelText)
 	local row = Instance.new("Frame")
 	row.Name = labelText:gsub("%s+", "") .. "Row"
-	row.Size = UDim2.new(1, -32, 0, 36)
-	row.Position = UDim2.new(0, 16, 0, y)
+	row.LayoutOrder = order or nextRowOrder
+	nextRowOrder = math.max(nextRowOrder, row.LayoutOrder) + 1
+	row.Size = UDim2.new(1, 0, 0, 36)
 	row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	row.BackgroundTransparency = 0.5
 	row.BorderSizePixel = 0
-	row.Parent = PanelFrame
+	row.Parent = ContentScroll
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 
 	local label = Instance.new("TextLabel")
@@ -206,18 +171,138 @@ local function CreateFeatureRow(y, labelText)
 	return row, toggle
 end
 
-local MergedESPRow, MergedESPToggle = CreateFeatureRow(130, "Merged ESP")
-local CoinFarmRow, CoinFarmToggle = CreateFeatureRow(174, "Coin Farm")
-local AutoGunRow, AutoGunToggle = CreateFeatureRow(218, "Auto Gun")
-local AutoStabRow, AutoStabToggle = CreateFeatureRow(262, "Auto Stab")
-local AutoShootRow, AutoShootToggle = CreateFeatureRow(306, "Auto Shoot")
+local CoinFarmRow, CoinFarmToggle = CreateFeatureRow(1, "Coin Farm")
+local AutoGunRow, AutoGunToggle = CreateFeatureRow(2, "Auto Gun")
+local AutoStabRow, AutoStabToggle = CreateFeatureRow(3, "Auto Stab")
+local AutoShootRow, AutoShootToggle = CreateFeatureRow(4, "Auto Shoot")
+local RoleRevealRow, RoleRevealButton = CreateFeatureRow(5, "Role Reveal")
+RoleRevealButton.Text = "Open"
+
+-- Role Reveal popup: Murderer/Sheriff avatar + name, each its own full-width row instead of
+-- the old side-by-side columns, so there's room to breathe.
+local RoleRevealPopup = Instance.new("Frame")
+RoleRevealPopup.Name = "RoleRevealPopup"
+RoleRevealPopup.AnchorPoint = Vector2.new(0.5, 0.5)
+RoleRevealPopup.Size = UDim2.new(0, 240, 0, 190)
+RoleRevealPopup.Position = UDim2.new(0.5, 0, 0.5, 0)
+RoleRevealPopup.BackgroundColor3 = FrameColor
+RoleRevealPopup.BorderSizePixel = 0
+RoleRevealPopup.Visible = false
+RoleRevealPopup.ZIndex = 10
+RoleRevealPopup.Parent = ScreenGui
+Instance.new("UICorner", RoleRevealPopup).CornerRadius = UDim.new(0, 12)
+local roleRevealStroke = Instance.new("UIStroke")
+roleRevealStroke.Color = Color3.fromRGB(0, 0, 0)
+roleRevealStroke.Thickness = 1
+roleRevealStroke.Parent = RoleRevealPopup
+
+local RoleRevealTitle = Instance.new("TextLabel")
+RoleRevealTitle.Size = UDim2.new(1, -40, 0, 30)
+RoleRevealTitle.Position = UDim2.new(0, 14, 0, 0)
+RoleRevealTitle.BackgroundTransparency = 1
+RoleRevealTitle.Text = "Role Reveal"
+RoleRevealTitle.Font = UIFont
+RoleRevealTitle.TextSize = 14
+RoleRevealTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+RoleRevealTitle.TextXAlignment = Enum.TextXAlignment.Left
+RoleRevealTitle.ZIndex = 11
+RoleRevealTitle.Parent = RoleRevealPopup
+
+local RoleRevealClose = Instance.new("TextButton")
+RoleRevealClose.Size = UDim2.new(0, 22, 0, 22)
+RoleRevealClose.Position = UDim2.new(1, -30, 0, 4)
+RoleRevealClose.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+RoleRevealClose.BackgroundTransparency = 0.4
+RoleRevealClose.BorderSizePixel = 0
+RoleRevealClose.Text = "x"
+RoleRevealClose.Font = UIFont
+RoleRevealClose.TextSize = 13
+RoleRevealClose.TextColor3 = Color3.fromRGB(255, 255, 255)
+RoleRevealClose.ZIndex = 11
+RoleRevealClose.Parent = RoleRevealPopup
+Instance.new("UICorner", RoleRevealClose).CornerRadius = UDim.new(0, 6)
+
+local RoleRevealList = Instance.new("Frame")
+RoleRevealList.BackgroundTransparency = 1
+RoleRevealList.Size = UDim2.new(1, -28, 1, -44)
+RoleRevealList.Position = UDim2.new(0, 14, 0, 36)
+RoleRevealList.ZIndex = 11
+RoleRevealList.Parent = RoleRevealPopup
+
+local roleRevealLayout = Instance.new("UIListLayout")
+roleRevealLayout.Padding = UDim.new(0, 12)
+roleRevealLayout.SortOrder = Enum.SortOrder.LayoutOrder
+roleRevealLayout.Parent = RoleRevealList
+
+-- Full-width row: avatar on the left, role header + name stacked to its right.
+local function CreateRoleDisplay(order, roleName, color)
+	local row = Instance.new("Frame")
+	row.LayoutOrder = order
+	row.Size = UDim2.new(1, 0, 0, 62)
+	row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	row.BackgroundTransparency = 0.5
+	row.BorderSizePixel = 0
+	row.ZIndex = 11
+	row.Parent = RoleRevealList
+	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+
+	local avatar = Instance.new("ImageLabel")
+	avatar.Name = roleName .. "Avatar"
+	avatar.Size = UDim2.new(0, 50, 0, 50)
+	avatar.Position = UDim2.new(0, 6, 0, 6)
+	avatar.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	avatar.BackgroundTransparency = 0.3
+	avatar.BorderSizePixel = 0
+	avatar.Image = ""
+	avatar.ZIndex = 12
+	avatar.Parent = row
+	Instance.new("UICorner", avatar).CornerRadius = UDim.new(0, 6)
+
+	local header = Instance.new("TextLabel")
+	header.Size = UDim2.new(1, -68, 0, 16)
+	header.Position = UDim2.new(0, 64, 0, 8)
+	header.BackgroundTransparency = 1
+	header.Text = roleName:upper()
+	header.Font = UIFont
+	header.TextSize = 11
+	header.TextColor3 = color
+	header.TextXAlignment = Enum.TextXAlignment.Left
+	header.ZIndex = 12
+	header.Parent = row
+
+	local nameLabel = Instance.new("TextLabel")
+	nameLabel.Size = UDim2.new(1, -68, 0, 30)
+	nameLabel.Position = UDim2.new(0, 64, 0, 24)
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.Text = "Unknown"
+	nameLabel.Font = UIFont
+	nameLabel.TextSize = 12
+	nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	nameLabel.TextWrapped = true
+	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+	nameLabel.TextYAlignment = Enum.TextYAlignment.Top
+	nameLabel.ZIndex = 12
+	nameLabel.Parent = row
+
+	return avatar, nameLabel
+end
+
+local MurdererAvatar, MurdererNameLabel = CreateRoleDisplay(1, "Murderer", MurdererColor)
+local SheriffAvatar, SheriffNameLabel = CreateRoleDisplay(2, "Sheriff", SheriffColor)
+
+RoleRevealButton.MouseButton1Click:Connect(function()
+	RoleRevealPopup.Visible = not RoleRevealPopup.Visible
+end)
+RoleRevealClose.MouseButton1Click:Connect(function()
+	RoleRevealPopup.Visible = false
+end)
 
 -- Role detection: tool-based only (murderer holds a Knife, sheriff holds a Gun) -- the old
 -- hub's remote-clue/round-data listening was dropped, this alone is reliable and self
--- contained. Scanned continuously while any role-dependent feature needs it.
+-- contained. Scanned continuously (regardless of whether Role Reveal is open) so highlights
+-- and combat features always have current info.
 local CurrentMurderer, CurrentSheriff = nil, nil
 local lastMurdererAvatarId, lastSheriffAvatarId = 0, 0
-local murdererESPEnabled, sheriffESPEnabled = false, false
 
 local function PlayerHasTool(targetPlayer, toolName)
 	local wantedName = toolName:lower()
@@ -256,12 +341,13 @@ local function UpdateRoleAvatar(imageLabel, targetPlayer)
 	end)
 end
 
+-- Automatic: highlights whoever's currently detected as murderer/sheriff, no manual toggle.
 local function UpdateRoleHighlights()
 	for _, targetPlayer in ipairs(Players:GetPlayers()) do
 		local character = targetPlayer.Character
 		if character then
-			local wantMurdererHighlight = targetPlayer ~= Player and murdererESPEnabled and targetPlayer == CurrentMurderer
-			local wantSheriffHighlight = targetPlayer ~= Player and sheriffESPEnabled and targetPlayer == CurrentSheriff
+			local wantMurdererHighlight = targetPlayer ~= Player and targetPlayer == CurrentMurderer
+			local wantSheriffHighlight = targetPlayer ~= Player and targetPlayer == CurrentSheriff
 			local murdererHighlight = character:FindFirstChild("MM2MurdererHighlight")
 			local sheriffHighlight = character:FindFirstChild("MM2SheriffHighlight")
 			if wantMurdererHighlight then
@@ -320,18 +406,8 @@ local function RefreshRolesFromTools()
 	end
 end
 
-MurdererESPButton.MouseButton1Click:Connect(function()
-	murdererESPEnabled = not murdererESPEnabled
-	MurdererESPButton.Text = murdererESPEnabled and "ON" or "ESP"
-	UpdateRoleHighlights()
-end)
-SheriffESPButton.MouseButton1Click:Connect(function()
-	sheriffESPEnabled = not sheriffESPEnabled
-	SheriffESPButton.Text = sheriffESPEnabled and "ON" or "ESP"
-	UpdateRoleHighlights()
-end)
-
--- Gun Drop ESP: highlight + floating label on the map's gun pickup, same as the old hub.
+-- Gun Drop ESP: highlight + floating label on the map's gun pickup, same as the old hub --
+-- automatic now too, shows whenever a gun drop actually exists.
 local gunDropESP = {Highlight = nil, Label = nil, Adornee = nil, LastCheck = 0}
 
 local function FindGunDrop()
@@ -353,11 +429,6 @@ local function ClearGunDropESP()
 end
 
 local function RefreshGunDropESP()
-	local espWanted = murdererESPEnabled or sheriffESPEnabled
-	if not espWanted then
-		ClearGunDropESP()
-		return
-	end
 	local gunDrop = FindGunDrop()
 	if not gunDrop or not gunDrop.Parent then
 		ClearGunDropESP()
@@ -398,17 +469,6 @@ local function RefreshGunDropESP()
 		labelText.Parent = gunDropESP.Label
 	end
 end
-
-MergedESPToggle.MouseButton1Click:Connect(function()
-	local enabling = not (murdererESPEnabled and sheriffESPEnabled)
-	murdererESPEnabled = enabling
-	sheriffESPEnabled = enabling
-	MurdererESPButton.Text = enabling and "ON" or "ESP"
-	SheriffESPButton.Text = enabling and "ON" or "ESP"
-	MergedESPToggle.Text = enabling and "On" or "Off"
-	UpdateRoleHighlights()
-	RefreshGunDropESP()
-end)
 
 RunService.Heartbeat:Connect(function()
 	if not ScreenGui.Parent then return end
@@ -1004,17 +1064,13 @@ RunService.Heartbeat:Connect(function()
 	end)
 end)
 
--- Minimize: shrinks to just the header, matching Serenity's own minimize behavior.
+-- Minimize: shrinks to just the header, matching Serenity's own minimize behavior. Every
+-- row lives inside ContentScroll now, so hiding that one frame is enough.
 local minimized = false
 local function ToggleMinimize()
 	minimized = not minimized
 	HeaderDivider.Visible = not minimized
-	RoleRow.Visible = not minimized
-	for _, child in ipairs(PanelFrame:GetChildren()) do
-		if child:IsA("Frame") and child.Name:match("Row$") then
-			child.Visible = not minimized
-		end
-	end
+	ContentScroll.Visible = not minimized
 	PanelFrame.Size = UDim2.new(0, 280, 0, minimized and MINI_HEIGHT or FULL_HEIGHT)
 	MinimizeButton.Text = minimized and "+" or "-"
 end
