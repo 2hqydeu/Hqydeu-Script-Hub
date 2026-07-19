@@ -18,6 +18,9 @@ local Player = Players.LocalPlayer
 local FrameColor = Color3.fromRGB(0x1E, 0x1E, 0x1E)
 local AccentColor = Color3.fromRGB(255, 255, 255)
 local UIFont = Enum.Font.Ubuntu
+-- Reads the main hub's Settings-tab Transparency slider (if it's been set) so every
+-- row here matches, instead of always defaulting to 50%.
+local GameRowTransparency = ((type(getgenv) == "function" and tonumber(getgenv().Serenity_RowTransparency)) or 50) / 100
 local MurdererColor = Color3.fromRGB(255, 90, 90)
 local SheriffColor = Color3.fromRGB(90, 150, 255)
 
@@ -156,7 +159,7 @@ local function CreateFeatureRow(order, labelText)
 	nextRowOrder = math.max(nextRowOrder, row.LayoutOrder) + 1
 	row.Size = UDim2.new(1, 0, 0, 36)
 	row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-	row.BackgroundTransparency = 0.5
+	row.BackgroundTransparency = GameRowTransparency
 	row.BorderSizePixel = 0
 	row.Parent = ContentScroll
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
@@ -203,7 +206,9 @@ RoleRevealButton.Text = "Open"
 local ROLE_POPUP_WIDTH, ROLE_POPUP_HEIGHT = 240, 190
 local RoleRevealPopup = Instance.new("Frame")
 RoleRevealPopup.Name = "RoleRevealPopup"
+RoleRevealPopup.AnchorPoint = Vector2.new(0.5, 0.5)
 RoleRevealPopup.Size = UDim2.new(0, ROLE_POPUP_WIDTH, 0, ROLE_POPUP_HEIGHT)
+RoleRevealPopup.Position = UDim2.new(0.5, 170, 0.5, 0)
 RoleRevealPopup.BackgroundColor3 = FrameColor
 RoleRevealPopup.BorderSizePixel = 0
 RoleRevealPopup.Visible = false
@@ -260,7 +265,7 @@ local function CreateRoleDisplay(order, roleName, color)
 	row.LayoutOrder = order
 	row.Size = UDim2.new(1, 0, 0, 62)
 	row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-	row.BackgroundTransparency = 0.5
+	row.BackgroundTransparency = GameRowTransparency
 	row.BorderSizePixel = 0
 	row.ZIndex = 41
 	row.Parent = RoleRevealList
@@ -310,16 +315,30 @@ end
 local MurdererAvatar, MurdererNameLabel = CreateRoleDisplay(1, "Murderer", MurdererColor)
 local SheriffAvatar, SheriffNameLabel = CreateRoleDisplay(2, "Sheriff", SheriffColor)
 
--- Docked to the right of the MM2 panel (not centered on the whole screen), and follows it
--- if the panel gets dragged -- same approach UE's popups use.
-local function UpdateRoleRevealPosition()
-	RoleRevealPopup.Position = UDim2.fromOffset(PanelFrame.AbsolutePosition.X + PanelFrame.AbsoluteSize.X + 8, PanelFrame.AbsolutePosition.Y)
-end
-PanelFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(UpdateRoleRevealPosition)
-UpdateRoleRevealPosition()
+-- Freely draggable (not locked to the MM2 panel's position) -- drag from the title bar,
+-- same pattern as the main panel's own header drag.
+local roleRevealDragging = false
+local roleRevealDragStart = nil
+local roleRevealStartPos = nil
+RoleRevealTitle.Active = true
+RoleRevealTitle.InputBegan:Connect(function(input)
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+	roleRevealDragging = true
+	roleRevealDragStart = input.Position
+	roleRevealStartPos = RoleRevealPopup.Position
+	input.Changed:Connect(function()
+		if input.UserInputState == Enum.UserInputState.End then
+			roleRevealDragging = false
+		end
+	end)
+end)
+UserInputService.InputChanged:Connect(function(input)
+	if not roleRevealDragging or (input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch) then return end
+	local delta = input.Position - roleRevealDragStart
+	RoleRevealPopup.Position = UDim2.new(roleRevealStartPos.X.Scale, roleRevealStartPos.X.Offset + delta.X, roleRevealStartPos.Y.Scale, roleRevealStartPos.Y.Offset + delta.Y)
+end)
 
 RoleRevealButton.MouseButton1Click:Connect(function()
-	UpdateRoleRevealPosition()
 	RoleRevealPopup.Visible = not RoleRevealPopup.Visible
 end)
 RoleRevealClose.MouseButton1Click:Connect(function()
@@ -405,6 +424,21 @@ local function UpdateRoleHighlights()
 			elseif sheriffHighlight then
 				sheriffHighlight:Destroy()
 			end
+		end
+	end
+end
+
+-- Removes every role highlight this session put on OTHER players' characters -- these are
+-- automatic now (no manual ESP toggle), so unlike everything else here they'd otherwise
+-- keep showing on other people forever after closing.
+local function ClearAllRoleHighlights()
+	for _, targetPlayer in ipairs(Players:GetPlayers()) do
+		local character = targetPlayer.Character
+		if character then
+			local murdererHighlight = character:FindFirstChild("MM2MurdererHighlight")
+			if murdererHighlight then murdererHighlight:Destroy() end
+			local sheriffHighlight = character:FindFirstChild("MM2SheriffHighlight")
+			if sheriffHighlight then sheriffHighlight:Destroy() end
 		end
 	end
 end
@@ -1109,6 +1143,7 @@ CloseButton.MouseButton1Click:Connect(function()
 	SetUnderground(false)
 	RestoreKillHitboxes()
 	ClearGunDropESP()
+	ClearAllRoleHighlights()
 	ScreenGui:Destroy()
 end)
 
