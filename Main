@@ -13,6 +13,11 @@ local Player = Players.LocalPlayer
 local FrameColor = Color3.fromRGB(0x1E, 0x1E, 0x1E)
 local AccentColor = Color3.fromRGB(255, 255, 255)
 local UIFont = Enum.Font.Ubuntu
+-- Shared "on" purple -- the toggle switches fill with this when On, and the selected tab
+-- pill uses the same color so the two visual languages match.
+local ToggleOffColor = Color3.fromRGB(50, 50, 50)
+local ToggleOnColor = Color3.fromRGB(178, 155, 235)
+local ToggleKnobColor = Color3.fromRGB(238, 233, 250)
 
 -- Feature keybinds (Speed/Jump/Fly only -- minimize stays hardcoded to Left Control)
 -- persist across executions via a small settings file; the toggle *state* does not, so
@@ -251,25 +256,6 @@ local MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = UDim.new(0, 14)
 MainCorner.Parent = MainFrame
 
--- Backdrop: one image covering the whole window (top bar and body both), so there's no
--- seam to worry about anymore -- ClipsDescendants clips to MainFrame's rectangular bounds,
--- not its rounded shape, so without its own UICorner this would show square corners poking
--- out past the window's rounded top.
-do
-	local Backdrop = Instance.new("ImageLabel")
-	Backdrop.Name = "Backdrop"
-	Backdrop.Size = UDim2.new(1, 0, 1, 0)
-	Backdrop.Position = UDim2.new(0, 0, 0, 0)
-	Backdrop.BackgroundColor3 = FrameColor
-	Backdrop.BorderSizePixel = 0
-	Backdrop.Image = "rbxassetid://114160446157386"
-	Backdrop.ScaleType = Enum.ScaleType.Crop
-	Backdrop.Parent = MainFrame
-	local backdropCorner = Instance.new("UICorner")
-	backdropCorner.CornerRadius = UDim.new(0, 14)
-	backdropCorner.Parent = Backdrop
-end
-
 -- Header: live local clock (title emblem removed), minimize, and a plain "L Ctrl" hint --
 -- all top-anchored so a minimize shrinks the window straight up toward this row instead of
 -- shrinking from the center.
@@ -384,10 +370,10 @@ local function SelectTab(name)
 	for tabName, entry in pairs(Tabs) do
 		local isSelected = tabName == name
 		entry.Page.Visible = isSelected
-		-- Button.BackgroundColor3 is already AccentColor (white) -- it just read as a faint
-		-- gray tint at 0.85 transparency. Dropping transparency way down makes it read as
-		-- an actual solid white pill; the label switches to dark text so it stays legible
-		-- against that white instead of white-on-white.
+		-- Button.BackgroundColor3 is already the same purple the toggle switches fill with
+		-- when On -- it just read as a faint tint at 0.85 transparency. Dropping
+		-- transparency way down makes it read as a solid purple pill; the label switches to
+		-- dark text so it stays legible against that lighter fill.
 		entry.Button.BackgroundTransparency = isSelected and 0.1 or 1
 		if entry.Label then
 			entry.Label.TextColor3 = isSelected and Color3.fromRGB(20, 20, 20) or Color3.fromRGB(255, 255, 255)
@@ -417,13 +403,13 @@ local function CreateTab(name, order, iconId, scrolling)
 	button.Name = name .. "Tab"
 	button.LayoutOrder = order
 	button.Size = UDim2.new(0, 126, 0, 32)
-	button.BackgroundColor3 = AccentColor
+	button.BackgroundColor3 = ToggleOnColor
 	button.BackgroundTransparency = 1
 	button.BorderSizePixel = 0
 	button.AutoButtonColor = false
 	button.Text = ""
 	button.Parent = TabBar
-	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 8)
+	Instance.new("UICorner", button).CornerRadius = UDim.new(1, 0)
 
 	local content = Instance.new("Frame")
 	content.Name = "Content"
@@ -544,7 +530,7 @@ end
 local function CreateStrengthRow(parent, y, rowLabelText, defaultValue)
 	local row = Instance.new("Frame")
 	row.Name = rowLabelText .. "Row"
-	row.Size = UDim2.new(1, 0, 0, 40)
+	row.Size = UDim2.new(1, 0, 0, 52)
 	row.Position = UDim2.new(0, 0, 0, y)
 	row.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 	row.BackgroundTransparency = RowTransparencyValue / 100
@@ -692,7 +678,7 @@ local function CreateKeybindButton(parent, storageKey, onKeybindChanged, default
 	btn.TextSize = 16
 	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	btn.Parent = parent
-	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(1, 0)
 
 	local loadedKey = (defaultKeyCode and SavedKeybinds[storageKey] == nil) and defaultKeyCode or LoadFeatureKeybind(storageKey)
 	btn.Text = KeybindText(loadedKey)
@@ -737,9 +723,6 @@ end
 -- toggle call site already just does `toggle.Text = enabled and "On" or "Off"`, so this
 -- hooks that same Text property instead of needing every call site rewritten: nothing
 -- outside this function has to change to get the new visual.
-local ToggleOffColor = Color3.fromRGB(50, 50, 50)
-local ToggleOnColor = Color3.fromRGB(178, 155, 235)
-local ToggleKnobColor = Color3.fromRGB(238, 233, 250)
 local function StyleAsToggleSwitch(toggle)
 	toggle.AutoButtonColor = false
 	toggle.TextTransparency = 1
@@ -765,7 +748,9 @@ local function StyleAsToggleSwitch(toggle)
 	toggle:GetPropertyChangedSignal("ZIndex"):Connect(function() knob.ZIndex = toggle.ZIndex + 1 end)
 
 	local function Refresh(animate)
-		local on = toggle.Text == "On"
+		-- Most toggles use "On"/"Off", but the TP Menu Popup toggle reads better as
+		-- "Open"/"Closed" for the same on/off state -- treat both as the affirmative state.
+		local on = toggle.Text == "On" or toggle.Text == "Open"
 		local trackColor = on and ToggleOnColor or ToggleOffColor
 		local knobPosition = on and UDim2.new(1, -3 - knobSize, 0.5, 0) or UDim2.new(0, 3, 0.5, 0)
 		if animate then
@@ -788,7 +773,7 @@ end
 local function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, defaultKeyCode)
 	local row = Instance.new("Frame")
 	row.Name = "ToggleRow"
-	row.Size = UDim2.new(1, 0, 0, 40)
+	row.Size = UDim2.new(1, 0, 0, 52)
 	row.Position = UDim2.new(0, 0, 0, y)
 	row.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 	row.BackgroundTransparency = RowTransparencyValue / 100
@@ -850,7 +835,7 @@ do
 
 	CreateSectionHeading(PlayerPage, 8, "Speed")
 	local SpeedInput = CreateStrengthRow(PlayerPage, 38, "Speed Strength", SpeedValue)
-	local SpeedToggle = CreateToggleRow(PlayerPage, 86, "SpeedKeybind", function(k) SpeedKeybind = k end)
+	local SpeedToggle = CreateToggleRow(PlayerPage, 98, "SpeedKeybind", function(k) SpeedKeybind = k end)
 
 	-- Mode used to be its own full-width row below; squished down to a single button the
 	-- same size as the strength input, sitting directly to its left, inside that same row.
@@ -866,7 +851,7 @@ do
 	SpeedModeButton.TextSize = 12
 	SpeedModeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 	SpeedModeButton.Parent = SpeedInput.Parent
-	Instance.new("UICorner", SpeedModeButton).CornerRadius = UDim.new(0, 6)
+	Instance.new("UICorner", SpeedModeButton).CornerRadius = UDim.new(1, 0)
 
 	local function ApplySpeed()
 		local character = Player.Character
@@ -914,7 +899,7 @@ do
 		ApplySpeed()
 	end)
 
-	local SPEED_SECTION_BOTTOM = 126 -- heading(8) + strength(38..78) + toggle(86..126)
+	local SPEED_SECTION_BOTTOM = 150 -- heading(8) + strength(38..90) + toggle(98..150)
 
 	-- Jump
 	JumpEnabled = false
@@ -925,8 +910,8 @@ do
 	local JUMP_TOP = SPEED_SECTION_BOTTOM + SECTION_GAP
 	CreateSectionHeading(PlayerPage, JUMP_TOP, "Jump")
 	local JumpInput = CreateStrengthRow(PlayerPage, JUMP_TOP + 30, "Jump Strength", JumpValue)
-	local JumpToggle = CreateToggleRow(PlayerPage, JUMP_TOP + 78, "JumpKeybind", function(k) JumpKeybind = k end)
-	local JUMP_SECTION_BOTTOM = JUMP_TOP + 78 + 40
+	local JumpToggle = CreateToggleRow(PlayerPage, JUMP_TOP + 90, "JumpKeybind", function(k) JumpKeybind = k end)
+	local JUMP_SECTION_BOTTOM = JUMP_TOP + 90 + 52
 
 	local function ApplyJump()
 		local character = Player.Character
@@ -995,8 +980,8 @@ do
 	local FLY_TOP = JUMP_SECTION_BOTTOM + SECTION_GAP
 	CreateSectionHeading(PlayerPage, FLY_TOP, "Fly")
 	local FlyInput = CreateStrengthRow(PlayerPage, FLY_TOP + 30, "Fly Strength", FlyValue)
-	local FlyToggle = CreateToggleRow(PlayerPage, FLY_TOP + 78, "FlyKeybind", function(k) FlyKeybind = k end)
-	local FLY_SECTION_BOTTOM = FLY_TOP + 78 + 40
+	local FlyToggle = CreateToggleRow(PlayerPage, FLY_TOP + 90, "FlyKeybind", function(k) FlyKeybind = k end)
+	local FLY_SECTION_BOTTOM = FLY_TOP + 90 + 52
 
 	local function UprightCFrame(sourceCFrame, position)
 		local _, yaw = sourceCFrame:ToOrientation()
@@ -1068,7 +1053,7 @@ do
 	local NOCLIP_TOP = FLY_SECTION_BOTTOM + SECTION_GAP
 	CreateSectionHeading(PlayerPage, NOCLIP_TOP, "NoClip")
 	local NoclipToggle = CreateToggleRow(PlayerPage, NOCLIP_TOP + 30, "NoclipKeybind", function(k) NoclipKeybind = k end)
-	local NOCLIP_SECTION_BOTTOM = NOCLIP_TOP + 30 + 40
+	local NOCLIP_SECTION_BOTTOM = NOCLIP_TOP + 30 + 52
 
 	ToggleNoclip = function()
 		NoclipEnabled = not NoclipEnabled
@@ -1347,8 +1332,8 @@ end)
 CreateSectionHeading(VisualsPage, 8, "ESP")
 
 local OutlineESPToggle = CreateToggleRow(VisualsPage, 38, "OutlineESPKeybind", function(k) OutlineESPKeybind = k end, "Outline ESP")
-local BoxESPToggle = CreateToggleRow(VisualsPage, 86, "BoxESPKeybind", function(k) BoxESPKeybind = k end, "Box ESP")
-local ESPLabelsToggle = CreateToggleRow(VisualsPage, 134, "ESPLabelsKeybind", function(k) ESPLabelsKeybind = k end, "ESP Labels")
+local BoxESPToggle = CreateToggleRow(VisualsPage, 98, "BoxESPKeybind", function(k) BoxESPKeybind = k end, "Box ESP")
+local ESPLabelsToggle = CreateToggleRow(VisualsPage, 158, "ESPLabelsKeybind", function(k) ESPLabelsKeybind = k end, "ESP Labels")
 
 function ToggleOutlineESP()
 	OutlineESPEnabled = not OutlineESPEnabled
@@ -1375,8 +1360,8 @@ ESPLabelsToggle.MouseButton1Click:Connect(function() PlayClick() ToggleESPLabels
 -- each row -- picking a color here updates Outline ESP, Body ESP, and ESP Labels together.
 local ESPColorRow = Instance.new("Frame")
 ESPColorRow.Name = "ESPColorRow"
-ESPColorRow.Size = UDim2.new(1, 0, 0, 40)
-ESPColorRow.Position = UDim2.new(0, 0, 0, 182)
+ESPColorRow.Size = UDim2.new(1, 0, 0, 52)
+ESPColorRow.Position = UDim2.new(0, 0, 0, 218)
 ESPColorRow.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 ESPColorRow.BackgroundTransparency = RowTransparencyValue / 100
 ESPColorRow.BorderSizePixel = 0
@@ -1701,7 +1686,7 @@ end)
 
 RefreshPickerMarkers()
 
-local ESP_SECTION_BOTTOM = 182 + 40
+local ESP_SECTION_BOTTOM = 218 + 52
 
 -- Camera (ported from the old feature-rich hub): Free Cam detaches the camera from the
 -- character (right-click-drag to look, WASD/Q/E to move, Shift to go faster) and sinks
@@ -1725,8 +1710,8 @@ local FOVValue = (workspace.CurrentCamera and workspace.CurrentCamera.FieldOfVie
 
 local FOVRow = Instance.new("Frame")
 FOVRow.Name = "FOVRow"
-FOVRow.Size = UDim2.new(1, 0, 0, 40)
-FOVRow.Position = UDim2.new(0, 0, 0, CAMERA_TOP + 78)
+FOVRow.Size = UDim2.new(1, 0, 0, 52)
+FOVRow.Position = UDim2.new(0, 0, 0, CAMERA_TOP + 90)
 FOVRow.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 FOVRow.BackgroundTransparency = RowTransparencyValue / 100
 FOVRow.BorderSizePixel = 0
@@ -1774,9 +1759,9 @@ FOVResetButton.Font = UIFont
 FOVResetButton.TextSize = 16
 FOVResetButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 FOVResetButton.Parent = FOVRow
-Instance.new("UICorner", FOVResetButton).CornerRadius = UDim.new(0, 6)
+Instance.new("UICorner", FOVResetButton).CornerRadius = UDim.new(1, 0)
 
-local CAMERA_SECTION_BOTTOM = CAMERA_TOP + 78 + 40
+local CAMERA_SECTION_BOTTOM = CAMERA_TOP + 90 + 52
 
 VisualsPage.CanvasSize = UDim2.new(0, 0, 0, CAMERA_SECTION_BOTTOM + 16)
 
@@ -2023,7 +2008,7 @@ do
 	local ROW_H = 26
 	local ROW_GAP = 6
 	local LIST_BOTTOM_PAD = 8
-	local HEADER_H = 40 + 8
+	local HEADER_H = 52 + 8
 	local CONTENT_HEIGHT = 360 + HEADER_H
 
 	-- Opens the floating quick-teleport popup (further below) -- same Players/Waypoints
@@ -3119,7 +3104,7 @@ do
 	local ResetCharacterButton = Instance.new("TextButton")
 	ResetCharacterButton.Name = "ResetCharacterButton"
 	ResetCharacterButton.Size = UDim2.new(1, 0, 0, 28)
-	ResetCharacterButton.Position = UDim2.new(0, 0, 0, 56)
+	ResetCharacterButton.Position = UDim2.new(0, 0, 0, 68)
 	ResetCharacterButton.BackgroundColor3 = Color3.fromRGB(255, 230, 0)
 	ResetCharacterButton.BorderSizePixel = 0
 	ResetCharacterButton.Text = "Reset Character"
@@ -3137,7 +3122,7 @@ do
 	DestroyGuiButton = Instance.new("TextButton")
 	DestroyGuiButton.Name = "DestroyGuiButton"
 	DestroyGuiButton.Size = UDim2.new(1, 0, 0, 28)
-	DestroyGuiButton.Position = UDim2.new(0, 0, 0, 92)
+	DestroyGuiButton.Position = UDim2.new(0, 0, 0, 104)
 	DestroyGuiButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
 	DestroyGuiButton.BorderSizePixel = 0
 	DestroyGuiButton.Text = "Destroy Gui"
@@ -3147,7 +3132,7 @@ do
 	DestroyGuiButton.Parent = SettingsPage
 	Instance.new("UICorner", DestroyGuiButton).CornerRadius = UDim.new(0, 8)
 
-	SettingsPage.CanvasSize = UDim2.new(0, 0, 0, 136)
+	SettingsPage.CanvasSize = UDim2.new(0, 0, 0, 148)
 end
 
 SelectTab("Home")
