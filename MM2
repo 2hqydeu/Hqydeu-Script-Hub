@@ -581,7 +581,13 @@ local function SetUnderground(enabled)
 	local character = Player.Character
 	if not character then return end
 	for _, part in ipairs(character:GetDescendants()) do
-		if part:IsA("BasePart") then part.CanCollide = not enabled end
+		-- HumanoidRootPart is non-collidable by design in a normal character rig -- forcing
+		-- it to collide (which restoring "true" on every part indiscriminately used to do)
+		-- fights the Humanoid's own physics state and is what was ragdolling the character
+		-- on close.
+		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+			part.CanCollide = not enabled
+		end
 	end
 end
 
