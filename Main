@@ -232,10 +232,10 @@ end
 local TitleImage = Instance.new("ImageLabel")
 TitleImage.Name = "TitleImage"
 TitleImage.AnchorPoint = Vector2.new(0.5, 0)
-TitleImage.Size = UDim2.new(0, 140, 0, 32)
-TitleImage.Position = UDim2.new(0.5, 0, 0, 6)
+TitleImage.Size = UDim2.new(0, 220, 0, 48)
+TitleImage.Position = UDim2.new(0.5, 0, 0, 2)
 TitleImage.BackgroundTransparency = 1
-TitleImage.Image = "rbxassetid://73340929918505"
+TitleImage.Image = "rbxassetid://112321629674156"
 TitleImage.ScaleType = Enum.ScaleType.Fit
 TitleImage.Parent = MainFrame
 
