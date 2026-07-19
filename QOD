@@ -379,28 +379,16 @@ for _, row in ipairs({EventRow, SafePlaceRow, MuteRow}) do
 	BumpZIndex(row, 41)
 end
 
--- Freely draggable (not locked to the QOD panel's position) -- drag from the title bar,
--- same pattern as the main panel's own header drag.
-local farmOptionsDragging = false
-local farmOptionsDragStart = nil
-local farmOptionsStartPos = nil
-FarmOptionsTitle.Active = true
-FarmOptionsTitle.InputBegan:Connect(function(input)
-	if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
-	farmOptionsDragging = true
-	farmOptionsDragStart = input.Position
-	farmOptionsStartPos = FarmOptionsPopup.Position
-	input.Changed:Connect(function()
-		if input.UserInputState == Enum.UserInputState.End then
-			farmOptionsDragging = false
-		end
-	end)
-end)
-UserInputService.InputChanged:Connect(function(input)
-	if not farmOptionsDragging or (input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch) then return end
-	local delta = input.Position - farmOptionsDragStart
-	FarmOptionsPopup.Position = UDim2.new(farmOptionsStartPos.X.Scale, farmOptionsStartPos.X.Offset + delta.X, farmOptionsStartPos.Y.Scale, farmOptionsStartPos.Y.Offset + delta.Y)
-end)
+-- Locked to the QOD panel's position -- sits docked to its right side and follows it
+-- whenever the panel itself gets dragged, instead of being independently movable.
+local function SyncFarmOptionsPosition()
+	FarmOptionsPopup.Position = UDim2.new(
+		0.5, PanelFrame.Position.X.Offset + PanelFrame.Size.X.Offset / 2 + 160,
+		0.5, PanelFrame.Position.Y.Offset + PanelFrame.Size.Y.Offset / 2
+	)
+end
+SyncFarmOptionsPosition()
+PanelFrame:GetPropertyChangedSignal("Position"):Connect(SyncFarmOptionsPosition)
 
 FarmEditButton.MouseButton1Click:Connect(function()
 	FarmOptionsPopup.Visible = not FarmOptionsPopup.Visible
@@ -764,6 +752,9 @@ local function ToggleMinimize()
 	ContentScroll.Visible = not minimized
 	PanelFrame.Size = UDim2.new(0, 280, 0, minimized and MINI_HEIGHT or FULL_HEIGHT)
 	MinimizeButton.Text = minimized and "+" or "-"
+	-- The popup's docked position is derived from the panel's own height, so just close it
+	-- on minimize rather than leaving it mis-centered against the collapsed panel.
+	if minimized then FarmOptionsPopup.Visible = false end
 end
 MinimizeButton.MouseButton1Click:Connect(ToggleMinimize)
 
