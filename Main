@@ -262,7 +262,10 @@ MainCorner.Parent = MainFrame
 -- ToggleGUI() (further below) re-anchors both to the top-left, stacked, while minimized,
 -- since there isn't room to keep them centered in the collapsed mini window.
 local NORMAL_TITLE_GOAL = {Position = UDim2.new(0.5, 0, 0, HEADER_HEIGHT / 2), Size = UDim2.new(0, 280, 0, 60)}
-local MINI_TITLE_GOAL = {Position = UDim2.new(0, 12, 0, 1), Size = UDim2.new(0, 190, 0, 41)}
+-- Same size as the full-size title -- taller than the mini window itself (58px), so it
+-- clips a couple pixels top/bottom, and wide enough to sit directly over the clock rather
+-- than stacked above it (TitleImage's ZIndex is bumped below so it draws in front).
+local MINI_TITLE_GOAL = {Position = UDim2.new(0, 12, 0, -1), Size = UDim2.new(0, 280, 0, 60)}
 local NORMAL_TIME_GOAL = {Position = UDim2.new(0, 16, 0, 23)}
 local MINI_TIME_GOAL = {Position = UDim2.new(0, 12, 0, 44)}
 
@@ -274,6 +277,7 @@ TitleImage.Position = NORMAL_TITLE_GOAL.Position
 TitleImage.BackgroundTransparency = 1
 TitleImage.Image = "rbxassetid://73340929918505"
 TitleImage.ScaleType = Enum.ScaleType.Fit
+TitleImage.ZIndex = 2
 TitleImage.Parent = MainFrame
 
 local TimeLabel = Instance.new("TextLabel")
