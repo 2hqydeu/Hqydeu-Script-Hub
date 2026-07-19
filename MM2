@@ -58,20 +58,6 @@ local PanelCorner = Instance.new("UICorner")
 PanelCorner.CornerRadius = UDim.new(0, 14)
 PanelCorner.Parent = PanelFrame
 
--- Background image, covering the whole panel -- parented first (before the header/content
--- below) so it renders behind everything, same pattern as the main hub's own backdrop.
-local Backdrop = Instance.new("ImageLabel")
-Backdrop.Name = "Backdrop"
-Backdrop.Size = UDim2.new(1, 0, 1, 0)
-Backdrop.BackgroundColor3 = FrameColor
-Backdrop.BorderSizePixel = 0
-Backdrop.Image = "rbxassetid://117708259455699"
-Backdrop.ScaleType = Enum.ScaleType.Crop
-Backdrop.Parent = PanelFrame
-local backdropCorner = Instance.new("UICorner")
-backdropCorner.CornerRadius = UDim.new(0, 14)
-backdropCorner.Parent = Backdrop
-
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
 TitleLabel.Size = UDim2.new(0, 160, 0, 24)
@@ -203,12 +189,12 @@ local function StyleAsToggleSwitch(toggle)
 	Refresh(false)
 end
 
-local function CreateFeatureRow(order, labelText)
+local function CreateFeatureRow(order, labelText, isNavButton)
 	local row = Instance.new("Frame")
 	row.Name = labelText:gsub("%s+", "") .. "Row"
 	row.LayoutOrder = order or nextRowOrder
 	nextRowOrder = math.max(nextRowOrder, row.LayoutOrder) + 1
-	row.Size = UDim2.new(1, 0, 0, 36)
+	row.Size = UDim2.new(1, 0, 0, 48)
 	row.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 	row.BackgroundTransparency = GameRowTransparency
 	row.BorderSizePixel = 0
@@ -230,15 +216,26 @@ local function CreateFeatureRow(order, labelText)
 
 	local toggle = Instance.new("TextButton")
 	toggle.Name = "Toggle"
-	toggle.Size = UDim2.new(0, 46, 0, 24)
-	toggle.Position = UDim2.new(1, -56, 0.5, -12)
 	toggle.BorderSizePixel = 0
 	toggle.Text = "Off"
 	toggle.Font = UIFont
-	toggle.TextSize = 14
 	toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
 	toggle.Parent = row
-	StyleAsToggleSwitch(toggle)
+	if isNavButton then
+		-- Not a real on/off switch (e.g. Role Reveal just opens a popup) -- keep it as a
+		-- normal labeled pill button instead of the switch styling every other row gets.
+		toggle.Size = UDim2.new(0, 64, 0, 26)
+		toggle.Position = UDim2.new(1, -74, 0.5, -13)
+		toggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+		toggle.BackgroundTransparency = 0.2
+		toggle.TextSize = 14
+		Instance.new("UICorner", toggle).CornerRadius = UDim.new(1, 0)
+	else
+		toggle.Size = UDim2.new(0, 46, 0, 24)
+		toggle.Position = UDim2.new(1, -56, 0.5, -12)
+		toggle.TextSize = 14
+		StyleAsToggleSwitch(toggle)
+	end
 
 	return row, toggle
 end
@@ -247,7 +244,7 @@ local CoinFarmRow, CoinFarmToggle = CreateFeatureRow(1, "Coin Farm")
 local AutoGunRow, AutoGunToggle = CreateFeatureRow(2, "Auto Gun")
 local AutoStabRow, AutoStabToggle = CreateFeatureRow(3, "Auto Stab")
 local AutoShootRow, AutoShootToggle = CreateFeatureRow(4, "Auto Shoot")
-local RoleRevealRow, RoleRevealButton = CreateFeatureRow(5, "Role Reveal")
+local RoleRevealRow, RoleRevealButton = CreateFeatureRow(5, "Role Reveal", true)
 RoleRevealButton.Text = "Open"
 
 -- Role Reveal popup: Murderer/Sheriff avatar + name, each its own full-width row instead of
