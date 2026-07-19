@@ -121,6 +121,12 @@ local function SetRowTransparency(value)
 	end
 	SavedKeybinds["RowTransparency"] = value
 	SavePersistentSettings()
+	-- UE/QOD/MM2 are standalone scripts with no shared runtime -- getgenv is the only way
+	-- to reach them. They read this once at their own startup; this hub doesn't try to
+	-- live-update an already-open game panel's rows, only what a fresh execute picks up.
+	if type(getgenv) == "function" then
+		getgenv().Serenity_RowTransparency = value
+	end
 end
 
 -- Main Container
