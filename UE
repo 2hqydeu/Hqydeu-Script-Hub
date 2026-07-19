@@ -21,8 +21,8 @@ local FrameColor = Color3.fromRGB(0x1E, 0x1E, 0x1E)
 local AccentColor = Color3.fromRGB(255, 255, 255)
 local UIFont = Enum.Font.Ubuntu
 -- Reads the main hub's Settings-tab Transparency slider (if it's been set) so every
--- row here matches, instead of always defaulting to 50%.
-local GameRowTransparency = ((type(getgenv) == "function" and tonumber(getgenv().Serenity_RowTransparency)) or 50) / 100
+-- row here matches, instead of always defaulting to 75%.
+local GameRowTransparency = ((type(getgenv) == "function" and tonumber(getgenv().Serenity_RowTransparency)) or 75) / 100
 
 -- Carried over from the old hub's Undead Expedition module.
 local BASE_POSITION = Vector3.new(130, 53, -397)
