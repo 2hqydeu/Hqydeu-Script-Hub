@@ -20,6 +20,9 @@ local Player = Players.LocalPlayer
 local FrameColor = Color3.fromRGB(0x1E, 0x1E, 0x1E)
 local AccentColor = Color3.fromRGB(255, 255, 255)
 local UIFont = Enum.Font.Ubuntu
+-- Reads the main hub's Settings-tab Transparency slider (if it's been set) so every
+-- row here matches, instead of always defaulting to 50%.
+local GameRowTransparency = ((type(getgenv) == "function" and tonumber(getgenv().Serenity_RowTransparency)) or 50) / 100
 
 -- Carried over from the old hub's Undead Expedition module.
 local BASE_POSITION = Vector3.new(130, 53, -397)
@@ -183,18 +186,12 @@ do
 
 	local function RestoreLighting()
 		local original = OriginalLighting
-		if not original then
-			SafeSet(Lighting, "ClockTime", 12)
-			SafeSet(Lighting, "TimeOfDay", "12:00:00")
-			SafeSet(Lighting, "Brightness", 2)
-			SafeSet(Lighting, "FogStart", 0)
-			SafeSet(Lighting, "FogEnd", 100000)
-			SafeSet(Lighting, "Ambient", Color3.fromRGB(128, 128, 128))
-			SafeSet(Lighting, "OutdoorAmbient", Color3.fromRGB(128, 128, 128))
-			SafeSet(Lighting, "ExposureCompensation", 0)
-			SafeSet(Lighting, "GlobalShadows", true)
-			return
-		end
+		-- No snapshot means No Darkness was never actually applied (or this game's own
+		-- lighting already looked "no darkness" when it would have been captured) -- there's
+		-- nothing to undo, so leave Lighting completely untouched rather than guessing at
+		-- generic defaults (that used to force arbitrary values onto every game's lighting
+		-- on close, even ones that never touched No Darkness at all).
+		if not original then return end
 		for property, value in pairs(original) do
 			if property ~= "Effects" then SafeSet(Lighting, property, value) end
 		end
@@ -207,11 +204,15 @@ do
 		end
 	end
 
+	-- Only actually restores when toggling an enabled effect off -- calling this with
+	-- enabled=false when it was already off (e.g. closing the panel without ever having
+	-- touched No Darkness) is now a true no-op instead of force-resetting Lighting.
 	SetNoDarkness = function(enabled)
+		local wasEnabled = NoDarknessEnabled
 		NoDarknessEnabled = enabled == true
 		if NoDarknessEnabled then
 			ApplyNoDarkness()
-		else
+		elseif wasEnabled then
 			RestoreLighting()
 			OriginalLighting = nil
 		end
@@ -377,7 +378,7 @@ local function CreateFeatureRow(order, labelText)
 	nextRowOrder = math.max(nextRowOrder, row.LayoutOrder) + 1
 	row.Size = UDim2.new(1, 0, 0, 36)
 	row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-	row.BackgroundTransparency = 0.5
+	row.BackgroundTransparency = GameRowTransparency
 	row.BorderSizePixel = 0
 	row.Parent = ContentScroll
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
@@ -2646,7 +2647,8 @@ do
 		end
 	end)
 
-	-- Close: hide the options dock and clear ESP/alerts along with everything else.
+	-- Close reset (ESP dock + structure alerts half): the rest -- Lighting, ScreenGui
+	-- teardown -- is wired directly to CloseButton further down, past where those exist.
 	CloseButton.MouseButton1Click:Connect(function()
 		ESPDock.Visible = false
 		StructureNotificationsEnabled = false
