@@ -859,7 +859,11 @@ local TRAP_COMBAT_STALL_TIMEOUT = 1.5
 local TRAP_RESPAWN_WAIT = 1
 local TRAP_IDLE_WAIT = 0.5
 local TRAP_WAVE_CLEAR_GRACE = 4
-local KEY_EQUIP_RETRY_WINDOW = 3
+local KEY_EQUIP_RETRY_WINDOW = 6
+-- Boss chests (Grounder/Ancient) get extra hold time on top of whatever the prompt itself
+-- advertises -- if the server enforces a longer requirement than the prompt's own
+-- HoldDuration reflects, the ordinary buffer cuts the hold off before the server's happy.
+local KEYED_BOX_EXTRA_HOLD_BUFFER = 4
 
 function PlayerRoot()
 	local character = Player and Player.Character
@@ -1145,6 +1149,13 @@ local function HoldOnBox(target, targetRoot, options)
 		warn(logPrefix .. " prompt on " .. tostring(target.Name) .. " never became Enabled (out of range?)")
 	end
 
+	if requiredKey then
+		-- Belt-and-suspenders: re-equip right before the hold starts in case anything
+		-- swapped tools between the equip step above and getting here (fighting the wave,
+		-- claiming drops, and walking over to the crate all happen in between).
+		EquipKeyTool(requiredKey)
+	end
+
 	if statusLabel then statusLabel.Text = "Opening..." end
 	local holdDuration = (openPrompt.HoldDuration and openPrompt.HoldDuration > 0) and openPrompt.HoldDuration or BOX_OPEN_HOLD_DURATION
 	local keyCode = openPrompt.KeyboardKeyCode
@@ -1155,10 +1166,12 @@ local function HoldOnBox(target, targetRoot, options)
 	local pressedAtLeastOnce = false
 	local usedFireFallback = false
 	ToolInteractionActive = true
-	local deadline = os.clock() + holdDuration + FARM_OPEN_SAFETY_BUFFER
+	local extraBuffer = requiredKey and KEYED_BOX_EXTRA_HOLD_BUFFER or 0
+	local deadline = os.clock() + holdDuration + FARM_OPEN_SAFETY_BUFFER + extraBuffer
 	while isEnabled() and ScreenGui.Parent and target.Parent and BoxRoot(target) and os.clock() < deadline do
 		if HasDriftedAway() then StableTeleport(CFrame.new(anchorPosition)) end
 		AimCameraAtPrompt()
+		if requiredKey then EquipKeyTool(requiredKey) end
 		if PressInteractKey(keyCode) then
 			pressedAtLeastOnce = true
 		elseif not usedFireFallback then
@@ -1575,26 +1588,28 @@ local function RunAutoFarmStep()
 		local lootFolder = structure:FindFirstChild("Loot")
 
 		-- Boss crates (Grounder/Ancient) don't reliably self-identify via BoxType()'s name/
-		-- text matching, and might not sit as a direct Loot child, so for encounters with a
-		-- known RequiredKey this skips name filtering entirely (one level into any
-		-- sub-folders too) and passes the key straight into HoldOnBox instead of leaving it
-		-- to (re-)guess via BoxType() -- see HoldOnBox's options.RequiredKey above.
+		-- text matching, and might sit arbitrarily deep (not just one level into a Loot
+		-- sub-folder), so for encounters with a known RequiredKey this searches every
+		-- descendant of the structure for an actual "open" ProximityPrompt directly (instead
+		-- of guessing at folder depth) and walks up from each prompt to whatever Model/
+		-- BasePart is the crate itself -- passing the key straight into HoldOnBox instead of
+		-- leaving it to (re-)guess via BoxType() -- see HoldOnBox's options.RequiredKey above.
 		local candidates = {}
 		if encounter.RequiredKey then
-			if lootFolder then
-				for _, box in ipairs(lootFolder:GetChildren()) do
-					if box:IsA("Folder") then
-						for _, nested in ipairs(box:GetChildren()) do
-							table.insert(candidates, nested)
+			local seenCandidate = {}
+			for _, descendant in ipairs(structure:GetDescendants()) do
+				if descendant:IsA("ProximityPrompt") then
+					local action = string.lower(tostring(descendant.ActionText or ""))
+					if action:find("open", 1, true) then
+						local candidate = descendant.Parent
+						while candidate and candidate ~= structure and not candidate:IsA("Model") and not candidate:IsA("BasePart") do
+							candidate = candidate.Parent
 						end
-					else
-						table.insert(candidates, box)
+						if candidate and candidate ~= structure and not seenCandidate[candidate] then
+							seenCandidate[candidate] = true
+							table.insert(candidates, candidate)
+						end
 					end
-				end
-			end
-			for _, child in ipairs(structure:GetChildren()) do
-				if child ~= lootFolder then
-					table.insert(candidates, child)
 				end
 			end
 		elseif lootFolder then
