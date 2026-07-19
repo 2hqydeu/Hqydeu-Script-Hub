@@ -252,17 +252,14 @@ local PanelCorner = Instance.new("UICorner")
 PanelCorner.CornerRadius = UDim.new(0, 14)
 PanelCorner.Parent = PanelFrame
 
-local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Name = "TitleLabel"
-TitleLabel.Size = UDim2.new(0, 160, 0, 24)
-TitleLabel.Position = UDim2.new(0, 16, 0, 10)
-TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "Undead Expedition"
-TitleLabel.Font = UIFont
-TitleLabel.TextSize = 15
-TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-TitleLabel.Parent = PanelFrame
+local TitleImage = Instance.new("ImageLabel")
+TitleImage.Name = "TitleImage"
+TitleImage.Size = UDim2.new(0, 160, 0, 24)
+TitleImage.Position = UDim2.new(0, 16, 0, 10)
+TitleImage.BackgroundTransparency = 1
+TitleImage.Image = "rbxassetid://112321629674156"
+TitleImage.ScaleType = Enum.ScaleType.Fit
+TitleImage.Parent = PanelFrame
 
 local MinimizeButton = Instance.new("TextButton")
 MinimizeButton.Name = "MinimizeButton"
@@ -301,10 +298,38 @@ HeaderDivider.BackgroundTransparency = 0.85
 HeaderDivider.BorderSizePixel = 0
 HeaderDivider.Parent = PanelFrame
 
+-- Content scrolls (so extra features never get cut off by the fixed panel height) and
+-- every row/button is spaced out via UIListLayout instead of hand-placed Y offsets, so
+-- adding/removing rows never requires recomputing everything after it.
+local ContentScroll = Instance.new("ScrollingFrame")
+ContentScroll.Name = "ContentScroll"
+ContentScroll.Size = UDim2.new(1, 0, 1, -MINI_HEIGHT - 8)
+ContentScroll.Position = UDim2.new(0, 0, 0, MINI_HEIGHT + 8)
+ContentScroll.BackgroundTransparency = 1
+ContentScroll.BorderSizePixel = 0
+ContentScroll.ScrollBarThickness = 3
+ContentScroll.ScrollBarImageColor3 = AccentColor
+ContentScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+ContentScroll.AutomaticCanvasSize = Enum.AutomaticCanvasSize.Y
+ContentScroll.ElasticBehavior = Enum.ElasticBehavior.Never
+ContentScroll.Parent = PanelFrame
+
+local ContentLayout = Instance.new("UIListLayout")
+ContentLayout.Padding = UDim.new(0, 12)
+ContentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ContentLayout.Parent = ContentScroll
+
+local ContentPadding = Instance.new("UIPadding")
+ContentPadding.PaddingLeft = UDim.new(0, 16)
+ContentPadding.PaddingRight = UDim.new(0, 16)
+ContentPadding.PaddingTop = UDim.new(0, 4)
+ContentPadding.PaddingBottom = UDim.new(0, 12)
+ContentPadding.Parent = ContentScroll
+
 local BaseTPButton = Instance.new("TextButton")
 BaseTPButton.Name = "BaseTPButton"
-BaseTPButton.Size = UDim2.new(1, -32, 0, 36)
-BaseTPButton.Position = UDim2.new(0, 16, 0, 52)
+BaseTPButton.LayoutOrder = 0
+BaseTPButton.Size = UDim2.new(1, 0, 0, 36)
 BaseTPButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 BaseTPButton.BackgroundTransparency = 0.3
 BaseTPButton.BorderSizePixel = 0
@@ -312,7 +337,7 @@ BaseTPButton.Text = "Base TP"
 BaseTPButton.Font = UIFont
 BaseTPButton.TextSize = 15
 BaseTPButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-BaseTPButton.Parent = PanelFrame
+BaseTPButton.Parent = ContentScroll
 Instance.new("UICorner", BaseTPButton).CornerRadius = UDim.new(0, 8)
 
 BaseTPButton.MouseButton1Click:Connect(function()
@@ -320,16 +345,19 @@ BaseTPButton.MouseButton1Click:Connect(function()
 end)
 
 -- Feature row layout: label left, toggle right. Reused for ESP (not wired up yet),
--- Auto Farm (wired up below), and Full Bright (wired up below).
-local function CreateFeatureRow(y, labelText)
+-- Auto Farm (wired up below), and Full Bright (wired up below). order sets LayoutOrder
+-- (rows stack in the order they're created if not given one explicitly).
+local nextRowOrder = 1
+local function CreateFeatureRow(order, labelText)
 	local row = Instance.new("Frame")
 	row.Name = labelText:gsub("%s+", "") .. "Row"
-	row.Size = UDim2.new(1, -32, 0, 36)
-	row.Position = UDim2.new(0, 16, 0, y)
+	row.LayoutOrder = order or nextRowOrder
+	nextRowOrder = math.max(nextRowOrder, row.LayoutOrder) + 1
+	row.Size = UDim2.new(1, 0, 0, 36)
 	row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	row.BackgroundTransparency = 0.5
 	row.BorderSizePixel = 0
-	row.Parent = PanelFrame
+	row.Parent = ContentScroll
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 
 	local label = Instance.new("TextLabel")
@@ -2599,17 +2627,13 @@ do
 	end)
 end
 
--- Minimize: shrinks to just the header, matching Serenity's own minimize behavior.
+-- Minimize: shrinks to just the header, matching Serenity's own minimize behavior. Every
+-- row/button lives inside ContentScroll now, so hiding that one frame is enough.
 local minimized = false
 local function ToggleMinimize()
 	minimized = not minimized
 	HeaderDivider.Visible = not minimized
-	BaseTPButton.Visible = not minimized
-	for _, child in ipairs(PanelFrame:GetChildren()) do
-		if child:IsA("Frame") and child.Name:match("Row$") then
-			child.Visible = not minimized
-		end
-	end
+	ContentScroll.Visible = not minimized
 	PanelFrame.Size = UDim2.new(0, 280, 0, minimized and MINI_HEIGHT or FULL_HEIGHT)
 	MinimizeButton.Text = minimized and "+" or "-"
 end
