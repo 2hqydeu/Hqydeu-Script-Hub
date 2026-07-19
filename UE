@@ -254,8 +254,8 @@ PanelCorner.Parent = PanelFrame
 
 local TitleImage = Instance.new("ImageLabel")
 TitleImage.Name = "TitleImage"
-TitleImage.Size = UDim2.new(0, 160, 0, 24)
-TitleImage.Position = UDim2.new(0, 16, 0, 10)
+TitleImage.Size = UDim2.new(0, 180, 0, 36)
+TitleImage.Position = UDim2.new(0, 16, 0, 4)
 TitleImage.BackgroundTransparency = 1
 TitleImage.Image = "rbxassetid://112321629674156"
 TitleImage.ScaleType = Enum.ScaleType.Fit
