@@ -256,15 +256,21 @@ local MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = UDim.new(0, 14)
 MainCorner.Parent = MainFrame
 
--- Header: live local clock (title emblem removed), minimize, and a plain "L Ctrl" hint --
--- all top-anchored so a minimize shrinks the window straight up toward this row instead of
--- shrinking from the center.
+-- Header: live local clock, title, minimize + destroy buttons -- all top-anchored so a
+-- minimize shrinks the window straight up toward this row instead of shrinking from the
+-- center. Title/clock stay center-anchored with the buttons while the window is full size;
+-- ToggleGUI() (further below) re-anchors both to the top-left, stacked, while minimized,
+-- since there isn't room to keep them centered in the collapsed mini window.
+local NORMAL_TITLE_GOAL = {Position = UDim2.new(0.5, 0, 0, HEADER_HEIGHT / 2), Size = UDim2.new(0, 280, 0, 60)}
+local MINI_TITLE_GOAL = {Position = UDim2.new(0, 12, 0, 4), Size = UDim2.new(0, 130, 0, 28)}
+local NORMAL_TIME_GOAL = {Position = UDim2.new(0, 16, 0, 23)}
+local MINI_TIME_GOAL = {Position = UDim2.new(0, 12, 0, 36)}
 
 local TitleImage = Instance.new("ImageLabel")
 TitleImage.Name = "TitleImage"
-TitleImage.AnchorPoint = Vector2.new(0.5, 0)
-TitleImage.Size = UDim2.new(0, 280, 0, 60)
-TitleImage.Position = UDim2.new(0.5, 0, 0, -4)
+TitleImage.AnchorPoint = Vector2.new(0.5, 0.5)
+TitleImage.Size = NORMAL_TITLE_GOAL.Size
+TitleImage.Position = NORMAL_TITLE_GOAL.Position
 TitleImage.BackgroundTransparency = 1
 TitleImage.Image = "rbxassetid://73340929918505"
 TitleImage.ScaleType = Enum.ScaleType.Fit
@@ -272,9 +278,9 @@ TitleImage.Parent = MainFrame
 
 local TimeLabel = Instance.new("TextLabel")
 TimeLabel.Name = "TimeLabel"
-TimeLabel.AnchorPoint = Vector2.new(0, 0.5)
+TimeLabel.AnchorPoint = Vector2.new(0, 0)
 TimeLabel.Size = UDim2.new(0, 160, 0, 12)
-TimeLabel.Position = UDim2.new(0, 16, 0, HEADER_HEIGHT / 2)
+TimeLabel.Position = NORMAL_TIME_GOAL.Position
 TimeLabel.BackgroundTransparency = 1
 TimeLabel.Text = os.date("%I:%M:%S %p")
 TimeLabel.Font = UIFont
@@ -290,31 +296,92 @@ task.spawn(function()
 	end
 end)
 
+-- Minimize + destroy, smallest they can be while still tappable -- farthest right is
+-- destroy (X), minimize sits directly to its left.
 local MiniButton = Instance.new("TextButton")
 MiniButton.Name = "MiniButton"
-MiniButton.Size = UDim2.new(0, 26, 0, 26)
-MiniButton.Position = UDim2.new(1, -38, 0, 16)
+MiniButton.Size = UDim2.new(0, 20, 0, 20)
+MiniButton.Position = UDim2.new(1, -52, 0, 19)
 MiniButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 MiniButton.BackgroundTransparency = 0.4
 MiniButton.BorderSizePixel = 0
 MiniButton.Text = "-"
 MiniButton.Font = UIFont
-MiniButton.TextSize = 18
+MiniButton.TextSize = 14
 MiniButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 MiniButton.Parent = MainFrame
-Instance.new("UICorner", MiniButton).CornerRadius = UDim.new(0, 7)
+Instance.new("UICorner", MiniButton).CornerRadius = UDim.new(1, 0)
 
-local MinimizeLabel = Instance.new("TextLabel")
-MinimizeLabel.Name = "MinimizeLabel"
-MinimizeLabel.Size = UDim2.new(0, 46, 0, 26)
-MinimizeLabel.Position = UDim2.new(1, -90, 0, 16)
-MinimizeLabel.BackgroundTransparency = 1
-MinimizeLabel.Text = "L Ctrl"
-MinimizeLabel.Font = UIFont
-MinimizeLabel.TextSize = 12
-MinimizeLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
-MinimizeLabel.TextXAlignment = Enum.TextXAlignment.Right
-MinimizeLabel.Parent = MainFrame
+local GuiDestroyButton = Instance.new("TextButton")
+GuiDestroyButton.Name = "GuiDestroyButton"
+GuiDestroyButton.Size = UDim2.new(0, 20, 0, 20)
+GuiDestroyButton.Position = UDim2.new(1, -28, 0, 19)
+GuiDestroyButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+GuiDestroyButton.BackgroundTransparency = 0.4
+GuiDestroyButton.BorderSizePixel = 0
+GuiDestroyButton.Text = "X"
+GuiDestroyButton.Font = UIFont
+GuiDestroyButton.TextSize = 13
+GuiDestroyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+GuiDestroyButton.Parent = MainFrame
+Instance.new("UICorner", GuiDestroyButton).CornerRadius = UDim.new(1, 0)
+
+-- "Are you sure?" confirmation for the destroy button -- centered over the hub window
+-- (recomputed against MainFrame's current position each time it's shown, since the window
+-- is draggable). Parented to ScreenGui rather than MainFrame so it isn't clipped by
+-- MainFrame's own ClipsDescendants. Wired up further below, next to DestroyGui itself.
+local DestroyConfirmPopup = Instance.new("Frame")
+DestroyConfirmPopup.Name = "DestroyConfirmPopup"
+DestroyConfirmPopup.AnchorPoint = Vector2.new(0.5, 0.5)
+DestroyConfirmPopup.Size = UDim2.new(0, 220, 0, 104)
+DestroyConfirmPopup.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+DestroyConfirmPopup.BorderSizePixel = 0
+DestroyConfirmPopup.Visible = false
+DestroyConfirmPopup.ZIndex = 50
+DestroyConfirmPopup.Parent = ScreenGui
+Instance.new("UICorner", DestroyConfirmPopup).CornerRadius = UDim.new(0, 12)
+local destroyConfirmStroke = Instance.new("UIStroke")
+destroyConfirmStroke.Color = Color3.fromRGB(0, 0, 0)
+destroyConfirmStroke.Thickness = 1
+destroyConfirmStroke.Parent = DestroyConfirmPopup
+
+local DestroyConfirmLabel = Instance.new("TextLabel")
+DestroyConfirmLabel.Size = UDim2.new(1, -16, 0, 40)
+DestroyConfirmLabel.Position = UDim2.new(0, 8, 0, 12)
+DestroyConfirmLabel.BackgroundTransparency = 1
+DestroyConfirmLabel.Text = "Destroy the script?"
+DestroyConfirmLabel.Font = UIFont
+DestroyConfirmLabel.TextSize = 15
+DestroyConfirmLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+DestroyConfirmLabel.TextWrapped = true
+DestroyConfirmLabel.ZIndex = 51
+DestroyConfirmLabel.Parent = DestroyConfirmPopup
+
+local DestroyConfirmYes = Instance.new("TextButton")
+DestroyConfirmYes.Size = UDim2.new(0, 90, 0, 32)
+DestroyConfirmYes.Position = UDim2.new(0, 14, 1, -44)
+DestroyConfirmYes.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+DestroyConfirmYes.BorderSizePixel = 0
+DestroyConfirmYes.Text = "Yes"
+DestroyConfirmYes.Font = UIFont
+DestroyConfirmYes.TextSize = 15
+DestroyConfirmYes.TextColor3 = Color3.fromRGB(255, 255, 255)
+DestroyConfirmYes.ZIndex = 51
+DestroyConfirmYes.Parent = DestroyConfirmPopup
+Instance.new("UICorner", DestroyConfirmYes).CornerRadius = UDim.new(1, 0)
+
+local DestroyConfirmNo = Instance.new("TextButton")
+DestroyConfirmNo.Size = UDim2.new(0, 90, 0, 32)
+DestroyConfirmNo.Position = UDim2.new(1, -104, 1, -44)
+DestroyConfirmNo.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+DestroyConfirmNo.BorderSizePixel = 0
+DestroyConfirmNo.Text = "No"
+DestroyConfirmNo.Font = UIFont
+DestroyConfirmNo.TextSize = 15
+DestroyConfirmNo.TextColor3 = Color3.fromRGB(255, 255, 255)
+DestroyConfirmNo.ZIndex = 51
+DestroyConfirmNo.Parent = DestroyConfirmPopup
+Instance.new("UICorner", DestroyConfirmNo).CornerRadius = UDim.new(1, 0)
 
 local HeaderDivider = Instance.new("Frame")
 HeaderDivider.Name = "HeaderDivider"
@@ -329,7 +396,7 @@ HeaderDivider.Parent = MainFrame
 -- just keep their full width and the row scrolls instead of squeezing.
 local TabBar = Instance.new("ScrollingFrame")
 TabBar.Name = "TabBar"
-TabBar.Size = UDim2.new(1, -32, 0, 42)
+TabBar.Size = UDim2.new(1, -32, 0, 46)
 TabBar.Position = UDim2.new(0, 16, 0, HEADER_HEIGHT + 8)
 TabBar.BackgroundTransparency = 1
 TabBar.BorderSizePixel = 0
@@ -348,7 +415,7 @@ TabBarLayout.Padding = UDim.new(0, 8)
 TabBarLayout.SortOrder = Enum.SortOrder.LayoutOrder
 TabBarLayout.Parent = TabBar
 
-local TAB_BAR_BOTTOM = HEADER_HEIGHT + 8 + 42
+local TAB_BAR_BOTTOM = HEADER_HEIGHT + 8 + 46
 local TabDivider = Instance.new("Frame")
 TabDivider.Name = "TabDivider"
 TabDivider.Size = UDim2.new(1, 0, 0, 1)
@@ -403,7 +470,7 @@ local function CreateTab(name, order, iconId, scrolling)
 	local button = Instance.new("TextButton")
 	button.Name = name .. "Tab"
 	button.LayoutOrder = order
-	button.Size = UDim2.new(0, 112, 0, 26)
+	button.Size = UDim2.new(0, 112, 0, 30)
 	button.BackgroundColor3 = ToggleOnColor
 	button.BackgroundTransparency = 1
 	button.BorderSizePixel = 0
@@ -429,7 +496,7 @@ local function CreateTab(name, order, iconId, scrolling)
 	local icon = Instance.new("ImageLabel")
 	icon.Name = "Icon"
 	icon.LayoutOrder = 1
-	icon.Size = UDim2.new(0, 20, 0, 20)
+	icon.Size = UDim2.new(0, 24, 0, 24)
 	icon.BackgroundTransparency = 1
 	if iconId then icon.Image = "rbxassetid://" .. iconId end
 	icon.Parent = content
@@ -555,8 +622,8 @@ local function CreateStrengthRow(parent, y, rowLabelText, defaultValue)
 
 	local input = Instance.new("TextBox")
 	input.Name = "Input"
-	input.Size = UDim2.new(0, 70, 0, 30)
-	input.Position = UDim2.new(1, -86, 0.5, -15)
+	input.Size = UDim2.new(0, 80, 0, 30)
+	input.Position = UDim2.new(1, -96, 0.5, -15)
 	input.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 	input.BackgroundTransparency = 0.2
 	input.BorderSizePixel = 0
@@ -670,8 +737,8 @@ end
 local function CreateKeybindButton(parent, storageKey, onKeybindChanged, defaultKeyCode)
 	local btn = Instance.new("TextButton")
 	btn.Name = "KeybindButton"
-	btn.Size = UDim2.new(0, 80, 0, 30)
-	btn.Position = UDim2.new(1, -150, 0.5, -15)
+	btn.Size = UDim2.new(0, 70, 0, 30)
+	btn.Position = UDim2.new(1, -140, 0.5, -15)
 	btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 	btn.BackgroundTransparency = 0.2
 	btn.BorderSizePixel = 0
@@ -843,7 +910,7 @@ do
 	local SpeedModeButton = Instance.new("TextButton")
 	SpeedModeButton.Name = "SpeedModeButton"
 	SpeedModeButton.Size = UDim2.new(0, 70, 0, 30)
-	SpeedModeButton.Position = UDim2.new(1, -164, 0.5, -15)
+	SpeedModeButton.Position = UDim2.new(1, -174, 0.5, -15)
 	SpeedModeButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 	SpeedModeButton.BackgroundTransparency = 0.2
 	SpeedModeButton.BorderSizePixel = 0
@@ -1735,8 +1802,8 @@ FOVRowLabel.Parent = FOVRow
 
 local FOVInput = Instance.new("TextBox")
 FOVInput.Name = "Input"
-FOVInput.Size = UDim2.new(0, 70, 0, 30)
-FOVInput.Position = UDim2.new(1, -86, 0.5, -15)
+FOVInput.Size = UDim2.new(0, 80, 0, 30)
+FOVInput.Position = UDim2.new(1, -96, 0.5, -15)
 FOVInput.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 FOVInput.BackgroundTransparency = 0.2
 FOVInput.BorderSizePixel = 0
@@ -1751,7 +1818,7 @@ Instance.new("UICorner", FOVInput).CornerRadius = UDim.new(1, 0)
 local FOVResetButton = Instance.new("TextButton")
 FOVResetButton.Name = "ResetButton"
 FOVResetButton.Size = UDim2.new(0, 80, 0, 30)
-FOVResetButton.Position = UDim2.new(1, -174, 0.5, -15)
+FOVResetButton.Position = UDim2.new(1, -184, 0.5, -15)
 FOVResetButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 FOVResetButton.BackgroundTransparency = 0.2
 FOVResetButton.BorderSizePixel = 0
@@ -3171,12 +3238,22 @@ local function ToggleGUI()
 		-- than have them awkwardly follow a minimizing window, just close them.
 		CloseKeybindClearPrompt()
 		CloseESPColorPicker()
+		DestroyConfirmPopup.Visible = false
 	end
 	local targetPosition = minimized and GetSnappedMinimizedPosition() or (preMinimizePosition or WINDOW_POSITION)
-	TweenService:Create(MainFrame, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+	local tweenInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+	TweenService:Create(MainFrame, tweenInfo, {
 		Size = minimized and MINI_SIZE or FULL_SIZE,
 		Position = targetPosition,
 	}):Play()
+	-- Title/clock swap from centered-with-the-buttons to a stacked top-left corner layout
+	-- while minimized -- there isn't room to keep them centered in the collapsed window.
+	TitleImage.AnchorPoint = minimized and Vector2.new(0, 0) or Vector2.new(0.5, 0.5)
+	TimeLabel.AnchorPoint = Vector2.new(0, 0)
+	local titleGoal = minimized and MINI_TITLE_GOAL or NORMAL_TITLE_GOAL
+	local timeGoal = minimized and MINI_TIME_GOAL or NORMAL_TIME_GOAL
+	TweenService:Create(TitleImage, tweenInfo, titleGoal):Play()
+	TweenService:Create(TimeLabel, tweenInfo, timeGoal):Play()
 	MiniButton.Text = minimized and "+" or "-"
 end
 MiniButton.MouseButton1Click:Connect(function() PlayClick() ToggleGUI() end)
@@ -3231,6 +3308,23 @@ end
 DestroyGuiButton.MouseButton1Click:Connect(function()
 	PlayClick()
 	DestroyGui()
+end)
+
+-- Header X button: same teardown as the Settings tab's Destroy Gui, but gated behind a
+-- confirmation since it's one accidental click away at all times instead of tucked in a tab.
+GuiDestroyButton.MouseButton1Click:Connect(function()
+	PlayClick()
+	local center = MainFrame.AbsolutePosition + MainFrame.AbsoluteSize / 2
+	DestroyConfirmPopup.Position = UDim2.fromOffset(center.X, center.Y)
+	DestroyConfirmPopup.Visible = true
+end)
+DestroyConfirmYes.MouseButton1Click:Connect(function()
+	PlayClick()
+	DestroyGui()
+end)
+DestroyConfirmNo.MouseButton1Click:Connect(function()
+	PlayClick()
+	DestroyConfirmPopup.Visible = false
 end)
 
 mainInputConnection = UserInputService.InputBegan:Connect(function(input, processed)
