@@ -329,7 +329,7 @@ HeaderDivider.Parent = MainFrame
 -- just keep their full width and the row scrolls instead of squeezing.
 local TabBar = Instance.new("ScrollingFrame")
 TabBar.Name = "TabBar"
-TabBar.Size = UDim2.new(1, -32, 0, 32)
+TabBar.Size = UDim2.new(1, -32, 0, 42)
 TabBar.Position = UDim2.new(0, 16, 0, HEADER_HEIGHT + 8)
 TabBar.BackgroundTransparency = 1
 TabBar.BorderSizePixel = 0
@@ -343,11 +343,12 @@ TabBar.Parent = MainFrame
 
 local TabBarLayout = Instance.new("UIListLayout")
 TabBarLayout.FillDirection = Enum.FillDirection.Horizontal
+TabBarLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 TabBarLayout.Padding = UDim.new(0, 8)
 TabBarLayout.SortOrder = Enum.SortOrder.LayoutOrder
 TabBarLayout.Parent = TabBar
 
-local TAB_BAR_BOTTOM = HEADER_HEIGHT + 8 + 32
+local TAB_BAR_BOTTOM = HEADER_HEIGHT + 8 + 42
 local TabDivider = Instance.new("Frame")
 TabDivider.Name = "TabDivider"
 TabDivider.Size = UDim2.new(1, 0, 0, 1)
@@ -402,7 +403,7 @@ local function CreateTab(name, order, iconId, scrolling)
 	local button = Instance.new("TextButton")
 	button.Name = name .. "Tab"
 	button.LayoutOrder = order
-	button.Size = UDim2.new(0, 126, 0, 32)
+	button.Size = UDim2.new(0, 112, 0, 26)
 	button.BackgroundColor3 = ToggleOnColor
 	button.BackgroundTransparency = 1
 	button.BorderSizePixel = 0
@@ -428,7 +429,7 @@ local function CreateTab(name, order, iconId, scrolling)
 	local icon = Instance.new("ImageLabel")
 	icon.Name = "Icon"
 	icon.LayoutOrder = 1
-	icon.Size = UDim2.new(0, 30, 0, 30)
+	icon.Size = UDim2.new(0, 20, 0, 20)
 	icon.BackgroundTransparency = 1
 	if iconId then icon.Image = "rbxassetid://" .. iconId end
 	icon.Parent = content
@@ -565,7 +566,7 @@ local function CreateStrengthRow(parent, y, rowLabelText, defaultValue)
 	input.TextSize = 16
 	input.TextColor3 = Color3.fromRGB(255, 255, 255)
 	input.Parent = row
-	Instance.new("UICorner", input).CornerRadius = UDim.new(0, 6)
+	Instance.new("UICorner", input).CornerRadius = UDim.new(1, 0)
 
 	return input
 end
@@ -670,7 +671,7 @@ local function CreateKeybindButton(parent, storageKey, onKeybindChanged, default
 	local btn = Instance.new("TextButton")
 	btn.Name = "KeybindButton"
 	btn.Size = UDim2.new(0, 80, 0, 30)
-	btn.Position = UDim2.new(1, -176, 0.5, -15)
+	btn.Position = UDim2.new(1, -150, 0.5, -15)
 	btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 	btn.BackgroundTransparency = 0.2
 	btn.BorderSizePixel = 0
@@ -1745,7 +1746,7 @@ FOVInput.Font = UIFont
 FOVInput.TextSize = 16
 FOVInput.TextColor3 = Color3.fromRGB(255, 255, 255)
 FOVInput.Parent = FOVRow
-Instance.new("UICorner", FOVInput).CornerRadius = UDim.new(0, 6)
+Instance.new("UICorner", FOVInput).CornerRadius = UDim.new(1, 0)
 
 local FOVResetButton = Instance.new("TextButton")
 FOVResetButton.Name = "ResetButton"
@@ -2064,7 +2065,7 @@ do
 	PlayerSearch.TextColor3 = Color3.fromRGB(255, 255, 255)
 	PlayerSearch.PlaceholderColor3 = Color3.fromRGB(160, 160, 160)
 	PlayerSearch.Parent = TeleportPage
-	Instance.new("UICorner", PlayerSearch).CornerRadius = UDim.new(0, 6)
+	Instance.new("UICorner", PlayerSearch).CornerRadius = UDim.new(1, 0)
 
 	local PLAYER_LIST_TOP = HEADER_H + TAB_ROW_H + ROW_GAP + ROW_H + ROW_GAP
 	local PlayerList = Instance.new("ScrollingFrame")
@@ -2132,7 +2133,7 @@ do
 	WaypointSearch.PlaceholderColor3 = Color3.fromRGB(160, 160, 160)
 	WaypointSearch.Visible = false
 	WaypointSearch.Parent = TeleportPage
-	Instance.new("UICorner", WaypointSearch).CornerRadius = UDim.new(0, 6)
+	Instance.new("UICorner", WaypointSearch).CornerRadius = UDim.new(1, 0)
 
 	local WAYPOINT_LIST_TOP = HEADER_H + TAB_ROW_H + ROW_GAP + ROW_H + ROW_GAP + ROW_H + ROW_GAP
 	local WaypointList = Instance.new("ScrollingFrame")
@@ -2330,7 +2331,7 @@ do
 					editBox.TextSize = 12
 					editBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 					editBox.Parent = row
-					Instance.new("UICorner", editBox).CornerRadius = UDim.new(0, 5)
+					Instance.new("UICorner", editBox).CornerRadius = UDim.new(1, 0)
 					editBox.FocusLost:Connect(function()
 						local newName = editBox.Text:match("^%s*(.-)%s*$")
 						if newName and newName ~= "" then waypoint.Name = string.sub(newName, 1, 32) end
@@ -2554,7 +2555,7 @@ do
 	PopupPlayerSearch.PlaceholderColor3 = Color3.fromRGB(160, 160, 160)
 	PopupPlayerSearch.ZIndex = 31
 	PopupPlayerSearch.Parent = PopupFrame
-	Instance.new("UICorner", PopupPlayerSearch).CornerRadius = UDim.new(0, 6)
+	Instance.new("UICorner", PopupPlayerSearch).CornerRadius = UDim.new(1, 0)
 
 	local PopupPlayerList = Instance.new("ScrollingFrame")
 	PopupPlayerList.Size = UDim2.new(1, -24, 1, -108)
@@ -2590,7 +2591,7 @@ do
 	PopupWaypointSearch.Visible = false
 	PopupWaypointSearch.ZIndex = 31
 	PopupWaypointSearch.Parent = PopupFrame
-	Instance.new("UICorner", PopupWaypointSearch).CornerRadius = UDim.new(0, 6)
+	Instance.new("UICorner", PopupWaypointSearch).CornerRadius = UDim.new(1, 0)
 
 	local PopupWaypointList = Instance.new("ScrollingFrame")
 	PopupWaypointList.Size = UDim2.new(1, -24, 1, -108)
@@ -2788,7 +2789,7 @@ do
 					editBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 					editBox.ZIndex = 32
 					editBox.Parent = row
-					Instance.new("UICorner", editBox).CornerRadius = UDim.new(0, 5)
+					Instance.new("UICorner", editBox).CornerRadius = UDim.new(1, 0)
 					editBox.FocusLost:Connect(function()
 						local newName = editBox.Text:match("^%s*(.-)%s*$")
 						if newName and newName ~= "" then waypoint.Name = string.sub(newName, 1, 32) end
@@ -2939,7 +2940,7 @@ local function CreateGameRow(parent, y, gameTitle, url)
 	executeBtn.TextSize = 15
 	executeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	executeBtn.Parent = row
-	Instance.new("UICorner", executeBtn).CornerRadius = UDim.new(0, 6)
+	Instance.new("UICorner", executeBtn).CornerRadius = UDim.new(1, 0)
 	ScriptRunner.Buttons[gameTitle] = executeBtn
 
 	executeBtn.MouseButton1Click:Connect(function()
@@ -3018,7 +3019,7 @@ local function CreateUtilityRow(parent, y, title, url)
 	destroyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	destroyBtn.Visible = false
 	destroyBtn.Parent = row
-	Instance.new("UICorner", destroyBtn).CornerRadius = UDim.new(0, 6)
+	Instance.new("UICorner", destroyBtn).CornerRadius = UDim.new(1, 0)
 
 	local executeBtn = Instance.new("TextButton")
 	executeBtn.Name = "ExecuteButton"
@@ -3032,7 +3033,7 @@ local function CreateUtilityRow(parent, y, title, url)
 	executeBtn.TextSize = 15
 	executeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	executeBtn.Parent = row
-	Instance.new("UICorner", executeBtn).CornerRadius = UDim.new(0, 6)
+	Instance.new("UICorner", executeBtn).CornerRadius = UDim.new(1, 0)
 
 	local trackedInstances = {}
 	local busy = false
@@ -3087,24 +3088,12 @@ ScriptsPage.CanvasSize = UDim2.new(0, 0, 0, 268)
 -- this point in the file, so wiring it here would silently fall through to nil.
 local DestroyGuiButton
 do
-	local SettingsPage = CreateTab("Settings", 6, "130203847341927", true)
-
-	-- 0-100 input driving every feature row's background transparency at once (100 = fully
-	-- invisible). CreateStrengthRow already builds a label + numeric-input row identical to
-	-- every other feature row, so reusing it means the Transparency control is itself one of
-	-- the rows it controls. Kept at the top since it's the one you'd actually reach for
-	-- often; Reset Character/Destroy Gui (one-off actions) sit below it.
-	local TransparencyInput = CreateStrengthRow(SettingsPage, 8, "Transparency", RowTransparencyValue)
-	TransparencyInput.FocusLost:Connect(function()
-		local requested = tonumber(TransparencyInput.Text)
-		if requested then SetRowTransparency(requested) end
-		TransparencyInput.Text = tostring(RowTransparencyValue)
-	end)
+	local SettingsPage = CreateTab("Settings", 6, "132212578355544", true)
 
 	local ResetCharacterButton = Instance.new("TextButton")
 	ResetCharacterButton.Name = "ResetCharacterButton"
 	ResetCharacterButton.Size = UDim2.new(1, 0, 0, 28)
-	ResetCharacterButton.Position = UDim2.new(0, 0, 0, 68)
+	ResetCharacterButton.Position = UDim2.new(0, 0, 0, 8)
 	ResetCharacterButton.BackgroundColor3 = Color3.fromRGB(255, 230, 0)
 	ResetCharacterButton.BorderSizePixel = 0
 	ResetCharacterButton.Text = "Reset Character"
@@ -3122,7 +3111,7 @@ do
 	DestroyGuiButton = Instance.new("TextButton")
 	DestroyGuiButton.Name = "DestroyGuiButton"
 	DestroyGuiButton.Size = UDim2.new(1, 0, 0, 28)
-	DestroyGuiButton.Position = UDim2.new(0, 0, 0, 104)
+	DestroyGuiButton.Position = UDim2.new(0, 0, 0, 44)
 	DestroyGuiButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
 	DestroyGuiButton.BorderSizePixel = 0
 	DestroyGuiButton.Text = "Destroy Gui"
@@ -3131,6 +3120,18 @@ do
 	DestroyGuiButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 	DestroyGuiButton.Parent = SettingsPage
 	Instance.new("UICorner", DestroyGuiButton).CornerRadius = UDim.new(0, 8)
+
+	-- 0-100 input driving every feature row's background transparency at once (100 = fully
+	-- invisible). CreateStrengthRow already builds a label + numeric-input row identical to
+	-- every other feature row, so reusing it means the Transparency control is itself one of
+	-- the rows it controls. Moved to the bottom, below Reset Character/Destroy Gui, per
+	-- request.
+	local TransparencyInput = CreateStrengthRow(SettingsPage, 80, "Transparency", RowTransparencyValue)
+	TransparencyInput.FocusLost:Connect(function()
+		local requested = tonumber(TransparencyInput.Text)
+		if requested then SetRowTransparency(requested) end
+		TransparencyInput.Text = tostring(RowTransparencyValue)
+	end)
 
 	SettingsPage.CanvasSize = UDim2.new(0, 0, 0, 148)
 end
