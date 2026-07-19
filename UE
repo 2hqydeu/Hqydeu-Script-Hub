@@ -310,7 +310,6 @@ ContentScroll.BorderSizePixel = 0
 ContentScroll.ScrollBarThickness = 3
 ContentScroll.ScrollBarImageColor3 = AccentColor
 ContentScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-ContentScroll.AutomaticCanvasSize = Enum.AutomaticCanvasSize.Y
 ContentScroll.ElasticBehavior = Enum.ElasticBehavior.Never
 ContentScroll.Parent = PanelFrame
 
@@ -318,6 +317,12 @@ local ContentLayout = Instance.new("UIListLayout")
 ContentLayout.Padding = UDim.new(0, 12)
 ContentLayout.SortOrder = Enum.SortOrder.LayoutOrder
 ContentLayout.Parent = ContentScroll
+-- Manual canvas sizing (not AutomaticCanvasSize -- untested against this executor, and a
+-- typo'd Enum.AutomaticSize elsewhere in this file turned out to be a real crash, so this
+-- sticks to the same plain AbsoluteContentSize approach already proven safe elsewhere).
+ContentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	ContentScroll.CanvasSize = UDim2.new(0, 0, 0, ContentLayout.AbsoluteContentSize.Y + 16)
+end)
 
 local ContentPadding = Instance.new("UIPadding")
 ContentPadding.PaddingLeft = UDim.new(0, 16)
@@ -472,7 +477,6 @@ local function CreatePopupDock(title, width, height)
 	scroll.ScrollBarThickness = 3
 	scroll.ScrollBarImageColor3 = AccentColor
 	scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-	scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	scroll.ZIndex = 41
 	scroll.Parent = dock
 	SmoothScroll(scroll)
@@ -481,6 +485,12 @@ local function CreatePopupDock(title, width, height)
 	scrollLayout.Padding = UDim.new(0, 10)
 	scrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	scrollLayout.Parent = scroll
+	-- This line used to be "scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y" -- the wrong
+	-- enum entirely (AutomaticSize is for GuiObject.AutomaticSize, not a ScrollingFrame's
+	-- CanvasSize), a real type-mismatch error every time this ran. Manual sizing instead.
+	scrollLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+		scroll.CanvasSize = UDim2.new(0, 0, 0, scrollLayout.AbsoluteContentSize.Y + 12)
+	end)
 
 	local function UpdatePosition()
 		dock.Position = UDim2.fromOffset(PanelFrame.AbsolutePosition.X - (width + 8), PanelFrame.AbsolutePosition.Y)
