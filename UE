@@ -267,31 +267,31 @@ TitleLabel.Parent = PanelFrame
 
 local MinimizeButton = Instance.new("TextButton")
 MinimizeButton.Name = "MinimizeButton"
-MinimizeButton.Size = UDim2.new(0, 24, 0, 24)
-MinimizeButton.Position = UDim2.new(1, -70, 0, 10)
+MinimizeButton.Size = UDim2.new(0, 20, 0, 20)
+MinimizeButton.Position = UDim2.new(1, -52, 0, 12)
 MinimizeButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 MinimizeButton.BackgroundTransparency = 0.4
 MinimizeButton.BorderSizePixel = 0
 MinimizeButton.Text = "-"
 MinimizeButton.Font = UIFont
-MinimizeButton.TextSize = 16
+MinimizeButton.TextSize = 14
 MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 MinimizeButton.Parent = PanelFrame
-Instance.new("UICorner", MinimizeButton).CornerRadius = UDim.new(0, 7)
+Instance.new("UICorner", MinimizeButton).CornerRadius = UDim.new(1, 0)
 
 local CloseButton = Instance.new("TextButton")
 CloseButton.Name = "CloseButton"
-CloseButton.Size = UDim2.new(0, 24, 0, 24)
-CloseButton.Position = UDim2.new(1, -40, 0, 10)
-CloseButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+CloseButton.Size = UDim2.new(0, 20, 0, 20)
+CloseButton.Position = UDim2.new(1, -28, 0, 12)
+CloseButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
 CloseButton.BackgroundTransparency = 0.4
 CloseButton.BorderSizePixel = 0
-CloseButton.Text = "x"
+CloseButton.Text = "X"
 CloseButton.Font = UIFont
-CloseButton.TextSize = 14
+CloseButton.TextSize = 13
 CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 CloseButton.Parent = PanelFrame
-Instance.new("UICorner", CloseButton).CornerRadius = UDim.new(0, 7)
+Instance.new("UICorner", CloseButton).CornerRadius = UDim.new(1, 0)
 
 local HeaderDivider = Instance.new("Frame")
 HeaderDivider.Name = "HeaderDivider"
@@ -518,18 +518,18 @@ local function CreatePopupDock(title, width, height)
 	header.Parent = dock
 
 	local closeButton = Instance.new("TextButton")
-	closeButton.Size = UDim2.new(0, 22, 0, 22)
-	closeButton.Position = UDim2.new(1, -30, 0, 6)
-	closeButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	closeButton.Size = UDim2.new(0, 20, 0, 20)
+	closeButton.Position = UDim2.new(1, -28, 0, 6)
+	closeButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
 	closeButton.BackgroundTransparency = 0.4
 	closeButton.BorderSizePixel = 0
 	closeButton.Text = "×"
 	closeButton.Font = UIFont
-	closeButton.TextSize = 15
+	closeButton.TextSize = 13
 	closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 	closeButton.ZIndex = 41
 	closeButton.Parent = dock
-	Instance.new("UICorner", closeButton).CornerRadius = UDim.new(0, 6)
+	Instance.new("UICorner", closeButton).CornerRadius = UDim.new(1, 0)
 	closeButton.MouseButton1Click:Connect(function() dock.Visible = false end)
 
 	local scroll = Instance.new("ScrollingFrame")
@@ -1129,7 +1129,7 @@ local function HoldOnBox(target, targetRoot, options)
 
 	local anchorPart = (openPrompt.Parent and openPrompt.Parent:IsA("BasePart")) and openPrompt.Parent or targetRoot
 	local anchorPosition = anchorPart.Position + Vector3.new(0, 1, 0)
-	local DRIFT_TOLERANCE = 4
+	local DRIFT_TOLERANCE = 6
 
 	-- The anchor point sits right at/inside the crate's own collision geometry, so without
 	-- this, physics shoves the character back out every step, HasDriftedAway sees that as
@@ -1164,6 +1164,30 @@ local function HoldOnBox(target, targetRoot, options)
 		return (root.Position - anchorPosition).Magnitude > DRIFT_TOLERANCE
 	end
 
+	-- HoldOnBox used to teleport (a hard, instant PivotTo) on every single tick that saw
+	-- drift, which on uneven/cluttered structure geometry could re-fire many times a
+	-- second -- each one a visible jitter, and each one very likely what was resetting the
+	-- prompt's hold progress rather than letting it complete. Zeroing velocity every tick
+	-- stops the push from accumulating into real drift in the first place, and a cooldown
+	-- caps the (now rare) corrective teleport to at most once per window instead of
+	-- fighting the physics engine tick-for-tick.
+	local TELEPORT_CORRECTION_COOLDOWN = 0.5
+	local lastCorrectionTime = 0
+	local function HoldStill()
+		local root = PlayerRoot()
+		if not root then return end
+		pcall(function()
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.AssemblyAngularVelocity = Vector3.zero
+		end)
+	end
+	local function CorrectDriftIfNeeded()
+		if HasDriftedAway() and os.clock() - lastCorrectionTime > TELEPORT_CORRECTION_COOLDOWN then
+			lastCorrectionTime = os.clock()
+			StableTeleport(CFrame.new(anchorPosition))
+		end
+	end
+
 	local function AimCameraAtPrompt()
 		local camera = workspace.CurrentCamera
 		local root = PlayerRoot()
@@ -1195,7 +1219,8 @@ local function HoldOnBox(target, targetRoot, options)
 
 	local waitDeadline = os.clock() + 1
 	while os.clock() < waitDeadline and openPrompt.Parent and not openPrompt.Enabled do
-		if HasDriftedAway() then StableTeleport(CFrame.new(anchorPosition)) end
+		HoldStill()
+		CorrectDriftIfNeeded()
 		AimCameraAtPrompt()
 		task.wait(0.1)
 	end
@@ -1223,7 +1248,8 @@ local function HoldOnBox(target, targetRoot, options)
 	local extraBuffer = requiredKey and KEYED_BOX_EXTRA_HOLD_BUFFER or 0
 	local deadline = os.clock() + holdDuration + FARM_OPEN_SAFETY_BUFFER + extraBuffer
 	while isEnabled() and ScreenGui.Parent and target.Parent and BoxRoot(target) and os.clock() < deadline do
-		if HasDriftedAway() then StableTeleport(CFrame.new(anchorPosition)) end
+		HoldStill()
+		CorrectDriftIfNeeded()
 		AimCameraAtPrompt()
 		if requiredKey then EquipKeyTool(requiredKey) end
 		if PressInteractKey(keyCode) then
