@@ -157,7 +157,6 @@ ContentScroll.BorderSizePixel = 0
 ContentScroll.ScrollBarThickness = 3
 ContentScroll.ScrollBarImageColor3 = AccentColor
 ContentScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-ContentScroll.AutomaticCanvasSize = Enum.AutomaticCanvasSize.Y
 ContentScroll.ElasticBehavior = Enum.ElasticBehavior.Never
 ContentScroll.Parent = PanelFrame
 
@@ -165,6 +164,10 @@ local ContentLayout = Instance.new("UIListLayout")
 ContentLayout.Padding = UDim.new(0, 12)
 ContentLayout.SortOrder = Enum.SortOrder.LayoutOrder
 ContentLayout.Parent = ContentScroll
+-- Manual canvas sizing (not AutomaticCanvasSize -- untested against this executor).
+ContentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	ContentScroll.CanvasSize = UDim2.new(0, 0, 0, ContentLayout.AbsoluteContentSize.Y + 16)
+end)
 
 local ContentPadding = Instance.new("UIPadding")
 ContentPadding.PaddingLeft = UDim.new(0, 16)
@@ -291,7 +294,6 @@ FarmOptionsScroll.BorderSizePixel = 0
 FarmOptionsScroll.ScrollBarThickness = 3
 FarmOptionsScroll.ScrollBarImageColor3 = AccentColor
 FarmOptionsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-FarmOptionsScroll.AutomaticCanvasSize = Enum.AutomaticCanvasSize.Y
 FarmOptionsScroll.ElasticBehavior = Enum.ElasticBehavior.Never
 FarmOptionsScroll.ZIndex = 11
 FarmOptionsScroll.Parent = FarmOptionsPopup
@@ -300,6 +302,9 @@ local farmOptionsLayout = Instance.new("UIListLayout")
 farmOptionsLayout.Padding = UDim.new(0, 10)
 farmOptionsLayout.SortOrder = Enum.SortOrder.LayoutOrder
 farmOptionsLayout.Parent = FarmOptionsScroll
+farmOptionsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	FarmOptionsScroll.CanvasSize = UDim2.new(0, 0, 0, farmOptionsLayout.AbsoluteContentSize.Y + 12)
+end)
 
 local farmOptionsPadding = Instance.new("UIPadding")
 farmOptionsPadding.PaddingLeft = UDim.new(0, 14)
