@@ -59,6 +59,24 @@ local function StableTeleport(cframe)
 	return true
 end
 
+-- A stand-at-standPosition CFrame that faces targetPosition, for the crate-open and
+-- drop-claim teleports below -- now that Auto Farm forces first-person the whole time it
+-- runs, the character's own facing IS the camera's facing, so this is what actually points
+-- the player's view at the crate/item instead of leaving it aimed wherever they happened to
+-- be facing before the teleport. Nudges the look point slightly along the character's
+-- current horizontal facing rather than looking exactly straight down at standPosition,
+-- since CFrame.new(pos, lookAt) can't compute a valid orientation when the look direction
+-- lines up exactly with the world up-vector (standPosition and targetPosition here only
+-- ever differ by a vertical offset).
+local function StandAndFaceCFrame(standPosition, targetPosition)
+	local character = Player and Player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local forward = root and Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z) or Vector3.new(0, 0, -1)
+	if forward.Magnitude < 0.01 then forward = Vector3.new(0, 0, -1) end
+	forward = forward.Unit
+	return CFrame.new(standPosition, targetPosition + forward * 0.5)
+end
+
 local function TeleportToBase()
 	return StableTeleport(CFrame.new(BASE_POSITION + Vector3.new(0, 4, 0)))
 end
@@ -1194,11 +1212,11 @@ local function HoldOnBox(target, targetRoot, options)
 	local function CorrectDriftIfNeeded()
 		if HasDriftedAway() and os.clock() - lastCorrectionTime > TELEPORT_CORRECTION_COOLDOWN then
 			lastCorrectionTime = os.clock()
-			StableTeleport(CFrame.new(anchorPosition))
+			StableTeleport(StandAndFaceCFrame(anchorPosition, anchorPart.Position))
 		end
 	end
 
-	if not StableTeleport(CFrame.new(anchorPosition)) then
+	if not StableTeleport(StandAndFaceCFrame(anchorPosition, anchorPart.Position)) then
 		ToolInteractionActive = false
 		RestoreTargetCollision()
 		return false
@@ -1274,7 +1292,7 @@ local function ClaimNearbyDrop(boxPosition, options)
 		if claimPrompt and claimPart then
 			ToolInteractionActive = true
 			local anchorPosition = claimPart.Position + Vector3.new(0, 1, 0)
-			if not StableTeleport(CFrame.new(anchorPosition)) then
+			if not StableTeleport(StandAndFaceCFrame(anchorPosition, claimPart.Position)) then
 				ToolInteractionActive = false
 				return false
 			end
@@ -1899,6 +1917,21 @@ local function RestoreCameraZoom()
 		originalMinZoom, originalMaxZoom = nil, nil
 	end
 end
+
+-- Something (equipping the key tool, claiming a drop, the game's own scripts) was kicking
+-- the zoom back out mid-run even with the lock set once up front -- reassert it the instant
+-- either distance changes rather than trusting a single set-and-forget to hold for the
+-- entire farm.
+Player:GetPropertyChangedSignal("CameraMinZoomDistance"):Connect(function()
+	if AutoFarmEnabled and Player.CameraMinZoomDistance ~= 0 then
+		Player.CameraMinZoomDistance = 0
+	end
+end)
+Player:GetPropertyChangedSignal("CameraMaxZoomDistance"):Connect(function()
+	if AutoFarmEnabled and Player.CameraMaxZoomDistance ~= 0 then
+		Player.CameraMaxZoomDistance = 0
+	end
+end)
 
 local function SetAutoFarmEnabled(enabled)
 	AutoFarmEnabled = enabled == true
