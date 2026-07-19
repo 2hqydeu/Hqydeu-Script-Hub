@@ -1,14 +1,14 @@
 -- Quiet or Die module for Serenity. Standalone, like UE -- no shared runtime/theme table
 -- to hook into, so this builds its own small panel matching the hub's look. Ported from
--- the old hub's QOD page: Auto Kill, Auto Farm (+ Safe Place, Mute Audio), Auto Revive,
--- Auto Event, Auto Reveal, and a live Coins/Wins readout. The old hub's ThemeObjects/
--- HubState wiring, keybind rebinding, and persistent execution-history panel were dropped
--- (this panel doesn't have that shared plumbing) -- toggles are plain click buttons.
+-- the old hub's QOD page: Auto Kill, Auto Farm (+ Safe Place, Mute Audio, tucked behind an
+-- Edit button so the main panel stays uncluttered), Auto Revive, Auto Event (also behind
+-- Edit), and an ESP toggle that labels whoever's currently the killer. The old hub's
+-- ThemeObjects/HubState wiring, keybind rebinding, persistent execution-history panel,
+-- Coins/Wins readout, and Auto Reveal were all dropped -- toggles are plain click buttons.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local VirtualInputManager = game:GetService("VirtualInputManager")
 local CoreGui = game:GetService("CoreGui")
 local SoundService = game:GetService("SoundService")
 
@@ -31,9 +31,12 @@ local function IsQuietOrDieSurvivor()
 	return playerFrame ~= nil and playerFrame.Visible and Player:FindFirstChild("InHit") == nil
 end
 
-local function IsQuietOrDieKiller()
+-- Generalized so ESP can check ANY player, not just the local one -- the killer-frame GUI
+-- check only ever applies to the local player (other players' PlayerGuis aren't readable).
+local function IsPlayerKiller(targetPlayer)
+	targetPlayer = targetPlayer or Player
 	local killerFolder = workspace:FindFirstChild("KillerFolder")
-	if killerFolder and killerFolder:FindFirstChild(Player.Name) then return true end
+	if killerFolder and killerFolder:FindFirstChild(targetPlayer.Name) then return true end
 	local function containerSaysKiller(container)
 		if not container then return false end
 		for _, attributeName in ipairs({"Role", "CurrentRole", "RoundRole"}) do
@@ -53,17 +56,23 @@ local function IsQuietOrDieKiller()
 		end
 		return false
 	end
-	if containerSaysKiller(Player) or containerSaysKiller(Player.Character) then return true end
-	if Player.Team and Player.Team.Name:lower():find("killer", 1, true) then return true end
-	local playerGui = Player:FindFirstChildOfClass("PlayerGui")
-	local inGameGui = playerGui and playerGui:FindFirstChild("InGameGui")
-	if inGameGui then
-		for _, frameName in ipairs({"KillerFrameGame2", "KillerFrameGame", "KillerFrame", "KillerGui"}) do
-			local frame = inGameGui:FindFirstChild(frameName, true)
-			if frame and frame:IsA("GuiObject") and frame.Visible then return true end
+	if containerSaysKiller(targetPlayer) or containerSaysKiller(targetPlayer.Character) then return true end
+	if targetPlayer.Team and targetPlayer.Team.Name:lower():find("killer", 1, true) then return true end
+	if targetPlayer == Player then
+		local playerGui = Player:FindFirstChildOfClass("PlayerGui")
+		local inGameGui = playerGui and playerGui:FindFirstChild("InGameGui")
+		if inGameGui then
+			for _, frameName in ipairs({"KillerFrameGame2", "KillerFrameGame", "KillerFrame", "KillerGui"}) do
+				local frame = inGameGui:FindFirstChild(frameName, true)
+				if frame and frame:IsA("GuiObject") and frame.Visible then return true end
+			end
 		end
 	end
 	return false
+end
+
+local function IsQuietOrDieKiller()
+	return IsPlayerKiller(Player)
 end
 
 -- UI: a small standalone panel, matching Serenity's look for consistency (same shell as UE).
@@ -92,17 +101,14 @@ local PanelCorner = Instance.new("UICorner")
 PanelCorner.CornerRadius = UDim.new(0, 14)
 PanelCorner.Parent = PanelFrame
 
-local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Name = "TitleLabel"
-TitleLabel.Size = UDim2.new(0, 160, 0, 24)
-TitleLabel.Position = UDim2.new(0, 16, 0, 10)
-TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "Quiet or Die"
-TitleLabel.Font = UIFont
-TitleLabel.TextSize = 15
-TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-TitleLabel.Parent = PanelFrame
+local TitleImage = Instance.new("ImageLabel")
+TitleImage.Name = "TitleImage"
+TitleImage.Size = UDim2.new(0, 160, 0, 24)
+TitleImage.Position = UDim2.new(0, 16, 0, 10)
+TitleImage.BackgroundTransparency = 1
+TitleImage.Image = "rbxassetid://112321629674156"
+TitleImage.ScaleType = Enum.ScaleType.Fit
+TitleImage.Parent = PanelFrame
 
 local MinimizeButton = Instance.new("TextButton")
 MinimizeButton.Name = "MinimizeButton"
@@ -140,28 +146,47 @@ HeaderDivider.BackgroundColor3 = AccentColor
 HeaderDivider.BackgroundTransparency = 0.85
 HeaderDivider.Parent = PanelFrame
 
-local StatsLabel = Instance.new("TextLabel")
-StatsLabel.Name = "StatsLabel"
-StatsLabel.Size = UDim2.new(1, -32, 0, 20)
-StatsLabel.Position = UDim2.new(0, 16, 0, 52)
-StatsLabel.BackgroundTransparency = 1
-StatsLabel.Text = "Coins: N/A    Wins: N/A"
-StatsLabel.Font = UIFont
-StatsLabel.TextSize = 13
-StatsLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-StatsLabel.TextXAlignment = Enum.TextXAlignment.Left
-StatsLabel.Parent = PanelFrame
+-- Content scrolls (so extra features never get cut off by the fixed panel height) and every
+-- row is spaced out via UIListLayout instead of hand-placed Y offsets.
+local ContentScroll = Instance.new("ScrollingFrame")
+ContentScroll.Name = "ContentScroll"
+ContentScroll.Size = UDim2.new(1, 0, 1, -MINI_HEIGHT - 8)
+ContentScroll.Position = UDim2.new(0, 0, 0, MINI_HEIGHT + 8)
+ContentScroll.BackgroundTransparency = 1
+ContentScroll.BorderSizePixel = 0
+ContentScroll.ScrollBarThickness = 3
+ContentScroll.ScrollBarImageColor3 = AccentColor
+ContentScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+ContentScroll.AutomaticCanvasSize = Enum.AutomaticCanvasSize.Y
+ContentScroll.ElasticBehavior = Enum.ElasticBehavior.Never
+ContentScroll.Parent = PanelFrame
 
--- Feature row layout: label left, toggle right. Same convention as UE's panel.
-local function CreateFeatureRow(y, labelText)
+local ContentLayout = Instance.new("UIListLayout")
+ContentLayout.Padding = UDim.new(0, 12)
+ContentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ContentLayout.Parent = ContentScroll
+
+local ContentPadding = Instance.new("UIPadding")
+ContentPadding.PaddingLeft = UDim.new(0, 16)
+ContentPadding.PaddingRight = UDim.new(0, 16)
+ContentPadding.PaddingTop = UDim.new(0, 4)
+ContentPadding.PaddingBottom = UDim.new(0, 12)
+ContentPadding.Parent = ContentScroll
+
+-- Feature row layout: label left, toggle right. parent defaults to ContentScroll (the main
+-- panel's row list); pass a different one (e.g. a popup's own row list) to place it there
+-- instead. order sets LayoutOrder (rows stack in creation order if not given one).
+local nextRowOrder = 1
+local function CreateFeatureRow(order, labelText, parent)
 	local row = Instance.new("Frame")
 	row.Name = labelText:gsub("%s+", "") .. "Row"
-	row.Size = UDim2.new(1, -32, 0, 36)
-	row.Position = UDim2.new(0, 16, 0, y)
+	row.LayoutOrder = order or nextRowOrder
+	nextRowOrder = math.max(nextRowOrder, row.LayoutOrder) + 1
+	row.Size = UDim2.new(1, 0, 0, 36)
 	row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	row.BackgroundTransparency = 0.5
 	row.BorderSizePixel = 0
-	row.Parent = PanelFrame
+	row.Parent = parent or ContentScroll
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 
 	local label = Instance.new("TextLabel")
@@ -194,13 +219,107 @@ local function CreateFeatureRow(y, labelText)
 	return row, toggle
 end
 
-local KillRow, KillToggle = CreateFeatureRow(80, "Auto Kill")
-local FarmRow, FarmToggle = CreateFeatureRow(124, "Auto Farm")
-local SafePlaceRow, SafePlaceToggle = CreateFeatureRow(168, "Safe Place")
-local MuteRow, MuteToggle = CreateFeatureRow(212, "Mute Audio")
-local ReviveRow, ReviveToggle = CreateFeatureRow(256, "Auto Revive")
-local EventRow, EventToggle = CreateFeatureRow(300, "Auto Event")
-local RevealRow, RevealToggle = CreateFeatureRow(344, "Auto Reveal")
+local KillRow, KillToggle = CreateFeatureRow(1, "Auto Kill")
+local FarmRow, FarmToggle = CreateFeatureRow(2, "Auto Farm")
+local ReviveRow, ReviveToggle = CreateFeatureRow(3, "Auto Revive")
+local ESPRow, ESPToggle = CreateFeatureRow(4, "ESP")
+
+-- Auto Farm's Edit button: tucked to the left of its toggle, opens a small popup holding
+-- Auto Event, Safe Place, and Mute Audio -- keeps the main panel to just the things you'd
+-- actually flip often.
+local FarmEditButton = Instance.new("TextButton")
+FarmEditButton.Name = "EditButton"
+FarmEditButton.Size = UDim2.new(0, 44, 0, 26)
+FarmEditButton.Position = UDim2.new(1, -126, 0.5, -13)
+FarmEditButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+FarmEditButton.BackgroundTransparency = 0.2
+FarmEditButton.BorderSizePixel = 0
+FarmEditButton.Text = "Edit"
+FarmEditButton.Font = UIFont
+FarmEditButton.TextSize = 12
+FarmEditButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+FarmEditButton.Parent = FarmRow
+Instance.new("UICorner", FarmEditButton).CornerRadius = UDim.new(0, 6)
+
+local FarmOptionsPopup = Instance.new("Frame")
+FarmOptionsPopup.Name = "FarmOptionsPopup"
+FarmOptionsPopup.AnchorPoint = Vector2.new(0.5, 0.5)
+FarmOptionsPopup.Size = UDim2.new(0, 220, 0, 190)
+FarmOptionsPopup.Position = UDim2.new(0.5, 0, 0.5, 0)
+FarmOptionsPopup.BackgroundColor3 = FrameColor
+FarmOptionsPopup.BorderSizePixel = 0
+FarmOptionsPopup.Visible = false
+FarmOptionsPopup.ZIndex = 10
+FarmOptionsPopup.Parent = ScreenGui
+Instance.new("UICorner", FarmOptionsPopup).CornerRadius = UDim.new(0, 12)
+local farmOptionsStroke = Instance.new("UIStroke")
+farmOptionsStroke.Color = Color3.fromRGB(0, 0, 0)
+farmOptionsStroke.Thickness = 1
+farmOptionsStroke.Parent = FarmOptionsPopup
+
+local FarmOptionsTitle = Instance.new("TextLabel")
+FarmOptionsTitle.Size = UDim2.new(1, -40, 0, 30)
+FarmOptionsTitle.Position = UDim2.new(0, 14, 0, 0)
+FarmOptionsTitle.BackgroundTransparency = 1
+FarmOptionsTitle.Text = "Auto Farm Options"
+FarmOptionsTitle.Font = UIFont
+FarmOptionsTitle.TextSize = 14
+FarmOptionsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+FarmOptionsTitle.TextXAlignment = Enum.TextXAlignment.Left
+FarmOptionsTitle.ZIndex = 11
+FarmOptionsTitle.Parent = FarmOptionsPopup
+
+local FarmOptionsClose = Instance.new("TextButton")
+FarmOptionsClose.Size = UDim2.new(0, 22, 0, 22)
+FarmOptionsClose.Position = UDim2.new(1, -30, 0, 4)
+FarmOptionsClose.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+FarmOptionsClose.BackgroundTransparency = 0.4
+FarmOptionsClose.BorderSizePixel = 0
+FarmOptionsClose.Text = "x"
+FarmOptionsClose.Font = UIFont
+FarmOptionsClose.TextSize = 13
+FarmOptionsClose.TextColor3 = Color3.fromRGB(255, 255, 255)
+FarmOptionsClose.ZIndex = 11
+FarmOptionsClose.Parent = FarmOptionsPopup
+Instance.new("UICorner", FarmOptionsClose).CornerRadius = UDim.new(0, 6)
+
+local FarmOptionsScroll = Instance.new("ScrollingFrame")
+FarmOptionsScroll.Size = UDim2.new(1, 0, 1, -34)
+FarmOptionsScroll.Position = UDim2.new(0, 0, 0, 34)
+FarmOptionsScroll.BackgroundTransparency = 1
+FarmOptionsScroll.BorderSizePixel = 0
+FarmOptionsScroll.ScrollBarThickness = 3
+FarmOptionsScroll.ScrollBarImageColor3 = AccentColor
+FarmOptionsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+FarmOptionsScroll.AutomaticCanvasSize = Enum.AutomaticCanvasSize.Y
+FarmOptionsScroll.ElasticBehavior = Enum.ElasticBehavior.Never
+FarmOptionsScroll.ZIndex = 11
+FarmOptionsScroll.Parent = FarmOptionsPopup
+
+local farmOptionsLayout = Instance.new("UIListLayout")
+farmOptionsLayout.Padding = UDim.new(0, 10)
+farmOptionsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+farmOptionsLayout.Parent = FarmOptionsScroll
+
+local farmOptionsPadding = Instance.new("UIPadding")
+farmOptionsPadding.PaddingLeft = UDim.new(0, 14)
+farmOptionsPadding.PaddingRight = UDim.new(0, 14)
+farmOptionsPadding.PaddingBottom = UDim.new(0, 10)
+farmOptionsPadding.Parent = FarmOptionsScroll
+
+local EventRow, EventToggle = CreateFeatureRow(1, "Auto Event", FarmOptionsScroll)
+local SafePlaceRow, SafePlaceToggle = CreateFeatureRow(2, "Safe Place", FarmOptionsScroll)
+local MuteRow, MuteToggle = CreateFeatureRow(3, "Mute Audio", FarmOptionsScroll)
+for _, row in ipairs({EventRow, SafePlaceRow, MuteRow}) do
+	row.ZIndex = 11
+end
+
+FarmEditButton.MouseButton1Click:Connect(function()
+	FarmOptionsPopup.Visible = not FarmOptionsPopup.Visible
+end)
+FarmOptionsClose.MouseButton1Click:Connect(function()
+	FarmOptionsPopup.Visible = false
+end)
 
 -- Auto Kill: cycles through living survivors, teleports the killer's root right up against
 -- each in turn, and fires the touch/click attack remote. Ported from the old hub verbatim.
@@ -484,82 +603,77 @@ RunService.Heartbeat:Connect(function()
 	end
 end)
 
--- Auto Reveal: fires the killer's reveal ability and presses E (some UIs need the keypress
--- too) whenever the killer frame is showing.
-local revealState = {Enabled = false, LastFire = 0}
-RevealToggle.MouseButton1Click:Connect(function()
-	revealState.Enabled = not revealState.Enabled
-	revealState.LastFire = 0
-	RevealToggle.Text = revealState.Enabled and "On" or "Off"
+-- ESP: labels whoever's currently the killer -- "Killer" floating over their head, same
+-- idea as the old hub's reveal, but shown as a world label instead of firing the ability.
+local espEnabled = false
+local killerLabels = {}
+
+local function ClearKillerLabel(targetPlayer)
+	local label = killerLabels[targetPlayer]
+	if label then
+		label:Destroy()
+		killerLabels[targetPlayer] = nil
+	end
+end
+
+local function ClearAllKillerLabels()
+	for targetPlayer in pairs(killerLabels) do
+		ClearKillerLabel(targetPlayer)
+	end
+end
+
+ESPToggle.MouseButton1Click:Connect(function()
+	espEnabled = not espEnabled
+	ESPToggle.Text = espEnabled and "On" or "Off"
+	if not espEnabled then ClearAllKillerLabels() end
 end)
 
 RunService.Heartbeat:Connect(function()
 	if not ScreenGui.Parent then return end
-	if not revealState.Enabled then return end
-	if revealState.LastFire ~= 0 and os.clock() - revealState.LastFire < 0.5 then return end
-	local playerGui = Player:FindFirstChildOfClass("PlayerGui")
-	local inGameGui = playerGui and playerGui:FindFirstChild("InGameGui")
-	local killerFrame = inGameGui and inGameGui:FindFirstChild("KillerFrameGame2")
-	if killerFrame and killerFrame.Visible then
-		pcall(function()
-			VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-			task.delay(0.03, function()
-				pcall(function() VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game) end)
-			end)
-		end)
-	end
-	local abilityEvent = ReplicatedStorage:FindFirstChild("AbilityEvent")
-	if not abilityEvent or not abilityEvent:IsA("RemoteEvent") then return end
-	if pcall(function() abilityEvent:FireServer(3) end) then
-		revealState.LastFire = os.clock()
-	end
-end)
-
--- Live Coins/Wins readout, plus session gain (how much earned since this was executed).
-local statsState = {LastUpdate = 0, LastCoins = nil, SessionCoins = 0, LastWins = nil, SessionWins = 0}
-RunService.Heartbeat:Connect(function()
-	if not ScreenGui.Parent then return end
-	if os.clock() - statsState.LastUpdate < 0.2 then return end
-	statsState.LastUpdate = os.clock()
-	local leaderstats = Player:FindFirstChild("leaderstats")
-	local coins = leaderstats and leaderstats:FindFirstChild("Coins")
-	local wins = leaderstats and leaderstats:FindFirstChild("Wins")
-	if not coins and not wins then
-		StatsLabel.Text = "Coins: N/A    Wins: N/A"
+	if not espEnabled then
 		return
 	end
-	if coins then
-		local currentCoins = math.floor(tonumber(coins.Value) or 0)
-		if statsState.LastCoins ~= nil and currentCoins > statsState.LastCoins then
-			statsState.SessionCoins = statsState.SessionCoins + (currentCoins - statsState.LastCoins)
+	for _, targetPlayer in ipairs(Players:GetPlayers()) do
+		local character = targetPlayer.Character
+		local head = character and character:FindFirstChild("Head")
+		if character and head and IsPlayerKiller(targetPlayer) then
+			local existing = killerLabels[targetPlayer]
+			if not existing or not existing.Parent then
+				local billboard = Instance.new("BillboardGui")
+				billboard.Name = "QODKillerLabel"
+				billboard.Size = UDim2.new(0, 90, 0, 24)
+				billboard.StudsOffset = Vector3.new(0, 2.2, 0)
+				billboard.AlwaysOnTop = true
+				billboard.Adornee = head
+				billboard.Parent = head
+				local text = Instance.new("TextLabel")
+				text.Size = UDim2.new(1, 0, 1, 0)
+				text.BackgroundTransparency = 1
+				text.Text = "Killer"
+				text.Font = UIFont
+				text.TextSize = 16
+				text.TextColor3 = Color3.fromRGB(255, 70, 70)
+				text.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+				text.TextStrokeTransparency = 0.2
+				text.Parent = billboard
+				killerLabels[targetPlayer] = billboard
+			end
+		else
+			ClearKillerLabel(targetPlayer)
 		end
-		statsState.LastCoins = currentCoins
 	end
-	if wins then
-		local currentWins = math.floor(tonumber(wins.Value) or 0)
-		if statsState.LastWins ~= nil and currentWins > statsState.LastWins then
-			statsState.SessionWins = statsState.SessionWins + (currentWins - statsState.LastWins)
-		end
-		statsState.LastWins = currentWins
+	for targetPlayer in pairs(killerLabels) do
+		if not targetPlayer.Parent then ClearKillerLabel(targetPlayer) end
 	end
-	StatsLabel.Text = string.format(
-		"Coins: %s (+%d)    Wins: %s (+%d)",
-		coins and tostring(coins.Value) or "N/A", statsState.SessionCoins,
-		wins and tostring(wins.Value) or "N/A", statsState.SessionWins
-	)
 end)
 
--- Minimize: shrinks to just the header, matching Serenity's own minimize behavior.
+-- Minimize: shrinks to just the header, matching Serenity's own minimize behavior. Every
+-- row lives inside ContentScroll now, so hiding that one frame is enough.
 local minimized = false
 local function ToggleMinimize()
 	minimized = not minimized
 	HeaderDivider.Visible = not minimized
-	StatsLabel.Visible = not minimized
-	for _, child in ipairs(PanelFrame:GetChildren()) do
-		if child:IsA("Frame") and child.Name:match("Row$") then
-			child.Visible = not minimized
-		end
-	end
+	ContentScroll.Visible = not minimized
 	PanelFrame.Size = UDim2.new(0, 280, 0, minimized and MINI_HEIGHT or FULL_HEIGHT)
 	MinimizeButton.Text = minimized and "+" or "-"
 end
@@ -567,6 +681,7 @@ MinimizeButton.MouseButton1Click:Connect(ToggleMinimize)
 
 CloseButton.MouseButton1Click:Connect(function()
 	SetAudioMuted(false)
+	ClearAllKillerLabels()
 	ScreenGui:Destroy()
 end)
 
