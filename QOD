@@ -16,6 +16,9 @@ local Player = Players.LocalPlayer
 local FrameColor = Color3.fromRGB(0x1E, 0x1E, 0x1E)
 local AccentColor = Color3.fromRGB(255, 255, 255)
 local UIFont = Enum.Font.Ubuntu
+-- Reads the main hub's Settings-tab Transparency slider (if it's been set) so every
+-- row here matches, instead of always defaulting to 50%.
+local GameRowTransparency = ((type(getgenv) == "function" and tonumber(getgenv().Serenity_RowTransparency)) or 50) / 100
 
 -- Sets a root's position while keeping it upright (zeroing pitch/roll, keeping the current
 -- facing direction) -- used by Auto Farm's Safe Place drop and Auto Event's approach.
@@ -204,7 +207,7 @@ local function CreateFeatureRow(order, labelText, parent)
 	nextRowOrder = math.max(nextRowOrder, row.LayoutOrder) + 1
 	row.Size = UDim2.new(1, 0, 0, 36)
 	row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-	row.BackgroundTransparency = 0.5
+	row.BackgroundTransparency = GameRowTransparency
 	row.BorderSizePixel = 0
 	row.Parent = parent or ContentScroll
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
@@ -264,7 +267,9 @@ Instance.new("UICorner", FarmEditButton).CornerRadius = UDim.new(0, 6)
 local FARM_POPUP_WIDTH, FARM_POPUP_HEIGHT = 220, 190
 local FarmOptionsPopup = Instance.new("Frame")
 FarmOptionsPopup.Name = "FarmOptionsPopup"
+FarmOptionsPopup.AnchorPoint = Vector2.new(0.5, 0.5)
 FarmOptionsPopup.Size = UDim2.new(0, FARM_POPUP_WIDTH, 0, FARM_POPUP_HEIGHT)
+FarmOptionsPopup.Position = UDim2.new(0.5, 160, 0.5, 0)
 FarmOptionsPopup.BackgroundColor3 = FrameColor
 FarmOptionsPopup.BorderSizePixel = 0
 FarmOptionsPopup.Visible = false
@@ -330,16 +335,30 @@ for _, row in ipairs({EventRow, SafePlaceRow, MuteRow}) do
 	row.ZIndex = 41
 end
 
--- Docked to the right of the QOD panel (not centered on the whole screen), and follows it
--- if the panel gets dragged -- same approach UE's popups use.
-local function UpdateFarmOptionsPosition()
-	FarmOptionsPopup.Position = UDim2.fromOffset(PanelFrame.AbsolutePosition.X + PanelFrame.AbsoluteSize.X + 8, PanelFrame.AbsolutePosition.Y)
-end
-PanelFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(UpdateFarmOptionsPosition)
-UpdateFarmOptionsPosition()
+-- Freely draggable (not locked to the QOD panel's position) -- drag from the title bar,
+-- same pattern as the main panel's own header drag.
+local farmOptionsDragging = false
+local farmOptionsDragStart = nil
+local farmOptionsStartPos = nil
+FarmOptionsTitle.Active = true
+FarmOptionsTitle.InputBegan:Connect(function(input)
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+	farmOptionsDragging = true
+	farmOptionsDragStart = input.Position
+	farmOptionsStartPos = FarmOptionsPopup.Position
+	input.Changed:Connect(function()
+		if input.UserInputState == Enum.UserInputState.End then
+			farmOptionsDragging = false
+		end
+	end)
+end)
+UserInputService.InputChanged:Connect(function(input)
+	if not farmOptionsDragging or (input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch) then return end
+	local delta = input.Position - farmOptionsDragStart
+	FarmOptionsPopup.Position = UDim2.new(farmOptionsStartPos.X.Scale, farmOptionsStartPos.X.Offset + delta.X, farmOptionsStartPos.Y.Scale, farmOptionsStartPos.Y.Offset + delta.Y)
+end)
 
 FarmEditButton.MouseButton1Click:Connect(function()
-	UpdateFarmOptionsPosition()
 	FarmOptionsPopup.Visible = not FarmOptionsPopup.Visible
 end)
 FarmOptionsClose.MouseButton1Click:Connect(function()
