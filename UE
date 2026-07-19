@@ -59,24 +59,6 @@ local function StableTeleport(cframe)
 	return true
 end
 
--- A stand-at-standPosition CFrame that faces targetPosition, for the crate-open and
--- drop-claim teleports below -- now that Auto Farm forces first-person the whole time it
--- runs, the character's own facing IS the camera's facing, so this is what actually points
--- the player's view at the crate/item instead of leaving it aimed wherever they happened to
--- be facing before the teleport. Nudges the look point slightly along the character's
--- current horizontal facing rather than looking exactly straight down at standPosition,
--- since CFrame.new(pos, lookAt) can't compute a valid orientation when the look direction
--- lines up exactly with the world up-vector (standPosition and targetPosition here only
--- ever differ by a vertical offset).
-local function StandAndFaceCFrame(standPosition, targetPosition)
-	local character = Player and Player.Character
-	local root = character and character:FindFirstChild("HumanoidRootPart")
-	local forward = root and Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z) or Vector3.new(0, 0, -1)
-	if forward.Magnitude < 0.01 then forward = Vector3.new(0, 0, -1) end
-	forward = forward.Unit
-	return CFrame.new(standPosition, targetPosition + forward * 0.5)
-end
-
 local function TeleportToBase()
 	return StableTeleport(CFrame.new(BASE_POSITION + Vector3.new(0, 4, 0)))
 end
@@ -810,20 +792,26 @@ local AutoFarmSweepSkipped = {}
 local ToolInteractionActive = false
 
 BOX_TYPES = {"Rusty", "Wooden", "Silver", "Golden", "Ancient", "Grounder", "Hunter Trap"}
-local BOX_TYPE_REQUIRED_KEY = {
-	Grounder = "Grounder Key",
-	Ancient = "Ancient Key",
+-- Ancient Ruins/Graveyard boss crates (and the Grounder/Ancient Keys needed to open them)
+-- are no longer part of Auto Farm at all -- it still fights the waves there for kill XP,
+-- just skips the key pickup and chest-opening steps entirely from here on. Leaving
+-- BOX_TYPE_REQUIRED_KEY empty means HoldOnBox's own requiredKey lookup and RunAutoFarmStep's
+-- key-gated crate search (both keyed off this table) never find anything to open.
+local BOX_TYPE_REQUIRED_KEY = {}
+-- Explicit denylist so the two key drops never get claimed even if their rarity is enabled
+-- in the Pickup Filter -- see IsKeyDrop/FindNearbyClaimPrompt below.
+local BLOCKED_DROP_NAMES = {
+	["Grounder Key"] = true,
+	["Ancient Key"] = true,
 }
-local KEY_TOOL_NAMES = {}
-for _, keyName in pairs(BOX_TYPE_REQUIRED_KEY) do
-	KEY_TOOL_NAMES[keyName] = true
-end
+-- Kept under its original name for the weapon-equip-avoidance and key-tool-lookup call
+-- sites further below, which just need "these two names are keys, not weapons" -- unrelated
+-- to whether Auto Farm still tries to pick them up (it doesn't, see BLOCKED_DROP_NAMES).
+local KEY_TOOL_NAMES = BLOCKED_DROP_NAMES
 
 -- Pickup rarity filter ("Filter" button next to Auto Farm below): ported back from the
 -- old hub. Discovers the game's own rarity tiers from ReplicatedStorage.Items.Drops, then
--- gates what ClaimNearbyDrop/FindNearbyClaimPrompt will actually pick up -- key drops
--- always get claimed regardless of the filter (IsKeyDrop), since Auto Farm needs them for
--- the boss crates no matter what rarities are toggled off.
+-- gates what ClaimNearbyDrop/FindNearbyClaimPrompt will actually pick up.
 local function DiscoverRarityTiers()
 	local tiers = {}
 	local itemsFolder = ReplicatedStorage:FindFirstChild("Items")
@@ -1039,8 +1027,8 @@ local function FindOpenPrompt(box)
 end
 
 local function FindNearbyClaimPrompt(position, radius)
-	-- Key drops always get claimed regardless of the rarity filter (Auto Farm needs them
-	-- for the boss crates no matter what's toggled off in Pickup Filter).
+	-- Grounder/Ancient Keys never get claimed at all, regardless of the rarity filter --
+	-- Auto Farm no longer opens the crates they're for, so there's no reason to pick them up.
 	local bestPrompt, bestPart, bestDist
 	for _, inst in ipairs(workspace:GetDescendants()) do
 		if inst:IsA("ProximityPrompt") and inst.Enabled then
@@ -1049,7 +1037,7 @@ local function FindNearbyClaimPrompt(position, radius)
 				local part = inst.Parent
 				if part and part:IsA("BasePart") then
 					local dist = (part.Position - position).Magnitude
-					local allowed = IsKeyDrop(part) or IsRarityAllowed(GetDropRarity(part))
+					local allowed = not IsKeyDrop(part) and IsRarityAllowed(GetDropRarity(part))
 					if dist <= radius and (not bestDist or dist < bestDist) and allowed then
 						bestDist = dist
 						bestPrompt = inst
@@ -1147,7 +1135,7 @@ local function HoldOnBox(target, targetRoot, options)
 
 	local anchorPart = (openPrompt.Parent and openPrompt.Parent:IsA("BasePart")) and openPrompt.Parent or targetRoot
 	local anchorPosition = anchorPart.Position + Vector3.new(0, 1, 0)
-	local DRIFT_TOLERANCE = 6
+	local DRIFT_TOLERANCE = 4
 
 	-- The anchor point sits right at/inside the crate's own collision geometry, so without
 	-- this, physics shoves the character back out every step, HasDriftedAway sees that as
@@ -1182,51 +1170,39 @@ local function HoldOnBox(target, targetRoot, options)
 		return (root.Position - anchorPosition).Magnitude > DRIFT_TOLERANCE
 	end
 
-	-- HoldOnBox used to teleport (a hard, instant PivotTo) on every single tick that saw
-	-- drift, which on uneven/cluttered structure geometry could re-fire many times a
-	-- second -- each one a visible jitter, and each one very likely what was resetting the
-	-- prompt's hold progress rather than letting it complete. Zeroing velocity every tick
-	-- stops the push from accumulating into real drift in the first place, and a cooldown
-	-- caps the (now rare) corrective teleport to at most once per window instead of
-	-- fighting the physics engine tick-for-tick.
-	local TELEPORT_CORRECTION_COOLDOWN = 0.5
-	local lastCorrectionTime = 0
-	local function HoldStill()
+	local function AimCameraAtPrompt()
+		local camera = workspace.CurrentCamera
 		local root = PlayerRoot()
-		if not root then return end
+		if not camera or not root then return end
 		pcall(function()
-			root.AssemblyLinearVelocity = Vector3.zero
-			root.AssemblyAngularVelocity = Vector3.zero
+			camera.CameraType = Enum.CameraType.Scriptable
+			camera.CFrame = CFrame.new(root.Position + Vector3.new(0, 2.5, 0), anchorPosition)
 		end)
 	end
 
-	-- Every crate's Open prompt relies on Roblox's default ProximityPrompt.RequiresLineOfSight
-	-- (never overridden anywhere in this game). Manually steering a Scriptable camera to
-	-- fake that line of sight kept causing visible twitch one way or another; RunAutoFarmStep
-	-- (further below) instead forces genuine first-person for the whole time Auto Farm is
-	-- running (via CameraMinZoomDistance/MaxZoomDistance = 0), which is Roblox's own
-	-- native, well-tested camera path -- the camera sits at head height and the character's
-	-- own head is hidden from its own view, so there's nothing left that could ever block
-	-- line of sight to a crate right in front of the character. Nothing here needs to touch
-	-- the camera at all anymore.
-	local function CorrectDriftIfNeeded()
-		if HasDriftedAway() and os.clock() - lastCorrectionTime > TELEPORT_CORRECTION_COOLDOWN then
-			lastCorrectionTime = os.clock()
-			StableTeleport(StandAndFaceCFrame(anchorPosition, anchorPart.Position))
-		end
+	local function RestoreCamera()
+		local camera = workspace.CurrentCamera
+		if not camera then return end
+		local character = Player and Player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		pcall(function()
+			camera.CameraType = Enum.CameraType.Custom
+			if humanoid then camera.CameraSubject = humanoid end
+		end)
 	end
 
-	if not StableTeleport(StandAndFaceCFrame(anchorPosition, anchorPart.Position)) then
+	if not StableTeleport(CFrame.new(anchorPosition)) then
 		ToolInteractionActive = false
 		RestoreTargetCollision()
 		return false
 	end
 	task.wait(0.15)
+	AimCameraAtPrompt()
 
 	local waitDeadline = os.clock() + 1
 	while os.clock() < waitDeadline and openPrompt.Parent and not openPrompt.Enabled do
-		HoldStill()
-		CorrectDriftIfNeeded()
+		if HasDriftedAway() then StableTeleport(CFrame.new(anchorPosition)) end
+		AimCameraAtPrompt()
 		task.wait(0.1)
 	end
 	if not openPrompt.Enabled then
@@ -1247,27 +1223,24 @@ local function HoldOnBox(target, targetRoot, options)
 		keyCode = Enum.KeyCode.E
 	end
 
+	local pressedAtLeastOnce = false
+	local usedFireFallback = false
 	ToolInteractionActive = true
 	local extraBuffer = requiredKey and KEYED_BOX_EXTRA_HOLD_BUFFER or 0
 	local deadline = os.clock() + holdDuration + FARM_OPEN_SAFETY_BUFFER + extraBuffer
-
-	-- Press ONCE and hold for the whole duration instead of re-firing PressInteractKey
-	-- every tick. That loop used to call VirtualInputManager:SendKeyEvent(true, ...) about
-	-- 20 times a second, which sends a brand new synthetic KeyDown each time -- to the
-	-- game that looks like a fresh press, not a continued hold, which is almost certainly
-	-- what was resetting the prompt's progress right as it looked like it was about to
-	-- finish. One press, hold, one release -- the same shape as an actual human holding
-	-- the key down.
-	local pressedAtLeastOnce = PressInteractKey(keyCode)
-	if not pressedAtLeastOnce and type(fireproximityprompt) == "function" then
-		warn(logPrefix .. " key simulation unavailable on " .. tostring(target.Name) .. " -- falling back to fireproximityprompt")
-		pcall(fireproximityprompt, openPrompt, holdDuration)
-	end
-
 	while isEnabled() and ScreenGui.Parent and target.Parent and BoxRoot(target) and os.clock() < deadline do
-		HoldStill()
-		CorrectDriftIfNeeded()
+		if HasDriftedAway() then StableTeleport(CFrame.new(anchorPosition)) end
+		AimCameraAtPrompt()
 		if requiredKey then EquipKeyTool(requiredKey) end
+		if PressInteractKey(keyCode) then
+			pressedAtLeastOnce = true
+		elseif not usedFireFallback then
+			usedFireFallback = true
+			warn(logPrefix .. " key simulation unavailable on " .. tostring(target.Name) .. " -- falling back to fireproximityprompt")
+			if type(fireproximityprompt) == "function" then
+				pcall(fireproximityprompt, openPrompt, holdDuration)
+			end
+		end
 		task.wait(FARM_MOVE_HOLD_INTERVAL)
 	end
 
@@ -1275,6 +1248,7 @@ local function HoldOnBox(target, targetRoot, options)
 		ReleaseInteractKey(keyCode)
 	end
 	ToolInteractionActive = false
+	RestoreCamera()
 	RestoreTargetCollision()
 	local success = not (target.Parent and BoxRoot(target))
 	if not success then
@@ -1292,7 +1266,7 @@ local function ClaimNearbyDrop(boxPosition, options)
 		if claimPrompt and claimPart then
 			ToolInteractionActive = true
 			local anchorPosition = claimPart.Position + Vector3.new(0, 1, 0)
-			if not StableTeleport(StandAndFaceCFrame(anchorPosition, claimPart.Position)) then
+			if not StableTeleport(CFrame.new(anchorPosition)) then
 				ToolInteractionActive = false
 				return false
 			end
@@ -1358,7 +1332,6 @@ local ENCOUNTERS = {
 		end,
 		EnemyNames = {"grounder"},
 		LootAttempts = 6,
-		RequiredKey = "Grounder Key",
 	},
 	{
 		Id = "Ancient Ruins",
@@ -1371,7 +1344,6 @@ local ENCOUNTERS = {
 		end,
 		EnemyNames = {"pharaon", "mummy"},
 		LootAttempts = 6,
-		RequiredKey = "Ancient Key",
 	},
 }
 
@@ -1542,6 +1514,13 @@ local function ClaimDropsNearArea(fallbackPosition, attempts)
 	end
 end
 
+-- Grounder/Ancient crates never get swept up for opening anywhere in the world, even ones
+-- left over in structures Auto Farm isn't actively fighting in right now -- it no longer
+-- opens either at all.
+local function IsKeyGatedBoxType(boxType)
+	return boxType == "Grounder" or boxType == "Ancient"
+end
+
 local function GetIdleSweepBoxTargets()
 	local folder = StructuresFolder()
 	if not folder then return {} end
@@ -1552,13 +1531,15 @@ local function GetIdleSweepBoxTargets()
 			local lootFolder = structure:FindFirstChild("Loot")
 			if lootFolder then
 				for _, box in ipairs(lootFolder:GetChildren()) do
-					if BoxRoot(box) and BoxType(box) ~= "Hunter Trap" then
+					local boxType = BoxRoot(box) and BoxType(box)
+					if boxType and boxType ~= "Hunter Trap" and not IsKeyGatedBoxType(boxType) then
 						table.insert(targets, box)
 					end
 				end
 			end
 			for _, child in ipairs(structure:GetChildren()) do
-				if child.Name ~= "Loot" and BoxTypeFromName(child.Name) and BoxType(child) ~= "Hunter Trap" then
+				local boxType = child.Name ~= "Loot" and BoxTypeFromName(child.Name) and BoxType(child)
+				if boxType and boxType ~= "Hunter Trap" and not IsKeyGatedBoxType(boxType) then
 					table.insert(targets, child)
 				end
 			end
@@ -1628,6 +1609,17 @@ local function RunAutoFarmStep()
 	if not targetPosition then
 		warn("[Auto Farm] could not find a trigger part on " .. tostring(structure.Name) .. " (" .. encounter.Id .. ")")
 		return
+	end
+
+	-- Graveyard/Ancient Ruins bosses can (and often do) kill the player once before they're
+	-- finally taken down -- teleporting to base first, before ever heading to the structure,
+	-- means whatever's already in the backpack is saved (inventory saves while at base) and
+	-- can't be lost to that first death.
+	if encounter.Id == "Graveyard" or encounter.Id == "Ancient Ruins" then
+		AutoFarmPhase = "Saving inventory at base"
+		RefreshAutoFarmUI()
+		TeleportToBase()
+		task.wait(TRAP_TRIGGER_WAIT)
 	end
 
 	local enemiesFound = false
@@ -1894,52 +1886,10 @@ RefreshAutoFarmUI = function()
 	AutoFarmStatus.Text = AutoFarmEnabled and (tostring(AutoFarmPhase or "Idle") .. (" · %d cleared"):format(AutoFarmKilled)) or ("%d cleared"):format(AutoFarmKilled)
 end
 
--- Forces genuine first-person for the entire time Auto Farm runs, not just mid-hold --
--- every crate's Open prompt relies on Roblox's default RequiresLineOfSight, and the
--- character's own animated model swaying into the camera's view was breaking that line of
--- sight (that's the twitch that kept canceling opens even after everything else was fixed).
--- Zooming all the way in is Roblox's own native first-person path: the camera sits at head
--- height and the character's head is hidden from its own view, so there's no longer
--- anything that could get between the camera and a crate right in front of it.
-local originalMinZoom, originalMaxZoom
-local function ForceFirstPerson()
-	if originalMinZoom == nil then
-		originalMinZoom = Player.CameraMinZoomDistance
-		originalMaxZoom = Player.CameraMaxZoomDistance
-	end
-	Player.CameraMinZoomDistance = 0
-	Player.CameraMaxZoomDistance = 0
-end
-local function RestoreCameraZoom()
-	if originalMinZoom ~= nil then
-		Player.CameraMinZoomDistance = originalMinZoom
-		Player.CameraMaxZoomDistance = originalMaxZoom
-		originalMinZoom, originalMaxZoom = nil, nil
-	end
-end
-
--- Something (equipping the key tool, claiming a drop, the game's own scripts) was kicking
--- the zoom back out mid-run even with the lock set once up front -- reassert it the instant
--- either distance changes rather than trusting a single set-and-forget to hold for the
--- entire farm.
-Player:GetPropertyChangedSignal("CameraMinZoomDistance"):Connect(function()
-	if AutoFarmEnabled and Player.CameraMinZoomDistance ~= 0 then
-		Player.CameraMinZoomDistance = 0
-	end
-end)
-Player:GetPropertyChangedSignal("CameraMaxZoomDistance"):Connect(function()
-	if AutoFarmEnabled and Player.CameraMaxZoomDistance ~= 0 then
-		Player.CameraMaxZoomDistance = 0
-	end
-end)
-
 local function SetAutoFarmEnabled(enabled)
 	AutoFarmEnabled = enabled == true
-	if AutoFarmEnabled then
-		ForceFirstPerson()
-	else
+	if not AutoFarmEnabled then
 		AutoFarmPhase = "Idle"
-		RestoreCameraZoom()
 	end
 	RefreshAutoFarmUI()
 end
@@ -1949,15 +1899,6 @@ local function ToggleAutoFarm()
 end
 
 AutoFarmToggle.MouseButton1Click:Connect(ToggleAutoFarm)
-
--- Backslash is a manual escape hatch out of the forced first-person lock -- press it any
--- time to switch Auto Farm off (and get zoom back) without having to dig for the toggle.
-UserInputService.InputBegan:Connect(function(input, processed)
-	if processed then return end
-	if input.KeyCode == Enum.KeyCode.Backslash and AutoFarmEnabled then
-		SetAutoFarmEnabled(false)
-	end
-end)
 
 -- ESP category updaters and structure-alert hooks are defined further below (in their own
 -- scoped block) but need to be reachable from the structure watcher right here -- already
@@ -2821,7 +2762,6 @@ MinimizeButton.MouseButton1Click:Connect(ToggleMinimize)
 -- Close: reverses No Darkness before tearing down, regardless of what else is toggled.
 CloseButton.MouseButton1Click:Connect(function()
 	SetNoDarkness(false)
-	SetAutoFarmEnabled(false)
 	ScreenGui:Destroy()
 end)
 
