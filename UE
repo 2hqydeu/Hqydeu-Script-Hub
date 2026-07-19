@@ -260,7 +260,7 @@ Backdrop.Name = "Backdrop"
 Backdrop.Size = UDim2.new(1, 0, 1, 0)
 Backdrop.BackgroundColor3 = FrameColor
 Backdrop.BorderSizePixel = 0
-Backdrop.Image = "rbxassetid://112321629674156"
+Backdrop.Image = "rbxassetid://117708259455699"
 Backdrop.ScaleType = Enum.ScaleType.Crop
 Backdrop.Parent = PanelFrame
 local backdropCorner = Instance.new("UICorner")
@@ -367,17 +367,67 @@ BaseTPButton.MouseButton1Click:Connect(function()
 	TeleportToBase()
 end)
 
+-- Pill-shaped On/Off switch (oval track + round knob, track fills with a light color when
+-- On) that replaces the old plain "On"/"Off" text button everywhere in this hub. Every
+-- toggle call site already just does `toggle.Text = enabled and "On" or "Off"`, so this
+-- hooks that same Text property instead of needing every call site rewritten: nothing
+-- outside this function has to change to get the new visual.
+local ToggleOffColor = Color3.fromRGB(50, 50, 50)
+local ToggleOnColor = Color3.fromRGB(178, 155, 235)
+local ToggleKnobColor = Color3.fromRGB(238, 233, 250)
+local function StyleAsToggleSwitch(toggle)
+	toggle.AutoButtonColor = false
+	toggle.TextTransparency = 1
+	toggle.BackgroundColor3 = ToggleOffColor
+	toggle.BackgroundTransparency = 0
+	Instance.new("UICorner", toggle).CornerRadius = UDim.new(1, 0)
+
+	local knobSize = toggle.Size.Y.Offset - 6
+	local knob = Instance.new("Frame")
+	knob.Name = "Knob"
+	knob.AnchorPoint = Vector2.new(0, 0.5)
+	knob.Size = UDim2.new(0, knobSize, 0, knobSize)
+	knob.Position = UDim2.new(0, 3, 0.5, 0)
+	knob.BackgroundColor3 = ToggleKnobColor
+	knob.BorderSizePixel = 0
+	knob.ZIndex = toggle.ZIndex + 1
+	knob.Parent = toggle
+	Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+	-- Popups elsewhere in this codebase bulk-bump every descendant's ZIndex to one flat
+	-- value (see the QOD/MM2 BumpZIndex helper), which would otherwise flatten the knob
+	-- to the same layer as its own track. Keep it one layer above whatever the track's
+	-- ZIndex becomes instead of a fixed value.
+	toggle:GetPropertyChangedSignal("ZIndex"):Connect(function() knob.ZIndex = toggle.ZIndex + 1 end)
+
+	local function Refresh(animate)
+		local on = toggle.Text == "On"
+		local trackColor = on and ToggleOnColor or ToggleOffColor
+		local knobPosition = on and UDim2.new(1, -3 - knobSize, 0.5, 0) or UDim2.new(0, 3, 0.5, 0)
+		if animate then
+			local tweenInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			TweenService:Create(toggle, tweenInfo, {BackgroundColor3 = trackColor}):Play()
+			TweenService:Create(knob, tweenInfo, {Position = knobPosition}):Play()
+		else
+			toggle.BackgroundColor3 = trackColor
+			knob.Position = knobPosition
+		end
+	end
+
+	toggle:GetPropertyChangedSignal("Text"):Connect(function() Refresh(true) end)
+	Refresh(false)
+end
+
 -- Feature row layout: label left, toggle right. Reused for ESP (not wired up yet),
 -- Auto Farm (wired up below), and Full Bright (wired up below). order sets LayoutOrder
 -- (rows stack in the order they're created if not given one explicitly).
 local nextRowOrder = 1
-local function CreateFeatureRow(order, labelText)
+local function CreateFeatureRow(order, labelText, isNavButton)
 	local row = Instance.new("Frame")
 	row.Name = labelText:gsub("%s+", "") .. "Row"
 	row.LayoutOrder = order or nextRowOrder
 	nextRowOrder = math.max(nextRowOrder, row.LayoutOrder) + 1
 	row.Size = UDim2.new(1, 0, 0, 36)
-	row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	row.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 	row.BackgroundTransparency = GameRowTransparency
 	row.BorderSizePixel = 0
 	row.Parent = ContentScroll
@@ -398,17 +448,26 @@ local function CreateFeatureRow(order, labelText)
 
 	local toggle = Instance.new("TextButton")
 	toggle.Name = "Toggle"
-	toggle.Size = UDim2.new(0, 64, 0, 26)
-	toggle.Position = UDim2.new(1, -74, 0.5, -13)
-	toggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-	toggle.BackgroundTransparency = 0.2
 	toggle.BorderSizePixel = 0
 	toggle.Text = "Off"
 	toggle.Font = UIFont
-	toggle.TextSize = 14
 	toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
 	toggle.Parent = row
-	Instance.new("UICorner", toggle).CornerRadius = UDim.new(0, 6)
+	if isNavButton then
+		-- Not a real on/off switch (e.g. the ESP row just opens a popup) -- keep it as a
+		-- normal labeled button instead of the switch styling every other row gets.
+		toggle.Size = UDim2.new(0, 64, 0, 26)
+		toggle.Position = UDim2.new(1, -74, 0.5, -13)
+		toggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+		toggle.BackgroundTransparency = 0.2
+		toggle.TextSize = 14
+		Instance.new("UICorner", toggle).CornerRadius = UDim.new(0, 6)
+	else
+		toggle.Size = UDim2.new(0, 46, 0, 24)
+		toggle.Position = UDim2.new(1, -56, 0.5, -12)
+		toggle.TextSize = 14
+		StyleAsToggleSwitch(toggle)
+	end
 
 	return row, toggle
 end
@@ -659,18 +718,27 @@ local function CreateAllNoneActions(actions, onAll, onNone)
 	return allButton, noneButton
 end
 
--- A single On/Off pill in a card's header-action slot, for sections with no chip list
+-- A single On/Off switch in a card's header-action slot, for sections with no chip list
 -- (currently just Mobs ESP).
 local function CreateToggleAction(actions, initialOn)
-	local toggle = CreateMiniButton(actions, 1, initialOn and "On" or "Off", initialOn and Green or Red)
-	toggle.Size = UDim2.new(0, 48, 0, 20)
+	local toggle = Instance.new("TextButton")
+	toggle.LayoutOrder = 1
+	toggle.Size = UDim2.new(0, 40, 0, 20)
+	toggle.BorderSizePixel = 0
+	toggle.Text = initialOn and "On" or "Off"
+	toggle.Font = UIFont
+	toggle.TextSize = 10
+	toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+	toggle.ZIndex = 44
+	toggle.Parent = actions
+	StyleAsToggleSwitch(toggle)
 	return toggle
 end
 
 -- ESP: this row just opens the Options popup (further below) -- every actual ESP toggle
 -- (Box/Structures/Items/Mobs) and their type/rarity filters live inside that popup instead
 -- of on the page itself.
-local _, ESPToggle = CreateFeatureRow(96, "ESP")
+local _, ESPToggle = CreateFeatureRow(96, "ESP", true)
 ESPToggle.Text = "Options"
 
 -- Auto Farm: wired to the ported Auto Trap logic further down this file. The row is
@@ -2513,7 +2581,6 @@ do
 	mobsEspToggleButton.MouseButton1Click:Connect(function()
 		ESPMobsEnabled = not ESPMobsEnabled
 		mobsEspToggleButton.Text = ESPMobsEnabled and "On" or "Off"
-		mobsEspToggleButton.BackgroundColor3 = ESPMobsEnabled and Green or Red
 	end)
 
 	-- Box ESP: no on/off switch -- All/None plus the chips themselves drive visibility.
@@ -2629,7 +2696,6 @@ do
 
 	local function RefreshAllChipColors()
 		mobsEspToggleButton.Text = ESPMobsEnabled and "On" or "Off"
-		mobsEspToggleButton.BackgroundColor3 = ESPMobsEnabled and Green or Red
 		for boxType, button in pairs(boxFilterButtons) do
 			button.BackgroundColor3 = SelectedBoxTypes[boxType] == true and Green or Red
 		end
