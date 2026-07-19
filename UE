@@ -252,14 +252,31 @@ local PanelCorner = Instance.new("UICorner")
 PanelCorner.CornerRadius = UDim.new(0, 14)
 PanelCorner.Parent = PanelFrame
 
-local TitleImage = Instance.new("ImageLabel")
-TitleImage.Name = "TitleImage"
-TitleImage.Size = UDim2.new(0, 180, 0, 36)
-TitleImage.Position = UDim2.new(0, 16, 0, 4)
-TitleImage.BackgroundTransparency = 1
-TitleImage.Image = "rbxassetid://112321629674156"
-TitleImage.ScaleType = Enum.ScaleType.Fit
-TitleImage.Parent = PanelFrame
+-- Background image, covering the whole panel -- parented first (before the header/content
+-- below) so it renders behind everything, same pattern as the main hub's own backdrop.
+local Backdrop = Instance.new("ImageLabel")
+Backdrop.Name = "Backdrop"
+Backdrop.Size = UDim2.new(1, 0, 1, 0)
+Backdrop.BackgroundColor3 = FrameColor
+Backdrop.BorderSizePixel = 0
+Backdrop.Image = "rbxassetid://112321629674156"
+Backdrop.ScaleType = Enum.ScaleType.Crop
+Backdrop.Parent = PanelFrame
+local backdropCorner = Instance.new("UICorner")
+backdropCorner.CornerRadius = UDim.new(0, 14)
+backdropCorner.Parent = Backdrop
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Name = "TitleLabel"
+TitleLabel.Size = UDim2.new(0, 160, 0, 24)
+TitleLabel.Position = UDim2.new(0, 16, 0, 10)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "Undead Expedition"
+TitleLabel.Font = UIFont
+TitleLabel.TextSize = 15
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Parent = PanelFrame
 
 local MinimizeButton = Instance.new("TextButton")
 MinimizeButton.Name = "MinimizeButton"
@@ -658,7 +675,7 @@ ESPToggle.Text = "Options"
 -- Auto Farm: wired to the ported Auto Trap logic further down this file. The row is
 -- grown a bit taller than the standard feature row to fit a phase/kill-count status line.
 local AutoFarmRow, AutoFarmToggle = CreateFeatureRow(140, "Auto Farm")
-AutoFarmRow.Size = UDim2.new(1, -32, 0, 50)
+AutoFarmRow.Size = UDim2.new(1, 0, 0, 50)
 local AutoFarmStatus = Instance.new("TextLabel")
 AutoFarmStatus.Name = "Status"
 AutoFarmStatus.Size = UDim2.new(1, -24, 0, 14)
