@@ -2740,10 +2740,13 @@ do
 
 	-- Close reset (ESP dock + structure alerts half): the rest -- Lighting, ScreenGui
 	-- teardown -- is wired directly to CloseButton further down, past where those exist.
+	-- pcall-wrapped so a failure here can never affect the separate teardown connection.
 	CloseButton.MouseButton1Click:Connect(function()
-		ESPDock.Visible = false
-		StructureNotificationsEnabled = false
-		ClearStructureAlerts()
+		pcall(function()
+			ESPDock.Visible = false
+			StructureNotificationsEnabled = false
+			ClearStructureAlerts()
+		end)
 	end)
 end
 
@@ -2760,8 +2763,12 @@ end
 MinimizeButton.MouseButton1Click:Connect(ToggleMinimize)
 
 -- Close: reverses No Darkness before tearing down, regardless of what else is toggled.
+-- pcall-wrapped because SetNoDarkness(false) throwing (a rare Lighting-state edge case)
+-- used to silently abort this whole callback before ever reaching Destroy() -- which is
+-- exactly why the X button would sometimes appear to just not do anything. Destroy() must
+-- always run no matter what happens during cleanup.
 CloseButton.MouseButton1Click:Connect(function()
-	SetNoDarkness(false)
+	pcall(SetNoDarkness, false)
 	ScreenGui:Destroy()
 end)
 
