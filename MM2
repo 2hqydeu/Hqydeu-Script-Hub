@@ -54,14 +54,31 @@ local PanelCorner = Instance.new("UICorner")
 PanelCorner.CornerRadius = UDim.new(0, 14)
 PanelCorner.Parent = PanelFrame
 
-local TitleImage = Instance.new("ImageLabel")
-TitleImage.Name = "TitleImage"
-TitleImage.Size = UDim2.new(0, 180, 0, 36)
-TitleImage.Position = UDim2.new(0, 16, 0, 4)
-TitleImage.BackgroundTransparency = 1
-TitleImage.Image = "rbxassetid://112321629674156"
-TitleImage.ScaleType = Enum.ScaleType.Fit
-TitleImage.Parent = PanelFrame
+-- Background image, covering the whole panel -- parented first (before the header/content
+-- below) so it renders behind everything, same pattern as the main hub's own backdrop.
+local Backdrop = Instance.new("ImageLabel")
+Backdrop.Name = "Backdrop"
+Backdrop.Size = UDim2.new(1, 0, 1, 0)
+Backdrop.BackgroundColor3 = FrameColor
+Backdrop.BorderSizePixel = 0
+Backdrop.Image = "rbxassetid://112321629674156"
+Backdrop.ScaleType = Enum.ScaleType.Crop
+Backdrop.Parent = PanelFrame
+local backdropCorner = Instance.new("UICorner")
+backdropCorner.CornerRadius = UDim.new(0, 14)
+backdropCorner.Parent = Backdrop
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Name = "TitleLabel"
+TitleLabel.Size = UDim2.new(0, 160, 0, 24)
+TitleLabel.Position = UDim2.new(0, 16, 0, 10)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "Murder Mystery 2"
+TitleLabel.Font = UIFont
+TitleLabel.TextSize = 15
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Parent = PanelFrame
 
 local MinimizeButton = Instance.new("TextButton")
 MinimizeButton.Name = "MinimizeButton"
@@ -183,37 +200,37 @@ RoleRevealButton.Text = "Open"
 
 -- Role Reveal popup: Murderer/Sheriff avatar + name, each its own full-width row instead of
 -- the old side-by-side columns, so there's room to breathe.
+local ROLE_POPUP_WIDTH, ROLE_POPUP_HEIGHT = 240, 190
 local RoleRevealPopup = Instance.new("Frame")
 RoleRevealPopup.Name = "RoleRevealPopup"
-RoleRevealPopup.AnchorPoint = Vector2.new(0.5, 0.5)
-RoleRevealPopup.Size = UDim2.new(0, 240, 0, 190)
-RoleRevealPopup.Position = UDim2.new(0.5, 0, 0.5, 0)
+RoleRevealPopup.Size = UDim2.new(0, ROLE_POPUP_WIDTH, 0, ROLE_POPUP_HEIGHT)
 RoleRevealPopup.BackgroundColor3 = FrameColor
 RoleRevealPopup.BorderSizePixel = 0
 RoleRevealPopup.Visible = false
-RoleRevealPopup.ZIndex = 10
+RoleRevealPopup.ZIndex = 40
 RoleRevealPopup.Parent = ScreenGui
-Instance.new("UICorner", RoleRevealPopup).CornerRadius = UDim.new(0, 12)
+Instance.new("UICorner", RoleRevealPopup).CornerRadius = UDim.new(0, 10)
 local roleRevealStroke = Instance.new("UIStroke")
-roleRevealStroke.Color = Color3.fromRGB(0, 0, 0)
+roleRevealStroke.Color = AccentColor
 roleRevealStroke.Thickness = 1
+roleRevealStroke.Transparency = 0.4
 roleRevealStroke.Parent = RoleRevealPopup
 
 local RoleRevealTitle = Instance.new("TextLabel")
-RoleRevealTitle.Size = UDim2.new(1, -40, 0, 30)
-RoleRevealTitle.Position = UDim2.new(0, 14, 0, 0)
+RoleRevealTitle.Size = UDim2.new(1, -40, 0, 26)
+RoleRevealTitle.Position = UDim2.new(0, 12, 0, 4)
 RoleRevealTitle.BackgroundTransparency = 1
 RoleRevealTitle.Text = "Role Reveal"
 RoleRevealTitle.Font = UIFont
 RoleRevealTitle.TextSize = 14
 RoleRevealTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 RoleRevealTitle.TextXAlignment = Enum.TextXAlignment.Left
-RoleRevealTitle.ZIndex = 11
+RoleRevealTitle.ZIndex = 41
 RoleRevealTitle.Parent = RoleRevealPopup
 
 local RoleRevealClose = Instance.new("TextButton")
 RoleRevealClose.Size = UDim2.new(0, 22, 0, 22)
-RoleRevealClose.Position = UDim2.new(1, -30, 0, 4)
+RoleRevealClose.Position = UDim2.new(1, -30, 0, 6)
 RoleRevealClose.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 RoleRevealClose.BackgroundTransparency = 0.4
 RoleRevealClose.BorderSizePixel = 0
@@ -221,15 +238,15 @@ RoleRevealClose.Text = "x"
 RoleRevealClose.Font = UIFont
 RoleRevealClose.TextSize = 13
 RoleRevealClose.TextColor3 = Color3.fromRGB(255, 255, 255)
-RoleRevealClose.ZIndex = 11
+RoleRevealClose.ZIndex = 41
 RoleRevealClose.Parent = RoleRevealPopup
 Instance.new("UICorner", RoleRevealClose).CornerRadius = UDim.new(0, 6)
 
 local RoleRevealList = Instance.new("Frame")
 RoleRevealList.BackgroundTransparency = 1
-RoleRevealList.Size = UDim2.new(1, -28, 1, -44)
-RoleRevealList.Position = UDim2.new(0, 14, 0, 36)
-RoleRevealList.ZIndex = 11
+RoleRevealList.Size = UDim2.new(1, -16, 1, -38)
+RoleRevealList.Position = UDim2.new(0, 8, 0, 34)
+RoleRevealList.ZIndex = 41
 RoleRevealList.Parent = RoleRevealPopup
 
 local roleRevealLayout = Instance.new("UIListLayout")
@@ -245,7 +262,7 @@ local function CreateRoleDisplay(order, roleName, color)
 	row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	row.BackgroundTransparency = 0.5
 	row.BorderSizePixel = 0
-	row.ZIndex = 11
+	row.ZIndex = 41
 	row.Parent = RoleRevealList
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 
@@ -257,7 +274,7 @@ local function CreateRoleDisplay(order, roleName, color)
 	avatar.BackgroundTransparency = 0.3
 	avatar.BorderSizePixel = 0
 	avatar.Image = ""
-	avatar.ZIndex = 12
+	avatar.ZIndex = 42
 	avatar.Parent = row
 	Instance.new("UICorner", avatar).CornerRadius = UDim.new(0, 6)
 
@@ -270,7 +287,7 @@ local function CreateRoleDisplay(order, roleName, color)
 	header.TextSize = 11
 	header.TextColor3 = color
 	header.TextXAlignment = Enum.TextXAlignment.Left
-	header.ZIndex = 12
+	header.ZIndex = 42
 	header.Parent = row
 
 	local nameLabel = Instance.new("TextLabel")
@@ -284,7 +301,7 @@ local function CreateRoleDisplay(order, roleName, color)
 	nameLabel.TextWrapped = true
 	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
 	nameLabel.TextYAlignment = Enum.TextYAlignment.Top
-	nameLabel.ZIndex = 12
+	nameLabel.ZIndex = 42
 	nameLabel.Parent = row
 
 	return avatar, nameLabel
@@ -293,7 +310,16 @@ end
 local MurdererAvatar, MurdererNameLabel = CreateRoleDisplay(1, "Murderer", MurdererColor)
 local SheriffAvatar, SheriffNameLabel = CreateRoleDisplay(2, "Sheriff", SheriffColor)
 
+-- Docked to the right of the MM2 panel (not centered on the whole screen), and follows it
+-- if the panel gets dragged -- same approach UE's popups use.
+local function UpdateRoleRevealPosition()
+	RoleRevealPopup.Position = UDim2.fromOffset(PanelFrame.AbsolutePosition.X + PanelFrame.AbsoluteSize.X + 8, PanelFrame.AbsolutePosition.Y)
+end
+PanelFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(UpdateRoleRevealPosition)
+UpdateRoleRevealPosition()
+
 RoleRevealButton.MouseButton1Click:Connect(function()
+	UpdateRoleRevealPosition()
 	RoleRevealPopup.Visible = not RoleRevealPopup.Visible
 end)
 RoleRevealClose.MouseButton1Click:Connect(function()
