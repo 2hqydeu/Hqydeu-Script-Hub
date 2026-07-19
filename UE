@@ -253,20 +253,6 @@ local PanelCorner = Instance.new("UICorner")
 PanelCorner.CornerRadius = UDim.new(0, 14)
 PanelCorner.Parent = PanelFrame
 
--- Background image, covering the whole panel -- parented first (before the header/content
--- below) so it renders behind everything, same pattern as the main hub's own backdrop.
-local Backdrop = Instance.new("ImageLabel")
-Backdrop.Name = "Backdrop"
-Backdrop.Size = UDim2.new(1, 0, 1, 0)
-Backdrop.BackgroundColor3 = FrameColor
-Backdrop.BorderSizePixel = 0
-Backdrop.Image = "rbxassetid://117708259455699"
-Backdrop.ScaleType = Enum.ScaleType.Crop
-Backdrop.Parent = PanelFrame
-local backdropCorner = Instance.new("UICorner")
-backdropCorner.CornerRadius = UDim.new(0, 14)
-backdropCorner.Parent = Backdrop
-
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
 TitleLabel.Size = UDim2.new(0, 160, 0, 24)
@@ -426,7 +412,7 @@ local function CreateFeatureRow(order, labelText, isNavButton)
 	row.Name = labelText:gsub("%s+", "") .. "Row"
 	row.LayoutOrder = order or nextRowOrder
 	nextRowOrder = math.max(nextRowOrder, row.LayoutOrder) + 1
-	row.Size = UDim2.new(1, 0, 0, 36)
+	row.Size = UDim2.new(1, 0, 0, 48)
 	row.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 	row.BackgroundTransparency = GameRowTransparency
 	row.BorderSizePixel = 0
@@ -461,7 +447,7 @@ local function CreateFeatureRow(order, labelText, isNavButton)
 		toggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 		toggle.BackgroundTransparency = 0.2
 		toggle.TextSize = 14
-		Instance.new("UICorner", toggle).CornerRadius = UDim.new(0, 6)
+		Instance.new("UICorner", toggle).CornerRadius = UDim.new(1, 0)
 	else
 		toggle.Size = UDim2.new(0, 46, 0, 24)
 		toggle.Position = UDim2.new(1, -56, 0.5, -12)
@@ -744,11 +730,11 @@ ESPToggle.Text = "Options"
 -- Auto Farm: wired to the ported Auto Trap logic further down this file. The row is
 -- grown a bit taller than the standard feature row to fit a phase/kill-count status line.
 local AutoFarmRow, AutoFarmToggle = CreateFeatureRow(140, "Auto Farm")
-AutoFarmRow.Size = UDim2.new(1, 0, 0, 50)
+AutoFarmRow.Size = UDim2.new(1, 0, 0, 62)
 local AutoFarmStatus = Instance.new("TextLabel")
 AutoFarmStatus.Name = "Status"
 AutoFarmStatus.Size = UDim2.new(1, -24, 0, 14)
-AutoFarmStatus.Position = UDim2.new(0, 12, 0, 32)
+AutoFarmStatus.Position = UDim2.new(0, 12, 0, 44)
 AutoFarmStatus.BackgroundTransparency = 1
 AutoFarmStatus.Text = "0 cleared"
 AutoFarmStatus.Font = UIFont
@@ -870,7 +856,7 @@ end
 local PickupFilterButton = Instance.new("TextButton")
 PickupFilterButton.Name = "PickupFilterButton"
 PickupFilterButton.Size = UDim2.new(0, 64, 0, 26)
-PickupFilterButton.Position = UDim2.new(1, -146, 0.5, -13)
+PickupFilterButton.Position = UDim2.new(1, -128, 0.5, -13)
 PickupFilterButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 PickupFilterButton.BackgroundTransparency = 0.2
 PickupFilterButton.BorderSizePixel = 0
@@ -879,7 +865,7 @@ PickupFilterButton.Font = UIFont
 PickupFilterButton.TextSize = 14
 PickupFilterButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 PickupFilterButton.Parent = AutoFarmRow
-Instance.new("UICorner", PickupFilterButton).CornerRadius = UDim.new(0, 6)
+Instance.new("UICorner", PickupFilterButton).CornerRadius = UDim.new(1, 0)
 
 do
 	local dock, scroll, Toggle = CreatePopupDock("Pickup Filter", 210, 260)
