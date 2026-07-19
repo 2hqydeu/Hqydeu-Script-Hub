@@ -217,7 +217,7 @@ do
 	Backdrop.Position = UDim2.new(0, 0, 0, 0)
 	Backdrop.BackgroundColor3 = FrameColor
 	Backdrop.BorderSizePixel = 0
-	Backdrop.Image = "rbxassetid://70774749776758"
+	Backdrop.Image = "rbxassetid://110269599012494"
 	Backdrop.ScaleType = Enum.ScaleType.Crop
 	Backdrop.Parent = MainFrame
 	local backdropCorner = Instance.new("UICorner")
@@ -228,6 +228,16 @@ end
 -- Header: live local clock (title emblem removed), minimize, and a plain "L Ctrl" hint --
 -- all top-anchored so a minimize shrinks the window straight up toward this row instead of
 -- shrinking from the center.
+
+local TitleImage = Instance.new("ImageLabel")
+TitleImage.Name = "TitleImage"
+TitleImage.AnchorPoint = Vector2.new(0.5, 0)
+TitleImage.Size = UDim2.new(0, 140, 0, 32)
+TitleImage.Position = UDim2.new(0.5, 0, 0, 6)
+TitleImage.BackgroundTransparency = 1
+TitleImage.Image = "rbxassetid://73340929918505"
+TitleImage.ScaleType = Enum.ScaleType.Fit
+TitleImage.Parent = MainFrame
 
 local TimeLabel = Instance.new("TextLabel")
 TimeLabel.Name = "TimeLabel"
