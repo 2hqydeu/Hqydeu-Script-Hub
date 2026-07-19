@@ -262,10 +262,8 @@ MainCorner.Parent = MainFrame
 -- ToggleGUI() (further below) re-anchors both to the top-left, stacked, while minimized,
 -- since there isn't room to keep them centered in the collapsed mini window.
 local NORMAL_TITLE_GOAL = {Position = UDim2.new(0.5, 0, 0, HEADER_HEIGHT / 2), Size = UDim2.new(0, 280, 0, 60)}
--- Same size as the full-size title -- taller than the mini window itself (58px), so it
--- clips a couple pixels top/bottom, and wide enough to sit directly over the clock rather
--- than stacked above it (TitleImage's ZIndex is bumped below so it draws in front).
-local MINI_TITLE_GOAL = {Position = UDim2.new(0, 12, 0, -1), Size = UDim2.new(0, 280, 0, 60)}
+-- Left-aligned, same side as the clock, stacked directly above it.
+local MINI_TITLE_GOAL = {Position = UDim2.new(0, 12, 0, 2), Size = UDim2.new(0, 180, 0, 39)}
 local NORMAL_TIME_GOAL = {Position = UDim2.new(0, 16, 0, 23)}
 local MINI_TIME_GOAL = {Position = UDim2.new(0, 12, 0, 44)}
 
@@ -277,7 +275,6 @@ TitleImage.Position = NORMAL_TITLE_GOAL.Position
 TitleImage.BackgroundTransparency = 1
 TitleImage.Image = "rbxassetid://73340929918505"
 TitleImage.ScaleType = Enum.ScaleType.Fit
-TitleImage.ZIndex = 2
 TitleImage.Parent = MainFrame
 
 local TimeLabel = Instance.new("TextLabel")
@@ -474,7 +471,7 @@ local function CreateTab(name, order, iconId, scrolling)
 	local button = Instance.new("TextButton")
 	button.Name = name .. "Tab"
 	button.LayoutOrder = order
-	button.Size = UDim2.new(0, 112, 0, 30)
+	button.Size = UDim2.new(0, 125, 0, 30)
 	button.BackgroundColor3 = ToggleOnColor
 	button.BackgroundTransparency = 1
 	button.BorderSizePixel = 0
@@ -897,6 +894,7 @@ local FlyEnabled, FlyKeybind, FlyBodyVelocity, FlyBodyGyro
 local NoclipEnabled, NoclipKeybind
 local ToggleSpeed, ToggleJump, ToggleFly, ToggleNoclip
 local speedRenderConnection, flyRenderConnection, characterAddedConnection, noclipRenderConnection
+local autoLockRenderConnection
 
 do
 	-- Speed
@@ -2947,9 +2945,67 @@ do
 	end))
 end
 
+-- Combat tab: ported from the old hub's Auto Lock (Main Features section) -- while held,
+-- Right Mouse Button snaps the camera to face whichever player's head is currently closest
+-- to the mouse cursor on screen. Worked flawlessly there, so this is a straight port of
+-- that same small render-loop rather than a rebuild.
+-- AutoLockKeybind/ToggleAutoLock have to stay true top-level locals (same reason as the
+-- Speed/Jump/Fly/Noclip state above) -- the keybind dispatcher far below needs to reach
+-- them by name.
+local AutoLockKeybind = Enum.KeyCode.Unknown
+local ToggleAutoLock
+local CombatPage = CreateTab("Combat", 5, "97448523184491", true)
+do
+	local AutoLockEnabled = false
+
+	CreateSectionHeading(CombatPage, 8, "Auto Lock")
+	local AutoLockToggle = CreateToggleRow(CombatPage, 38, "AutoLockKeybind", function(k) AutoLockKeybind = k end, "Auto Lock")
+	CombatPage.CanvasSize = UDim2.new(0, 0, 0, 106)
+
+	-- Nearest player to the mouse cursor in screen space (not world space) -- same approach
+	-- as the old hub: project every other player's head into viewport coordinates and pick
+	-- whichever one is closest to where the mouse actually is, skipping anyone off-screen.
+	local function GetClosestPlayerToMouse()
+		local nearest, nearestDistance
+		local camera = workspace.CurrentCamera
+		local mousePosition = UserInputService:GetMouseLocation()
+		for _, plr in ipairs(Players:GetPlayers()) do
+			if plr ~= Player and plr.Character and plr.Character:FindFirstChild("Head") then
+				local headPosition, onScreen = camera:WorldToViewportPoint(plr.Character.Head.Position)
+				if onScreen then
+					local distance = (Vector2.new(headPosition.X, headPosition.Y) - mousePosition).Magnitude
+					if not nearestDistance or distance < nearestDistance then
+						nearest = plr
+						nearestDistance = distance
+					end
+				end
+			end
+		end
+		return nearest
+	end
+
+	ToggleAutoLock = function()
+		AutoLockEnabled = not AutoLockEnabled
+		AutoLockToggle.Text = AutoLockEnabled and "On" or "Off"
+	end
+	AutoLockToggle.MouseButton1Click:Connect(function() PlayClick() ToggleAutoLock() end)
+
+	autoLockRenderConnection = RunService.RenderStepped:Connect(function()
+		if not AutoLockEnabled then return end
+		if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then return end
+		local character = Player.Character
+		if not (character and character:FindFirstChild("HumanoidRootPart")) then return end
+		local target = GetClosestPlayerToMouse()
+		if target and target.Character and target.Character:FindFirstChild("Head") then
+			local camera = workspace.CurrentCamera
+			camera.CFrame = CFrame.lookAt(camera.CFrame.Position, target.Character.Head.Position)
+		end
+	end)
+end
+
 -- Scripts tab: launches the separate game modules (loadstring + HttpGet, same as the
 -- old hub). Each module only ever gets fetched once per execution.
-local ScriptsPage = CreateTab("Scripts", 5, "79977771810097", true)
+local ScriptsPage = CreateTab("Scripts", 6, "79977771810097", true)
 
 -- Caches the fetched source per game so re-running it (see below) never re-hits the
 -- network, but still actually executes the chunk again each time -- these game modules
@@ -3159,7 +3215,7 @@ ScriptsPage.CanvasSize = UDim2.new(0, 0, 0, 268)
 -- this point in the file, so wiring it here would silently fall through to nil.
 local DestroyGuiButton
 do
-	local SettingsPage = CreateTab("Settings", 6, "132212578355544", true)
+	local SettingsPage = CreateTab("Settings", 7, "132212578355544", true)
 
 	local ResetCharacterButton = Instance.new("TextButton")
 	ResetCharacterButton.Name = "ResetCharacterButton"
@@ -3277,6 +3333,7 @@ local function DestroyGui()
 	if flyRenderConnection then flyRenderConnection:Disconnect() end
 	if freeCamRenderConnection then freeCamRenderConnection:Disconnect() end
 	if noclipRenderConnection then noclipRenderConnection:Disconnect() end
+	if autoLockRenderConnection then autoLockRenderConnection:Disconnect() end
 	for _, connection in ipairs(looseConnections) do connection:Disconnect() end
 
 	SpeedEnabled = false
@@ -3349,6 +3406,7 @@ mainInputConnection = UserInputService.InputBegan:Connect(function(input, proces
 	if OutlineESPKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == OutlineESPKeybind then ToggleOutlineESP() end
 	if BoxESPKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == BoxESPKeybind then ToggleBoxESP() end
 	if ESPLabelsKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == ESPLabelsKeybind then ToggleESPLabels() end
+	if AutoLockKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == AutoLockKeybind then ToggleAutoLock() end
 end)
 
 -- Dragging
