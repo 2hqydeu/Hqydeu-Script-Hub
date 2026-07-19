@@ -1181,10 +1181,39 @@ local function HoldOnBox(target, targetRoot, options)
 			root.AssemblyAngularVelocity = Vector3.zero
 		end)
 	end
+
+	-- Every crate's Open prompt relies on Roblox's default ProximityPrompt.RequiresLineOfSight
+	-- (never overridden anywhere in this game) -- the default camera, wherever it was last
+	-- pointed, very often does NOT have a clear line to the crate at this range, especially
+	-- inside the cluttered structure interiors, which is why the prompt would never even
+	-- enable without this. The earlier per-tick version snapped the camera to the
+	-- character's live position ~10x/second, which was its own source of visible twitch --
+	-- aiming it once up front (and again only on the rare occasions a drift correction
+	-- actually fires) keeps line-of-sight satisfied without re-snapping every frame.
+	local function AimCameraAtPrompt()
+		local camera = workspace.CurrentCamera
+		local root = PlayerRoot()
+		if not camera or not root then return end
+		pcall(function()
+			camera.CameraType = Enum.CameraType.Scriptable
+			camera.CFrame = CFrame.new(root.Position + Vector3.new(0, 2.5, 0), anchorPosition)
+		end)
+	end
+	local function RestoreCamera()
+		local camera = workspace.CurrentCamera
+		if not camera then return end
+		local character = Player and Player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		pcall(function()
+			camera.CameraType = Enum.CameraType.Custom
+			if humanoid then camera.CameraSubject = humanoid end
+		end)
+	end
 	local function CorrectDriftIfNeeded()
 		if HasDriftedAway() and os.clock() - lastCorrectionTime > TELEPORT_CORRECTION_COOLDOWN then
 			lastCorrectionTime = os.clock()
 			StableTeleport(CFrame.new(anchorPosition))
+			AimCameraAtPrompt()
 		end
 	end
 
@@ -1194,12 +1223,8 @@ local function HoldOnBox(target, targetRoot, options)
 		return false
 	end
 	task.wait(0.15)
+	AimCameraAtPrompt()
 
-	-- No longer hijacking the camera to Scriptable and re-aiming it every tick here --
-	-- forcing camera.CFrame every ~0.1s based on the character's current position was
-	-- itself a source of visible twitch whenever that position had any jitter at all, and
-	-- the camera's facing has nothing to do with whether the prompt can trigger. Leaving
-	-- the camera on the player's own control removes that whole source of twitch.
 	local waitDeadline = os.clock() + 1
 	while os.clock() < waitDeadline and openPrompt.Parent and not openPrompt.Enabled do
 		HoldStill()
@@ -1252,6 +1277,7 @@ local function HoldOnBox(target, targetRoot, options)
 		ReleaseInteractKey(keyCode)
 	end
 	ToolInteractionActive = false
+	RestoreCamera()
 	RestoreTargetCollision()
 	local success = not (target.Parent and BoxRoot(target))
 	if not success then
