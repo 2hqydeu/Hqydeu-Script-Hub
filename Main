@@ -25,7 +25,7 @@ local ToggleKnobColor = Color3.fromRGB(238, 233, 250)
 local KeybindStorageFile = "Serenity_Keybinds.json"
 local SavedKeybinds = {}
 local CanPersistKeybinds = type(isfile) == "function" and type(readfile) == "function" and type(writefile) == "function"
-local function LoadSettingsFromGenv()
+function LoadSettingsFromGenv()
 	if type(getgenv) == "function" then
 		local globalSettings = getgenv().Serenity_Settings
 		if type(globalSettings) == "table" then SavedKeybinds = globalSettings end
@@ -42,7 +42,7 @@ if CanPersistKeybinds then
 end
 LoadSettingsFromGenv()
 
-local function SavePersistentSettings()
+function SavePersistentSettings()
 	if type(getgenv) == "function" then
 		getgenv().Serenity_Settings = SavedKeybinds
 	end
@@ -51,7 +51,7 @@ local function SavePersistentSettings()
 	end
 end
 
-local function DecodeKeybind(savedName)
+function DecodeKeybind(savedName)
 	if type(savedName) == "string" then
 		local success, keyCode = pcall(function() return Enum.KeyCode[savedName] end)
 		if success and keyCode then return keyCode end
@@ -59,18 +59,18 @@ local function DecodeKeybind(savedName)
 	return Enum.KeyCode.Unknown
 end
 
-local function LoadFeatureKeybind(storageKey)
+function LoadFeatureKeybind(storageKey)
 	return DecodeKeybind(SavedKeybinds[storageKey])
 end
 
-local function SaveFeatureKeybind(storageKey, keyCode)
+function SaveFeatureKeybind(storageKey, keyCode)
 	SavedKeybinds[storageKey] = keyCode.Name
 	SavePersistentSettings()
 end
 
 -- Colors aren't JSON-serializable, so they're packed to/from plain {R,G,B} tables --
 -- same trick as keybinds, stored in the same settings file.
-local function PackColor(color)
+function PackColor(color)
 	return {
 		R = math.floor(color.R * 255 + 0.5),
 		G = math.floor(color.G * 255 + 0.5),
@@ -78,23 +78,23 @@ local function PackColor(color)
 	}
 end
 
-local function UnpackColor(saved, fallback)
+function UnpackColor(saved, fallback)
 	if type(saved) == "table" and tonumber(saved.R) and tonumber(saved.G) and tonumber(saved.B) then
 		return Color3.fromRGB(saved.R, saved.G, saved.B)
 	end
 	return fallback
 end
 
-local function LoadFeatureColor(storageKey, fallback)
+function LoadFeatureColor(storageKey, fallback)
 	return UnpackColor(SavedKeybinds[storageKey], fallback)
 end
 
-local function SaveFeatureColor(storageKey, color)
+function SaveFeatureColor(storageKey, color)
 	SavedKeybinds[storageKey] = PackColor(color)
 	SavePersistentSettings()
 end
 
-local function KeybindText(keyCode)
+function KeybindText(keyCode)
 	if keyCode == Enum.KeyCode.Unknown then return "..." end
 	if keyCode == Enum.KeyCode.LeftControl then return "L Ctrl" end
 	if keyCode == Enum.KeyCode.RightControl then return "R Ctrl" end
@@ -118,7 +118,7 @@ local looseConnections = {}
 -- restyle all of them at once. Persisted like keybinds/colors, so it survives reloads.
 local RowTransparencyTargets = {}
 local RowTransparencyValue = tonumber(SavedKeybinds["RowTransparency"]) or 75
-local function SetRowTransparency(value)
+function SetRowTransparency(value)
 	value = math.clamp(math.floor(value + 0.5), 0, 100)
 	RowTransparencyValue = value
 	for _, row in ipairs(RowTransparencyTargets) do
@@ -152,7 +152,7 @@ ClickSound.SoundId = "rbxassetid://88442833509532"
 ClickSound.Volume = 0.5
 ClickSound.Parent = ScreenGui
 
-local function PlayClick() ClickSound:Play() end
+function PlayClick() ClickSound:Play() end
 
 -- Main Window
 local HEADER_HEIGHT = 58
@@ -262,9 +262,10 @@ MainCorner.Parent = MainFrame
 -- ToggleGUI() (further below) re-anchors both to the top-left, stacked, while minimized,
 -- since there isn't room to keep them centered in the collapsed mini window.
 local NORMAL_TITLE_GOAL = {Position = UDim2.new(0.5, 0, 0, HEADER_HEIGHT / 2), Size = UDim2.new(0, 280, 0, 60)}
--- Bigger than even the full-size title now, slid over to the left side of the mini window
--- instead of dead-center (buttons occupy the right side).
-local MINI_TITLE_GOAL = {Position = UDim2.new(0, 50, 0, HEADER_HEIGHT / 2), Size = UDim2.new(0, 340, 0, 73)}
+-- Slid over to the left side of the mini window instead of dead-center (buttons occupy the
+-- right side). Position.Y matches HEADER_HEIGHT/2 exactly, the same center-Y the minimize/
+-- destroy buttons use, so it's vertically in line with them regardless of how wide it is.
+local MINI_TITLE_GOAL = {Position = UDim2.new(0, 80, 0, HEADER_HEIGHT / 2), Size = UDim2.new(0, 260, 0, 56)}
 local NORMAL_TIME_GOAL = {Position = UDim2.new(0, 16, 0, 23)}
 
 local TitleImage = Instance.new("ImageLabel")
@@ -435,7 +436,7 @@ ContentArea.BackgroundTransparency = 1
 ContentArea.Parent = MainFrame
 
 local Tabs = {}
-local function SelectTab(name)
+function SelectTab(name)
 	for tabName, entry in pairs(Tabs) do
 		local isSelected = tabName == name
 		entry.Page.Visible = isSelected
@@ -462,12 +463,12 @@ end
 -- losing thumb-drag as expected, so this is back to native scrolling. Left as a named
 -- no-op (rather than ripping out every call site) in case a safer smoothing approach is
 -- worth trying later.
-local function SmoothScroll(_scrollFrame, _step)
+function SmoothScroll(_scrollFrame, _step)
 end
 
 -- Icon + label are grouped as one horizontally-centered unit (via a nested UIListLayout)
 -- so they read as a single "logo + wordmark," not two separately-positioned pieces.
-local function CreateTab(name, order, iconId, scrolling)
+function CreateTab(name, order, iconId, scrolling)
 	local button = Instance.new("TextButton")
 	button.Name = name .. "Tab"
 	button.LayoutOrder = order
@@ -580,7 +581,7 @@ end
 -- Player tab (scrolling: three feature sections stack well past one screen's height)
 local PlayerPage = CreateTab("Player", 2, "87870052960106", true)
 
-local function CreateSectionHeading(parent, y, text)
+function CreateSectionHeading(parent, y, text)
 	local heading = Instance.new("TextLabel")
 	heading.Name = text .. "Heading"
 	heading.Size = UDim2.new(1, 0, 0, 22)
@@ -596,7 +597,7 @@ local function CreateSectionHeading(parent, y, text)
 end
 
 -- Label + numeric input only (the On/Off toggle now lives in its own row below).
-local function CreateStrengthRow(parent, y, rowLabelText, defaultValue)
+function CreateStrengthRow(parent, y, rowLabelText, defaultValue)
 	local row = Instance.new("Frame")
 	row.Name = rowLabelText .. "Row"
 	row.Size = UDim2.new(1, 0, 0, 52)
@@ -647,13 +648,13 @@ end
 local ActiveKeybindClearPrompt = nil
 local ActiveKeybindClearButton = nil
 
-local function CloseKeybindClearPrompt()
+function CloseKeybindClearPrompt()
 	if ActiveKeybindClearPrompt then ActiveKeybindClearPrompt:Destroy() end
 	ActiveKeybindClearPrompt = nil
 	ActiveKeybindClearButton = nil
 end
 
-local function RepositionKeybindClearPrompt()
+function RepositionKeybindClearPrompt()
 	if not (ActiveKeybindClearPrompt and ActiveKeybindClearButton) then return end
 	ActiveKeybindClearPrompt.Position = UDim2.fromOffset(
 		ActiveKeybindClearButton.AbsolutePosition.X,
@@ -662,7 +663,7 @@ local function RepositionKeybindClearPrompt()
 end
 MainFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(RepositionKeybindClearPrompt)
 
-local function ShowKeybindClearPrompt(button, onCleared)
+function ShowKeybindClearPrompt(button, onCleared)
 	CloseKeybindClearPrompt()
 
 	local prompt = Instance.new("Frame")
@@ -735,7 +736,7 @@ end
 -- Right-click clears it via ShowKeybindClearPrompt above. defaultKeyCode (optional) is
 -- only used the very first time -- once anything (including Unknown, from clearing it)
 -- has been saved under storageKey, that saved value always wins.
-local function CreateKeybindButton(parent, storageKey, onKeybindChanged, defaultKeyCode)
+function CreateKeybindButton(parent, storageKey, onKeybindChanged, defaultKeyCode)
 	local btn = Instance.new("TextButton")
 	btn.Name = "KeybindButton"
 	btn.Size = UDim2.new(0, 70, 0, 30)
@@ -792,7 +793,7 @@ end
 -- toggle call site already just does `toggle.Text = enabled and "On" or "Off"`, so this
 -- hooks that same Text property instead of needing every call site rewritten: nothing
 -- outside this function has to change to get the new visual.
-local function StyleAsToggleSwitch(toggle)
+function StyleAsToggleSwitch(toggle)
 	toggle.AutoButtonColor = false
 	toggle.TextTransparency = 1
 	toggle.BackgroundColor3 = ToggleOffColor
@@ -839,7 +840,7 @@ end
 -- On/Off toggle plus its keybind button, in their own row below the strength row.
 -- labelText overrides the row's own label (defaults to "Toggle" for rows that already
 -- have their feature name shown above, e.g. via CreateStrengthRow).
-local function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, defaultKeyCode)
+function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, defaultKeyCode)
 	local row = Instance.new("Frame")
 	row.Name = "ToggleRow"
 	row.Size = UDim2.new(1, 0, 0, 52)
@@ -1096,6 +1097,14 @@ do
 		local rootPart = character and character:FindFirstChild("HumanoidRootPart")
 		local camera = workspace.CurrentCamera
 		if not (rootPart and FlyBodyGyro and camera) then return end
+		-- IsKeyDown reflects the raw physical key state regardless of what has focus, so
+		-- typing "w"/"a"/"s"/"d" into chat was moving the character mid-sentence. Skip
+		-- movement entirely while any text box (chat included) is focused.
+		if UserInputService:GetFocusedTextBox() then
+			rootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+			rootPart.AssemblyAngularVelocity = Vector3.zero
+			return
+		end
 		local moveDir = Vector3.new(0, 0, 0)
 		if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir += camera.CFrame.LookVector end
 		if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir -= camera.CFrame.LookVector end
@@ -1248,6 +1257,12 @@ do
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		local camera = workspace.CurrentCamera
 		if not (humanoid and camera) then return end
+		-- Same IsKeyDown-ignores-focus issue as Fly -- don't drive movement while a text
+		-- box (chat included) is focused.
+		if UserInputService:GetFocusedTextBox() then
+			humanoid:Move(Vector3.new(0, 0, 0), false)
+			return
+		end
 		local moveDir = Vector3.new(0, 0, 0)
 		if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir -= camera.CFrame.LookVector end
 		if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir += camera.CFrame.LookVector end
@@ -1308,6 +1323,28 @@ BoxAdornments = {} -- [Player] = {[part] = BoxHandleAdornment}
 ESPLabelsEnabled = false
 ESPLabelsKeybind = Enum.KeyCode.Unknown
 
+-- Cross-game role detection: UE has nothing like this, but QOD's killer and MM2's
+-- murderer/sheriff are both exposed through getgenv() (see the bottom of each of those
+-- files) so Player ESP can pick up on them directly instead of each game needing its own
+-- separate ESP feature. isMM2Role distinguishes the two roles that already get their own
+-- dedicated Highlight over in MM2 (MM2MurdererHighlight/MM2SheriffHighlight) -- Outline/Box
+-- ESP skip those players entirely so the two don't visually fight over the same character,
+-- where QOD's killer has no such highlight to protect and gets ESP applied normally.
+function GetCrossGameRole(plr)
+	if type(getgenv) ~= "function" then return nil end
+	local env = getgenv()
+	if type(env.Serenity_MM2_IsMurderer) == "function" and env.Serenity_MM2_IsMurderer(plr) then
+		return "Murderer", Color3.fromRGB(255, 70, 70), true
+	end
+	if type(env.Serenity_MM2_IsSheriff) == "function" and env.Serenity_MM2_IsSheriff(plr) then
+		return "Sheriff", Color3.fromRGB(70, 130, 255), true
+	end
+	if type(env.Serenity_QOD_IsKiller) == "function" and env.Serenity_QOD_IsKiller(plr) then
+		return "Killer", Color3.fromRGB(255, 70, 70), false
+	end
+	return nil
+end
+
 -- Keyed by Player rather than Character: a Player persists across deaths/respawns, so
 -- tracking by Player (matching the old feature-rich hub) means a stale highlight or box
 -- set from a previous life is always reachable to clear, even after its Character is
@@ -1318,8 +1355,10 @@ function RemoveOutlineHighlight(plr)
 	OutlineHighlights[plr] = nil
 end
 
-local function AddOutlineHighlight(plr, character)
+function AddOutlineHighlight(plr, character)
 	if OutlineHighlights[plr] then return end
+	local _, _, isMM2Role = GetCrossGameRole(plr)
+	if isMM2Role then return end
 	local highlight = Instance.new("Highlight")
 	highlight.Name = "SerenityOutlineESP"
 	highlight.FillColor = ESPColor
@@ -1341,7 +1380,7 @@ local BodyESPPartNames = {
 	["Left Arm"] = true, ["Right Arm"] = true, ["Left Leg"] = true, ["Right Leg"] = true,
 }
 
-local function IsBodyESPPart(part, character)
+function IsBodyESPPart(part, character)
 	return part:IsA("BasePart") and part.Parent == character and BodyESPPartNames[part.Name] == true
 end
 
@@ -1357,7 +1396,9 @@ end
 -- Per-limb boxes rather than one box around the root. A BoxHandleAdornment tracks its
 -- Adornee's position/size automatically, so this only needs to run once per character
 -- instead of every frame.
-local function AddBoxAdornments(plr, character)
+function AddBoxAdornments(plr, character)
+	local _, _, isMM2Role = GetCrossGameRole(plr)
+	if isMM2Role then return end
 	local adornments = BoxAdornments[plr]
 	if not adornments then
 		adornments = {}
@@ -1386,7 +1427,7 @@ function RemoveESPLabel(character)
 	if root and root:FindFirstChild("SerenityESPLabel") then root.SerenityESPLabel:Destroy() end
 end
 
-local function RefreshOutlineESP()
+function RefreshOutlineESP()
 	for _, plr in ipairs(Players:GetPlayers()) do
 		if plr ~= Player and plr.Character then
 			if OutlineESPEnabled then AddOutlineHighlight(plr, plr.Character) else RemoveOutlineHighlight(plr) end
@@ -1394,7 +1435,7 @@ local function RefreshOutlineESP()
 	end
 end
 
-local function RefreshBoxESP()
+function RefreshBoxESP()
 	for _, plr in ipairs(Players:GetPlayers()) do
 		if plr ~= Player and plr.Character then
 			if BoxESPEnabled then AddBoxAdornments(plr, plr.Character) else RemoveBoxAdornments(plr) end
@@ -1402,7 +1443,7 @@ local function RefreshBoxESP()
 	end
 end
 
-local function RefreshESPLabels()
+function RefreshESPLabels()
 	if ESPLabelsEnabled then return end
 	for _, plr in ipairs(Players:GetPlayers()) do
 		if plr ~= Player and plr.Character then RemoveESPLabel(plr.Character) end
@@ -1477,9 +1518,13 @@ RunService.Heartbeat:Connect(function()
 				end
 				local dist = myRoot and (myRoot.Position - root.Position).Magnitude or 0
 				local label = espGui.Label
-				label.TextColor3 = ESPColor
+				-- QOD's killer / MM2's murderer or sheriff (see GetCrossGameRole above) get
+				-- their role called out right on the label instead of needing their own
+				-- separate ESP feature in each of those games.
+				local roleText, roleColor = GetCrossGameRole(plr)
+				label.TextColor3 = roleColor or ESPColor
 				-- Name, health, distance -- one per line instead of crammed onto two.
-				label.Text = string.format("%s\nHP: %d\n%d studs away", plr.DisplayName, math.floor(humanoid.Health), math.floor(dist))
+				label.Text = string.format("%s%s\nHP: %d\n%d studs away", plr.DisplayName, roleText and (" [" .. roleText .. "]") or "", math.floor(humanoid.Health), math.floor(dist))
 			else
 				RemoveESPLabel(character)
 			end
@@ -1487,7 +1532,7 @@ RunService.Heartbeat:Connect(function()
 	end
 end)
 
-local function HookOtherPlayerCharacters(plr)
+function HookOtherPlayerCharacters(plr)
 	if plr == Player then return end
 	plr.CharacterAdded:Connect(function(character)
 		task.wait(0.1)
@@ -1577,7 +1622,7 @@ ESPColorButtonStroke.Color = Color3.fromRGB(0, 0, 0)
 ESPColorButtonStroke.Thickness = 1
 ESPColorButtonStroke.Parent = ESPColorButton
 
-local function ApplyESPColor()
+function ApplyESPColor()
 	ESPColorButton.BackgroundColor3 = ESPColor
 	for _, highlight in pairs(OutlineHighlights) do
 		if highlight then
@@ -1594,7 +1639,7 @@ local function ApplyESPColor()
 	-- need updating here.
 end
 
-local function SetESPColor(color)
+function SetESPColor(color)
 	ESPColor = color
 	SaveFeatureColor("ESPColor", ESPColor)
 	ApplyESPColor()
@@ -1632,7 +1677,7 @@ ESPColorPickerStroke.Parent = ESPColorPicker
 -- window position and viewport width, which is almost certainly why it read as
 -- "invisible." Anchoring to a button that's already guaranteed to be on-screen fixes
 -- that outright.
-local function UpdateESPColorPickerPosition()
+function UpdateESPColorPickerPosition()
 	ESPColorPicker.Position = UDim2.fromOffset(
 		ESPColorButton.AbsolutePosition.X + ESPColorButton.AbsoluteSize.X - ESP_COLOR_PICKER_WIDTH,
 		ESPColorButton.AbsolutePosition.Y + ESPColorButton.AbsoluteSize.Y + 6
@@ -1761,13 +1806,13 @@ for _, pickerObject in ipairs(ESPColorPicker:GetDescendants()) do
 	if pickerObject:IsA("GuiObject") then pickerObject.ZIndex = 51 end
 end
 
-local function RefreshPickerMarkers()
+function RefreshPickerMarkers()
 	SVSquare.BackgroundColor3 = Color3.fromHSV(PickerH, 1, 1)
 	SVMarker.Position = UDim2.new(PickerS, 0, 1 - PickerV, 0)
 	HueMarker.Position = UDim2.new(0, -2, PickerH, -1)
 end
 
-local function RefreshSavedColorButtons()
+function RefreshSavedColorButtons()
 	local savedColors = type(SavedKeybinds.ESPSavedColors) == "table" and SavedKeybinds.ESPSavedColors or {}
 	for index, swatch in ipairs(SavedColorButtons) do
 		local color = UnpackColor(savedColors[index], nil)
@@ -1776,12 +1821,12 @@ local function RefreshSavedColorButtons()
 	end
 end
 
-local function ApplyPickerColor()
+function ApplyPickerColor()
 	SetESPColor(Color3.fromHSV(PickerH, PickerS, PickerV))
 	RefreshPickerMarkers()
 end
 
-local function UpdateSVFromPosition(position)
+function UpdateSVFromPosition(position)
 	local x = math.clamp((position.X - SVInput.AbsolutePosition.X) / SVInput.AbsoluteSize.X, 0, 1)
 	local y = math.clamp((position.Y - SVInput.AbsolutePosition.Y) / SVInput.AbsoluteSize.Y, 0, 1)
 	PickerS = x
@@ -1789,7 +1834,7 @@ local function UpdateSVFromPosition(position)
 	ApplyPickerColor()
 end
 
-local function UpdateHueFromPosition(position)
+function UpdateHueFromPosition(position)
 	PickerH = math.clamp((position.Y - HueInput.AbsolutePosition.Y) / HueInput.AbsoluteSize.Y, 0, 1)
 	ApplyPickerColor()
 end
@@ -1960,13 +2005,13 @@ FOVResetButton.MouseButton1Click:Connect(function()
 	if workspace.CurrentCamera then workspace.CurrentCamera.FieldOfView = DEFAULT_FOV end
 end)
 
-local function ClearFreeCamSelfESP()
+function ClearFreeCamSelfESP()
 	if FreeCamSelfHighlight then FreeCamSelfHighlight:Destroy() FreeCamSelfHighlight = nil end
 	if FreeCamSelfLabel then FreeCamSelfLabel:Destroy() FreeCamSelfLabel = nil end
 	FreeCamSelfAdornee = nil
 end
 
-local function UpdateFreeCamSelfESP()
+function UpdateFreeCamSelfESP()
 	if not FreeCamEnabled then
 		ClearFreeCamSelfESP()
 		return
@@ -2016,7 +2061,7 @@ local function UpdateFreeCamSelfESP()
 	end
 end
 
-local function EnableFreeCam()
+function EnableFreeCam()
 	if FreeCamEnabled then return end
 	local camera = workspace.CurrentCamera
 	if not camera then return end
@@ -2122,7 +2167,7 @@ local Waypoints = type(SavedKeybinds.WaypointsByPlace[WaypointStorageKey]) == "t
 	and SavedKeybinds.WaypointsByPlace[WaypointStorageKey] or {}
 local WaypointRefreshCallbacks = {}
 
-local function GetWaypointSegments(instance)
+function GetWaypointSegments(instance)
 	local segments = {}
 	local current = instance
 	while current and current ~= game do
@@ -2132,7 +2177,7 @@ local function GetWaypointSegments(instance)
 	return segments
 end
 
-local function ResolveWaypoint(waypoint)
+function ResolveWaypoint(waypoint)
 	local segments = waypoint.Segments
 	if type(segments) ~= "table" or #segments == 0 then return nil end
 	local current = game
@@ -2149,7 +2194,7 @@ local function ResolveWaypoint(waypoint)
 	return nil
 end
 
-local function GetWaypointCFrame(waypoint)
+function GetWaypointCFrame(waypoint)
 	if type(waypoint.CFrame) == "table" and #waypoint.CFrame >= 12 then
 		return CFrame.new(table.unpack(waypoint.CFrame, 1, 12))
 	end
@@ -2157,7 +2202,7 @@ local function GetWaypointCFrame(waypoint)
 	return part and part.CFrame or nil
 end
 
-local function SaveWaypoints()
+function SaveWaypoints()
 	local serializable = {}
 	for _, waypoint in ipairs(Waypoints) do
 		table.insert(serializable, {Segments = waypoint.Segments, CFrame = waypoint.CFrame, Name = waypoint.Name, Kind = waypoint.Kind})
@@ -2166,7 +2211,7 @@ local function SaveWaypoints()
 	SavePersistentSettings()
 end
 
-local function BroadcastWaypointsChanged()
+function BroadcastWaypointsChanged()
 	for _, callback in ipairs(WaypointRefreshCallbacks) do
 		callback()
 	end
@@ -3123,7 +3168,7 @@ local ScriptsPage = CreateTab("Scripts", 6, "79977771810097", true)
 -- reach into that other game's own script to actually close its live UI -- none of these
 -- modules expose a close hook back to the hub -- it only stops treating it as open here.
 local ScriptRunner = {Sources = {}, Buttons = {}, ActiveGame = nil, Busy = false}
-local function RunScriptOnce(key, url)
+function RunScriptOnce(key, url)
 	local source = ScriptRunner.Sources[key]
 	if not source then
 		local fetched, fetchedSource = pcall(function() return game:HttpGet(url) end)
@@ -3137,7 +3182,7 @@ local function RunScriptOnce(key, url)
 	return pcall(chunk)
 end
 
-local function CreateGameRow(parent, y, gameTitle, url)
+function CreateGameRow(parent, y, gameTitle, url)
 	local row = Instance.new("Frame")
 	row.Name = gameTitle:gsub("%s+", "") .. "Row"
 	row.Size = UDim2.new(1, 0, 0, 44)
@@ -3215,7 +3260,7 @@ CreateGameRow(ScriptsPage, 112, "Murder Mystery 2", "https://raw.githubuserconte
 -- connection-snapshot/baseline system to a before/after CoreGui diff, since these are just
 -- external tools this hub doesn't need to track any deeper state for. Destroy removes
 -- whatever GUI the load created and resets Execute so it can be loaded fresh again.
-local function CreateUtilityRow(parent, y, title, url)
+function CreateUtilityRow(parent, y, title, url)
 	local row = Instance.new("Frame")
 	row.Name = title:gsub("%s+", "") .. "Row"
 	row.Size = UDim2.new(1, 0, 0, 44)
@@ -3378,7 +3423,7 @@ do
 	LocalCountLabel.Position = UDim2.new(1, -68, 0, 136)
 	LocalCountLabel.BackgroundTransparency = 1
 	LocalCountLabel.BorderSizePixel = 0
-	LocalCountLabel.Text = "171 / 200"
+	LocalCountLabel.Text = "119 / 200"
 	LocalCountLabel.Font = UIFont
 	LocalCountLabel.TextSize = 7
 	LocalCountLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
@@ -3398,7 +3443,7 @@ local MinimizeKeybind = Enum.KeyCode.LeftControl
 local minimized = false
 local preMinimizePosition = nil
 
-local function GetSnappedMinimizedPosition()
+function GetSnappedMinimizedPosition()
 	local camera = workspace.CurrentCamera
 	local viewportSize = (camera and camera.ViewportSize) or Vector2.new(1920, 1080)
 	local miniWidth = MINI_SIZE.X.Offset
@@ -3411,7 +3456,7 @@ local function GetSnappedMinimizedPosition()
 	return UDim2.new(0, snappedX, 0, snappedY)
 end
 
-local function ToggleGUI()
+function ToggleGUI()
 	minimized = not minimized
 	HeaderDivider.Visible = not minimized
 	TabBar.Visible = not minimized
@@ -3447,7 +3492,7 @@ local DestroyKeybind = Enum.KeyCode.RightControl
 local mainInputConnection
 local dragChangedConnection
 
-local function DestroyGui()
+function DestroyGui()
 	if mainInputConnection then mainInputConnection:Disconnect() end
 	if dragChangedConnection then dragChangedConnection:Disconnect() end
 	if characterAddedConnection then characterAddedConnection:Disconnect() end
