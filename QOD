@@ -280,7 +280,6 @@ end
 local KillRow, KillToggle = CreateFeatureRow(1, "Auto Kill")
 local FarmRow, FarmToggle = CreateFeatureRow(2, "Auto Farm")
 local ReviveRow, ReviveToggle = CreateFeatureRow(3, "Auto Revive")
-local ESPRow, ESPToggle = CreateFeatureRow(4, "ESP")
 
 -- Auto Farm's Edit button: tucked to the left of its toggle, opens a small popup holding
 -- Auto Event, Safe Place, and Mute Audio -- keeps the main panel to just the things you'd
@@ -679,69 +678,12 @@ RunService.Heartbeat:Connect(function()
 	end
 end)
 
--- ESP: labels whoever's currently the killer -- "Killer" floating over their head, same
--- idea as the old hub's reveal, but shown as a world label instead of firing the ability.
-local espEnabled = false
-local killerLabels = {}
-
-local function ClearKillerLabel(targetPlayer)
-	local label = killerLabels[targetPlayer]
-	if label then
-		label:Destroy()
-		killerLabels[targetPlayer] = nil
-	end
+-- No standalone ESP feature here anymore -- killer detection is exposed for Main's own
+-- Player ESP (Outline/Box/Labels, Visuals tab) to pick up on directly instead, so there's
+-- one ESP system instead of a separate always-on-somewhere-else one just for this game.
+if type(getgenv) == "function" then
+	getgenv().Serenity_QOD_IsKiller = IsPlayerKiller
 end
-
-local function ClearAllKillerLabels()
-	for targetPlayer in pairs(killerLabels) do
-		ClearKillerLabel(targetPlayer)
-	end
-end
-
-ESPToggle.MouseButton1Click:Connect(function()
-	espEnabled = not espEnabled
-	ESPToggle.Text = espEnabled and "On" or "Off"
-	if not espEnabled then ClearAllKillerLabels() end
-end)
-
-RunService.Heartbeat:Connect(function()
-	if not ScreenGui.Parent then return end
-	if not espEnabled then
-		return
-	end
-	for _, targetPlayer in ipairs(Players:GetPlayers()) do
-		local character = targetPlayer.Character
-		local head = character and character:FindFirstChild("Head")
-		if character and head and IsPlayerKiller(targetPlayer) then
-			local existing = killerLabels[targetPlayer]
-			if not existing or not existing.Parent then
-				local billboard = Instance.new("BillboardGui")
-				billboard.Name = "QODKillerLabel"
-				billboard.Size = UDim2.new(0, 90, 0, 24)
-				billboard.StudsOffset = Vector3.new(0, 2.2, 0)
-				billboard.AlwaysOnTop = true
-				billboard.Adornee = head
-				billboard.Parent = head
-				local text = Instance.new("TextLabel")
-				text.Size = UDim2.new(1, 0, 1, 0)
-				text.BackgroundTransparency = 1
-				text.Text = "Killer"
-				text.Font = UIFont
-				text.TextSize = 16
-				text.TextColor3 = Color3.fromRGB(255, 70, 70)
-				text.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-				text.TextStrokeTransparency = 0.2
-				text.Parent = billboard
-				killerLabels[targetPlayer] = billboard
-			end
-		else
-			ClearKillerLabel(targetPlayer)
-		end
-	end
-	for targetPlayer in pairs(killerLabels) do
-		if not targetPlayer.Parent then ClearKillerLabel(targetPlayer) end
-	end
-end)
 
 -- Minimize: shrinks to just the header, matching Serenity's own minimize behavior. Every
 -- row lives inside ContentScroll now, so hiding that one frame is enough.
@@ -760,7 +702,6 @@ MinimizeButton.MouseButton1Click:Connect(ToggleMinimize)
 
 CloseButton.MouseButton1Click:Connect(function()
 	SetAudioMuted(false)
-	ClearAllKillerLabels()
 	ScreenGui:Destroy()
 end)
 
