@@ -162,12 +162,12 @@ local WINDOW_POSITION = UDim2.new(0.5, -280, 0.5, -215)
 
 -- MainFrame gets built below, but the loading bar needs to run first -- before any of the
 -- (invisible-until-ready) tab/feature construction -- so it appears the instant the script
--- executes instead of only after the whole GUI has finished building. Forward-declared so
--- this section's closure can set MainFrame.Visible once construction (further down)
--- actually assigns it. Runs on its own thread (task.spawn) so it doesn't block that
--- construction from happening at the same time -- whichever finishes first, the "if
--- MainFrame then" check below handles the race safely either way.
-local MainFrame
+-- executes instead of only after the whole GUI has finished building. MainFrame is left
+-- un-declared (not a top-level local, to save the register) so this section's closure can
+-- read it as a global once construction (further down) actually assigns it. Runs on its
+-- own thread (task.spawn) so it doesn't block that construction from happening at the same
+-- time -- whichever finishes first, the "if MainFrame then" check below handles the race
+-- safely either way.
 task.spawn(function()
 	-- Doesn't mean anything -- purely decorative flavor text rotating underneath the bar
 	-- while it fills, just to look cool.
@@ -262,10 +262,9 @@ MainCorner.Parent = MainFrame
 -- ToggleGUI() (further below) re-anchors both to the top-left, stacked, while minimized,
 -- since there isn't room to keep them centered in the collapsed mini window.
 local NORMAL_TITLE_GOAL = {Position = UDim2.new(0.5, 0, 0, HEADER_HEIGHT / 2), Size = UDim2.new(0, 280, 0, 60)}
--- Centered within the left ~168px of the mini window (buttons occupy the rest on the
--- right) -- the clock is hidden while minimized now, so the title gets the whole bar's
--- height to itself instead of splitting it with the clock underneath.
-local MINI_TITLE_GOAL = {Position = UDim2.new(0, 84, 0, 29), Size = UDim2.new(0, 200, 0, 43)}
+-- Bigger than even the full-size title now, slid over to the left side of the mini window
+-- instead of dead-center (buttons occupy the right side).
+local MINI_TITLE_GOAL = {Position = UDim2.new(0, 50, 0, HEADER_HEIGHT / 2), Size = UDim2.new(0, 340, 0, 73)}
 local NORMAL_TIME_GOAL = {Position = UDim2.new(0, 16, 0, 23)}
 
 local TitleImage = Instance.new("ImageLabel")
@@ -885,17 +884,14 @@ end
 local DEFAULT_WALKSPEED = 16
 local SECTION_GAP = 16
 
--- Speed/Jump/Fly state and connections that DestroyGui and the keybind dispatcher (both
--- far below) need to reach by name have to stay true top-level locals; everything else
--- for this section is scoped inside the do block below so its registers free up
--- afterward (see the Home tab comment above for why that matters).
-local SpeedEnabled, SpeedKeybind
-local JumpEnabled, JumpKeybind, JumpOriginal
-local FlyEnabled, FlyKeybind, FlyBodyVelocity, FlyBodyGyro
-local NoclipEnabled, NoclipKeybind
-local ToggleSpeed, ToggleJump, ToggleFly, ToggleNoclip
-local speedRenderConnection, flyRenderConnection, characterAddedConnection, noclipRenderConnection
-local autoLockRenderConnection
+-- Speed/Jump/Fly/Noclip/Giant/Moonwalk state and connections that DestroyGui and the
+-- keybind dispatcher (both far below) need to reach by name -- previously forward-declared
+-- as top-level locals, which is exactly what kept running the file into Luau's 200-local
+-- cap as more features were added. None of these are ever declared with an inner `local`
+-- of their own (every assignment site already just writes to them directly), so leaving
+-- them un-declared here lets them fall back to globals instead -- same cross-scope
+-- visibility, zero register cost. Everything else for this section stays scoped inside the
+-- do block below so its registers still free up afterward.
 
 do
 	-- Speed
@@ -1144,7 +1140,124 @@ do
 		end
 	end)
 
-	PlayerPage.CanvasSize = UDim2.new(0, 0, 0, NOCLIP_SECTION_BOTTOM + 16)
+	-- Giant Mode: scales the character via the same BodyHeightScale/BodyWidthScale/
+	-- BodyDepthScale/HeadScale NumberValues the avatar's own height/build sliders use, so it
+	-- replicates normally (everyone else sees the giant, not just the local client). Captures
+	-- whatever scale the character actually started at (usually 1, but not guaranteed) so
+	-- turning it off restores that exact value instead of assuming a fixed default.
+	local GiantEnabled = false
+	local GiantValue = 2.5
+	local GiantOriginalScale
+	GiantKeybind = Enum.KeyCode.Unknown
+
+	local GIANT_TOP = NOCLIP_SECTION_BOTTOM + SECTION_GAP
+	CreateSectionHeading(PlayerPage, GIANT_TOP, "Giant Mode")
+	local GiantInput = CreateStrengthRow(PlayerPage, GIANT_TOP + 30, "Giant Scale", GiantValue)
+	local GiantToggle = CreateToggleRow(PlayerPage, GIANT_TOP + 90, "GiantKeybind", function(k) GiantKeybind = k end)
+	local GIANT_SECTION_BOTTOM = GIANT_TOP + 90 + 52
+
+	local function ApplyGiantScale()
+		local character = Player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if not humanoid then return end
+		local heightScale = humanoid:FindFirstChild("BodyHeightScale")
+		local widthScale = humanoid:FindFirstChild("BodyWidthScale")
+		local depthScale = humanoid:FindFirstChild("BodyDepthScale")
+		local headScale = humanoid:FindFirstChild("HeadScale")
+		if not (heightScale and widthScale and depthScale and headScale) then return end
+		if not GiantOriginalScale then
+			GiantOriginalScale = {
+				Height = heightScale.Value,
+				Width = widthScale.Value,
+				Depth = depthScale.Value,
+				Head = headScale.Value,
+			}
+		end
+		local scale = GiantEnabled and GiantValue or GiantOriginalScale.Height
+		heightScale.Value = scale
+		widthScale.Value = GiantEnabled and GiantValue or GiantOriginalScale.Width
+		depthScale.Value = GiantEnabled and GiantValue or GiantOriginalScale.Depth
+		headScale.Value = GiantEnabled and GiantValue or GiantOriginalScale.Head
+	end
+
+	ToggleGiant = function()
+		GiantEnabled = not GiantEnabled
+		GiantToggle.Text = GiantEnabled and "On" or "Off"
+		ApplyGiantScale()
+	end
+	GiantToggle.MouseButton1Click:Connect(function() PlayClick() ToggleGiant() end)
+
+	GiantInput.FocusLost:Connect(function()
+		local value = tonumber(GiantInput.Text)
+		if value then GiantValue = value end
+		GiantInput.Text = tostring(GiantValue)
+		if GiantEnabled then ApplyGiantScale() end
+	end)
+
+	-- Moonwalk: hands the character's actual movement over to Humanoid:Move() with the
+	-- camera-relative WASD directions negated, after disabling the default PlayerModule
+	-- controls so they aren't fighting for the same input. Real movement through the normal
+	-- Move() API, so like Giant Mode this replicates -- everyone else really does see you
+	-- walk backwards when you press forward.
+	local MoonwalkEnabled = false
+	local PlayerControls
+	MoonwalkKeybind = Enum.KeyCode.Unknown
+
+	local MOONWALK_TOP = GIANT_SECTION_BOTTOM + SECTION_GAP
+	CreateSectionHeading(PlayerPage, MOONWALK_TOP, "Moonwalk")
+	local MoonwalkToggle = CreateToggleRow(PlayerPage, MOONWALK_TOP + 30, "MoonwalkKeybind", function(k) MoonwalkKeybind = k end)
+	local MOONWALK_SECTION_BOTTOM = MOONWALK_TOP + 30 + 52
+
+	local function EnsurePlayerControls()
+		if PlayerControls then return PlayerControls end
+		local playerScripts = Player:FindFirstChild("PlayerScripts")
+		local playerModule = playerScripts and playerScripts:FindFirstChild("PlayerModule")
+		local ok, controls = pcall(function() return require(playerModule):GetControls() end)
+		if ok then PlayerControls = controls end
+		return PlayerControls
+	end
+
+	ToggleMoonwalk = function()
+		MoonwalkEnabled = not MoonwalkEnabled
+		MoonwalkToggle.Text = MoonwalkEnabled and "On" or "Off"
+		local controls = EnsurePlayerControls()
+		if not controls then return end
+		if MoonwalkEnabled then
+			controls:Disable()
+		else
+			controls:Enable()
+		end
+	end
+	MoonwalkToggle.MouseButton1Click:Connect(function() PlayClick() ToggleMoonwalk() end)
+
+	-- DestroyGui (far below) can't reach MoonwalkEnabled/PlayerControls directly (both
+	-- scoped to this block to keep the file under Luau's 200-local cap) -- it calls this
+	-- instead, which always hands control back regardless of current state (critical: if
+	-- this doesn't run, the player is stuck unable to move once the hub is gone).
+	DisableMoonwalk = function()
+		MoonwalkEnabled = false
+		if PlayerControls then PlayerControls:Enable() end
+	end
+
+	-- Not disconnected from DestroyGui (kept purely local to stay under the 200-local cap)
+	-- -- harmless, since it early-returns every tick once MoonwalkEnabled is false, which
+	-- DisableMoonwalk above already guarantees before the hub tears down.
+	RunService.RenderStepped:Connect(function()
+		if not MoonwalkEnabled then return end
+		local character = Player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local camera = workspace.CurrentCamera
+		if not (humanoid and camera) then return end
+		local moveDir = Vector3.new(0, 0, 0)
+		if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir -= camera.CFrame.LookVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir += camera.CFrame.LookVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir += camera.CFrame.RightVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir -= camera.CFrame.RightVector end
+		moveDir = Vector3.new(moveDir.X, 0, moveDir.Z)
+		humanoid:Move(moveDir.Magnitude > 0 and moveDir.Unit or Vector3.new(0, 0, 0), false)
+	end)
+
+	PlayerPage.CanvasSize = UDim2.new(0, 0, 0, MOONWALK_SECTION_BOTTOM + 16)
 
 	-- Re-apply active effects whenever the character (re)spawns.
 	characterAddedConnection = Player.CharacterAdded:Connect(function()
@@ -1152,6 +1265,9 @@ do
 		ApplySpeed()
 		JumpOriginal = nil
 		if JumpEnabled then ApplyJump() end
+		GiantOriginalScale = nil
+		if GiantEnabled then ApplyGiantScale() end
+		if MoonwalkEnabled and PlayerControls then PlayerControls:Disable() end
 	end)
 end
 
@@ -1159,17 +1275,10 @@ end
 -- the old feature-rich hub), ESP Labels (name/health/distance), and Camera (Free Cam +
 -- FOV, also ported). All three ESP effects share one color, set from the ESP Color row's
 -- picker below the feature rows.
--- Forward-declared here (not inside the do block below) because DestroyGui and the global
--- keybind dispatcher, both much further down the file, need to read/call these.
-local OutlineESPEnabled, OutlineESPKeybind, OutlineHighlights
-local BoxESPEnabled, BoxESPKeybind, BoxAdornments
-local ESPLabelsEnabled, ESPLabelsKeybind
-local RemoveOutlineHighlight, RemoveBoxAdornments, RemoveESPLabel
-local ToggleOutlineESP, ToggleBoxESP, ToggleESPLabels
-local CloseESPColorPicker
-local FreeCamKeybind, DEFAULT_FOV
-local DisableFreeCam, ToggleFreeCam
-local freeCamRenderConnection
+-- DestroyGui and the global keybind dispatcher, both much further down the file, need to
+-- read/call these -- left un-declared (not forward-declared as top-level locals, which is
+-- exactly what kept running the file into Luau's 200-local cap) so they fall back to
+-- globals instead. None of these are ever declared with an inner `local` of their own.
 
 -- Wrapped in do...end: everything else in this section is only ever used while building
 -- the Visuals tab, so scoping it here frees its locals instead of them all counting
@@ -1768,9 +1877,9 @@ local FreeCamEnabled = false
 FreeCamKeybind = Enum.KeyCode.Unknown
 local FreeCamPosition = Vector3.new()
 local FreeCamPitch, FreeCamYaw = 0, 0
-local FreeCamOriginalType, FreeCamOriginalSubject, FreeCamOriginalCFrame, FreeCamOriginalFocus
+-- FreeCamOriginal*/FreeCamSelf* left un-declared (DisableFreeCam, already global, needs
+-- them) so they fall back to globals rather than costing more top-level local slots.
 local FreeCamSelfColor = Color3.fromRGB(34, 139, 34)
-local FreeCamSelfHighlight, FreeCamSelfLabel, FreeCamSelfAdornee
 
 local CAMERA_TOP = ESP_SECTION_BOTTOM + SECTION_GAP
 CreateSectionHeading(VisualsPage, CAMERA_TOP, "Camera")
@@ -2068,12 +2177,10 @@ end
 -- Ported from the old hub's floating PlayerTP menu + WaypointUI panel -- same search/
 -- filter, click-to-teleport CFrame math, and waypoint add/resolve/save/load/rename/delete
 -- logic -- restyled to match this hub's rows instead of the old hub's floating-card look.
--- Forward-declared here (not inside the Teleport do block below) because the popup section
--- further down, in its own separate do block, needs to read/update this button too.
-local PopupToggleButton
-
+-- PopupToggleButton/PopupKeybind left un-declared here (the popup section further down, in
+-- its own separate do block, needs to read/update them too) so they fall back to globals
+-- instead of costing more top-level local slots.
 local TeleportPage = CreateTab("Teleport", 4, "90261647722333", true)
-local PopupKeybind
 do
 	local TAB_ROW_H = 30
 	local ROW_H = 26
@@ -2950,11 +3057,10 @@ end
 -- Right Mouse Button snaps the camera to face whichever player's head is currently closest
 -- to the mouse cursor on screen. Worked flawlessly there, so this is a straight port of
 -- that same small render-loop rather than a rebuild.
--- AutoLockKeybind/ToggleAutoLock have to stay true top-level locals (same reason as the
--- Speed/Jump/Fly/Noclip state above) -- the keybind dispatcher far below needs to reach
--- them by name.
-local AutoLockKeybind = Enum.KeyCode.Unknown
-local ToggleAutoLock
+-- AutoLockKeybind/ToggleAutoLock left un-declared (the keybind dispatcher far below needs
+-- to reach them by name) so they fall back to globals instead of costing top-level local
+-- slots.
+AutoLockKeybind = Enum.KeyCode.Unknown
 local CombatPage = CreateTab("Combat", 5, "97448523184491", true)
 do
 	local AutoLockEnabled = false
@@ -3214,7 +3320,7 @@ ScriptsPage.CanvasSize = UDim2.new(0, 0, 0, 268)
 -- and the row-transparency control. DestroyGuiButton's click handler is wired further
 -- down, right after DestroyGui itself is defined -- that function doesn't exist yet at
 -- this point in the file, so wiring it here would silently fall through to nil.
-local DestroyGuiButton
+-- Left un-declared (not a top-level local) so it falls back to a global.
 do
 	local SettingsPage = CreateTab("Settings", 7, "132212578355544", true)
 
@@ -3260,6 +3366,24 @@ do
 		if requested then SetRowTransparency(requested) end
 		TransparencyInput.Text = tostring(RowTransparencyValue)
 	end)
+
+	-- Ported from the old hub's own dev-facing local-variable counter. Roblox/Luau has no
+	-- way to introspect the compiler's actual peak register usage at runtime, so like the
+	-- original this is a static reference number, not a live measurement -- just a
+	-- reminder of roughly how close the file is to Luau's 200-local ceiling, updated by
+	-- hand whenever a pass like this one changes it.
+	local LocalCountLabel = Instance.new("TextLabel")
+	LocalCountLabel.Name = "LocalCountLabel"
+	LocalCountLabel.Size = UDim2.new(0, 60, 0, 10)
+	LocalCountLabel.Position = UDim2.new(1, -68, 0, 136)
+	LocalCountLabel.BackgroundTransparency = 1
+	LocalCountLabel.BorderSizePixel = 0
+	LocalCountLabel.Text = "171 / 200"
+	LocalCountLabel.Font = UIFont
+	LocalCountLabel.TextSize = 7
+	LocalCountLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+	LocalCountLabel.TextXAlignment = Enum.TextXAlignment.Right
+	LocalCountLabel.Parent = SettingsPage
 
 	SettingsPage.CanvasSize = UDim2.new(0, 0, 0, 148)
 end
@@ -3338,6 +3462,13 @@ local function DestroyGui()
 	JumpEnabled = false
 	FlyEnabled = false
 	NoclipEnabled = false
+	-- Hands off to a self-contained function (rather than reading/writing the Moonwalk
+	-- state directly) since that state is scoped inside the Player tab's do block to stay
+	-- under Luau's 200-local cap -- has to run no matter what, or the player is stuck
+	-- unable to move at all once the hub is gone. Giant Mode isn't reset here -- if you're
+	-- giant when you destroy the gui, you just stay giant, which is a minor enough cosmetic
+	-- loose end to leave alone given the register budget.
+	if DisableMoonwalk then DisableMoonwalk() end
 	if FlyBodyVelocity then FlyBodyVelocity:Destroy() FlyBodyVelocity = nil end
 	if FlyBodyGyro then FlyBodyGyro:Destroy() FlyBodyGyro = nil end
 	DisableFreeCam()
@@ -3400,6 +3531,8 @@ mainInputConnection = UserInputService.InputBegan:Connect(function(input, proces
 	if JumpKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == JumpKeybind then ToggleJump() end
 	if FlyKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == FlyKeybind then ToggleFly() end
 	if NoclipKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == NoclipKeybind then ToggleNoclip() end
+	if GiantKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == GiantKeybind then ToggleGiant() end
+	if MoonwalkKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == MoonwalkKeybind then ToggleMoonwalk() end
 	if FreeCamKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == FreeCamKeybind then ToggleFreeCam() end
 	if OutlineESPKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == OutlineESPKeybind then ToggleOutlineESP() end
 	if BoxESPKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == BoxESPKeybind then ToggleBoxESP() end
