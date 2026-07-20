@@ -14,6 +14,7 @@ local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local CollectionService = game:GetService("CollectionService")
 local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Player = Players.LocalPlayer
 local FrameColor = Color3.fromRGB(0x1E, 0x1E, 0x1E)
@@ -489,6 +490,14 @@ local function ClearAllRoleHighlights()
 	end
 end
 
+-- Lets Main's own regular Player ESP know when a player is already wearing MM2's own
+-- murderer/sheriff highlight, so it can skip applying its own Outline/Box highlight to that
+-- same player instead of the two visually fighting over the same character.
+if type(getgenv) == "function" then
+	getgenv().Serenity_MM2_IsMurderer = function(plr) return plr == CurrentMurderer end
+	getgenv().Serenity_MM2_IsSheriff = function(plr) return plr == CurrentSheriff end
+end
+
 local function RefreshRoleDisplay()
 	local murdererAvatarId = CurrentMurderer and CurrentMurderer.UserId or 0
 	local sheriffAvatarId = CurrentSheriff and CurrentSheriff.UserId or 0
@@ -505,14 +514,87 @@ local function RefreshRoleDisplay()
 	UpdateRoleHighlights()
 end
 
+-- Role Reveal used to only ever find out who the murderer/sheriff were once they'd
+-- actually equipped their Knife/Gun -- by then they're usually already hunting. The old
+-- hub read the round's role data straight from the server (the same RemoteFunction its own
+-- UI uses) so it knew before either weapon was ever picked up, with tool detection kept
+-- around as the fail-safe: tools are ground truth the moment they appear, and toolRolesActive/
+-- lastRemoteRoleAt below make sure an early remote-based guess doesn't get blanked out by
+-- "nobody's holding a weapon yet" before it's had a chance to be confirmed.
+local toolRolesActive = false
+local lastRemoteRoleAt = 0
+
 local function RefreshRolesFromTools()
 	local murderer = FindRoleHolder("Knife")
 	local sheriff = FindRoleHolder("Gun")
-	if murderer ~= CurrentMurderer or sheriff ~= CurrentSheriff then
-		CurrentMurderer = murderer
-		CurrentSheriff = sheriff
+	if murderer or sheriff then
+		toolRolesActive = true
+		if murderer ~= CurrentMurderer or sheriff ~= CurrentSheriff then
+			CurrentMurderer = murderer
+			CurrentSheriff = sheriff
+			RefreshRoleDisplay()
+		end
+		return
+	end
+	if toolRolesActive then
+		-- Tools were confirmed and now nobody's holding either -- round's over, clear.
+		toolRolesActive = false
+		if CurrentMurderer or CurrentSheriff then
+			CurrentMurderer = nil
+			CurrentSheriff = nil
+			RefreshRoleDisplay()
+		end
+		return
+	end
+	-- No tool ever seen yet this round. A recent remote-based guess is still allowed to
+	-- stand (weapons just haven't been picked up yet); only clear once that guess goes
+	-- stale, so a round with no remote data at all still eventually clears normally.
+	if os.clock() - lastRemoteRoleAt < 30 then return end
+	if CurrentMurderer or CurrentSheriff then
+		CurrentMurderer = nil
+		CurrentSheriff = nil
 		RefreshRoleDisplay()
 	end
+end
+
+local remoteRoleRequestBusy = false
+local lastRemoteRoleCheck = 0
+local function RefreshRolesFromRemote()
+	if toolRolesActive then return end
+	local now = os.clock()
+	if now - lastRemoteRoleCheck < 1 or remoteRoleRequestBusy then return end
+	lastRemoteRoleCheck = now
+	local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+	local gameplay = remotes and remotes:FindFirstChild("Gameplay")
+	local getCurrentPlayerData = gameplay and gameplay:FindFirstChild("GetCurrentPlayerData")
+	if not getCurrentPlayerData or not getCurrentPlayerData:IsA("RemoteFunction") then return end
+	remoteRoleRequestBusy = true
+	task.spawn(function()
+		local success, playerData = pcall(function() return getCurrentPlayerData:InvokeServer() end)
+		remoteRoleRequestBusy = false
+		if not success or type(playerData) ~= "table" or toolRolesActive then return end
+		local murderer, sheriff
+		for playerName, roundData in pairs(playerData) do
+			if type(playerName) == "string" and type(roundData) == "table" then
+				local targetPlayer = Players:FindFirstChild(playerName)
+				local roleName = roundData.Role
+				if targetPlayer and type(roleName) == "string" then
+					if roleName == "Murderer" then
+						murderer = targetPlayer
+					elseif roleName == "Sheriff" or roleName == "Hero" then
+						sheriff = targetPlayer
+					end
+				end
+			end
+		end
+		if not murderer and not sheriff then return end
+		lastRemoteRoleAt = os.clock()
+		if murderer ~= CurrentMurderer or sheriff ~= CurrentSheriff then
+			CurrentMurderer = murderer or CurrentMurderer
+			CurrentSheriff = sheriff or CurrentSheriff
+			RefreshRoleDisplay()
+		end
+	end)
 end
 
 -- Gun Drop ESP: highlight + floating label on the map's gun pickup, same as the old hub --
@@ -589,6 +671,7 @@ end)
 
 RunService.Heartbeat:Connect(function()
 	if not ScreenGui.Parent then return end
+	RefreshRolesFromRemote()
 	RefreshRolesFromTools()
 end)
 
@@ -779,7 +862,12 @@ local function TryPickUpGun(gunDrop)
 		end
 	end
 	task.wait(0.08)
-	if not autoGunEnabled or not gunDrop.Parent or not root.Parent or not IsGunPickupSafe(gunCFrame.Position) then
+	-- This runs as its own coroutine (the task.wait above suspends it independently of the
+	-- Heartbeat loop that started it) -- closing the panel mid-flight doesn't stop it on its
+	-- own, so without this check it keeps teleporting/re-teleporting the character around
+	-- after Close, which is exactly the kind of "character bugs out, only a Reset fixes it"
+	-- symptom this was causing.
+	if not ScreenGui.Parent or not autoGunEnabled or not gunDrop.Parent or not root.Parent or not IsGunPickupSafe(gunCFrame.Position) then
 		autoGunBusy = false
 		return
 	end
@@ -788,7 +876,7 @@ local function TryPickUpGun(gunDrop)
 	root.AssemblyLinearVelocity = Vector3.zero
 	root.AssemblyAngularVelocity = Vector3.zero
 	task.wait(0.045)
-	if root and root.Parent then
+	if ScreenGui.Parent and root and root.Parent then
 		SetRootUpright(root, root.CFrame, originalCFrame.Position)
 		root.AssemblyLinearVelocity = Vector3.zero
 		root.AssemblyAngularVelocity = Vector3.zero
@@ -1192,6 +1280,8 @@ end
 MinimizeButton.MouseButton1Click:Connect(ToggleMinimize)
 
 CloseButton.MouseButton1Click:Connect(function()
+	coinFarmEnabled = false
+	autoGunEnabled = false
 	SetUnderground(false)
 	RestoreKillHitboxes()
 	ClearGunDropESP()
