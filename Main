@@ -3102,10 +3102,11 @@ end
 -- Right Mouse Button snaps the camera to face whichever player's head is currently closest
 -- to the mouse cursor on screen. Worked flawlessly there, so this is a straight port of
 -- that same small render-loop rather than a rebuild.
--- AutoLockKeybind/ToggleAutoLock left un-declared (the keybind dispatcher far below needs
--- to reach them by name) so they fall back to globals instead of costing top-level local
--- slots.
+-- AutoLockKeybind/ToggleAutoLock/InstantPromptKeybind/ToggleInstantPrompt left un-declared
+-- (the keybind dispatcher far below needs to reach them by name) so they fall back to
+-- globals instead of costing top-level local slots.
 AutoLockKeybind = Enum.KeyCode.Unknown
+InstantPromptKeybind = Enum.KeyCode.Unknown
 local CombatPage = CreateTab("Combat", 5, "97448523184491", true)
 do
 	local AutoLockEnabled = false
@@ -3151,6 +3152,38 @@ do
 		if target and target.Character and target.Character:FindFirstChild("Head") then
 			local camera = workspace.CurrentCamera
 			camera.CFrame = CFrame.lookAt(camera.CFrame.Position, target.Character.Head.Position)
+		end
+	end)
+
+	-- Instant Prompt: fires whatever ProximityPrompt is currently active for the key you
+	-- press, instead of waiting out its configured HoldDuration. fireproximityprompt is an
+	-- executor-provided function (the same one UE's crate-opening already falls back on
+	-- elsewhere in this hub) that completes a prompt directly, bypassing the real hold time
+	-- entirely -- not something every executor supports, so this silently does nothing on
+	-- ones that don't expose it rather than erroring.
+	local InstantPromptEnabled = false
+	CreateSectionHeading(CombatPage, 106, "Instant Prompt")
+	local InstantPromptToggle = CreateToggleRow(CombatPage, 136, "InstantPromptKeybind", function(k) InstantPromptKeybind = k end, "Instant Prompt")
+	CombatPage.CanvasSize = UDim2.new(0, 0, 0, 204)
+
+	ToggleInstantPrompt = function()
+		InstantPromptEnabled = not InstantPromptEnabled
+		InstantPromptToggle.Text = InstantPromptEnabled and "On" or "Off"
+	end
+	InstantPromptToggle.MouseButton1Click:Connect(function() PlayClick() ToggleInstantPrompt() end)
+
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if not InstantPromptEnabled or processed then return end
+		if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+		if type(fireproximityprompt) ~= "function" then return end
+		for _, prompt in ipairs(workspace:GetDescendants()) do
+			if prompt:IsA("ProximityPrompt") and prompt.Enabled then
+				local keyCode = prompt.KeyboardKeyCode
+				if keyCode == Enum.KeyCode.Unknown then keyCode = Enum.KeyCode.E end
+				if input.KeyCode == keyCode then
+					pcall(fireproximityprompt, prompt, 0)
+				end
+			end
 		end
 	end)
 end
@@ -3583,6 +3616,7 @@ mainInputConnection = UserInputService.InputBegan:Connect(function(input, proces
 	if BoxESPKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == BoxESPKeybind then ToggleBoxESP() end
 	if ESPLabelsKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == ESPLabelsKeybind then ToggleESPLabels() end
 	if AutoLockKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == AutoLockKeybind then ToggleAutoLock() end
+	if InstantPromptKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == InstantPromptKeybind then ToggleInstantPrompt() end
 end)
 
 -- Dragging
