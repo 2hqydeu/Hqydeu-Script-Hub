@@ -256,8 +256,8 @@ PanelCorner.Parent = PanelFrame
 local PanelGradient = Instance.new("UIGradient")
 PanelGradient.Rotation = 90
 PanelGradient.Color = ColorSequence.new({
-	ColorSequenceKeypoint.new(0, Color3.fromRGB(38, 38, 38)),
-	ColorSequenceKeypoint.new(1, Color3.fromRGB(22, 22, 22)),
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(32, 32, 32)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(26, 26, 26)),
 })
 PanelGradient.Parent = PanelFrame
 
@@ -335,8 +335,8 @@ local function AddPanelGradient(frame)
 	local gradient = Instance.new("UIGradient")
 	gradient.Rotation = 90
 	gradient.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(38, 38, 38)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(22, 22, 22)),
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(32, 32, 32)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(26, 26, 26)),
 	})
 	gradient.Parent = frame
 end
@@ -464,20 +464,30 @@ local ToggleKnobColor = Color3.fromRGB(238, 233, 250)
 -- under ONE shared listener pair guarantees they always animate together.
 local function CreateHoverPopGroup(trigger)
 	local targets = {}
+	-- Text re-rasterizes every frame it's being scaled (unlike a solid-color shape, which
+	-- interpolates cleanly), and the Back easing's overshoot makes that worse by reversing
+	-- direction right as it settles -- together that's what read as "choppy" specifically on
+	-- labels. isText targets (the row title) get a smaller scale and a plain Quad ease with
+	-- no overshoot instead; shape-only controls (toggle switches) keep the punchier bounce.
 	trigger.MouseEnter:Connect(function()
-		local tweenInfo = TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-		for _, target in ipairs(targets) do
-			TweenService:Create(GetOrCreateUIScale(target), tweenInfo, {Scale = 1.08}):Play()
+		for _, entry in ipairs(targets) do
+			local tweenInfo = entry.isText
+				and TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+				or TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+			local goalScale = entry.isText and 1.04 or 1.08
+			TweenService:Create(GetOrCreateUIScale(entry.target), tweenInfo, {Scale = goalScale}):Play()
 		end
 	end)
 	trigger.MouseLeave:Connect(function()
-		local tweenInfo = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-		for _, target in ipairs(targets) do
-			TweenService:Create(GetOrCreateUIScale(target), tweenInfo, {Scale = 1}):Play()
+		for _, entry in ipairs(targets) do
+			local tweenInfo = entry.isText
+				and TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+				or TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			TweenService:Create(GetOrCreateUIScale(entry.target), tweenInfo, {Scale = 1}):Play()
 		end
 	end)
-	return function(target)
-		table.insert(targets, target)
+	return function(target, isText)
+		table.insert(targets, {target = target, isText = isText})
 	end
 end
 
@@ -552,7 +562,7 @@ local function CreateFeatureRow(order, labelText, isNavButton)
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextYAlignment = Enum.TextYAlignment.Center
 	label.Parent = row
-	AddPopTarget(label)
+	AddPopTarget(label, true)
 
 	local toggle = Instance.new("TextButton")
 	toggle.Name = "Toggle"
