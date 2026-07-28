@@ -255,11 +255,23 @@ function AddButtonHover(button, hoverColor, normalColor)
 	end)
 end
 
+-- AddPressBounce and AddHoverPop both animate a control's scale -- Roblox only honors one
+-- UIScale per object, so if each created its own, they'd silently fight (whichever wasn't
+-- "the" UIScale would tween with zero visual effect). This finds an existing one on the
+-- target before making a new one, so both share the same instance.
+function GetOrCreateUIScale(target)
+	local scale = target:FindFirstChildOfClass("UIScale")
+	if not scale then
+		scale = Instance.new("UIScale")
+		scale.Parent = target
+	end
+	return scale
+end
+
 -- UIScale tweened down on press and eased back out (slight overshoot via Back easing) on
 -- release/MouseLeave -- only valid on actual GuiButtons (Down/Up events), never plain Frames.
 function AddPressBounce(button)
-	local scale = Instance.new("UIScale")
-	scale.Parent = button
+	local scale = GetOrCreateUIScale(button)
 	local function release()
 		TweenService:Create(scale, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
 	end
@@ -300,8 +312,7 @@ end
 -- never moves, only the interactive control does.
 function AddHoverPop(trigger, target)
 	target = target or trigger
-	local scale = Instance.new("UIScale")
-	scale.Parent = target
+	local scale = GetOrCreateUIScale(target)
 	trigger.MouseEnter:Connect(function()
 		TweenService:Create(scale, TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1.08}):Play()
 	end)
@@ -592,7 +603,7 @@ function CreateTab(name, order, iconId, scrolling)
 	button.Parent = TabBar
 	Instance.new("UICorner", button).CornerRadius = UDim.new(1, 0)
 	AddPressBounce(button)
-	AddHoverStroke(button)
+	-- AddHoverStroke(button) -- highlighting disabled for now while the pop animation gets sorted out
 
 	local content = Instance.new("Frame")
 	content.Name = "Content"
@@ -756,7 +767,7 @@ function CreateStrengthRow(parent, y, rowLabelText, defaultValue)
 	input.TextColor3 = Color3.fromRGB(255, 255, 255)
 	input.Parent = row
 	Instance.new("UICorner", input).CornerRadius = UDim.new(1, 0)
-	AddHoverStroke(row, input)
+	-- AddHoverStroke(row, input) -- highlighting disabled for now while the pop animation gets sorted out
 	AddHoverPop(row, input)
 
 	return input
@@ -1013,7 +1024,7 @@ function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, def
 	-- it never touches the button's Text/TextColor3, so the bound-key label ("L Alt")
 	-- itself never gets highlighted, only the pill it sits inside.
 	local keybindBtn = CreateKeybindButton(row, storageKey, onKeybindChanged, defaultKeyCode)
-	AddHoverStroke(row, keybindBtn)
+	-- AddHoverStroke(row, keybindBtn) -- highlighting disabled for now while the pop animation gets sorted out
 	AddHoverPop(row, keybindBtn)
 
 	return toggle, keybindBtn
@@ -1676,7 +1687,7 @@ ESPLabelsToggle.MouseButton1Click:Connect(function() PlayClick() ToggleESPLabels
 -- each row -- picking a color here updates Outline ESP, Body ESP, and ESP Labels together.
 local ESPColorRow = Instance.new("Frame")
 ESPColorRow.Name = "ESPColorRow"
-ESPColorRow.Size = UDim2.new(1, 0, 0, 52)
+ESPColorRow.Size = UDim2.new(1, -10, 0, 52)
 ESPColorRow.Position = UDim2.new(0, 0, 0, 218)
 ESPColorRow.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 ESPColorRow.BackgroundTransparency = RowTransparencyValue / 100
@@ -2026,7 +2037,7 @@ local FOVValue = (workspace.CurrentCamera and workspace.CurrentCamera.FieldOfVie
 
 local FOVRow = Instance.new("Frame")
 FOVRow.Name = "FOVRow"
-FOVRow.Size = UDim2.new(1, 0, 0, 52)
+FOVRow.Size = UDim2.new(1, -10, 0, 52)
 FOVRow.Position = UDim2.new(0, 0, 0, CAMERA_TOP + 90)
 FOVRow.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 FOVRow.BackgroundTransparency = RowTransparencyValue / 100
@@ -2350,7 +2361,7 @@ do
 
 	local WaypointsTabButton = Instance.new("TextButton")
 	WaypointsTabButton.Name = "WaypointsTabButton"
-	WaypointsTabButton.Size = UDim2.new(0.5, -3, 0, TAB_ROW_H)
+	WaypointsTabButton.Size = UDim2.new(0.5, -13, 0, TAB_ROW_H)
 	WaypointsTabButton.Position = UDim2.new(0.5, 3, 0, HEADER_H)
 	WaypointsTabButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	WaypointsTabButton.BackgroundTransparency = 0.5
@@ -2365,7 +2376,7 @@ do
 	-- Players sub-tab
 	local PlayerSearch = Instance.new("TextBox")
 	PlayerSearch.Name = "PlayerSearch"
-	PlayerSearch.Size = UDim2.new(1, 0, 0, ROW_H)
+	PlayerSearch.Size = UDim2.new(1, -10, 0, ROW_H)
 	PlayerSearch.Position = UDim2.new(0, 0, 0, HEADER_H + TAB_ROW_H + ROW_GAP)
 	PlayerSearch.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	PlayerSearch.BackgroundTransparency = 0.5
@@ -2417,7 +2428,7 @@ do
 
 	local SetHereButton = Instance.new("TextButton")
 	SetHereButton.Name = "SetHereButton"
-	SetHereButton.Size = UDim2.new(0.5, -3, 0, ROW_H)
+	SetHereButton.Size = UDim2.new(0.5, -13, 0, ROW_H)
 	SetHereButton.Position = UDim2.new(0.5, 3, 0, HEADER_H + TAB_ROW_H + ROW_GAP)
 	SetHereButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	SetHereButton.BackgroundTransparency = 0.5
@@ -2432,7 +2443,7 @@ do
 
 	local WaypointSearch = Instance.new("TextBox")
 	WaypointSearch.Name = "WaypointSearch"
-	WaypointSearch.Size = UDim2.new(1, 0, 0, ROW_H)
+	WaypointSearch.Size = UDim2.new(1, -10, 0, ROW_H)
 	WaypointSearch.Position = UDim2.new(0, 0, 0, HEADER_H + TAB_ROW_H + ROW_GAP + ROW_H + ROW_GAP)
 	WaypointSearch.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	WaypointSearch.BackgroundTransparency = 0.5
@@ -3315,7 +3326,7 @@ function CreateGameRow(parent, y, gameTitle, url)
 	executeBtn.Parent = row
 	Instance.new("UICorner", executeBtn).CornerRadius = UDim.new(1, 0)
 	AddPressBounce(executeBtn)
-	AddHoverStroke(row, executeBtn)
+	-- AddHoverStroke(row, executeBtn) -- highlighting disabled for now while the pop animation gets sorted out
 	AddHoverPop(row, executeBtn)
 	ScriptRunner.Buttons[gameTitle] = executeBtn
 
@@ -3400,7 +3411,7 @@ function CreateUtilityRow(parent, y, title, url)
 	destroyBtn.Parent = row
 	Instance.new("UICorner", destroyBtn).CornerRadius = UDim.new(1, 0)
 	AddPressBounce(destroyBtn)
-	AddHoverStroke(row, destroyBtn)
+	-- AddHoverStroke(row, destroyBtn) -- highlighting disabled for now while the pop animation gets sorted out
 	AddHoverPop(row, destroyBtn)
 
 	local executeBtn = Instance.new("TextButton")
@@ -3417,7 +3428,7 @@ function CreateUtilityRow(parent, y, title, url)
 	executeBtn.Parent = row
 	Instance.new("UICorner", executeBtn).CornerRadius = UDim.new(1, 0)
 	AddPressBounce(executeBtn)
-	AddHoverStroke(row, executeBtn)
+	-- AddHoverStroke(row, executeBtn) -- highlighting disabled for now while the pop animation gets sorted out
 	AddHoverPop(row, executeBtn)
 
 	local trackedInstances = {}
@@ -3477,7 +3488,7 @@ do
 
 	local ResetCharacterButton = Instance.new("TextButton")
 	ResetCharacterButton.Name = "ResetCharacterButton"
-	ResetCharacterButton.Size = UDim2.new(1, 0, 0, 28)
+	ResetCharacterButton.Size = UDim2.new(1, -10, 0, 28)
 	ResetCharacterButton.Position = UDim2.new(0, 0, 0, 8)
 	ResetCharacterButton.BackgroundColor3 = Color3.fromRGB(255, 230, 0)
 	ResetCharacterButton.BorderSizePixel = 0
@@ -3495,7 +3506,7 @@ do
 
 	DestroyGuiButton = Instance.new("TextButton")
 	DestroyGuiButton.Name = "DestroyGuiButton"
-	DestroyGuiButton.Size = UDim2.new(1, 0, 0, 28)
+	DestroyGuiButton.Size = UDim2.new(1, -10, 0, 28)
 	DestroyGuiButton.Position = UDim2.new(0, 0, 0, 44)
 	DestroyGuiButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
 	DestroyGuiButton.BorderSizePixel = 0
