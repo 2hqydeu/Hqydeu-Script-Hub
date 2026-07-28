@@ -17,10 +17,10 @@ local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Player = Players.LocalPlayer
-local FrameColor = Color3.fromRGB(0x1E, 0x1E, 0x1E)
+local FrameColor = Color3.fromRGB(8, 8, 8)
 local AccentColor = Color3.fromRGB(255, 255, 255)
 local UIFont = Enum.Font.Ubuntu
-local GameRowTransparency = 0.75 -- fixed, matches the darker row look every panel now uses on purpose
+local GameRowTransparency = 0
 local MurdererColor = Color3.fromRGB(255, 90, 90)
 local SheriffColor = Color3.fromRGB(90, 150, 255)
 
@@ -57,15 +57,6 @@ local PanelCorner = Instance.new("UICorner")
 PanelCorner.CornerRadius = UDim.new(0, 14)
 PanelCorner.Parent = PanelFrame
 
--- Very subtle top-to-bottom depth instead of one dead-flat fill, same treatment as the
--- main hub's window.
-local PanelGradient = Instance.new("UIGradient")
-PanelGradient.Rotation = 90
-PanelGradient.Color = ColorSequence.new({
-	ColorSequenceKeypoint.new(0, Color3.fromRGB(32, 32, 32)),
-	ColorSequenceKeypoint.new(1, Color3.fromRGB(26, 26, 26)),
-})
-PanelGradient.Parent = PanelFrame
 
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
@@ -135,17 +126,6 @@ local function AddFadeDivider(divider)
 	gradient.Parent = divider
 end
 
--- Same subtle top-to-bottom depth as the main panel's own background, for popups (the
--- Role Reveal popup) so they read as the same visual language.
-local function AddPanelGradient(frame)
-	local gradient = Instance.new("UIGradient")
-	gradient.Rotation = 90
-	gradient.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(32, 32, 32)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(26, 26, 26)),
-	})
-	gradient.Parent = frame
-end
 
 local MinimizeButton = Instance.new("TextButton")
 MinimizeButton.Name = "MinimizeButton"
@@ -242,40 +222,6 @@ local ToggleKnobColor = Color3.fromRGB(238, 233, 250)
 
 -- Quick "pop" -- the actual toggle scales up a hair on hover and springs back down on
 -- leave, never the row itself, so the row's label text never moves.
--- A row with several pop targets (toggle, title label, extra buttons like Edit/Filter)
--- used to give each its own independent trigger.MouseEnter/MouseLeave pair -- but hovering
--- one child control and moving to a sibling can spuriously re-fire the row's own
--- MouseEnter/MouseLeave in between (Roblox routing quirk with overlapping GuiObjects),
--- which could leave one target popped and another not. Grouping every target under ONE
--- shared listener pair guarantees they always animate together.
-local function CreateHoverPopGroup(trigger)
-	local targets = {}
-	-- Text re-rasterizes every frame it's being scaled (unlike a solid-color shape, which
-	-- interpolates cleanly), and the Back easing's overshoot makes that worse by reversing
-	-- direction right as it settles -- together that's what read as "choppy" specifically on
-	-- labels. isText targets (the row title) get a smaller scale and a plain Quad ease with
-	-- no overshoot instead; shape-only controls (toggle switches) keep the punchier bounce.
-	trigger.MouseEnter:Connect(function()
-		for _, entry in ipairs(targets) do
-			local tweenInfo = entry.isText
-				and TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-				or TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-			local goalScale = entry.isText and 1.04 or 1.08
-			TweenService:Create(GetOrCreateUIScale(entry.target), tweenInfo, {Scale = goalScale}):Play()
-		end
-	end)
-	trigger.MouseLeave:Connect(function()
-		for _, entry in ipairs(targets) do
-			local tweenInfo = entry.isText
-				and TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-				or TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-			TweenService:Create(GetOrCreateUIScale(entry.target), tweenInfo, {Scale = 1}):Play()
-		end
-	end)
-	return function(target, isText)
-		table.insert(targets, {target = target, isText = isText})
-	end
-end
 
 local function StyleAsToggleSwitch(toggle)
 	toggle.AutoButtonColor = false
@@ -330,7 +276,6 @@ local function CreateFeatureRow(order, labelText, isNavButton)
 	row.BorderSizePixel = 0
 	row.Parent = ContentScroll
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
-	local AddPopTarget = CreateHoverPopGroup(row)
 
 	local label = Instance.new("TextLabel")
 	label.Name = "Label"
@@ -344,7 +289,6 @@ local function CreateFeatureRow(order, labelText, isNavButton)
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextYAlignment = Enum.TextYAlignment.Center
 	label.Parent = row
-	AddPopTarget(label, true)
 
 	local toggle = Instance.new("TextButton")
 	toggle.Name = "Toggle"
@@ -371,13 +315,9 @@ local function CreateFeatureRow(order, labelText, isNavButton)
 	AddPressBounce(toggle)
 	-- No hover stroke on the toggle itself -- on the real switch variant, the knob sits
 	-- almost flush against the pill's rounded end, and a stroke curving tightly around
-	-- that same corner was reading as a stray mark/"text" inside the switch. The pop below
-	-- is enough feedback on its own without that visual conflict.
-	AddPopTarget(toggle)
+	-- that same corner was reading as a stray mark/"text" inside the switch.
 
-	-- Third return value lets a caller that bolts an extra button onto this same row
-	-- afterward join this same pop group instead of popping independently/out of sync.
-	return row, toggle, AddPopTarget
+	return row, toggle
 end
 
 local CoinFarmRow, CoinFarmToggle = CreateFeatureRow(1, "Coin Farm")
@@ -401,7 +341,6 @@ RoleRevealPopup.Visible = false
 RoleRevealPopup.ZIndex = 40
 RoleRevealPopup.Parent = ScreenGui
 Instance.new("UICorner", RoleRevealPopup).CornerRadius = UDim.new(0, 10)
-AddPanelGradient(RoleRevealPopup)
 local roleRevealStroke = Instance.new("UIStroke")
 roleRevealStroke.Color = AccentColor
 roleRevealStroke.Thickness = 1
