@@ -20,9 +20,7 @@ local Player = Players.LocalPlayer
 local FrameColor = Color3.fromRGB(0x1E, 0x1E, 0x1E)
 local AccentColor = Color3.fromRGB(255, 255, 255)
 local UIFont = Enum.Font.Ubuntu
--- Reads the main hub's Settings-tab Transparency slider (if it's been set) so every
--- row here matches, instead of always defaulting to 75%.
-local GameRowTransparency = ((type(getgenv) == "function" and tonumber(getgenv().Serenity_RowTransparency)) or 75) / 100
+local GameRowTransparency = 0.75 -- fixed, matches the darker row look every panel now uses on purpose
 local MurdererColor = Color3.fromRGB(255, 90, 90)
 local SheriffColor = Color3.fromRGB(90, 150, 255)
 
@@ -108,10 +106,19 @@ end
 
 local function AddPressBounce(button)
 	local scale = GetOrCreateUIScale(button)
+	-- Guarded by "pressed" -- this used to reset to Scale=1 on every single MouseLeave,
+	-- which fought a row's hover-pop group: leaving just this control (while the cursor is
+	-- still over the rest of the row) fired this button's own MouseLeave and snapped the
+	-- shared scale back down, even though the row itself was never left. Now MouseLeave
+	-- only resets if a press is actually in progress.
+	local pressed = false
 	local function release()
+		if not pressed then return end
+		pressed = false
 		TweenService:Create(scale, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
 	end
 	button.MouseButton1Down:Connect(function()
+		pressed = true
 		TweenService:Create(scale, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 0.94}):Play()
 	end)
 	button.MouseButton1Up:Connect(release)
@@ -126,6 +133,18 @@ local function AddFadeDivider(divider)
 		NumberSequenceKeypoint.new(1, 1),
 	})
 	gradient.Parent = divider
+end
+
+-- Same subtle top-to-bottom depth as the main panel's own background, for popups (the
+-- Role Reveal popup) so they read as the same visual language.
+local function AddPanelGradient(frame)
+	local gradient = Instance.new("UIGradient")
+	gradient.Rotation = 90
+	gradient.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(38, 38, 38)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(22, 22, 22)),
+	})
+	gradient.Parent = frame
 end
 
 local MinimizeButton = Instance.new("TextButton")
@@ -296,7 +315,7 @@ local function CreateFeatureRow(order, labelText, isNavButton)
 	row.LayoutOrder = order or nextRowOrder
 	nextRowOrder = math.max(nextRowOrder, row.LayoutOrder) + 1
 	row.Size = UDim2.new(1, 0, 0, 48)
-	row.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+	row.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
 	row.BackgroundTransparency = GameRowTransparency
 	row.BorderSizePixel = 0
 	row.Parent = ContentScroll
@@ -372,6 +391,7 @@ RoleRevealPopup.Visible = false
 RoleRevealPopup.ZIndex = 40
 RoleRevealPopup.Parent = ScreenGui
 Instance.new("UICorner", RoleRevealPopup).CornerRadius = UDim.new(0, 10)
+AddPanelGradient(RoleRevealPopup)
 local roleRevealStroke = Instance.new("UIStroke")
 roleRevealStroke.Color = AccentColor
 roleRevealStroke.Thickness = 1
@@ -421,7 +441,7 @@ local function CreateRoleDisplay(order, roleName, color)
 	local row = Instance.new("Frame")
 	row.LayoutOrder = order
 	row.Size = UDim2.new(1, 0, 0, 62)
-	row.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+	row.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
 	row.BackgroundTransparency = GameRowTransparency
 	row.BorderSizePixel = 0
 	row.ZIndex = 41
