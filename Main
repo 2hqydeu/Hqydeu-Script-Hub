@@ -3156,14 +3156,15 @@ do
 	end)
 
 	-- Instant Prompt: drives every ProximityPrompt's HoldDuration to 0 (and drops its line-
-	-- of-sight requirement) so prompts complete the instant you press their key instead of
-	-- waiting out whatever hold time they're configured with. Same idea as the earlier
-	-- fireproximityprompt-per-keypress attempt, but that one didn't actually work in-game --
-	-- this is a straight port of the ProximityPromptService approach the user confirmed does
-	-- work (sweep existing prompts on enable, then patch new ones as they're added, plus a
-	-- PromptButtonHoldBegan hook as a second net for anything the sweep/DescendantAdded miss).
-	-- Deliberately doesn't restore original HoldDurations on toggle-off (same tradeoff as
-	-- NoClip's CanCollide above) -- once a prompt's been sped up it stays that way.
+	-- of-sight requirement) so prompts complete the instant you press their key. The first
+	-- pass (sweep + DescendantAdded + PromptButtonHoldBegan only) didn't actually work in-
+	-- game -- most likely some games reassign a prompt's HoldDuration right as it becomes
+	-- visible/in-range, undoing our one-time fix before you ever get to hold it. Re-asserting
+	-- on PromptShown as well (fires whenever a prompt enters view/range, right before the
+	-- player can interact with it) closes that gap without needing an expensive full-tree
+	-- sweep every frame. Deliberately doesn't restore original HoldDurations on toggle-off
+	-- (same tradeoff as NoClip's CanCollide above) -- once a prompt's been sped up it stays
+	-- that way.
 	local InstantPromptEnabled = false
 	CreateSectionHeading(CombatPage, 106, "Instant Prompt")
 	local InstantPromptToggle = CreateToggleRow(CombatPage, 136, "InstantPromptKeybind", function(k) InstantPromptKeybind = k end, "Instant Prompt")
@@ -3190,6 +3191,12 @@ do
 	InstantPromptToggle.MouseButton1Click:Connect(function() PlayClick() ToggleInstantPrompt() end)
 
 	game.DescendantAdded:Connect(OptimizePrompt)
+	ProximityPromptService.PromptShown:Connect(function(prompt)
+		if InstantPromptEnabled then
+			prompt.HoldDuration = 0
+			prompt.RequiresLineOfSight = false
+		end
+	end)
 	ProximityPromptService.PromptButtonHoldBegan:Connect(function(prompt)
 		if InstantPromptEnabled then prompt.HoldDuration = 0 end
 	end)
