@@ -3155,36 +3155,43 @@ do
 		end
 	end)
 
-	-- Instant Prompt: fires whatever ProximityPrompt is currently active for the key you
-	-- press, instead of waiting out its configured HoldDuration. fireproximityprompt is an
-	-- executor-provided function (the same one UE's crate-opening already falls back on
-	-- elsewhere in this hub) that completes a prompt directly, bypassing the real hold time
-	-- entirely -- not something every executor supports, so this silently does nothing on
-	-- ones that don't expose it rather than erroring.
+	-- Instant Prompt: drives every ProximityPrompt's HoldDuration to 0 (and drops its line-
+	-- of-sight requirement) so prompts complete the instant you press their key instead of
+	-- waiting out whatever hold time they're configured with. Same idea as the earlier
+	-- fireproximityprompt-per-keypress attempt, but that one didn't actually work in-game --
+	-- this is a straight port of the ProximityPromptService approach the user confirmed does
+	-- work (sweep existing prompts on enable, then patch new ones as they're added, plus a
+	-- PromptButtonHoldBegan hook as a second net for anything the sweep/DescendantAdded miss).
+	-- Deliberately doesn't restore original HoldDurations on toggle-off (same tradeoff as
+	-- NoClip's CanCollide above) -- once a prompt's been sped up it stays that way.
 	local InstantPromptEnabled = false
 	CreateSectionHeading(CombatPage, 106, "Instant Prompt")
 	local InstantPromptToggle = CreateToggleRow(CombatPage, 136, "InstantPromptKeybind", function(k) InstantPromptKeybind = k end, "Instant Prompt")
 	CombatPage.CanvasSize = UDim2.new(0, 0, 0, 204)
 
+	local ProximityPromptService = game:GetService("ProximityPromptService")
+
+	local function OptimizePrompt(object)
+		if InstantPromptEnabled and object:IsA("ProximityPrompt") then
+			object.HoldDuration = 0
+			object.RequiresLineOfSight = false
+		end
+	end
+
 	ToggleInstantPrompt = function()
 		InstantPromptEnabled = not InstantPromptEnabled
 		InstantPromptToggle.Text = InstantPromptEnabled and "On" or "Off"
+		if InstantPromptEnabled then
+			for _, object in ipairs(game:GetDescendants()) do
+				OptimizePrompt(object)
+			end
+		end
 	end
 	InstantPromptToggle.MouseButton1Click:Connect(function() PlayClick() ToggleInstantPrompt() end)
 
-	UserInputService.InputBegan:Connect(function(input, processed)
-		if not InstantPromptEnabled or processed then return end
-		if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
-		if type(fireproximityprompt) ~= "function" then return end
-		for _, prompt in ipairs(workspace:GetDescendants()) do
-			if prompt:IsA("ProximityPrompt") and prompt.Enabled then
-				local keyCode = prompt.KeyboardKeyCode
-				if keyCode == Enum.KeyCode.Unknown then keyCode = Enum.KeyCode.E end
-				if input.KeyCode == keyCode then
-					pcall(fireproximityprompt, prompt, 0)
-				end
-			end
-		end
+	game.DescendantAdded:Connect(OptimizePrompt)
+	ProximityPromptService.PromptButtonHoldBegan:Connect(function(prompt)
+		if InstantPromptEnabled then prompt.HoldDuration = 0 end
 	end)
 end
 
