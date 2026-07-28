@@ -115,24 +115,9 @@ local looseConnections = {}
 
 -- Settings tab's Transparency control: every standard feature row (CreateStrengthRow,
 -- CreateToggleRow) registers its own background frame here so one shared setter can
--- restyle all of them at once. Persisted like keybinds/colors, so it survives reloads.
-local RowTransparencyTargets = {}
-local RowTransparencyValue = tonumber(SavedKeybinds["RowTransparency"]) or 75
-function SetRowTransparency(value)
-	value = math.clamp(math.floor(value + 0.5), 0, 100)
-	RowTransparencyValue = value
-	for _, row in ipairs(RowTransparencyTargets) do
-		if row and row.Parent then row.BackgroundTransparency = value / 100 end
-	end
-	SavedKeybinds["RowTransparency"] = value
-	SavePersistentSettings()
-	-- UE/QOD/MM2 are standalone scripts with no shared runtime -- getgenv is the only way
-	-- to reach them. They read this once at their own startup; this hub doesn't try to
-	-- live-update an already-open game panel's rows, only what a fresh execute picks up.
-	if type(getgenv) == "function" then
-		getgenv().Serenity_RowTransparency = value
-	end
-end
+-- Fixed now (no longer a Settings-tab slider) -- 75% transparent over the dark background
+-- is what produces the noticeably darker row look every row now uses on purpose.
+local RowTransparencyValue = 75
 
 -- Main Container
 local ScreenGui = Instance.new("ScreenGui")
@@ -281,10 +266,20 @@ end
 function AddPressBounce(button, target)
 	target = target or button
 	local scale = GetOrCreateUIScale(target)
+	-- Guarded by "pressed" -- this used to reset to Scale=1 on every single MouseLeave,
+	-- which fought a row's hover-pop group: leaving just this one control (while the
+	-- cursor is still over the rest of the row) fired this button's own MouseLeave and
+	-- snapped the shared scale back down, even though the row itself was never left. Now
+	-- MouseLeave only resets if a press is actually in progress (dragged off before
+	-- releasing) -- plain hovering on/off this control no longer touches the scale at all.
+	local pressed = false
 	local function release()
+		if not pressed then return end
+		pressed = false
 		TweenService:Create(scale, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
 	end
 	button.MouseButton1Down:Connect(function()
+		pressed = true
 		TweenService:Create(scale, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 0.94}):Play()
 	end)
 	button.MouseButton1Up:Connect(release)
@@ -346,6 +341,20 @@ function CreateHoverPopGroup(trigger)
 	end
 end
 
+-- Same subtle top-to-bottom depth as the main window's own background, for popups
+-- (destroy confirm, color picker, TP menu, keybind-clear prompt, and the equivalent dock
+-- popups in the game panels) so they all read as the same visual language instead of a
+-- flat fill.
+function AddPanelGradient(frame)
+	local gradient = Instance.new("UIGradient")
+	gradient.Rotation = 90
+	gradient.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(38, 38, 38)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(22, 22, 22)),
+	})
+	gradient.Parent = frame
+end
+
 function AddFadeDivider(divider)
 	local gradient = Instance.new("UIGradient")
 	gradient.Transparency = NumberSequence.new({
@@ -405,13 +414,21 @@ TitleImage.Image = "rbxassetid://73340929918505"
 TitleImage.ScaleType = Enum.ScaleType.Fit
 TitleImage.Parent = MainFrame
 
+-- %I zero-pads single-digit hours ("08:00:00 PM") -- stripped off so it reads "8:00:00 PM"
+-- instead, in both the normal and minimized-circle clock.
+function FormatClockTime()
+	local text = os.date("%I:%M:%S %p")
+	if text:sub(1, 1) == "0" then text = text:sub(2) end
+	return text
+end
+
 local TimeLabel = Instance.new("TextLabel")
 TimeLabel.Name = "TimeLabel"
 TimeLabel.AnchorPoint = Vector2.new(0, 0)
 TimeLabel.Size = NORMAL_TIME_GOAL.Size
 TimeLabel.Position = NORMAL_TIME_GOAL.Position
 TimeLabel.BackgroundTransparency = 1
-TimeLabel.Text = os.date("%I:%M:%S %p")
+TimeLabel.Text = FormatClockTime()
 TimeLabel.Font = UIFont
 TimeLabel.TextSize = 10
 TimeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -420,7 +437,7 @@ TimeLabel.Parent = MainFrame
 
 task.spawn(function()
 	while ScreenGui.Parent do
-		TimeLabel.Text = os.date("%I:%M:%S %p")
+		TimeLabel.Text = FormatClockTime()
 		task.wait(1)
 	end
 end)
@@ -483,6 +500,7 @@ DestroyConfirmPopup.Visible = false
 DestroyConfirmPopup.ZIndex = 50
 DestroyConfirmPopup.Parent = ScreenGui
 Instance.new("UICorner", DestroyConfirmPopup).CornerRadius = UDim.new(0, 12)
+AddPanelGradient(DestroyConfirmPopup)
 local destroyConfirmStroke = Instance.new("UIStroke")
 destroyConfirmStroke.Color = Color3.fromRGB(0, 0, 0)
 destroyConfirmStroke.Thickness = 1
@@ -634,10 +652,11 @@ function CreateTab(name, order, iconId, scrolling)
 	content.Size = UDim2.new(1, 0, 1, 0)
 	content.BackgroundTransparency = 1
 	content.Parent = button
-	-- Bounces "content" (icon + label), not "button" -- button is the direct child the
+	-- Bounces/pops "content" (icon + label), not "button" -- button is the direct child the
 	-- TabBar's UIListLayout tracks, so scaling it directly would nudge every tab after it
-	-- sideways each time this one gets pressed.
+	-- sideways each time this one gets pressed or hovered.
 	AddPressBounce(button, content)
+	CreateHoverPopGroup(button)(content)
 
 	local contentLayout = Instance.new("UIListLayout")
 	contentLayout.FillDirection = Enum.FillDirection.Horizontal
@@ -761,12 +780,11 @@ function CreateStrengthRow(parent, y, rowLabelText, defaultValue)
 	-- corner) instead of leaving it visible.
 	row.Size = UDim2.new(1, -10, 0, 52)
 	row.Position = UDim2.new(0, 0, 0, y)
-	row.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+	row.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
 	row.BackgroundTransparency = RowTransparencyValue / 100
 	row.BorderSizePixel = 0
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
-	table.insert(RowTransparencyTargets, row)
 	local AddPopTarget = CreateHoverPopGroup(row)
 
 	local rowLabel = Instance.new("TextLabel")
@@ -841,6 +859,7 @@ function ShowKeybindClearPrompt(button, onCleared)
 	prompt.ZIndex = 50
 	prompt.Parent = ScreenGui
 	Instance.new("UICorner", prompt).CornerRadius = UDim.new(0, 10)
+	AddPanelGradient(prompt)
 	local promptStroke = Instance.new("UIStroke")
 	promptStroke.Color = Color3.fromRGB(0, 0, 0)
 	promptStroke.Thickness = 1
@@ -1015,12 +1034,11 @@ function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, def
 	-- corner) instead of leaving it visible.
 	row.Size = UDim2.new(1, -10, 0, 52)
 	row.Position = UDim2.new(0, 0, 0, y)
-	row.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+	row.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
 	row.BackgroundTransparency = RowTransparencyValue / 100
 	row.BorderSizePixel = 0
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
-	table.insert(RowTransparencyTargets, row)
 	local AddPopTarget = CreateHoverPopGroup(row)
 
 	local rowLabel = Instance.new("TextLabel")
@@ -1726,12 +1744,12 @@ local ESPColorRow = Instance.new("Frame")
 ESPColorRow.Name = "ESPColorRow"
 ESPColorRow.Size = UDim2.new(1, -10, 0, 52)
 ESPColorRow.Position = UDim2.new(0, 0, 0, 218)
-ESPColorRow.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+ESPColorRow.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
 ESPColorRow.BackgroundTransparency = RowTransparencyValue / 100
 ESPColorRow.BorderSizePixel = 0
 ESPColorRow.Parent = VisualsPage
 Instance.new("UICorner", ESPColorRow).CornerRadius = UDim.new(0, 8)
-table.insert(RowTransparencyTargets, ESPColorRow)
+local AddESPColorPopTarget = CreateHoverPopGroup(ESPColorRow)
 
 local ESPColorRowLabel = Instance.new("TextLabel")
 ESPColorRowLabel.Name = "RowLabel"
@@ -1745,6 +1763,7 @@ ESPColorRowLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 ESPColorRowLabel.TextXAlignment = Enum.TextXAlignment.Left
 ESPColorRowLabel.TextYAlignment = Enum.TextYAlignment.Center
 ESPColorRowLabel.Parent = ESPColorRow
+AddESPColorPopTarget(ESPColorRowLabel)
 
 local ESPColorButton = Instance.new("TextButton")
 ESPColorButton.Name = "ColorButton"
@@ -1756,6 +1775,8 @@ ESPColorButton.BorderSizePixel = 0
 ESPColorButton.Text = ""
 ESPColorButton.Parent = ESPColorRow
 Instance.new("UICorner", ESPColorButton).CornerRadius = UDim.new(0, 6)
+AddPressBounce(ESPColorButton)
+AddESPColorPopTarget(ESPColorButton)
 local ESPColorButtonStroke = Instance.new("UIStroke")
 ESPColorButtonStroke.Color = Color3.fromRGB(0, 0, 0)
 ESPColorButtonStroke.Thickness = 1
@@ -1805,6 +1826,7 @@ ESPColorPicker.Visible = false
 ESPColorPicker.ZIndex = 50
 ESPColorPicker.Parent = ScreenGui
 Instance.new("UICorner", ESPColorPicker).CornerRadius = UDim.new(0, 10)
+AddPanelGradient(ESPColorPicker)
 local ESPColorPickerStroke = Instance.new("UIStroke")
 ESPColorPickerStroke.Color = Color3.fromRGB(0, 0, 0)
 ESPColorPickerStroke.Thickness = 1
@@ -2076,12 +2098,12 @@ local FOVRow = Instance.new("Frame")
 FOVRow.Name = "FOVRow"
 FOVRow.Size = UDim2.new(1, -10, 0, 52)
 FOVRow.Position = UDim2.new(0, 0, 0, CAMERA_TOP + 90)
-FOVRow.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+FOVRow.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
 FOVRow.BackgroundTransparency = RowTransparencyValue / 100
 FOVRow.BorderSizePixel = 0
 FOVRow.Parent = VisualsPage
 Instance.new("UICorner", FOVRow).CornerRadius = UDim.new(0, 8)
-table.insert(RowTransparencyTargets, FOVRow)
+local AddFOVPopTarget = CreateHoverPopGroup(FOVRow)
 
 local FOVRowLabel = Instance.new("TextLabel")
 FOVRowLabel.Name = "RowLabel"
@@ -2095,6 +2117,7 @@ FOVRowLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 FOVRowLabel.TextXAlignment = Enum.TextXAlignment.Left
 FOVRowLabel.TextYAlignment = Enum.TextYAlignment.Center
 FOVRowLabel.Parent = FOVRow
+AddFOVPopTarget(FOVRowLabel)
 
 local FOVInput = Instance.new("TextBox")
 FOVInput.Name = "Input"
@@ -2110,6 +2133,7 @@ FOVInput.TextSize = 16
 FOVInput.TextColor3 = Color3.fromRGB(255, 255, 255)
 FOVInput.Parent = FOVRow
 Instance.new("UICorner", FOVInput).CornerRadius = UDim.new(1, 0)
+AddFOVPopTarget(FOVInput)
 
 local FOVResetButton = Instance.new("TextButton")
 FOVResetButton.Name = "ResetButton"
@@ -2124,6 +2148,8 @@ FOVResetButton.TextSize = 16
 FOVResetButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 FOVResetButton.Parent = FOVRow
 Instance.new("UICorner", FOVResetButton).CornerRadius = UDim.new(1, 0)
+AddPressBounce(FOVResetButton)
+AddFOVPopTarget(FOVResetButton)
 
 local CAMERA_SECTION_BOTTOM = CAMERA_TOP + 90 + 52
 
@@ -2545,8 +2571,10 @@ do
 			local targetPlayer = candidate.Player
 			local row = Instance.new("Frame")
 			row.Name = "PlayerRow"
-			row.Size = UDim2.new(1, 0, 0, 36)
-			row.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+			-- Narrowed so the row's right edge (including the name text) clears this
+			-- list's own scrollbar instead of running underneath it.
+			row.Size = UDim2.new(1, -10, 0, 36)
+			row.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
 			row.BackgroundTransparency = 0.5
 			row.BorderSizePixel = 0
 			row.Parent = PlayerList
@@ -2603,8 +2631,10 @@ do
 			if filter == "" or waypointName:lower():find(filter, 1, true) then
 				local row = Instance.new("Frame")
 				row.Name = "WaypointRow"
-				row.Size = UDim2.new(1, 0, 0, 36)
-				row.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+				-- Narrowed so the row's right edge clears this list's own scrollbar
+				-- instead of running underneath it.
+				row.Size = UDim2.new(1, -10, 0, 36)
+				row.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
 				row.BackgroundTransparency = 0.5
 				row.BorderSizePixel = 0
 				row.Parent = WaypointList
@@ -2841,6 +2871,7 @@ do
 	PopupFrame.ZIndex = 30
 	PopupFrame.Parent = ScreenGui
 	Instance.new("UICorner", PopupFrame).CornerRadius = UDim.new(0, 12)
+	AddPanelGradient(PopupFrame)
 	local popupStroke = Instance.new("UIStroke")
 	popupStroke.Color = AccentColor
 	popupStroke.Thickness = 1
@@ -2996,8 +3027,10 @@ do
 		for _, candidate in ipairs(candidates) do
 			local targetPlayer = candidate.Player
 			local row = Instance.new("Frame")
-			row.Size = UDim2.new(1, 0, 0, 30)
-			row.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+			-- Narrowed so the row's right edge clears this list's own scrollbar instead
+			-- of running underneath it.
+			row.Size = UDim2.new(1, -10, 0, 30)
+			row.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
 			row.BackgroundTransparency = 0.5
 			row.BorderSizePixel = 0
 			row.ZIndex = 31
@@ -3056,8 +3089,10 @@ do
 			local waypointName = waypoint.Name or "Waypoint"
 			if filter == "" or waypointName:lower():find(filter, 1, true) then
 				local row = Instance.new("Frame")
-				row.Size = UDim2.new(1, 0, 0, 30)
-				row.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+				-- Narrowed so the row's right edge clears this list's own scrollbar
+				-- instead of running underneath it.
+				row.Size = UDim2.new(1, -10, 0, 30)
+				row.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
 				row.BackgroundTransparency = 0.5
 				row.BorderSizePixel = 0
 				row.ZIndex = 31
@@ -3329,12 +3364,11 @@ function CreateGameRow(parent, y, gameTitle, url)
 	-- corner) instead of leaving it visible.
 	row.Size = UDim2.new(1, -10, 0, 44)
 	row.Position = UDim2.new(0, 0, 0, y)
-	row.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+	row.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
 	row.BackgroundTransparency = RowTransparencyValue / 100
 	row.BorderSizePixel = 0
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
-	table.insert(RowTransparencyTargets, row)
 	local AddPopTarget = CreateHoverPopGroup(row)
 
 	local titleLabel = Instance.new("TextLabel")
@@ -3415,12 +3449,11 @@ function CreateUtilityRow(parent, y, title, url)
 	-- corner) instead of leaving it visible.
 	row.Size = UDim2.new(1, -10, 0, 44)
 	row.Position = UDim2.new(0, 0, 0, y)
-	row.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+	row.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
 	row.BackgroundTransparency = RowTransparencyValue / 100
 	row.BorderSizePixel = 0
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
-	table.insert(RowTransparencyTargets, row)
 	local AddPopTarget = CreateHoverPopGroup(row)
 
 	local titleLabel = Instance.new("TextLabel")
@@ -3527,10 +3560,24 @@ ScriptsPage.CanvasSize = UDim2.new(0, 0, 0, 268)
 do
 	local SettingsPage = CreateTab("Settings", 7, "132212578355544", true)
 
+	-- Gui Fade: while minimized and left alone (not hovered) for a couple seconds, the mini
+	-- circle fades down to a low, unobtrusive opacity so it sits out of the way. The actual
+	-- fade logic lives further below, right after ToggleGUI, since that's where
+	-- minimized/MainFrame state actually lives -- this row just owns the on/off state.
+	GuiFadeEnabled = false
+	GuiFadeKeybind = Enum.KeyCode.Unknown
+	local GuiFadeToggle = CreateToggleRow(SettingsPage, 8, "GuiFadeKeybind", function(k) GuiFadeKeybind = k end, "Gui Fade")
+	ToggleGuiFade = function()
+		GuiFadeEnabled = not GuiFadeEnabled
+		GuiFadeToggle.Text = GuiFadeEnabled and "On" or "Off"
+		if not GuiFadeEnabled and CancelGuiFade then CancelGuiFade() end
+	end
+	GuiFadeToggle.MouseButton1Click:Connect(function() PlayClick() ToggleGuiFade() end)
+
 	local ResetCharacterButton = Instance.new("TextButton")
 	ResetCharacterButton.Name = "ResetCharacterButton"
 	ResetCharacterButton.Size = UDim2.new(1, -10, 0, 28)
-	ResetCharacterButton.Position = UDim2.new(0, 0, 0, 8)
+	ResetCharacterButton.Position = UDim2.new(0, 0, 0, 76)
 	ResetCharacterButton.BackgroundColor3 = Color3.fromRGB(255, 230, 0)
 	ResetCharacterButton.BorderSizePixel = 0
 	ResetCharacterButton.Text = "Reset Character"
@@ -3539,16 +3586,18 @@ do
 	ResetCharacterButton.TextColor3 = Color3.fromRGB(30, 30, 30)
 	ResetCharacterButton.Parent = SettingsPage
 	Instance.new("UICorner", ResetCharacterButton).CornerRadius = UDim.new(0, 8)
+	AddPressBounce(ResetCharacterButton)
 	ResetCharacterButton.MouseButton1Click:Connect(function()
 		PlayClick()
 		local character = Player.Character
 		if character then character:BreakJoints() end
 	end)
 
+	-- Destroy Gui: moved to the very bottom of the list, below Reset Character, per request.
 	DestroyGuiButton = Instance.new("TextButton")
 	DestroyGuiButton.Name = "DestroyGuiButton"
 	DestroyGuiButton.Size = UDim2.new(1, -10, 0, 28)
-	DestroyGuiButton.Position = UDim2.new(0, 0, 0, 44)
+	DestroyGuiButton.Position = UDim2.new(0, 0, 0, 120)
 	DestroyGuiButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
 	DestroyGuiButton.BorderSizePixel = 0
 	DestroyGuiButton.Text = "Destroy Gui"
@@ -3557,32 +3606,7 @@ do
 	DestroyGuiButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 	DestroyGuiButton.Parent = SettingsPage
 	Instance.new("UICorner", DestroyGuiButton).CornerRadius = UDim.new(0, 8)
-
-	-- 0-100 input driving every feature row's background transparency at once (100 = fully
-	-- invisible). CreateStrengthRow already builds a label + numeric-input row identical to
-	-- every other feature row, so reusing it means the Transparency control is itself one of
-	-- the rows it controls. Moved to the bottom, below Reset Character/Destroy Gui, per
-	-- request.
-	local TransparencyInput = CreateStrengthRow(SettingsPage, 80, "Transparency", RowTransparencyValue)
-	TransparencyInput.FocusLost:Connect(function()
-		local requested = tonumber(TransparencyInput.Text)
-		if requested then SetRowTransparency(requested) end
-		TransparencyInput.Text = tostring(RowTransparencyValue)
-	end)
-
-	-- Ghost Mode: while minimized and left alone (not hovered) for a few seconds, the mini
-	-- circle fades down to a low, unobtrusive opacity so it sits out of the way. The actual
-	-- fade logic lives further below, right after ToggleGUI, since that's where
-	-- minimized/MainFrame state actually lives -- this row just owns the on/off state.
-	GhostModeEnabled = false
-	GhostModeKeybind = Enum.KeyCode.Unknown
-	local GhostModeToggle = CreateToggleRow(SettingsPage, 148, "GhostModeKeybind", function(k) GhostModeKeybind = k end, "Ghost Mode")
-	ToggleGhostMode = function()
-		GhostModeEnabled = not GhostModeEnabled
-		GhostModeToggle.Text = GhostModeEnabled and "On" or "Off"
-		if not GhostModeEnabled and CancelGhostFade then CancelGhostFade() end
-	end
-	GhostModeToggle.MouseButton1Click:Connect(function() PlayClick() ToggleGhostMode() end)
+	AddPressBounce(DestroyGuiButton)
 
 	-- Ported from the old hub's own dev-facing local-variable counter. Roblox/Luau has no
 	-- way to introspect the compiler's actual peak register usage at runtime, so like the
@@ -3592,17 +3616,17 @@ do
 	local LocalCountLabel = Instance.new("TextLabel")
 	LocalCountLabel.Name = "LocalCountLabel"
 	LocalCountLabel.Size = UDim2.new(0, 60, 0, 10)
-	LocalCountLabel.Position = UDim2.new(1, -68, 0, 136)
+	LocalCountLabel.Position = UDim2.new(1, -68, 0, 156)
 	LocalCountLabel.BackgroundTransparency = 1
 	LocalCountLabel.BorderSizePixel = 0
-	LocalCountLabel.Text = "119 / 200"
+	LocalCountLabel.Text = "129 / 200"
 	LocalCountLabel.Font = UIFont
 	LocalCountLabel.TextSize = 7
 	LocalCountLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
 	LocalCountLabel.TextXAlignment = Enum.TextXAlignment.Right
 	LocalCountLabel.Parent = SettingsPage
 
-	SettingsPage.CanvasSize = UDim2.new(0, 0, 0, 216)
+	SettingsPage.CanvasSize = UDim2.new(0, 0, 0, 176)
 end
 
 SelectTab("Home")
@@ -3614,6 +3638,11 @@ SelectTab("Home")
 local MinimizeKeybind = Enum.KeyCode.LeftControl
 local minimized = false
 local preMinimizePosition = nil
+-- Remembers the last snapped-to-edge corner across a maximize/re-minimize cycle -- without
+-- this, re-minimizing recomputed the snap from the full-size window's current position
+-- (usually the center default), so the mini pill would "forget" whichever corner it was
+-- last dragged to the moment you maximized it.
+local lastMinimizedPosition = nil
 
 function GetSnappedMinimizedPosition()
 	local camera = workspace.CurrentCamera
@@ -3649,7 +3678,13 @@ function ToggleGUI()
 		CloseESPColorPicker()
 		DestroyConfirmPopup.Visible = false
 	end
-	local targetPosition = minimized and GetSnappedMinimizedPosition() or (preMinimizePosition or WINDOW_POSITION)
+	local targetPosition
+	if minimized then
+		targetPosition = lastMinimizedPosition or GetSnappedMinimizedPosition()
+		lastMinimizedPosition = targetPosition
+	else
+		targetPosition = preMinimizePosition or WINDOW_POSITION
+	end
 	local tweenInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 	TweenService:Create(MainFrame, tweenInfo, {
 		Size = minimized and MINI_SIZE or FULL_SIZE,
@@ -3661,51 +3696,51 @@ function ToggleGUI()
 	TimeLabel.TextXAlignment = minimized and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left
 	MiniButton.Text = minimized and "+" or "-"
 	if minimized then
-		ScheduleGhostFade()
+		ScheduleGuiFade()
 	else
 		-- Restoring always snaps back to fully visible immediately, no matter how far
-		-- into a ghost fade it was -- a translucent full-size window would be a real bug,
-		-- not a cosmetic one.
-		CancelGhostFade()
+		-- into a fade it was -- a translucent full-size window would be a real bug, not a
+		-- cosmetic one.
+		CancelGuiFade()
 	end
 end
 MiniButton.MouseButton1Click:Connect(function() PlayClick() ToggleGUI() end)
 
--- Ghost Mode: implemented as a token-based debounce rather than a plain cancel flag --
--- every schedule/cancel bumps ghostFadeToken, and the delayed fade only actually applies
--- if its captured token still matches when it wakes up, so a rapid hover/unhover/re-minimize
+-- Gui Fade: implemented as a token-based debounce rather than a plain cancel flag -- every
+-- schedule/cancel bumps guiFadeToken, and the delayed fade only actually applies if its
+-- captured token still matches when it wakes up, so a rapid hover/unhover/re-minimize
 -- flurry can never leave a stale delayed fade firing after the fact.
-local GHOST_FADE_DELAY = 4
-local GHOST_TRANSPARENCY = 0.55
-local ghostFadeToken = 0
+local GUI_FADE_DELAY = 1.5
+local GUI_FADE_TRANSPARENCY = 0.55
+local guiFadeToken = 0
 local isHoveringMini = false
 
-function CancelGhostFade()
-	ghostFadeToken += 1
+function CancelGuiFade()
+	guiFadeToken += 1
 	TweenService:Create(MainFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0}):Play()
 	TweenService:Create(TimeLabel, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {TextTransparency = 0}):Play()
 end
 
-function ScheduleGhostFade()
-	if not (GhostModeEnabled and minimized) or isHoveringMini then return end
-	ghostFadeToken += 1
-	local myToken = ghostFadeToken
-	task.delay(GHOST_FADE_DELAY, function()
-		if myToken ~= ghostFadeToken then return end
-		if not (GhostModeEnabled and minimized) or isHoveringMini then return end
+function ScheduleGuiFade()
+	if not (GuiFadeEnabled and minimized) or isHoveringMini then return end
+	guiFadeToken += 1
+	local myToken = guiFadeToken
+	task.delay(GUI_FADE_DELAY, function()
+		if myToken ~= guiFadeToken then return end
+		if not (GuiFadeEnabled and minimized) or isHoveringMini then return end
 		local fadeInfo = TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-		TweenService:Create(MainFrame, fadeInfo, {BackgroundTransparency = GHOST_TRANSPARENCY}):Play()
-		TweenService:Create(TimeLabel, fadeInfo, {TextTransparency = GHOST_TRANSPARENCY}):Play()
+		TweenService:Create(MainFrame, fadeInfo, {BackgroundTransparency = GUI_FADE_TRANSPARENCY}):Play()
+		TweenService:Create(TimeLabel, fadeInfo, {TextTransparency = GUI_FADE_TRANSPARENCY}):Play()
 	end)
 end
 
 MainFrame.MouseEnter:Connect(function()
 	isHoveringMini = true
-	CancelGhostFade()
+	CancelGuiFade()
 end)
 MainFrame.MouseLeave:Connect(function()
 	isHoveringMini = false
-	ScheduleGhostFade()
+	ScheduleGuiFade()
 end)
 
 -- Silent unbind-able destroy key (Right Control) -- no button, no prompt, no sound.
@@ -3824,8 +3859,13 @@ MainFrame.InputBegan:Connect(function(input)
 					ToggleGUI()
 					return
 				end
+				-- Actually dragged (not just a tap) -- re-snap to whichever edge it's now
+				-- closest to, and remember that corner so the next maximize/re-minimize
+				-- cycle returns to it instead of resetting to center.
+				local snapped = GetSnappedMinimizedPosition()
+				lastMinimizedPosition = snapped
 				TweenService:Create(MainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-					Position = GetSnappedMinimizedPosition(),
+					Position = snapped,
 				}):Play()
 			end
 		end
