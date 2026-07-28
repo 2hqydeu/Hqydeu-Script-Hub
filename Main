@@ -293,18 +293,19 @@ function AddHoverStroke(trigger, target)
 	end)
 end
 
--- Quick "pop" -- row scales up a hair on hover and springs back down on leave, on top of
--- whatever control-level stroke highlight is also happening. Scales from the row's own
--- top-left (these rows use fixed Position offsets, not centered anchors), so it grows
--- toward the bottom-right -- at this small a scale that's imperceptible as directional,
--- just reads as a brief pop.
-function AddHoverPop(row)
+-- Quick "pop" -- the actual control (toggle switch, keybind button, text input) scales up
+-- a hair on hover and springs back down on leave, on top of its own stroke highlight.
+-- trigger is what registers the mouse-over (the whole row, a bigger/easier target), target
+-- is what actually pops -- deliberately never the row itself, so the row's label/title text
+-- never moves, only the interactive control does.
+function AddHoverPop(trigger, target)
+	target = target or trigger
 	local scale = Instance.new("UIScale")
-	scale.Parent = row
-	row.MouseEnter:Connect(function()
-		TweenService:Create(scale, TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1.025}):Play()
+	scale.Parent = target
+	trigger.MouseEnter:Connect(function()
+		TweenService:Create(scale, TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1.08}):Play()
 	end)
-	row.MouseLeave:Connect(function()
+	trigger.MouseLeave:Connect(function()
 		TweenService:Create(scale, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 1}):Play()
 	end)
 end
@@ -641,8 +642,9 @@ function CreateTab(name, order, iconId, scrolling)
 	page.Name = name .. "Page"
 	-- Scrolling pages get a small right-side inset so rows (which fill 100% of the page's
 	-- own width) stop short of the scrollbar instead of running underneath it -- without
-	-- this, the scrollbar overlaps the last few pixels of every row's right edge.
-	page.Size = scrolling and UDim2.new(1, -8, 1, 0) or UDim2.new(1, 0, 1, 0)
+	-- this, the scrollbar overlaps the last few pixels of every row's right edge. Widened
+	-- from the original 8px -- that wasn't enough clearance to stop the overlap everywhere.
+	page.Size = scrolling and UDim2.new(1, -14, 1, 0) or UDim2.new(1, 0, 1, 0)
 	page.BackgroundTransparency = 1
 	page.BorderSizePixel = 0
 	page.Visible = false
@@ -723,7 +725,6 @@ function CreateStrengthRow(parent, y, rowLabelText, defaultValue)
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 	table.insert(RowTransparencyTargets, row)
-	AddHoverPop(row)
 
 	local rowLabel = Instance.new("TextLabel")
 	rowLabel.Name = "RowLabel"
@@ -753,6 +754,7 @@ function CreateStrengthRow(parent, y, rowLabelText, defaultValue)
 	input.Parent = row
 	Instance.new("UICorner", input).CornerRadius = UDim.new(1, 0)
 	AddHoverStroke(row, input)
+	AddHoverPop(row, input)
 
 	return input
 end
@@ -969,7 +971,6 @@ function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, def
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 	table.insert(RowTransparencyTargets, row)
-	AddHoverPop(row)
 
 	local rowLabel = Instance.new("TextLabel")
 	rowLabel.Name = "RowLabel"
@@ -997,11 +998,14 @@ function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, def
 	StyleAsToggleSwitch(toggle)
 	AddPressBounce(toggle)
 	AddHoverStroke(row, toggle)
+	AddHoverPop(row, toggle)
 
-	-- Keybind button shows real text (the bound key, e.g. "L Alt") -- no hover stroke here,
-	-- only on the toggle switch above (a plain oval with no visible label), so the highlight
-	-- never ends up looking like it's boxing in a word instead of tracing a shape.
+	-- The stroke traces the keybind button's own oval shape, same as the toggle above --
+	-- it never touches the button's Text/TextColor3, so the bound-key label ("L Alt")
+	-- itself never gets highlighted, only the pill it sits inside.
 	local keybindBtn = CreateKeybindButton(row, storageKey, onKeybindChanged, defaultKeyCode)
+	AddHoverStroke(row, keybindBtn)
+	AddHoverPop(row, keybindBtn)
 
 	return toggle, keybindBtn
 end
@@ -3271,7 +3275,6 @@ function CreateGameRow(parent, y, gameTitle, url)
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 	table.insert(RowTransparencyTargets, row)
-	AddHoverPop(row)
 
 	local titleLabel = Instance.new("TextLabel")
 	titleLabel.Name = "TitleLabel"
@@ -3301,6 +3304,7 @@ function CreateGameRow(parent, y, gameTitle, url)
 	Instance.new("UICorner", executeBtn).CornerRadius = UDim.new(1, 0)
 	AddPressBounce(executeBtn)
 	AddHoverStroke(row, executeBtn)
+	AddHoverPop(row, executeBtn)
 	ScriptRunner.Buttons[gameTitle] = executeBtn
 
 	executeBtn.MouseButton1Click:Connect(function()
@@ -3352,7 +3356,6 @@ function CreateUtilityRow(parent, y, title, url)
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 	table.insert(RowTransparencyTargets, row)
-	AddHoverPop(row)
 
 	local titleLabel = Instance.new("TextLabel")
 	titleLabel.Name = "TitleLabel"
@@ -3383,6 +3386,7 @@ function CreateUtilityRow(parent, y, title, url)
 	Instance.new("UICorner", destroyBtn).CornerRadius = UDim.new(1, 0)
 	AddPressBounce(destroyBtn)
 	AddHoverStroke(row, destroyBtn)
+	AddHoverPop(row, destroyBtn)
 
 	local executeBtn = Instance.new("TextButton")
 	executeBtn.Name = "ExecuteButton"
@@ -3399,6 +3403,7 @@ function CreateUtilityRow(parent, y, title, url)
 	Instance.new("UICorner", executeBtn).CornerRadius = UDim.new(1, 0)
 	AddPressBounce(executeBtn)
 	AddHoverStroke(row, executeBtn)
+	AddHoverPop(row, executeBtn)
 
 	local trackedInstances = {}
 	local busy = false
