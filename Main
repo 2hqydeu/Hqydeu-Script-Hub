@@ -324,20 +324,30 @@ end
 -- the underlying event fires.
 function CreateHoverPopGroup(trigger)
 	local targets = {}
+	-- Text re-rasterizes every frame it's being scaled (unlike a solid-color shape, which
+	-- interpolates cleanly), and the Back easing's overshoot makes that worse by reversing
+	-- direction right as it settles -- together that's what read as "choppy" specifically on
+	-- labels. isText targets (row/tab titles) get a smaller scale and a plain Quad ease with
+	-- no overshoot instead; shape-only controls (toggle switches) keep the punchier bounce.
 	trigger.MouseEnter:Connect(function()
-		local tweenInfo = TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-		for _, target in ipairs(targets) do
-			TweenService:Create(GetOrCreateUIScale(target), tweenInfo, {Scale = 1.08}):Play()
+		for _, entry in ipairs(targets) do
+			local tweenInfo = entry.isText
+				and TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+				or TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+			local goalScale = entry.isText and 1.04 or 1.08
+			TweenService:Create(GetOrCreateUIScale(entry.target), tweenInfo, {Scale = goalScale}):Play()
 		end
 	end)
 	trigger.MouseLeave:Connect(function()
-		local tweenInfo = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-		for _, target in ipairs(targets) do
-			TweenService:Create(GetOrCreateUIScale(target), tweenInfo, {Scale = 1}):Play()
+		for _, entry in ipairs(targets) do
+			local tweenInfo = entry.isText
+				and TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+				or TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			TweenService:Create(GetOrCreateUIScale(entry.target), tweenInfo, {Scale = 1}):Play()
 		end
 	end)
-	return function(target)
-		table.insert(targets, target)
+	return function(target, isText)
+		table.insert(targets, {target = target, isText = isText})
 	end
 end
 
@@ -349,8 +359,8 @@ function AddPanelGradient(frame)
 	local gradient = Instance.new("UIGradient")
 	gradient.Rotation = 90
 	gradient.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(38, 38, 38)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(22, 22, 22)),
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(32, 32, 32)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(26, 26, 26)),
 	})
 	gradient.Parent = frame
 end
@@ -387,8 +397,8 @@ MainCorner.Parent = MainFrame
 local MainGradient = Instance.new("UIGradient")
 MainGradient.Rotation = 90
 MainGradient.Color = ColorSequence.new({
-	ColorSequenceKeypoint.new(0, Color3.fromRGB(38, 38, 38)),
-	ColorSequenceKeypoint.new(1, Color3.fromRGB(22, 22, 22)),
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(32, 32, 32)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(26, 26, 26)),
 })
 MainGradient.Parent = MainFrame
 
@@ -600,6 +610,11 @@ ContentArea.Parent = MainFrame
 
 local Tabs = {}
 function SelectTab(name)
+	-- The color picker anchors to the ESP Color button on the Visuals tab -- switching away
+	-- from that tab would leave it floating over whatever tab you switched to instead, so
+	-- close it the same way minimizing already does. Guarded since CloseESPColorPicker is
+	-- defined much further down (in the Visuals tab's own do block).
+	if CloseESPColorPicker then CloseESPColorPicker() end
 	local tabTweenInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 	for tabName, entry in pairs(Tabs) do
 		local isSelected = tabName == name
@@ -656,7 +671,7 @@ function CreateTab(name, order, iconId, scrolling)
 	-- TabBar's UIListLayout tracks, so scaling it directly would nudge every tab after it
 	-- sideways each time this one gets pressed or hovered.
 	AddPressBounce(button, content)
-	CreateHoverPopGroup(button)(content)
+	CreateHoverPopGroup(button)(content, true)
 
 	local contentLayout = Instance.new("UIListLayout")
 	contentLayout.FillDirection = Enum.FillDirection.Horizontal
@@ -799,7 +814,7 @@ function CreateStrengthRow(parent, y, rowLabelText, defaultValue)
 	rowLabel.TextXAlignment = Enum.TextXAlignment.Left
 	rowLabel.TextYAlignment = Enum.TextYAlignment.Center
 	rowLabel.Parent = row
-	AddPopTarget(rowLabel)
+	AddPopTarget(rowLabel, true)
 
 	local input = Instance.new("TextBox")
 	input.Name = "Input"
@@ -925,7 +940,10 @@ function CreateKeybindButton(parent, storageKey, onKeybindChanged, defaultKeyCod
 	local btn = Instance.new("TextButton")
 	btn.Name = "KeybindButton"
 	btn.Size = UDim2.new(0, 70, 0, 30)
-	btn.Position = UDim2.new(1, -140, 0.5, -15)
+	-- Slid further left than a bare "next to the toggle" gap would need, so a popped
+	-- toggle switch and a popped keybind button both have visible breathing room between
+	-- them instead of nearly touching.
+	btn.Position = UDim2.new(1, -152, 0.5, -15)
 	btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 	btn.BackgroundTransparency = 0.2
 	btn.BorderSizePixel = 0
@@ -1053,7 +1071,7 @@ function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, def
 	rowLabel.TextXAlignment = Enum.TextXAlignment.Left
 	rowLabel.TextYAlignment = Enum.TextYAlignment.Center
 	rowLabel.Parent = row
-	AddPopTarget(rowLabel)
+	AddPopTarget(rowLabel, true)
 
 	local toggle = Instance.new("TextButton")
 	toggle.Name = "Toggle"
@@ -1763,7 +1781,7 @@ ESPColorRowLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 ESPColorRowLabel.TextXAlignment = Enum.TextXAlignment.Left
 ESPColorRowLabel.TextYAlignment = Enum.TextYAlignment.Center
 ESPColorRowLabel.Parent = ESPColorRow
-AddESPColorPopTarget(ESPColorRowLabel)
+AddESPColorPopTarget(ESPColorRowLabel, true)
 
 local ESPColorButton = Instance.new("TextButton")
 ESPColorButton.Name = "ColorButton"
@@ -2117,7 +2135,7 @@ FOVRowLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 FOVRowLabel.TextXAlignment = Enum.TextXAlignment.Left
 FOVRowLabel.TextYAlignment = Enum.TextYAlignment.Center
 FOVRowLabel.Parent = FOVRow
-AddFOVPopTarget(FOVRowLabel)
+AddFOVPopTarget(FOVRowLabel, true)
 
 local FOVInput = Instance.new("TextBox")
 FOVInput.Name = "Input"
@@ -3383,7 +3401,7 @@ function CreateGameRow(parent, y, gameTitle, url)
 	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 	titleLabel.TextYAlignment = Enum.TextYAlignment.Center
 	titleLabel.Parent = row
-	AddPopTarget(titleLabel)
+	AddPopTarget(titleLabel, true)
 
 	local executeBtn = Instance.new("TextButton")
 	executeBtn.Name = "ExecuteButton"
@@ -3468,7 +3486,7 @@ function CreateUtilityRow(parent, y, title, url)
 	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 	titleLabel.TextYAlignment = Enum.TextYAlignment.Center
 	titleLabel.Parent = row
-	AddPopTarget(titleLabel)
+	AddPopTarget(titleLabel, true)
 
 	local destroyBtn = Instance.new("TextButton")
 	destroyBtn.Name = "DestroyButton"
@@ -3566,7 +3584,12 @@ do
 	-- minimized/MainFrame state actually lives -- this row just owns the on/off state.
 	GuiFadeEnabled = false
 	GuiFadeKeybind = Enum.KeyCode.Unknown
-	local GuiFadeToggle = CreateToggleRow(SettingsPage, 8, "GuiFadeKeybind", function(k) GuiFadeKeybind = k end, "Gui Fade")
+	-- Bottom-aligned within the tab's visible viewport (285px tall) instead of stacked at
+	-- the top with empty space below -- SETTINGS_TOP is the Y where this group of controls
+	-- (plus the local-count label after it) starts so the whole block's bottom edge lands
+	-- flush with the viewport's own bottom edge.
+	local SETTINGS_TOP = 131
+	local GuiFadeToggle = CreateToggleRow(SettingsPage, SETTINGS_TOP, "GuiFadeKeybind", function(k) GuiFadeKeybind = k end, "Gui Fade")
 	ToggleGuiFade = function()
 		GuiFadeEnabled = not GuiFadeEnabled
 		GuiFadeToggle.Text = GuiFadeEnabled and "On" or "Off"
@@ -3577,7 +3600,7 @@ do
 	local ResetCharacterButton = Instance.new("TextButton")
 	ResetCharacterButton.Name = "ResetCharacterButton"
 	ResetCharacterButton.Size = UDim2.new(1, -10, 0, 28)
-	ResetCharacterButton.Position = UDim2.new(0, 0, 0, 76)
+	ResetCharacterButton.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 68)
 	ResetCharacterButton.BackgroundColor3 = Color3.fromRGB(255, 230, 0)
 	ResetCharacterButton.BorderSizePixel = 0
 	ResetCharacterButton.Text = "Reset Character"
@@ -3597,7 +3620,7 @@ do
 	DestroyGuiButton = Instance.new("TextButton")
 	DestroyGuiButton.Name = "DestroyGuiButton"
 	DestroyGuiButton.Size = UDim2.new(1, -10, 0, 28)
-	DestroyGuiButton.Position = UDim2.new(0, 0, 0, 120)
+	DestroyGuiButton.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 112)
 	DestroyGuiButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
 	DestroyGuiButton.BorderSizePixel = 0
 	DestroyGuiButton.Text = "Destroy Gui"
@@ -3616,7 +3639,7 @@ do
 	local LocalCountLabel = Instance.new("TextLabel")
 	LocalCountLabel.Name = "LocalCountLabel"
 	LocalCountLabel.Size = UDim2.new(0, 60, 0, 10)
-	LocalCountLabel.Position = UDim2.new(1, -68, 0, 156)
+	LocalCountLabel.Position = UDim2.new(1, -68, 0, SETTINGS_TOP + 144)
 	LocalCountLabel.BackgroundTransparency = 1
 	LocalCountLabel.BorderSizePixel = 0
 	LocalCountLabel.Text = "129 / 200"
@@ -3626,7 +3649,10 @@ do
 	LocalCountLabel.TextXAlignment = Enum.TextXAlignment.Right
 	LocalCountLabel.Parent = SettingsPage
 
-	SettingsPage.CanvasSize = UDim2.new(0, 0, 0, 176)
+	-- Matches the tab's own visible viewport height (285px: FULL_SIZE.Y minus the header/tab
+	-- bar/content padding above it) exactly, so the bottom-aligned controls just fill it
+	-- with no separate scrolling required.
+	SettingsPage.CanvasSize = UDim2.new(0, 0, 0, 285)
 end
 
 SelectTab("Home")
