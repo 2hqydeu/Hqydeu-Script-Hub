@@ -129,9 +129,7 @@ TitleLabel.Parent = PanelFrame
 
 -- Small shared polish helpers -- hover brighten, a tactile press-down "squish", and a
 -- divider that fades out at both ends instead of a flat bar. Same visual pass as the main
--- hub, ported here for a consistent feel across every panel. AddHoverStroke (highlights
--- just a row's actual control, not the whole row) is defined further below, once
--- ToggleOnColor exists.
+-- hub, ported here for a consistent feel across every panel.
 local function AddButtonHover(button, hoverColor, normalColor)
 	normalColor = normalColor or button.BackgroundColor3
 	button.MouseEnter:Connect(function()
@@ -255,24 +253,6 @@ local ToggleOffColor = Color3.fromRGB(50, 50, 50)
 local ToggleOnColor = Color3.fromRGB(178, 155, 235)
 local ToggleKnobColor = Color3.fromRGB(238, 233, 250)
 
--- Faint accent stroke that fades in on hover, on the row's actual control (the toggle
--- switch) rather than the row itself -- trigger is what registers the mouse-over (the
--- whole row, a bigger/easier target), target is what shows the highlight.
-local function AddHoverStroke(trigger, target)
-	target = target or trigger
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = ToggleOnColor
-	stroke.Transparency = 1
-	stroke.Thickness = 1.5
-	stroke.Parent = target
-	trigger.MouseEnter:Connect(function()
-		TweenService:Create(stroke, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.25}):Play()
-	end)
-	trigger.MouseLeave:Connect(function()
-		TweenService:Create(stroke, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 1}):Play()
-	end)
-end
-
 -- Quick "pop" -- the actual toggle scales up a hair on hover and springs back down on
 -- leave, never the row itself, so the row's label text never moves.
 local function AddHoverPop(trigger, target)
@@ -370,7 +350,9 @@ local function CreateFeatureRow(order, labelText, parent)
 	toggle.Parent = row
 	StyleAsToggleSwitch(toggle)
 	AddPressBounce(toggle)
-	AddHoverStroke(row, toggle)
+	-- No hover stroke on the toggle itself -- the knob sits almost flush against the pill's
+	-- rounded end, and a stroke curving tightly around that same corner was reading as a
+	-- stray mark/"text" inside the switch. The pop below is enough feedback on its own.
 	AddHoverPop(row, toggle)
 
 	return row, toggle
