@@ -14,10 +14,10 @@ local SoundService = game:GetService("SoundService")
 local TweenService = game:GetService("TweenService")
 
 local Player = Players.LocalPlayer
-local FrameColor = Color3.fromRGB(0x1E, 0x1E, 0x1E)
+local FrameColor = Color3.fromRGB(8, 8, 8)
 local AccentColor = Color3.fromRGB(255, 255, 255)
 local UIFont = Enum.Font.Ubuntu
-local GameRowTransparency = 0.75 -- fixed, matches the darker row look every panel now uses on purpose
+local GameRowTransparency = 0
 
 -- Sets a root's position while keeping it upright (zeroing pitch/roll, keeping the current
 -- facing direction) -- used by Auto Farm's Safe Place drop and Auto Event's approach.
@@ -103,15 +103,6 @@ local PanelCorner = Instance.new("UICorner")
 PanelCorner.CornerRadius = UDim.new(0, 14)
 PanelCorner.Parent = PanelFrame
 
--- Very subtle top-to-bottom depth instead of one dead-flat fill, same treatment as the
--- main hub's window.
-local PanelGradient = Instance.new("UIGradient")
-PanelGradient.Rotation = 90
-PanelGradient.Color = ColorSequence.new({
-	ColorSequenceKeypoint.new(0, Color3.fromRGB(32, 32, 32)),
-	ColorSequenceKeypoint.new(1, Color3.fromRGB(26, 26, 26)),
-})
-PanelGradient.Parent = PanelFrame
 
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
@@ -181,17 +172,6 @@ local function AddFadeDivider(divider)
 	gradient.Parent = divider
 end
 
--- Same subtle top-to-bottom depth as the main panel's own background, for popups (Auto
--- Farm's options popup) so they read as the same visual language.
-local function AddPanelGradient(frame)
-	local gradient = Instance.new("UIGradient")
-	gradient.Rotation = 90
-	gradient.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(32, 32, 32)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(26, 26, 26)),
-	})
-	gradient.Parent = frame
-end
 
 local MinimizeButton = Instance.new("TextButton")
 MinimizeButton.Name = "MinimizeButton"
@@ -285,40 +265,6 @@ local ToggleKnobColor = Color3.fromRGB(238, 233, 250)
 
 -- Quick "pop" -- the actual toggle scales up a hair on hover and springs back down on
 -- leave, never the row itself, so the row's label text never moves.
--- A row with several pop targets (toggle, title label, extra buttons like the Auto Farm
--- Edit button) used to give each its own independent trigger.MouseEnter/MouseLeave pair --
--- but hovering one child control and moving to a sibling can spuriously re-fire the row's
--- own MouseEnter/MouseLeave in between (Roblox routing quirk with overlapping GuiObjects),
--- which could leave one target popped and another not. Grouping every target under ONE
--- shared listener pair guarantees they always animate together.
-local function CreateHoverPopGroup(trigger)
-	local targets = {}
-	-- Text re-rasterizes every frame it's being scaled (unlike a solid-color shape, which
-	-- interpolates cleanly), and the Back easing's overshoot makes that worse by reversing
-	-- direction right as it settles -- together that's what read as "choppy" specifically on
-	-- labels. isText targets (the row title) get a smaller scale and a plain Quad ease with
-	-- no overshoot instead; shape-only controls (toggle switches) keep the punchier bounce.
-	trigger.MouseEnter:Connect(function()
-		for _, entry in ipairs(targets) do
-			local tweenInfo = entry.isText
-				and TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-				or TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-			local goalScale = entry.isText and 1.04 or 1.08
-			TweenService:Create(GetOrCreateUIScale(entry.target), tweenInfo, {Scale = goalScale}):Play()
-		end
-	end)
-	trigger.MouseLeave:Connect(function()
-		for _, entry in ipairs(targets) do
-			local tweenInfo = entry.isText
-				and TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-				or TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-			TweenService:Create(GetOrCreateUIScale(entry.target), tweenInfo, {Scale = 1}):Play()
-		end
-	end)
-	return function(target, isText)
-		table.insert(targets, {target = target, isText = isText})
-	end
-end
 
 local function StyleAsToggleSwitch(toggle)
 	toggle.AutoButtonColor = false
@@ -377,7 +323,6 @@ local function CreateFeatureRow(order, labelText, parent)
 	row.BorderSizePixel = 0
 	row.Parent = parent or ContentScroll
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
-	local AddPopTarget = CreateHoverPopGroup(row)
 
 	local label = Instance.new("TextLabel")
 	label.Name = "Label"
@@ -391,7 +336,6 @@ local function CreateFeatureRow(order, labelText, parent)
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextYAlignment = Enum.TextYAlignment.Center
 	label.Parent = row
-	AddPopTarget(label, true)
 
 	local toggle = Instance.new("TextButton")
 	toggle.Name = "Toggle"
@@ -407,17 +351,13 @@ local function CreateFeatureRow(order, labelText, parent)
 	AddPressBounce(toggle)
 	-- No hover stroke on the toggle itself -- the knob sits almost flush against the pill's
 	-- rounded end, and a stroke curving tightly around that same corner was reading as a
-	-- stray mark/"text" inside the switch. The pop below is enough feedback on its own.
-	AddPopTarget(toggle)
+	-- stray mark/"text" inside the switch.
 
-	-- Third return value lets a caller that bolts an extra button onto this same row
-	-- afterward (e.g. Auto Farm's Edit button) join this same pop group instead of popping
-	-- independently/out of sync.
-	return row, toggle, AddPopTarget
+	return row, toggle
 end
 
 local KillRow, KillToggle = CreateFeatureRow(1, "Auto Kill")
-local FarmRow, FarmToggle, AddFarmPopTarget = CreateFeatureRow(2, "Auto Farm")
+local FarmRow, FarmToggle = CreateFeatureRow(2, "Auto Farm")
 local ReviveRow, ReviveToggle = CreateFeatureRow(3, "Auto Revive")
 
 -- Auto Farm's Edit button: tucked to the left of its toggle, opens a small popup holding
@@ -437,7 +377,6 @@ FarmEditButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 FarmEditButton.Parent = FarmRow
 Instance.new("UICorner", FarmEditButton).CornerRadius = UDim.new(1, 0)
 AddPressBounce(FarmEditButton)
-AddFarmPopTarget(FarmEditButton)
 
 local FARM_POPUP_WIDTH, FARM_POPUP_HEIGHT = 220, 190
 local FarmOptionsPopup = Instance.new("Frame")
@@ -451,7 +390,6 @@ FarmOptionsPopup.Visible = false
 FarmOptionsPopup.ZIndex = 40
 FarmOptionsPopup.Parent = ScreenGui
 Instance.new("UICorner", FarmOptionsPopup).CornerRadius = UDim.new(0, 10)
-AddPanelGradient(FarmOptionsPopup)
 local farmOptionsStroke = Instance.new("UIStroke")
 farmOptionsStroke.Color = AccentColor
 farmOptionsStroke.Thickness = 1
