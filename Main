@@ -10,7 +10,9 @@ local HttpService = game:GetService("HttpService")
 local ContextActionService = game:GetService("ContextActionService")
 
 local Player = Players.LocalPlayer
-local FrameColor = Color3.fromRGB(0x1E, 0x1E, 0x1E)
+-- Darker than the (14,14,14) rows sitting on top of it, so there's plain flat-color
+-- contrast between window and row instead of relying on any transparency/gradient blend.
+local FrameColor = Color3.fromRGB(8, 8, 8)
 local AccentColor = Color3.fromRGB(255, 255, 255)
 local UIFont = Enum.Font.Ubuntu
 -- Shared "on" purple -- the toggle switches fill with this when On, and the selected tab
@@ -113,11 +115,10 @@ local bindingInProgress = false
 -- DestroyGui, instead of each needing its own named forward-declared local.
 local looseConnections = {}
 
--- Settings tab's Transparency control: every standard feature row (CreateStrengthRow,
--- CreateToggleRow) registers its own background frame here so one shared setter can
--- Fixed now (no longer a Settings-tab slider) -- 75% transparent over the dark background
--- is what produces the noticeably darker row look every row now uses on purpose.
-local RowTransparencyValue = 75
+-- Fixed, fully opaque -- rows are their own flat dark color with no see-through blending;
+-- contrast against the window comes from the window's own background being darker still,
+-- not from transparency.
+local RowTransparencyValue = 0
 
 -- Main Container
 local ScreenGui = Instance.new("ScreenGui")
@@ -309,61 +310,6 @@ function AddHoverStroke(trigger, target)
 	end)
 end
 
--- Quick "pop" -- the actual control (toggle switch, keybind button, text input) scales up
--- a hair on hover and springs back down on leave, on top of its own stroke highlight.
--- trigger is what registers the mouse-over (the whole row, a bigger/easier target), target
--- is what actually pops -- deliberately never the row itself, so the row's label/title text
--- never moves, only the interactive control does.
--- A row with several pop targets (toggle, keybind button, title label, ...) used to give
--- each its own independent trigger.MouseEnter/MouseLeave pair -- but hovering over one
--- child control and moving to a sibling control can spuriously re-fire the row's
--- MouseEnter/MouseLeave in between (Roblox routing quirk with overlapping GuiObjects),
--- and since each target's tween was started independently, that could leave one target
--- popped and another not, out of sync with each other. Grouping every target under ONE
--- shared listener pair guarantees they always animate together, no matter how many times
--- the underlying event fires.
-function CreateHoverPopGroup(trigger)
-	local targets = {}
-	-- Text re-rasterizes every frame it's being scaled (unlike a solid-color shape, which
-	-- interpolates cleanly), and the Back easing's overshoot makes that worse by reversing
-	-- direction right as it settles -- together that's what read as "choppy" specifically on
-	-- labels. isText targets (row/tab titles) get a smaller scale and a plain Quad ease with
-	-- no overshoot instead; shape-only controls (toggle switches) keep the punchier bounce.
-	trigger.MouseEnter:Connect(function()
-		for _, entry in ipairs(targets) do
-			local tweenInfo = entry.isText
-				and TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-				or TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-			local goalScale = entry.isText and 1.04 or 1.08
-			TweenService:Create(GetOrCreateUIScale(entry.target), tweenInfo, {Scale = goalScale}):Play()
-		end
-	end)
-	trigger.MouseLeave:Connect(function()
-		for _, entry in ipairs(targets) do
-			local tweenInfo = entry.isText
-				and TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-				or TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-			TweenService:Create(GetOrCreateUIScale(entry.target), tweenInfo, {Scale = 1}):Play()
-		end
-	end)
-	return function(target, isText)
-		table.insert(targets, {target = target, isText = isText})
-	end
-end
-
--- Same subtle top-to-bottom depth as the main window's own background, for popups
--- (destroy confirm, color picker, TP menu, keybind-clear prompt, and the equivalent dock
--- popups in the game panels) so they all read as the same visual language instead of a
--- flat fill.
-function AddPanelGradient(frame)
-	local gradient = Instance.new("UIGradient")
-	gradient.Rotation = 90
-	gradient.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(32, 32, 32)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(26, 26, 26)),
-	})
-	gradient.Parent = frame
-end
 
 function AddFadeDivider(divider)
 	local gradient = Instance.new("UIGradient")
@@ -391,16 +337,6 @@ MainFrame.Parent = ScreenGui
 local MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = FULL_CORNER
 MainCorner.Parent = MainFrame
-
--- Very subtle top-to-bottom depth instead of one dead-flat fill -- a few RGB units either
--- side of FrameColor, nothing loud enough to fight the content sitting on top of it.
-local MainGradient = Instance.new("UIGradient")
-MainGradient.Rotation = 90
-MainGradient.Color = ColorSequence.new({
-	ColorSequenceKeypoint.new(0, Color3.fromRGB(32, 32, 32)),
-	ColorSequenceKeypoint.new(1, Color3.fromRGB(26, 26, 26)),
-})
-MainGradient.Parent = MainFrame
 
 -- Header: live local clock, title, minimize + destroy buttons -- all top-anchored so a
 -- minimize shrinks the window straight up toward this row instead of shrinking from the
@@ -504,13 +440,12 @@ local DestroyConfirmPopup = Instance.new("Frame")
 DestroyConfirmPopup.Name = "DestroyConfirmPopup"
 DestroyConfirmPopup.AnchorPoint = Vector2.new(0.5, 0.5)
 DestroyConfirmPopup.Size = UDim2.new(0, 220, 0, 104)
-DestroyConfirmPopup.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+DestroyConfirmPopup.BackgroundColor3 = FrameColor
 DestroyConfirmPopup.BorderSizePixel = 0
 DestroyConfirmPopup.Visible = false
 DestroyConfirmPopup.ZIndex = 50
 DestroyConfirmPopup.Parent = ScreenGui
 Instance.new("UICorner", DestroyConfirmPopup).CornerRadius = UDim.new(0, 12)
-AddPanelGradient(DestroyConfirmPopup)
 local destroyConfirmStroke = Instance.new("UIStroke")
 destroyConfirmStroke.Color = Color3.fromRGB(0, 0, 0)
 destroyConfirmStroke.Thickness = 1
@@ -664,14 +599,19 @@ function CreateTab(name, order, iconId, scrolling)
 
 	local content = Instance.new("Frame")
 	content.Name = "Content"
+	-- Centered AnchorPoint/Position (rather than the default top-left) so the press-bounce
+	-- below shrinks toward the middle of the tab instead of visibly shrinking toward the
+	-- top-left corner -- same visual bounds either way (still 100% of button), just a
+	-- different scale origin.
+	content.AnchorPoint = Vector2.new(0.5, 0.5)
 	content.Size = UDim2.new(1, 0, 1, 0)
+	content.Position = UDim2.new(0.5, 0, 0.5, 0)
 	content.BackgroundTransparency = 1
 	content.Parent = button
-	-- Bounces/pops "content" (icon + label), not "button" -- button is the direct child the
+	-- Bounces "content" (icon + label), not "button" -- button is the direct child the
 	-- TabBar's UIListLayout tracks, so scaling it directly would nudge every tab after it
-	-- sideways each time this one gets pressed or hovered.
+	-- sideways each time this one gets pressed.
 	AddPressBounce(button, content)
-	CreateHoverPopGroup(button)(content, true)
 
 	local contentLayout = Instance.new("UIListLayout")
 	contentLayout.FillDirection = Enum.FillDirection.Horizontal
@@ -800,7 +740,6 @@ function CreateStrengthRow(parent, y, rowLabelText, defaultValue)
 	row.BorderSizePixel = 0
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
-	local AddPopTarget = CreateHoverPopGroup(row)
 
 	local rowLabel = Instance.new("TextLabel")
 	rowLabel.Name = "RowLabel"
@@ -814,7 +753,6 @@ function CreateStrengthRow(parent, y, rowLabelText, defaultValue)
 	rowLabel.TextXAlignment = Enum.TextXAlignment.Left
 	rowLabel.TextYAlignment = Enum.TextYAlignment.Center
 	rowLabel.Parent = row
-	AddPopTarget(rowLabel, true)
 
 	local input = Instance.new("TextBox")
 	input.Name = "Input"
@@ -831,12 +769,8 @@ function CreateStrengthRow(parent, y, rowLabelText, defaultValue)
 	input.Parent = row
 	Instance.new("UICorner", input).CornerRadius = UDim.new(1, 0)
 	-- AddHoverStroke(row, input) -- highlighting disabled for now while the pop animation gets sorted out
-	AddPopTarget(input)
 
-	-- Second return value lets a caller that bolts an extra control onto this same row
-	-- afterward (e.g. Speed's CFrame/WalkSpeed mode button) register it into this same
-	-- pop group instead of it popping independently/out of sync with the rest of the row.
-	return input, AddPopTarget
+	return input
 end
 
 -- Right-click a keybind button to clear it: a small "Remove keybind?" popup with
@@ -869,12 +803,11 @@ function ShowKeybindClearPrompt(button, onCleared)
 	prompt.Name = "KeybindClearPrompt"
 	prompt.Size = UDim2.new(0, 160, 0, 74)
 	prompt.Position = UDim2.fromOffset(button.AbsolutePosition.X, button.AbsolutePosition.Y + button.AbsoluteSize.Y + 6)
-	prompt.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+	prompt.BackgroundColor3 = FrameColor
 	prompt.BorderSizePixel = 0
 	prompt.ZIndex = 50
 	prompt.Parent = ScreenGui
 	Instance.new("UICorner", prompt).CornerRadius = UDim.new(0, 10)
-	AddPanelGradient(prompt)
 	local promptStroke = Instance.new("UIStroke")
 	promptStroke.Color = Color3.fromRGB(0, 0, 0)
 	promptStroke.Thickness = 1
@@ -940,10 +873,7 @@ function CreateKeybindButton(parent, storageKey, onKeybindChanged, defaultKeyCod
 	local btn = Instance.new("TextButton")
 	btn.Name = "KeybindButton"
 	btn.Size = UDim2.new(0, 70, 0, 30)
-	-- Slid further left than a bare "next to the toggle" gap would need, so a popped
-	-- toggle switch and a popped keybind button both have visible breathing room between
-	-- them instead of nearly touching.
-	btn.Position = UDim2.new(1, -152, 0.5, -15)
+	btn.Position = UDim2.new(1, -140, 0.5, -15)
 	btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 	btn.BackgroundTransparency = 0.2
 	btn.BorderSizePixel = 0
@@ -1057,7 +987,6 @@ function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, def
 	row.BorderSizePixel = 0
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
-	local AddPopTarget = CreateHoverPopGroup(row)
 
 	local rowLabel = Instance.new("TextLabel")
 	rowLabel.Name = "RowLabel"
@@ -1071,7 +1000,6 @@ function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, def
 	rowLabel.TextXAlignment = Enum.TextXAlignment.Left
 	rowLabel.TextYAlignment = Enum.TextYAlignment.Center
 	rowLabel.Parent = row
-	AddPopTarget(rowLabel, true)
 
 	local toggle = Instance.new("TextButton")
 	toggle.Name = "Toggle"
@@ -1089,14 +1017,12 @@ function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, def
 	-- rounded end, and the stroke curving tightly around that same corner (partly behind,
 	-- partly beside the knob) is what was reading as a stray mark/"text" inside the switch.
 	-- The pop below is enough feedback on its own without that visual conflict.
-	AddPopTarget(toggle)
 
 	-- The stroke traces the keybind button's own oval shape, same as the toggle above --
 	-- it never touches the button's Text/TextColor3, so the bound-key label ("L Alt")
 	-- itself never gets highlighted, only the pill it sits inside.
 	local keybindBtn = CreateKeybindButton(row, storageKey, onKeybindChanged, defaultKeyCode)
 	-- AddHoverStroke(row, keybindBtn) -- highlighting disabled for now while the pop animation gets sorted out
-	AddPopTarget(keybindBtn)
 
 	return toggle, keybindBtn
 end
@@ -1121,7 +1047,7 @@ do
 	SpeedKeybind = Enum.KeyCode.Unknown
 
 	CreateSectionHeading(PlayerPage, 8, "Speed")
-	local SpeedInput, AddSpeedPopTarget = CreateStrengthRow(PlayerPage, 38, "Speed Strength", SpeedValue)
+	local SpeedInput = CreateStrengthRow(PlayerPage, 38, "Speed Strength", SpeedValue)
 	local SpeedToggle = CreateToggleRow(PlayerPage, 98, "SpeedKeybind", function(k) SpeedKeybind = k end)
 
 	-- Mode used to be its own full-width row below; squished down to a single button the
@@ -1140,7 +1066,6 @@ do
 	SpeedModeButton.Parent = SpeedInput.Parent
 	Instance.new("UICorner", SpeedModeButton).CornerRadius = UDim.new(1, 0)
 	AddPressBounce(SpeedModeButton)
-	AddSpeedPopTarget(SpeedModeButton)
 
 	local function ApplySpeed()
 		local character = Player.Character
@@ -1370,25 +1295,43 @@ do
 		end
 	end)
 
+	PlayerPage.CanvasSize = UDim2.new(0, 0, 0, NOCLIP_SECTION_BOTTOM + 16)
+
+	-- Re-apply active effects whenever the character (re)spawns.
+	characterAddedConnection = Player.CharacterAdded:Connect(function()
+		task.wait(0.1)
+		ApplySpeed()
+		JumpOriginal = nil
+		if JumpEnabled then ApplyJump() end
+	end)
+end
+
+-- Functionality tab: sits between Player and Visuals. No icon for now -- CreateTab already
+-- handles a nil iconId by just leaving the tab's icon slot blank. Instant Prompt lives here
+-- now instead of at the bottom of Player.
+local FunctionalityPage = CreateTab("Functionality", 3, nil, true)
+do
 	-- Instant Prompt: drives every ProximityPrompt's HoldDuration to 0 (and drops its line-
-	-- of-sight requirement) so prompts complete the instant you press their key. Moved here
-	-- from Combat at the user's request. The first pass (sweep + DescendantAdded +
-	-- PromptButtonHoldBegan only) didn't actually work in-game -- most likely some games
-	-- reassign a prompt's HoldDuration right as it becomes visible/in-range, undoing our
-	-- one-time fix before you ever get to hold it. Re-asserting on PromptShown as well (fires
-	-- whenever a prompt enters view/range, right before the player can interact with it)
-	-- closes that gap without needing an expensive full-tree sweep every frame. Toggling it
-	-- off mid-session still doesn't restore already-sped-up prompts (same tradeoff as
-	-- NoClip's CanCollide above), but closing the hub entirely does -- OriginalPromptValues
-	-- remembers whatever each touched prompt's real HoldDuration/RequiresLineOfSight was so
-	-- DisableInstantPrompt (called from DestroyGui) can put every one of them back.
+	-- of-sight requirement) so prompts complete the instant you press their key. The first
+	-- pass (sweep + DescendantAdded + PromptButtonHoldBegan only) didn't actually work in-
+	-- game -- most likely some games reassign a prompt's HoldDuration right as it becomes
+	-- visible/in-range, undoing our one-time fix before you ever get to hold it. Re-asserting
+	-- on PromptShown as well (fires whenever a prompt enters view/range, right before the
+	-- player can interact with it) closes that gap without needing an expensive full-tree
+	-- sweep every frame. Toggling it off mid-session still doesn't restore already-sped-up
+	-- prompts (same tradeoff as NoClip's CanCollide in the Player tab), but closing the hub
+	-- entirely does -- OriginalPromptValues remembers whatever each touched prompt's real
+	-- HoldDuration/RequiresLineOfSight was so DisableInstantPrompt (called from DestroyGui)
+	-- can put every one of them back.
 	local InstantPromptEnabled = false
 	local OriginalPromptValues = {}
 	InstantPromptKeybind = Enum.KeyCode.Unknown
 
-	local INSTANT_PROMPT_TOP = NOCLIP_SECTION_BOTTOM + SECTION_GAP
-	CreateSectionHeading(PlayerPage, INSTANT_PROMPT_TOP, "Instant Prompt")
-	local InstantPromptToggle = CreateToggleRow(PlayerPage, INSTANT_PROMPT_TOP + 30, "InstantPromptKeybind", function(k) InstantPromptKeybind = k end, "Instant Prompt")
+	local INSTANT_PROMPT_TOP = 8
+	-- The heading already names the feature, so the row itself just says "Toggle" instead
+	-- of repeating "Instant Prompt" right underneath it.
+	CreateSectionHeading(FunctionalityPage, INSTANT_PROMPT_TOP, "Instant Prompt")
+	local InstantPromptToggle = CreateToggleRow(FunctionalityPage, INSTANT_PROMPT_TOP + 30, "InstantPromptKeybind", function(k) InstantPromptKeybind = k end)
 	local INSTANT_PROMPT_SECTION_BOTTOM = INSTANT_PROMPT_TOP + 30 + 52
 
 	local ProximityPromptService = game:GetService("ProximityPromptService")
@@ -1450,15 +1393,7 @@ do
 		OriginalPromptValues = {}
 	end
 
-	PlayerPage.CanvasSize = UDim2.new(0, 0, 0, INSTANT_PROMPT_SECTION_BOTTOM + 16)
-
-	-- Re-apply active effects whenever the character (re)spawns.
-	characterAddedConnection = Player.CharacterAdded:Connect(function()
-		task.wait(0.1)
-		ApplySpeed()
-		JumpOriginal = nil
-		if JumpEnabled then ApplyJump() end
-	end)
+	FunctionalityPage.CanvasSize = UDim2.new(0, 0, 0, INSTANT_PROMPT_SECTION_BOTTOM + 16)
 end
 
 -- Visuals tab: Outline ESP, Body ESP (per-limb boxes, Infinite Yield-style, ported from
@@ -1475,7 +1410,7 @@ end
 -- against the script's 200-local cap for the rest of the file.
 do
 
-local VisualsPage = CreateTab("Visuals", 3, "90467794700971", true)
+local VisualsPage = CreateTab("Visuals", 4, "90467794700971", true)
 
 local ESPDefaultColor = Color3.fromRGB(100, 255, 100)
 local ESPColor = LoadFeatureColor("ESPColor", ESPDefaultColor)
@@ -1767,7 +1702,6 @@ ESPColorRow.BackgroundTransparency = RowTransparencyValue / 100
 ESPColorRow.BorderSizePixel = 0
 ESPColorRow.Parent = VisualsPage
 Instance.new("UICorner", ESPColorRow).CornerRadius = UDim.new(0, 8)
-local AddESPColorPopTarget = CreateHoverPopGroup(ESPColorRow)
 
 local ESPColorRowLabel = Instance.new("TextLabel")
 ESPColorRowLabel.Name = "RowLabel"
@@ -1781,7 +1715,6 @@ ESPColorRowLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 ESPColorRowLabel.TextXAlignment = Enum.TextXAlignment.Left
 ESPColorRowLabel.TextYAlignment = Enum.TextYAlignment.Center
 ESPColorRowLabel.Parent = ESPColorRow
-AddESPColorPopTarget(ESPColorRowLabel, true)
 
 local ESPColorButton = Instance.new("TextButton")
 ESPColorButton.Name = "ColorButton"
@@ -1794,7 +1727,6 @@ ESPColorButton.Text = ""
 ESPColorButton.Parent = ESPColorRow
 Instance.new("UICorner", ESPColorButton).CornerRadius = UDim.new(0, 6)
 AddPressBounce(ESPColorButton)
-AddESPColorPopTarget(ESPColorButton)
 local ESPColorButtonStroke = Instance.new("UIStroke")
 ESPColorButtonStroke.Color = Color3.fromRGB(0, 0, 0)
 ESPColorButtonStroke.Thickness = 1
@@ -1844,7 +1776,6 @@ ESPColorPicker.Visible = false
 ESPColorPicker.ZIndex = 50
 ESPColorPicker.Parent = ScreenGui
 Instance.new("UICorner", ESPColorPicker).CornerRadius = UDim.new(0, 10)
-AddPanelGradient(ESPColorPicker)
 local ESPColorPickerStroke = Instance.new("UIStroke")
 ESPColorPickerStroke.Color = Color3.fromRGB(0, 0, 0)
 ESPColorPickerStroke.Thickness = 1
@@ -2121,7 +2052,6 @@ FOVRow.BackgroundTransparency = RowTransparencyValue / 100
 FOVRow.BorderSizePixel = 0
 FOVRow.Parent = VisualsPage
 Instance.new("UICorner", FOVRow).CornerRadius = UDim.new(0, 8)
-local AddFOVPopTarget = CreateHoverPopGroup(FOVRow)
 
 local FOVRowLabel = Instance.new("TextLabel")
 FOVRowLabel.Name = "RowLabel"
@@ -2135,7 +2065,6 @@ FOVRowLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 FOVRowLabel.TextXAlignment = Enum.TextXAlignment.Left
 FOVRowLabel.TextYAlignment = Enum.TextYAlignment.Center
 FOVRowLabel.Parent = FOVRow
-AddFOVPopTarget(FOVRowLabel, true)
 
 local FOVInput = Instance.new("TextBox")
 FOVInput.Name = "Input"
@@ -2151,7 +2080,6 @@ FOVInput.TextSize = 16
 FOVInput.TextColor3 = Color3.fromRGB(255, 255, 255)
 FOVInput.Parent = FOVRow
 Instance.new("UICorner", FOVInput).CornerRadius = UDim.new(1, 0)
-AddFOVPopTarget(FOVInput)
 
 local FOVResetButton = Instance.new("TextButton")
 FOVResetButton.Name = "ResetButton"
@@ -2167,7 +2095,6 @@ FOVResetButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 FOVResetButton.Parent = FOVRow
 Instance.new("UICorner", FOVResetButton).CornerRadius = UDim.new(1, 0)
 AddPressBounce(FOVResetButton)
-AddFOVPopTarget(FOVResetButton)
 
 local CAMERA_SECTION_BOTTOM = CAMERA_TOP + 90 + 52
 
@@ -2408,7 +2335,7 @@ end
 -- PopupToggleButton/PopupKeybind left un-declared here (the popup section further down, in
 -- its own separate do block, needs to read/update them too) so they fall back to globals
 -- instead of costing more top-level local slots.
-local TeleportPage = CreateTab("Teleport", 4, "90261647722333", true)
+local TeleportPage = CreateTab("Teleport", 5, "90261647722333", true)
 do
 	local TAB_ROW_H = 30
 	local ROW_H = 26
@@ -2889,7 +2816,6 @@ do
 	PopupFrame.ZIndex = 30
 	PopupFrame.Parent = ScreenGui
 	Instance.new("UICorner", PopupFrame).CornerRadius = UDim.new(0, 12)
-	AddPanelGradient(PopupFrame)
 	local popupStroke = Instance.new("UIStroke")
 	popupStroke.Color = AccentColor
 	popupStroke.Thickness = 1
@@ -3298,7 +3224,7 @@ end
 -- to reach them by name) so they fall back to globals instead of costing top-level local
 -- slots.
 AutoLockKeybind = Enum.KeyCode.Unknown
-local CombatPage = CreateTab("Combat", 5, "97448523184491", true)
+local CombatPage = CreateTab("Combat", 6, "97448523184491", true)
 do
 	local AutoLockEnabled = false
 
@@ -3349,7 +3275,7 @@ end
 
 -- Scripts tab: launches the separate game modules (loadstring + HttpGet, same as the
 -- old hub). Each module only ever gets fetched once per execution.
-local ScriptsPage = CreateTab("Scripts", 6, "79977771810097", true)
+local ScriptsPage = CreateTab("Scripts", 7, "79977771810097", true)
 
 -- Caches the fetched source per game so re-running it (see below) never re-hits the
 -- network, but still actually executes the chunk again each time -- these game modules
@@ -3387,7 +3313,6 @@ function CreateGameRow(parent, y, gameTitle, url)
 	row.BorderSizePixel = 0
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
-	local AddPopTarget = CreateHoverPopGroup(row)
 
 	local titleLabel = Instance.new("TextLabel")
 	titleLabel.Name = "TitleLabel"
@@ -3401,7 +3326,6 @@ function CreateGameRow(parent, y, gameTitle, url)
 	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 	titleLabel.TextYAlignment = Enum.TextYAlignment.Center
 	titleLabel.Parent = row
-	AddPopTarget(titleLabel, true)
 
 	local executeBtn = Instance.new("TextButton")
 	executeBtn.Name = "ExecuteButton"
@@ -3418,7 +3342,6 @@ function CreateGameRow(parent, y, gameTitle, url)
 	Instance.new("UICorner", executeBtn).CornerRadius = UDim.new(1, 0)
 	AddPressBounce(executeBtn)
 	-- AddHoverStroke(row, executeBtn) -- highlighting disabled for now while the pop animation gets sorted out
-	AddPopTarget(executeBtn)
 	ScriptRunner.Buttons[gameTitle] = executeBtn
 
 	executeBtn.MouseButton1Click:Connect(function()
@@ -3472,7 +3395,6 @@ function CreateUtilityRow(parent, y, title, url)
 	row.BorderSizePixel = 0
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
-	local AddPopTarget = CreateHoverPopGroup(row)
 
 	local titleLabel = Instance.new("TextLabel")
 	titleLabel.Name = "TitleLabel"
@@ -3486,7 +3408,6 @@ function CreateUtilityRow(parent, y, title, url)
 	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 	titleLabel.TextYAlignment = Enum.TextYAlignment.Center
 	titleLabel.Parent = row
-	AddPopTarget(titleLabel, true)
 
 	local destroyBtn = Instance.new("TextButton")
 	destroyBtn.Name = "DestroyButton"
@@ -3504,7 +3425,6 @@ function CreateUtilityRow(parent, y, title, url)
 	Instance.new("UICorner", destroyBtn).CornerRadius = UDim.new(1, 0)
 	AddPressBounce(destroyBtn)
 	-- AddHoverStroke(row, destroyBtn) -- highlighting disabled for now while the pop animation gets sorted out
-	AddPopTarget(destroyBtn)
 
 	local executeBtn = Instance.new("TextButton")
 	executeBtn.Name = "ExecuteButton"
@@ -3521,7 +3441,6 @@ function CreateUtilityRow(parent, y, title, url)
 	Instance.new("UICorner", executeBtn).CornerRadius = UDim.new(1, 0)
 	AddPressBounce(executeBtn)
 	-- AddHoverStroke(row, executeBtn) -- highlighting disabled for now while the pop animation gets sorted out
-	AddPopTarget(executeBtn)
 
 	local trackedInstances = {}
 	local busy = false
@@ -3576,7 +3495,7 @@ ScriptsPage.CanvasSize = UDim2.new(0, 0, 0, 268)
 -- this point in the file, so wiring it here would silently fall through to nil.
 -- Left un-declared (not a top-level local) so it falls back to a global.
 do
-	local SettingsPage = CreateTab("Settings", 7, "132212578355544", true)
+	local SettingsPage = CreateTab("Settings", 8, "132212578355544", true)
 
 	-- Gui Fade: while minimized and left alone (not hovered) for a couple seconds, the mini
 	-- circle fades down to a low, unobtrusive opacity so it sits out of the way. The actual
@@ -3642,7 +3561,7 @@ do
 	LocalCountLabel.Position = UDim2.new(1, -68, 0, SETTINGS_TOP + 144)
 	LocalCountLabel.BackgroundTransparency = 1
 	LocalCountLabel.BorderSizePixel = 0
-	LocalCountLabel.Text = "129 / 200"
+	LocalCountLabel.Text = "127 / 200"
 	LocalCountLabel.Font = UIFont
 	LocalCountLabel.TextSize = 7
 	LocalCountLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
