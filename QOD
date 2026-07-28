@@ -117,6 +117,44 @@ TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = PanelFrame
 
+-- Small shared polish helpers -- hover brighten, a tactile press-down "squish", and a
+-- divider that fades out at both ends instead of a flat bar. Same visual pass as the main
+-- hub, ported here for a consistent feel across every panel. AddHoverStroke (highlights
+-- just a row's actual control, not the whole row) is defined further below, once
+-- ToggleOnColor exists.
+local function AddButtonHover(button, hoverColor, normalColor)
+	normalColor = normalColor or button.BackgroundColor3
+	button.MouseEnter:Connect(function()
+		TweenService:Create(button, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = hoverColor}):Play()
+	end)
+	button.MouseLeave:Connect(function()
+		TweenService:Create(button, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = normalColor}):Play()
+	end)
+end
+
+local function AddPressBounce(button)
+	local scale = Instance.new("UIScale")
+	scale.Parent = button
+	local function release()
+		TweenService:Create(scale, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+	end
+	button.MouseButton1Down:Connect(function()
+		TweenService:Create(scale, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 0.94}):Play()
+	end)
+	button.MouseButton1Up:Connect(release)
+	button.MouseLeave:Connect(release)
+end
+
+local function AddFadeDivider(divider)
+	local gradient = Instance.new("UIGradient")
+	gradient.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(0.5, 0),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	gradient.Parent = divider
+end
+
 local MinimizeButton = Instance.new("TextButton")
 MinimizeButton.Name = "MinimizeButton"
 MinimizeButton.Size = UDim2.new(0, 20, 0, 20)
@@ -130,6 +168,13 @@ MinimizeButton.TextSize = 14
 MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 MinimizeButton.Parent = PanelFrame
 Instance.new("UICorner", MinimizeButton).CornerRadius = UDim.new(1, 0)
+MinimizeButton.MouseEnter:Connect(function()
+	TweenService:Create(MinimizeButton, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.1, BackgroundColor3 = Color3.fromRGB(65, 65, 65)}):Play()
+end)
+MinimizeButton.MouseLeave:Connect(function()
+	TweenService:Create(MinimizeButton, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.4, BackgroundColor3 = Color3.fromRGB(45, 45, 45)}):Play()
+end)
+AddPressBounce(MinimizeButton)
 
 local CloseButton = Instance.new("TextButton")
 CloseButton.Name = "CloseButton"
@@ -144,6 +189,13 @@ CloseButton.TextSize = 13
 CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 CloseButton.Parent = PanelFrame
 Instance.new("UICorner", CloseButton).CornerRadius = UDim.new(1, 0)
+CloseButton.MouseEnter:Connect(function()
+	TweenService:Create(CloseButton, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.1, BackgroundColor3 = Color3.fromRGB(220, 75, 75)}):Play()
+end)
+CloseButton.MouseLeave:Connect(function()
+	TweenService:Create(CloseButton, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.4, BackgroundColor3 = Color3.fromRGB(200, 60, 60)}):Play()
+end)
+AddPressBounce(CloseButton)
 
 local HeaderDivider = Instance.new("Frame")
 HeaderDivider.Name = "HeaderDivider"
@@ -152,6 +204,7 @@ HeaderDivider.Position = UDim2.new(0, 0, 0, MINI_HEIGHT)
 HeaderDivider.BackgroundColor3 = AccentColor
 HeaderDivider.BackgroundTransparency = 0.85
 HeaderDivider.Parent = PanelFrame
+AddFadeDivider(HeaderDivider)
 
 -- Content scrolls (so extra features never get cut off by the fixed panel height) and every
 -- row is spaced out via UIListLayout instead of hand-placed Y offsets.
@@ -191,6 +244,25 @@ ContentPadding.Parent = ContentScroll
 local ToggleOffColor = Color3.fromRGB(50, 50, 50)
 local ToggleOnColor = Color3.fromRGB(178, 155, 235)
 local ToggleKnobColor = Color3.fromRGB(238, 233, 250)
+
+-- Faint accent stroke that fades in on hover, on the row's actual control (the toggle
+-- switch) rather than the row itself -- trigger is what registers the mouse-over (the
+-- whole row, a bigger/easier target), target is what shows the highlight.
+local function AddHoverStroke(trigger, target)
+	target = target or trigger
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = ToggleOnColor
+	stroke.Transparency = 1
+	stroke.Thickness = 1.5
+	stroke.Parent = target
+	trigger.MouseEnter:Connect(function()
+		TweenService:Create(stroke, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.25}):Play()
+	end)
+	trigger.MouseLeave:Connect(function()
+		TweenService:Create(stroke, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 1}):Play()
+	end)
+end
+
 local function StyleAsToggleSwitch(toggle)
 	toggle.AutoButtonColor = false
 	toggle.TextTransparency = 1
@@ -273,6 +345,8 @@ local function CreateFeatureRow(order, labelText, parent)
 	toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
 	toggle.Parent = row
 	StyleAsToggleSwitch(toggle)
+	AddPressBounce(toggle)
+	AddHoverStroke(row, toggle)
 
 	return row, toggle
 end
