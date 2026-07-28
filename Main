@@ -1156,10 +1156,13 @@ do
 	-- reassign a prompt's HoldDuration right as it becomes visible/in-range, undoing our
 	-- one-time fix before you ever get to hold it. Re-asserting on PromptShown as well (fires
 	-- whenever a prompt enters view/range, right before the player can interact with it)
-	-- closes that gap without needing an expensive full-tree sweep every frame. Deliberately
-	-- doesn't restore original HoldDurations on toggle-off (same tradeoff as NoClip's
-	-- CanCollide above) -- once a prompt's been sped up it stays that way.
+	-- closes that gap without needing an expensive full-tree sweep every frame. Toggling it
+	-- off mid-session still doesn't restore already-sped-up prompts (same tradeoff as
+	-- NoClip's CanCollide above), but closing the hub entirely does -- OriginalPromptValues
+	-- remembers whatever each touched prompt's real HoldDuration/RequiresLineOfSight was so
+	-- DisableInstantPrompt (called from DestroyGui) can put every one of them back.
 	local InstantPromptEnabled = false
+	local OriginalPromptValues = {}
 	InstantPromptKeybind = Enum.KeyCode.Unknown
 
 	local INSTANT_PROMPT_TOP = NOCLIP_SECTION_BOTTOM + SECTION_GAP
@@ -1169,8 +1172,18 @@ do
 
 	local ProximityPromptService = game:GetService("ProximityPromptService")
 
+	local function RememberPrompt(prompt)
+		if not OriginalPromptValues[prompt] then
+			OriginalPromptValues[prompt] = {
+				HoldDuration = prompt.HoldDuration,
+				RequiresLineOfSight = prompt.RequiresLineOfSight,
+			}
+		end
+	end
+
 	local function OptimizePrompt(object)
 		if InstantPromptEnabled and object:IsA("ProximityPrompt") then
+			RememberPrompt(object)
 			object.HoldDuration = 0
 			object.RequiresLineOfSight = false
 		end
@@ -1190,13 +1203,31 @@ do
 	game.DescendantAdded:Connect(OptimizePrompt)
 	ProximityPromptService.PromptShown:Connect(function(prompt)
 		if InstantPromptEnabled then
+			RememberPrompt(prompt)
 			prompt.HoldDuration = 0
 			prompt.RequiresLineOfSight = false
 		end
 	end)
 	ProximityPromptService.PromptButtonHoldBegan:Connect(function(prompt)
-		if InstantPromptEnabled then prompt.HoldDuration = 0 end
+		if InstantPromptEnabled then
+			RememberPrompt(prompt)
+			prompt.HoldDuration = 0
+		end
 	end)
+
+	-- DestroyGui (far below) can't reach any of the above directly -- it's all scoped to
+	-- this block to stay under Luau's 200-local cap -- so it calls this instead, which
+	-- turns the feature off and hands every touched prompt its real values back.
+	DisableInstantPrompt = function()
+		InstantPromptEnabled = false
+		for prompt, original in pairs(OriginalPromptValues) do
+			if prompt.Parent then
+				prompt.HoldDuration = original.HoldDuration
+				prompt.RequiresLineOfSight = original.RequiresLineOfSight
+			end
+		end
+		OriginalPromptValues = {}
+	end
 
 	PlayerPage.CanvasSize = UDim2.new(0, 0, 0, INSTANT_PROMPT_SECTION_BOTTOM + 16)
 
@@ -3432,6 +3463,7 @@ function DestroyGui()
 	NoclipEnabled = false
 	if FlyBodyVelocity then FlyBodyVelocity:Destroy() FlyBodyVelocity = nil end
 	if FlyBodyGyro then FlyBodyGyro:Destroy() FlyBodyGyro = nil end
+	if DisableInstantPrompt then DisableInstantPrompt() end
 	DisableFreeCam()
 	if workspace.CurrentCamera then workspace.CurrentCamera.FieldOfView = DEFAULT_FOV end
 	OutlineESPEnabled = false
