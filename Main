@@ -239,6 +239,73 @@ task.spawn(function()
 	if MainFrame then MainFrame.Visible = true end
 end)
 
+-- Small shared polish helpers -- hover brighten, a tactile press-down "squish", a faint
+-- card stroke + hover glow for rows, and a divider that fades out at both ends instead of
+-- a flat bar. Defined up here (ahead of MiniButton/GuiDestroyButton/CreateTab/the row
+-- builders, all of which use these) so every call site below has them available. Applied
+-- everywhere below so the hub reads as one consistent, slightly more alive interface
+-- instead of static flat panels.
+function AddButtonHover(button, hoverColor, normalColor)
+	normalColor = normalColor or button.BackgroundColor3
+	button.MouseEnter:Connect(function()
+		TweenService:Create(button, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = hoverColor}):Play()
+	end)
+	button.MouseLeave:Connect(function()
+		TweenService:Create(button, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = normalColor}):Play()
+	end)
+end
+
+-- UIScale tweened down on press and eased back out (slight overshoot via Back easing) on
+-- release/MouseLeave -- only valid on actual GuiButtons (Down/Up events), never plain Frames.
+function AddPressBounce(button)
+	local scale = Instance.new("UIScale")
+	scale.Parent = button
+	local function release()
+		TweenService:Create(scale, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+	end
+	button.MouseButton1Down:Connect(function()
+		TweenService:Create(scale, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 0.94}):Play()
+	end)
+	button.MouseButton1Up:Connect(release)
+	button.MouseLeave:Connect(release)
+end
+
+-- Faint stroke + a slight brighten on hover so rows read as raised cards instead of flat
+-- fills. Only touches BackgroundColor3 -- the row-transparency slider in Settings still
+-- owns BackgroundTransparency on these same frames, untouched here.
+function AddRowCard(row)
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(255, 255, 255)
+	stroke.Transparency = 0.93
+	stroke.Thickness = 1
+	stroke.Parent = row
+
+	local baseColor = row.BackgroundColor3
+	local hoverColor = Color3.fromRGB(
+		math.min(255, baseColor.R * 255 + 12),
+		math.min(255, baseColor.G * 255 + 12),
+		math.min(255, baseColor.B * 255 + 12)
+	)
+	row.MouseEnter:Connect(function()
+		TweenService:Create(row, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = hoverColor}):Play()
+		TweenService:Create(stroke, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.75}):Play()
+	end)
+	row.MouseLeave:Connect(function()
+		TweenService:Create(row, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = baseColor}):Play()
+		TweenService:Create(stroke, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.93}):Play()
+	end)
+end
+
+function AddFadeDivider(divider)
+	local gradient = Instance.new("UIGradient")
+	gradient.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(0.5, 0),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	gradient.Parent = divider
+end
+
 MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Size = FULL_SIZE
@@ -255,6 +322,16 @@ MainFrame.Parent = ScreenGui
 local MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = UDim.new(0, 14)
 MainCorner.Parent = MainFrame
+
+-- Very subtle top-to-bottom depth instead of one dead-flat fill -- a few RGB units either
+-- side of FrameColor, nothing loud enough to fight the content sitting on top of it.
+local MainGradient = Instance.new("UIGradient")
+MainGradient.Rotation = 90
+MainGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(38, 38, 38)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(22, 22, 22)),
+})
+MainGradient.Parent = MainFrame
 
 -- Header: live local clock, title, minimize + destroy buttons -- all top-anchored so a
 -- minimize shrinks the window straight up toward this row instead of shrinking from the
@@ -313,6 +390,13 @@ MiniButton.TextSize = 14
 MiniButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 MiniButton.Parent = MainFrame
 Instance.new("UICorner", MiniButton).CornerRadius = UDim.new(1, 0)
+MiniButton.MouseEnter:Connect(function()
+	TweenService:Create(MiniButton, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.1, BackgroundColor3 = Color3.fromRGB(65, 65, 65)}):Play()
+end)
+MiniButton.MouseLeave:Connect(function()
+	TweenService:Create(MiniButton, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.4, BackgroundColor3 = Color3.fromRGB(45, 45, 45)}):Play()
+end)
+AddPressBounce(MiniButton)
 
 local GuiDestroyButton = Instance.new("TextButton")
 GuiDestroyButton.Name = "GuiDestroyButton"
@@ -327,6 +411,13 @@ GuiDestroyButton.TextSize = 13
 GuiDestroyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 GuiDestroyButton.Parent = MainFrame
 Instance.new("UICorner", GuiDestroyButton).CornerRadius = UDim.new(1, 0)
+GuiDestroyButton.MouseEnter:Connect(function()
+	TweenService:Create(GuiDestroyButton, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.1, BackgroundColor3 = Color3.fromRGB(220, 75, 75)}):Play()
+end)
+GuiDestroyButton.MouseLeave:Connect(function()
+	TweenService:Create(GuiDestroyButton, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.4, BackgroundColor3 = Color3.fromRGB(200, 60, 60)}):Play()
+end)
+AddPressBounce(GuiDestroyButton)
 
 -- "Are you sure?" confirmation for the destroy button -- centered over the hub window
 -- (recomputed against MainFrame's current position each time it's shown, since the window
@@ -371,6 +462,7 @@ DestroyConfirmYes.TextColor3 = Color3.fromRGB(255, 255, 255)
 DestroyConfirmYes.ZIndex = 51
 DestroyConfirmYes.Parent = DestroyConfirmPopup
 Instance.new("UICorner", DestroyConfirmYes).CornerRadius = UDim.new(1, 0)
+AddPressBounce(DestroyConfirmYes)
 
 local DestroyConfirmNo = Instance.new("TextButton")
 DestroyConfirmNo.Size = UDim2.new(0, 90, 0, 32)
@@ -384,6 +476,7 @@ DestroyConfirmNo.TextColor3 = Color3.fromRGB(255, 255, 255)
 DestroyConfirmNo.ZIndex = 51
 DestroyConfirmNo.Parent = DestroyConfirmPopup
 Instance.new("UICorner", DestroyConfirmNo).CornerRadius = UDim.new(1, 0)
+AddPressBounce(DestroyConfirmNo)
 
 local HeaderDivider = Instance.new("Frame")
 HeaderDivider.Name = "HeaderDivider"
@@ -393,6 +486,7 @@ HeaderDivider.BackgroundColor3 = AccentColor
 HeaderDivider.BackgroundTransparency = 0.85
 HeaderDivider.BorderSizePixel = 0
 HeaderDivider.Parent = MainFrame
+AddFadeDivider(HeaderDivider)
 
 -- Tabs -- horizontally scrolling so adding more tabs later never crowds the bar; they
 -- just keep their full width and the row scrolls instead of squeezing.
@@ -426,6 +520,7 @@ TabDivider.BackgroundColor3 = AccentColor
 TabDivider.BackgroundTransparency = 0.85
 TabDivider.BorderSizePixel = 0
 TabDivider.Parent = MainFrame
+AddFadeDivider(TabDivider)
 
 local CONTENT_TOP = TAB_BAR_BOTTOM + 8 + 1 + 8
 local ContentArea = Instance.new("Frame")
@@ -437,16 +532,18 @@ ContentArea.Parent = MainFrame
 
 local Tabs = {}
 function SelectTab(name)
+	local tabTweenInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 	for tabName, entry in pairs(Tabs) do
 		local isSelected = tabName == name
 		entry.Page.Visible = isSelected
 		-- Button.BackgroundColor3 is already the same purple the toggle switches fill with
 		-- when On -- it just read as a faint tint at 0.85 transparency. Dropping
 		-- transparency way down makes it read as a solid purple pill; the label switches to
-		-- dark text so it stays legible against that lighter fill.
-		entry.Button.BackgroundTransparency = isSelected and 0.1 or 1
+		-- dark text so it stays legible against that lighter fill. Tweened instead of an
+		-- instant snap so switching tabs reads as a soft fade, not a hard cut.
+		TweenService:Create(entry.Button, tabTweenInfo, {BackgroundTransparency = isSelected and 0.1 or 1}):Play()
 		if entry.Label then
-			entry.Label.TextColor3 = isSelected and Color3.fromRGB(20, 20, 20) or Color3.fromRGB(255, 255, 255)
+			TweenService:Create(entry.Label, tabTweenInfo, {TextColor3 = isSelected and Color3.fromRGB(20, 20, 20) or Color3.fromRGB(255, 255, 255)}):Play()
 		end
 	end
 end
@@ -480,6 +577,7 @@ function CreateTab(name, order, iconId, scrolling)
 	button.Text = ""
 	button.Parent = TabBar
 	Instance.new("UICorner", button).CornerRadius = UDim.new(1, 0)
+	AddPressBounce(button)
 
 	local content = Instance.new("Frame")
 	content.Name = "Content"
@@ -608,6 +706,7 @@ function CreateStrengthRow(parent, y, rowLabelText, defaultValue)
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 	table.insert(RowTransparencyTargets, row)
+	AddRowCard(row)
 
 	local rowLabel = Instance.new("TextLabel")
 	rowLabel.Name = "RowLabel"
@@ -749,6 +848,7 @@ function CreateKeybindButton(parent, storageKey, onKeybindChanged, defaultKeyCod
 	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	btn.Parent = parent
 	Instance.new("UICorner", btn).CornerRadius = UDim.new(1, 0)
+	AddPressBounce(btn)
 
 	local loadedKey = (defaultKeyCode and SavedKeybinds[storageKey] == nil) and defaultKeyCode or LoadFeatureKeybind(storageKey)
 	btn.Text = KeybindText(loadedKey)
@@ -851,6 +951,7 @@ function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, def
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 	table.insert(RowTransparencyTargets, row)
+	AddRowCard(row)
 
 	local rowLabel = Instance.new("TextLabel")
 	rowLabel.Name = "RowLabel"
@@ -876,6 +977,7 @@ function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, def
 	toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
 	toggle.Parent = row
 	StyleAsToggleSwitch(toggle)
+	AddPressBounce(toggle)
 
 	local keybindBtn = CreateKeybindButton(row, storageKey, onKeybindChanged, defaultKeyCode)
 
@@ -3147,6 +3249,7 @@ function CreateGameRow(parent, y, gameTitle, url)
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 	table.insert(RowTransparencyTargets, row)
+	AddRowCard(row)
 
 	local titleLabel = Instance.new("TextLabel")
 	titleLabel.Name = "TitleLabel"
@@ -3174,6 +3277,7 @@ function CreateGameRow(parent, y, gameTitle, url)
 	executeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	executeBtn.Parent = row
 	Instance.new("UICorner", executeBtn).CornerRadius = UDim.new(1, 0)
+	AddPressBounce(executeBtn)
 	ScriptRunner.Buttons[gameTitle] = executeBtn
 
 	executeBtn.MouseButton1Click:Connect(function()
@@ -3225,6 +3329,7 @@ function CreateUtilityRow(parent, y, title, url)
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 	table.insert(RowTransparencyTargets, row)
+	AddRowCard(row)
 
 	local titleLabel = Instance.new("TextLabel")
 	titleLabel.Name = "TitleLabel"
@@ -3253,6 +3358,7 @@ function CreateUtilityRow(parent, y, title, url)
 	destroyBtn.Visible = false
 	destroyBtn.Parent = row
 	Instance.new("UICorner", destroyBtn).CornerRadius = UDim.new(1, 0)
+	AddPressBounce(destroyBtn)
 
 	local executeBtn = Instance.new("TextButton")
 	executeBtn.Name = "ExecuteButton"
@@ -3267,6 +3373,7 @@ function CreateUtilityRow(parent, y, title, url)
 	executeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	executeBtn.Parent = row
 	Instance.new("UICorner", executeBtn).CornerRadius = UDim.new(1, 0)
+	AddPressBounce(executeBtn)
 
 	local trackedInstances = {}
 	local busy = false
