@@ -293,6 +293,22 @@ function AddHoverStroke(trigger, target)
 	end)
 end
 
+-- Quick "pop" -- row scales up a hair on hover and springs back down on leave, on top of
+-- whatever control-level stroke highlight is also happening. Scales from the row's own
+-- top-left (these rows use fixed Position offsets, not centered anchors), so it grows
+-- toward the bottom-right -- at this small a scale that's imperceptible as directional,
+-- just reads as a brief pop.
+function AddHoverPop(row)
+	local scale = Instance.new("UIScale")
+	scale.Parent = row
+	row.MouseEnter:Connect(function()
+		TweenService:Create(scale, TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1.025}):Play()
+	end)
+	row.MouseLeave:Connect(function()
+		TweenService:Create(scale, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 1}):Play()
+	end)
+end
+
 function AddFadeDivider(divider)
 	local gradient = Instance.new("UIGradient")
 	gradient.Transparency = NumberSequence.new({
@@ -319,6 +335,16 @@ MainFrame.Parent = ScreenGui
 local MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = UDim.new(0, 14)
 MainCorner.Parent = MainFrame
+
+-- Very subtle top-to-bottom depth instead of one dead-flat fill -- a few RGB units either
+-- side of FrameColor, nothing loud enough to fight the content sitting on top of it.
+local MainGradient = Instance.new("UIGradient")
+MainGradient.Rotation = 90
+MainGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(38, 38, 38)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(22, 22, 22)),
+})
+MainGradient.Parent = MainFrame
 
 -- Header: live local clock, title, minimize + destroy buttons -- all top-anchored so a
 -- minimize shrinks the window straight up toward this row instead of shrinking from the
@@ -697,6 +723,7 @@ function CreateStrengthRow(parent, y, rowLabelText, defaultValue)
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 	table.insert(RowTransparencyTargets, row)
+	AddHoverPop(row)
 
 	local rowLabel = Instance.new("TextLabel")
 	rowLabel.Name = "RowLabel"
@@ -942,6 +969,7 @@ function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, def
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 	table.insert(RowTransparencyTargets, row)
+	AddHoverPop(row)
 
 	local rowLabel = Instance.new("TextLabel")
 	rowLabel.Name = "RowLabel"
@@ -970,8 +998,10 @@ function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, def
 	AddPressBounce(toggle)
 	AddHoverStroke(row, toggle)
 
+	-- Keybind button shows real text (the bound key, e.g. "L Alt") -- no hover stroke here,
+	-- only on the toggle switch above (a plain oval with no visible label), so the highlight
+	-- never ends up looking like it's boxing in a word instead of tracing a shape.
 	local keybindBtn = CreateKeybindButton(row, storageKey, onKeybindChanged, defaultKeyCode)
-	AddHoverStroke(row, keybindBtn)
 
 	return toggle, keybindBtn
 end
@@ -3241,6 +3271,7 @@ function CreateGameRow(parent, y, gameTitle, url)
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 	table.insert(RowTransparencyTargets, row)
+	AddHoverPop(row)
 
 	local titleLabel = Instance.new("TextLabel")
 	titleLabel.Name = "TitleLabel"
@@ -3321,6 +3352,7 @@ function CreateUtilityRow(parent, y, title, url)
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 	table.insert(RowTransparencyTargets, row)
+	AddHoverPop(row)
 
 	local titleLabel = Instance.new("TextLabel")
 	titleLabel.Name = "TitleLabel"
