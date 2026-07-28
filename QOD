@@ -266,15 +266,29 @@ local ToggleKnobColor = Color3.fromRGB(238, 233, 250)
 
 -- Quick "pop" -- the actual toggle scales up a hair on hover and springs back down on
 -- leave, never the row itself, so the row's label text never moves.
-local function AddHoverPop(trigger, target)
-	target = target or trigger
-	local scale = GetOrCreateUIScale(target)
+-- A row with several pop targets (toggle, title label, extra buttons like the Auto Farm
+-- Edit button) used to give each its own independent trigger.MouseEnter/MouseLeave pair --
+-- but hovering one child control and moving to a sibling can spuriously re-fire the row's
+-- own MouseEnter/MouseLeave in between (Roblox routing quirk with overlapping GuiObjects),
+-- which could leave one target popped and another not. Grouping every target under ONE
+-- shared listener pair guarantees they always animate together.
+local function CreateHoverPopGroup(trigger)
+	local targets = {}
 	trigger.MouseEnter:Connect(function()
-		TweenService:Create(scale, TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1.08}):Play()
+		local tweenInfo = TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+		for _, target in ipairs(targets) do
+			TweenService:Create(GetOrCreateUIScale(target), tweenInfo, {Scale = 1.08}):Play()
+		end
 	end)
 	trigger.MouseLeave:Connect(function()
-		TweenService:Create(scale, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 1}):Play()
+		local tweenInfo = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		for _, target in ipairs(targets) do
+			TweenService:Create(GetOrCreateUIScale(target), tweenInfo, {Scale = 1}):Play()
+		end
 	end)
+	return function(target)
+		table.insert(targets, target)
+	end
 end
 
 local function StyleAsToggleSwitch(toggle)
@@ -334,6 +348,7 @@ local function CreateFeatureRow(order, labelText, parent)
 	row.BorderSizePixel = 0
 	row.Parent = parent or ContentScroll
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+	local AddPopTarget = CreateHoverPopGroup(row)
 
 	local label = Instance.new("TextLabel")
 	label.Name = "Label"
@@ -347,6 +362,7 @@ local function CreateFeatureRow(order, labelText, parent)
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextYAlignment = Enum.TextYAlignment.Center
 	label.Parent = row
+	AddPopTarget(label)
 
 	local toggle = Instance.new("TextButton")
 	toggle.Name = "Toggle"
@@ -363,13 +379,16 @@ local function CreateFeatureRow(order, labelText, parent)
 	-- No hover stroke on the toggle itself -- the knob sits almost flush against the pill's
 	-- rounded end, and a stroke curving tightly around that same corner was reading as a
 	-- stray mark/"text" inside the switch. The pop below is enough feedback on its own.
-	AddHoverPop(row, toggle)
+	AddPopTarget(toggle)
 
-	return row, toggle
+	-- Third return value lets a caller that bolts an extra button onto this same row
+	-- afterward (e.g. Auto Farm's Edit button) join this same pop group instead of popping
+	-- independently/out of sync.
+	return row, toggle, AddPopTarget
 end
 
 local KillRow, KillToggle = CreateFeatureRow(1, "Auto Kill")
-local FarmRow, FarmToggle = CreateFeatureRow(2, "Auto Farm")
+local FarmRow, FarmToggle, AddFarmPopTarget = CreateFeatureRow(2, "Auto Farm")
 local ReviveRow, ReviveToggle = CreateFeatureRow(3, "Auto Revive")
 
 -- Auto Farm's Edit button: tucked to the left of its toggle, opens a small popup holding
@@ -388,6 +407,8 @@ FarmEditButton.TextSize = 12
 FarmEditButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 FarmEditButton.Parent = FarmRow
 Instance.new("UICorner", FarmEditButton).CornerRadius = UDim.new(1, 0)
+AddPressBounce(FarmEditButton)
+AddFarmPopTarget(FarmEditButton)
 
 local FARM_POPUP_WIDTH, FARM_POPUP_HEIGHT = 220, 190
 local FarmOptionsPopup = Instance.new("Frame")
