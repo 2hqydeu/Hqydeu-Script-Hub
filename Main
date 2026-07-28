@@ -640,11 +640,11 @@ function CreateTab(name, order, iconId, scrolling)
 		page = Instance.new("Frame")
 	end
 	page.Name = name .. "Page"
-	-- Scrolling pages get a small right-side inset so rows (which fill 100% of the page's
-	-- own width) stop short of the scrollbar instead of running underneath it -- without
-	-- this, the scrollbar overlaps the last few pixels of every row's right edge. Widened
-	-- from the original 8px -- that wasn't enough clearance to stop the overlap everywhere.
-	page.Size = scrolling and UDim2.new(1, -14, 1, 0) or UDim2.new(1, 0, 1, 0)
+	-- Shrinking the page itself made it sit off-center (asymmetric margins vs. the rest of
+	-- the window) without actually fixing the scrollbar overlap -- back to full width and
+	-- symmetric. Rows themselves are narrowed instead (see CreateStrengthRow etc.) so their
+	-- own right edge clears the scrollbar without throwing the page off-center.
+	page.Size = UDim2.new(1, 0, 1, 0)
 	page.BackgroundTransparency = 1
 	page.BorderSizePixel = 0
 	page.Visible = false
@@ -717,7 +717,10 @@ end
 function CreateStrengthRow(parent, y, rowLabelText, defaultValue)
 	local row = Instance.new("Frame")
 	row.Name = rowLabelText .. "Row"
-	row.Size = UDim2.new(1, 0, 0, 52)
+	-- Narrowed from the full 100% width -- otherwise the row's own right edge sits exactly
+	-- where the scrollbar renders, covering the last few pixels (including the rounded
+	-- corner) instead of leaving it visible.
+	row.Size = UDim2.new(1, -10, 0, 52)
 	row.Position = UDim2.new(0, 0, 0, y)
 	row.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 	row.BackgroundTransparency = RowTransparencyValue / 100
@@ -963,7 +966,10 @@ end
 function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, defaultKeyCode)
 	local row = Instance.new("Frame")
 	row.Name = "ToggleRow"
-	row.Size = UDim2.new(1, 0, 0, 52)
+	-- Narrowed from the full 100% width -- otherwise the row's own right edge sits exactly
+	-- where the scrollbar renders, covering the last few pixels (including the rounded
+	-- corner) instead of leaving it visible.
+	row.Size = UDim2.new(1, -10, 0, 52)
 	row.Position = UDim2.new(0, 0, 0, y)
 	row.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 	row.BackgroundTransparency = RowTransparencyValue / 100
@@ -997,7 +1003,10 @@ function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, def
 	toggle.Parent = row
 	StyleAsToggleSwitch(toggle)
 	AddPressBounce(toggle)
-	AddHoverStroke(row, toggle)
+	-- No hover stroke on the toggle itself -- the knob sits almost flush against the pill's
+	-- rounded end, and the stroke curving tightly around that same corner (partly behind,
+	-- partly beside the knob) is what was reading as a stray mark/"text" inside the switch.
+	-- The pop below is enough feedback on its own without that visual conflict.
 	AddHoverPop(row, toggle)
 
 	-- The stroke traces the keybind button's own oval shape, same as the toggle above --
@@ -3267,7 +3276,10 @@ end
 function CreateGameRow(parent, y, gameTitle, url)
 	local row = Instance.new("Frame")
 	row.Name = gameTitle:gsub("%s+", "") .. "Row"
-	row.Size = UDim2.new(1, 0, 0, 44)
+	-- Narrowed from the full 100% width -- otherwise the row's own right edge sits exactly
+	-- where the scrollbar renders, covering the last few pixels (including the rounded
+	-- corner) instead of leaving it visible.
+	row.Size = UDim2.new(1, -10, 0, 44)
 	row.Position = UDim2.new(0, 0, 0, y)
 	row.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 	row.BackgroundTransparency = RowTransparencyValue / 100
@@ -3348,7 +3360,10 @@ CreateGameRow(ScriptsPage, 112, "Murder Mystery 2", "https://raw.githubuserconte
 function CreateUtilityRow(parent, y, title, url)
 	local row = Instance.new("Frame")
 	row.Name = title:gsub("%s+", "") .. "Row"
-	row.Size = UDim2.new(1, 0, 0, 44)
+	-- Narrowed from the full 100% width -- otherwise the row's own right edge sits exactly
+	-- where the scrollbar renders, covering the last few pixels (including the rounded
+	-- corner) instead of leaving it visible.
+	row.Size = UDim2.new(1, -10, 0, 44)
 	row.Position = UDim2.new(0, 0, 0, y)
 	row.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 	row.BackgroundTransparency = RowTransparencyValue / 100
