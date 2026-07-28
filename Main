@@ -157,7 +157,11 @@ function PlayClick() ClickSound:Play() end
 -- Main Window
 local HEADER_HEIGHT = 58
 local FULL_SIZE = UDim2.new(0, 560, 0, 430)
-local MINI_SIZE = UDim2.new(0, 220, 0, HEADER_HEIGHT)
+-- Minimized is now a small circle with nothing in it but the clock -- square so a fully
+-- rounded UICorner (see MainCorner below) renders it as a perfect circle, not a pill.
+local MINI_SIZE = UDim2.new(0, 80, 0, 80)
+local FULL_CORNER = UDim.new(0, 14)
+local MINI_CORNER = UDim.new(1, 0)
 local WINDOW_POSITION = UDim2.new(0.5, -280, 0.5, -215)
 
 -- MainFrame gets built below, but the loading bar needs to run first -- before any of the
@@ -270,8 +274,13 @@ end
 
 -- UIScale tweened down on press and eased back out (slight overshoot via Back easing) on
 -- release/MouseLeave -- only valid on actual GuiButtons (Down/Up events), never plain Frames.
-function AddPressBounce(button)
-	local scale = GetOrCreateUIScale(button)
+-- target defaults to the button itself, but callers whose button is a direct child of a
+-- UIListLayout (e.g. the tab bar) should pass an inner descendant instead -- scaling the
+-- UIListLayout child itself changes the Size Roblox lays siblings out against, which is
+-- exactly what was shoving neighboring tabs sideways every time one got pressed.
+function AddPressBounce(button, target)
+	target = target or button
+	local scale = GetOrCreateUIScale(target)
 	local function release()
 		TweenService:Create(scale, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
 	end
@@ -310,15 +319,31 @@ end
 -- trigger is what registers the mouse-over (the whole row, a bigger/easier target), target
 -- is what actually pops -- deliberately never the row itself, so the row's label/title text
 -- never moves, only the interactive control does.
-function AddHoverPop(trigger, target)
-	target = target or trigger
-	local scale = GetOrCreateUIScale(target)
+-- A row with several pop targets (toggle, keybind button, title label, ...) used to give
+-- each its own independent trigger.MouseEnter/MouseLeave pair -- but hovering over one
+-- child control and moving to a sibling control can spuriously re-fire the row's
+-- MouseEnter/MouseLeave in between (Roblox routing quirk with overlapping GuiObjects),
+-- and since each target's tween was started independently, that could leave one target
+-- popped and another not, out of sync with each other. Grouping every target under ONE
+-- shared listener pair guarantees they always animate together, no matter how many times
+-- the underlying event fires.
+function CreateHoverPopGroup(trigger)
+	local targets = {}
 	trigger.MouseEnter:Connect(function()
-		TweenService:Create(scale, TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1.08}):Play()
+		local tweenInfo = TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+		for _, target in ipairs(targets) do
+			TweenService:Create(GetOrCreateUIScale(target), tweenInfo, {Scale = 1.08}):Play()
+		end
 	end)
 	trigger.MouseLeave:Connect(function()
-		TweenService:Create(scale, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 1}):Play()
+		local tweenInfo = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		for _, target in ipairs(targets) do
+			TweenService:Create(GetOrCreateUIScale(target), tweenInfo, {Scale = 1}):Play()
+		end
 	end)
+	return function(target)
+		table.insert(targets, target)
+	end
 end
 
 function AddFadeDivider(divider)
@@ -345,7 +370,7 @@ MainFrame.Visible = false
 MainFrame.Parent = ScreenGui
 
 local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 14)
+MainCorner.CornerRadius = FULL_CORNER
 MainCorner.Parent = MainFrame
 
 -- Very subtle top-to-bottom depth instead of one dead-flat fill -- a few RGB units either
@@ -360,15 +385,15 @@ MainGradient.Parent = MainFrame
 
 -- Header: live local clock, title, minimize + destroy buttons -- all top-anchored so a
 -- minimize shrinks the window straight up toward this row instead of shrinking from the
--- center. Title/clock stay center-anchored with the buttons while the window is full size;
--- ToggleGUI() (further below) re-anchors both to the top-left, stacked, while minimized,
--- since there isn't room to keep them centered in the collapsed mini window.
+-- center. Minimized is now just a small circle with the clock centered in it -- everything
+-- else (title, minimize/destroy buttons) simply hides, handled in ToggleGUI() below.
 local NORMAL_TITLE_GOAL = {Position = UDim2.new(0.5, 0, 0, HEADER_HEIGHT / 2), Size = UDim2.new(0, 280, 0, 60)}
--- Slid over to the left side of the mini window instead of dead-center (buttons occupy the
--- right side). Position.Y matches HEADER_HEIGHT/2 exactly, the same center-Y the minimize/
--- destroy buttons use, so it's vertically in line with them regardless of how wide it is.
-local MINI_TITLE_GOAL = {Position = UDim2.new(0, 80, 0, HEADER_HEIGHT / 2), Size = UDim2.new(0, 260, 0, 56)}
-local NORMAL_TIME_GOAL = {Position = UDim2.new(0, 16, 0, 23)}
+local NORMAL_TIME_GOAL = {Position = UDim2.new(0, 16, 0, 23), Size = UDim2.new(0, 160, 0, 12)}
+-- Centered in the mini circle (AnchorPoint stays (0,0), so Position is offset by half of
+-- Size to land the label dead-center) -- shrunk and center-aligned so the full "11:59:59
+-- PM" string comfortably fits inside the circle without MainFrame's ClipsDescendants
+-- cutting off the edges.
+local MINI_TIME_GOAL = {Position = UDim2.new(0.5, -36, 0.5, -7), Size = UDim2.new(0, 72, 0, 14)}
 
 local TitleImage = Instance.new("ImageLabel")
 TitleImage.Name = "TitleImage"
@@ -383,7 +408,7 @@ TitleImage.Parent = MainFrame
 local TimeLabel = Instance.new("TextLabel")
 TimeLabel.Name = "TimeLabel"
 TimeLabel.AnchorPoint = Vector2.new(0, 0)
-TimeLabel.Size = UDim2.new(0, 160, 0, 12)
+TimeLabel.Size = NORMAL_TIME_GOAL.Size
 TimeLabel.Position = NORMAL_TIME_GOAL.Position
 TimeLabel.BackgroundTransparency = 1
 TimeLabel.Text = os.date("%I:%M:%S %p")
@@ -602,7 +627,6 @@ function CreateTab(name, order, iconId, scrolling)
 	button.Text = ""
 	button.Parent = TabBar
 	Instance.new("UICorner", button).CornerRadius = UDim.new(1, 0)
-	AddPressBounce(button)
 	-- AddHoverStroke(button) -- highlighting disabled for now while the pop animation gets sorted out
 
 	local content = Instance.new("Frame")
@@ -610,6 +634,10 @@ function CreateTab(name, order, iconId, scrolling)
 	content.Size = UDim2.new(1, 0, 1, 0)
 	content.BackgroundTransparency = 1
 	content.Parent = button
+	-- Bounces "content" (icon + label), not "button" -- button is the direct child the
+	-- TabBar's UIListLayout tracks, so scaling it directly would nudge every tab after it
+	-- sideways each time this one gets pressed.
+	AddPressBounce(button, content)
 
 	local contentLayout = Instance.new("UIListLayout")
 	contentLayout.FillDirection = Enum.FillDirection.Horizontal
@@ -739,6 +767,7 @@ function CreateStrengthRow(parent, y, rowLabelText, defaultValue)
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 	table.insert(RowTransparencyTargets, row)
+	local AddPopTarget = CreateHoverPopGroup(row)
 
 	local rowLabel = Instance.new("TextLabel")
 	rowLabel.Name = "RowLabel"
@@ -752,6 +781,7 @@ function CreateStrengthRow(parent, y, rowLabelText, defaultValue)
 	rowLabel.TextXAlignment = Enum.TextXAlignment.Left
 	rowLabel.TextYAlignment = Enum.TextYAlignment.Center
 	rowLabel.Parent = row
+	AddPopTarget(rowLabel)
 
 	local input = Instance.new("TextBox")
 	input.Name = "Input"
@@ -768,9 +798,12 @@ function CreateStrengthRow(parent, y, rowLabelText, defaultValue)
 	input.Parent = row
 	Instance.new("UICorner", input).CornerRadius = UDim.new(1, 0)
 	-- AddHoverStroke(row, input) -- highlighting disabled for now while the pop animation gets sorted out
-	AddHoverPop(row, input)
+	AddPopTarget(input)
 
-	return input
+	-- Second return value lets a caller that bolts an extra control onto this same row
+	-- afterward (e.g. Speed's CFrame/WalkSpeed mode button) register it into this same
+	-- pop group instead of it popping independently/out of sync with the rest of the row.
+	return input, AddPopTarget
 end
 
 -- Right-click a keybind button to clear it: a small "Remove keybind?" popup with
@@ -988,6 +1021,7 @@ function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, def
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 	table.insert(RowTransparencyTargets, row)
+	local AddPopTarget = CreateHoverPopGroup(row)
 
 	local rowLabel = Instance.new("TextLabel")
 	rowLabel.Name = "RowLabel"
@@ -1001,6 +1035,7 @@ function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, def
 	rowLabel.TextXAlignment = Enum.TextXAlignment.Left
 	rowLabel.TextYAlignment = Enum.TextYAlignment.Center
 	rowLabel.Parent = row
+	AddPopTarget(rowLabel)
 
 	local toggle = Instance.new("TextButton")
 	toggle.Name = "Toggle"
@@ -1018,14 +1053,14 @@ function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, def
 	-- rounded end, and the stroke curving tightly around that same corner (partly behind,
 	-- partly beside the knob) is what was reading as a stray mark/"text" inside the switch.
 	-- The pop below is enough feedback on its own without that visual conflict.
-	AddHoverPop(row, toggle)
+	AddPopTarget(toggle)
 
 	-- The stroke traces the keybind button's own oval shape, same as the toggle above --
 	-- it never touches the button's Text/TextColor3, so the bound-key label ("L Alt")
 	-- itself never gets highlighted, only the pill it sits inside.
 	local keybindBtn = CreateKeybindButton(row, storageKey, onKeybindChanged, defaultKeyCode)
 	-- AddHoverStroke(row, keybindBtn) -- highlighting disabled for now while the pop animation gets sorted out
-	AddHoverPop(row, keybindBtn)
+	AddPopTarget(keybindBtn)
 
 	return toggle, keybindBtn
 end
@@ -1050,7 +1085,7 @@ do
 	SpeedKeybind = Enum.KeyCode.Unknown
 
 	CreateSectionHeading(PlayerPage, 8, "Speed")
-	local SpeedInput = CreateStrengthRow(PlayerPage, 38, "Speed Strength", SpeedValue)
+	local SpeedInput, AddSpeedPopTarget = CreateStrengthRow(PlayerPage, 38, "Speed Strength", SpeedValue)
 	local SpeedToggle = CreateToggleRow(PlayerPage, 98, "SpeedKeybind", function(k) SpeedKeybind = k end)
 
 	-- Mode used to be its own full-width row below; squished down to a single button the
@@ -1068,6 +1103,8 @@ do
 	SpeedModeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 	SpeedModeButton.Parent = SpeedInput.Parent
 	Instance.new("UICorner", SpeedModeButton).CornerRadius = UDim.new(1, 0)
+	AddPressBounce(SpeedModeButton)
+	AddSpeedPopTarget(SpeedModeButton)
 
 	local function ApplySpeed()
 		local character = Player.Character
@@ -3298,6 +3335,7 @@ function CreateGameRow(parent, y, gameTitle, url)
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 	table.insert(RowTransparencyTargets, row)
+	local AddPopTarget = CreateHoverPopGroup(row)
 
 	local titleLabel = Instance.new("TextLabel")
 	titleLabel.Name = "TitleLabel"
@@ -3311,6 +3349,7 @@ function CreateGameRow(parent, y, gameTitle, url)
 	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 	titleLabel.TextYAlignment = Enum.TextYAlignment.Center
 	titleLabel.Parent = row
+	AddPopTarget(titleLabel)
 
 	local executeBtn = Instance.new("TextButton")
 	executeBtn.Name = "ExecuteButton"
@@ -3327,7 +3366,7 @@ function CreateGameRow(parent, y, gameTitle, url)
 	Instance.new("UICorner", executeBtn).CornerRadius = UDim.new(1, 0)
 	AddPressBounce(executeBtn)
 	-- AddHoverStroke(row, executeBtn) -- highlighting disabled for now while the pop animation gets sorted out
-	AddHoverPop(row, executeBtn)
+	AddPopTarget(executeBtn)
 	ScriptRunner.Buttons[gameTitle] = executeBtn
 
 	executeBtn.MouseButton1Click:Connect(function()
@@ -3382,6 +3421,7 @@ function CreateUtilityRow(parent, y, title, url)
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 	table.insert(RowTransparencyTargets, row)
+	local AddPopTarget = CreateHoverPopGroup(row)
 
 	local titleLabel = Instance.new("TextLabel")
 	titleLabel.Name = "TitleLabel"
@@ -3395,6 +3435,7 @@ function CreateUtilityRow(parent, y, title, url)
 	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 	titleLabel.TextYAlignment = Enum.TextYAlignment.Center
 	titleLabel.Parent = row
+	AddPopTarget(titleLabel)
 
 	local destroyBtn = Instance.new("TextButton")
 	destroyBtn.Name = "DestroyButton"
@@ -3412,7 +3453,7 @@ function CreateUtilityRow(parent, y, title, url)
 	Instance.new("UICorner", destroyBtn).CornerRadius = UDim.new(1, 0)
 	AddPressBounce(destroyBtn)
 	-- AddHoverStroke(row, destroyBtn) -- highlighting disabled for now while the pop animation gets sorted out
-	AddHoverPop(row, destroyBtn)
+	AddPopTarget(destroyBtn)
 
 	local executeBtn = Instance.new("TextButton")
 	executeBtn.Name = "ExecuteButton"
@@ -3429,7 +3470,7 @@ function CreateUtilityRow(parent, y, title, url)
 	Instance.new("UICorner", executeBtn).CornerRadius = UDim.new(1, 0)
 	AddPressBounce(executeBtn)
 	-- AddHoverStroke(row, executeBtn) -- highlighting disabled for now while the pop animation gets sorted out
-	AddHoverPop(row, executeBtn)
+	AddPopTarget(executeBtn)
 
 	local trackedInstances = {}
 	local busy = false
@@ -3529,6 +3570,20 @@ do
 		TransparencyInput.Text = tostring(RowTransparencyValue)
 	end)
 
+	-- Ghost Mode: while minimized and left alone (not hovered) for a few seconds, the mini
+	-- circle fades down to a low, unobtrusive opacity so it sits out of the way. The actual
+	-- fade logic lives further below, right after ToggleGUI, since that's where
+	-- minimized/MainFrame state actually lives -- this row just owns the on/off state.
+	GhostModeEnabled = false
+	GhostModeKeybind = Enum.KeyCode.Unknown
+	local GhostModeToggle = CreateToggleRow(SettingsPage, 148, "GhostModeKeybind", function(k) GhostModeKeybind = k end, "Ghost Mode")
+	ToggleGhostMode = function()
+		GhostModeEnabled = not GhostModeEnabled
+		GhostModeToggle.Text = GhostModeEnabled and "On" or "Off"
+		if not GhostModeEnabled and CancelGhostFade then CancelGhostFade() end
+	end
+	GhostModeToggle.MouseButton1Click:Connect(function() PlayClick() ToggleGhostMode() end)
+
 	-- Ported from the old hub's own dev-facing local-variable counter. Roblox/Luau has no
 	-- way to introspect the compiler's actual peak register usage at runtime, so like the
 	-- original this is a static reference number, not a live measurement -- just a
@@ -3547,7 +3602,7 @@ do
 	LocalCountLabel.TextXAlignment = Enum.TextXAlignment.Right
 	LocalCountLabel.Parent = SettingsPage
 
-	SettingsPage.CanvasSize = UDim2.new(0, 0, 0, 148)
+	SettingsPage.CanvasSize = UDim2.new(0, 0, 0, 216)
 end
 
 SelectTab("Home")
@@ -3579,6 +3634,13 @@ function ToggleGUI()
 	TabBar.Visible = not minimized
 	TabDivider.Visible = not minimized
 	ContentArea.Visible = not minimized
+	-- Minimized view is just the clock in a circle -- title and both header buttons fully
+	-- hide instead of shrinking/repositioning into the small space. Restoring happens by
+	-- tapping the circle itself (see the drag handler further below, which distinguishes a
+	-- tap from a drag), not a visible "+" button -- there's nothing else on it to click.
+	TitleImage.Visible = not minimized
+	MiniButton.Visible = not minimized
+	GuiDestroyButton.Visible = not minimized
 	if minimized then
 		preMinimizePosition = MainFrame.Position
 		-- Both popups anchor to controls that are about to shrink/disappear -- rather
@@ -3593,14 +3655,58 @@ function ToggleGUI()
 		Size = minimized and MINI_SIZE or FULL_SIZE,
 		Position = targetPosition,
 	}):Play()
-	-- Clock only makes sense next to the full title bar -- hidden while minimized rather
-	-- than squeezed in somewhere, since the title itself grows to take over that space.
-	TimeLabel.Visible = not minimized
-	local titleGoal = minimized and MINI_TITLE_GOAL or NORMAL_TITLE_GOAL
-	TweenService:Create(TitleImage, tweenInfo, titleGoal):Play()
+	TweenService:Create(MainCorner, tweenInfo, {CornerRadius = minimized and MINI_CORNER or FULL_CORNER}):Play()
+	local timeGoal = minimized and MINI_TIME_GOAL or NORMAL_TIME_GOAL
+	TweenService:Create(TimeLabel, tweenInfo, {Position = timeGoal.Position, Size = timeGoal.Size}):Play()
+	TimeLabel.TextXAlignment = minimized and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left
 	MiniButton.Text = minimized and "+" or "-"
+	if minimized then
+		ScheduleGhostFade()
+	else
+		-- Restoring always snaps back to fully visible immediately, no matter how far
+		-- into a ghost fade it was -- a translucent full-size window would be a real bug,
+		-- not a cosmetic one.
+		CancelGhostFade()
+	end
 end
 MiniButton.MouseButton1Click:Connect(function() PlayClick() ToggleGUI() end)
+
+-- Ghost Mode: implemented as a token-based debounce rather than a plain cancel flag --
+-- every schedule/cancel bumps ghostFadeToken, and the delayed fade only actually applies
+-- if its captured token still matches when it wakes up, so a rapid hover/unhover/re-minimize
+-- flurry can never leave a stale delayed fade firing after the fact.
+local GHOST_FADE_DELAY = 4
+local GHOST_TRANSPARENCY = 0.55
+local ghostFadeToken = 0
+local isHoveringMini = false
+
+function CancelGhostFade()
+	ghostFadeToken += 1
+	TweenService:Create(MainFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0}):Play()
+	TweenService:Create(TimeLabel, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {TextTransparency = 0}):Play()
+end
+
+function ScheduleGhostFade()
+	if not (GhostModeEnabled and minimized) or isHoveringMini then return end
+	ghostFadeToken += 1
+	local myToken = ghostFadeToken
+	task.delay(GHOST_FADE_DELAY, function()
+		if myToken ~= ghostFadeToken then return end
+		if not (GhostModeEnabled and minimized) or isHoveringMini then return end
+		local fadeInfo = TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		TweenService:Create(MainFrame, fadeInfo, {BackgroundTransparency = GHOST_TRANSPARENCY}):Play()
+		TweenService:Create(TimeLabel, fadeInfo, {TextTransparency = GHOST_TRANSPARENCY}):Play()
+	end)
+end
+
+MainFrame.MouseEnter:Connect(function()
+	isHoveringMini = true
+	CancelGhostFade()
+end)
+MainFrame.MouseLeave:Connect(function()
+	isHoveringMini = false
+	ScheduleGhostFade()
+end)
 
 -- Silent unbind-able destroy key (Right Control) -- no button, no prompt, no sound.
 -- Reverses every active effect (Speed/Jump/Fly, whichever mode) before tearing down, so
@@ -3695,7 +3801,10 @@ mainInputConnection = UserInputService.InputBegan:Connect(function(input, proces
 	if InstantPromptKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == InstantPromptKeybind then ToggleInstantPrompt() end
 end)
 
--- Dragging
+-- Dragging. Minimized has no visible button left to click to restore (it's just the
+-- clock in a circle) -- so a tap that barely moved the cursor is treated as "restore"
+-- instead of a drag, measured against the same input.Position this already tracks.
+local TAP_MAX_DISTANCE = 6
 local dragging = false
 local dragStart = nil
 local startPos = nil
@@ -3710,6 +3819,11 @@ MainFrame.InputBegan:Connect(function(input)
 			-- Only the minimized pill snaps to an edge; a full-size window stays
 			-- wherever it's dropped.
 			if minimized then
+				if (input.Position - dragStart).Magnitude <= TAP_MAX_DISTANCE then
+					PlayClick()
+					ToggleGUI()
+					return
+				end
 				TweenService:Create(MainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
 					Position = GetSnappedMinimizedPosition(),
 				}):Play()
