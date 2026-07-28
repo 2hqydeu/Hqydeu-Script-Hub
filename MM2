@@ -94,9 +94,20 @@ local function AddButtonHover(button, hoverColor, normalColor)
 	end)
 end
 
+-- AddPressBounce and AddHoverPop both animate a control's scale -- Roblox only honors one
+-- UIScale per object, so if each created its own, they'd silently fight. This finds an
+-- existing one on the target before making a new one, so both share the same instance.
+local function GetOrCreateUIScale(target)
+	local scale = target:FindFirstChildOfClass("UIScale")
+	if not scale then
+		scale = Instance.new("UIScale")
+		scale.Parent = target
+	end
+	return scale
+end
+
 local function AddPressBounce(button)
-	local scale = Instance.new("UIScale")
-	scale.Parent = button
+	local scale = GetOrCreateUIScale(button)
 	local function release()
 		TweenService:Create(scale, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
 	end
@@ -214,8 +225,7 @@ local ToggleKnobColor = Color3.fromRGB(238, 233, 250)
 -- leave, never the row itself, so the row's label text never moves.
 local function AddHoverPop(trigger, target)
 	target = target or trigger
-	local scale = Instance.new("UIScale")
-	scale.Parent = target
+	local scale = GetOrCreateUIScale(target)
 	trigger.MouseEnter:Connect(function()
 		TweenService:Create(scale, TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1.08}):Play()
 	end)
