@@ -226,6 +226,13 @@ do
 end
 
 -- UI: a small standalone panel, matching Serenity's look for consistency.
+-- Re-running this script (Scripts tab's Execute/Open button re-executes the whole chunk
+-- every click, it never just no-ops on an already-open panel) used to stack a brand new
+-- ScreenGui on top of any already-open one instead of replacing it -- only one of THIS
+-- game's panel should ever exist at a time, so tear down a previous instance first.
+local existingScreenGui = CoreGui:FindFirstChild("SerenityUE")
+if existingScreenGui then existingScreenGui:Destroy() end
+
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SerenityUE"
 ScreenGui.Parent = CoreGui
@@ -517,7 +524,7 @@ local function CreateFeatureRow(order, labelText, isNavButton)
 		-- normal labeled button instead of the switch styling every other row gets.
 		toggle.Size = UDim2.new(0, 64, 0, 26)
 		toggle.Position = UDim2.new(1, -74, 0.5, -13)
-		toggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+		toggle.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 		toggle.BackgroundTransparency = 0.2
 		toggle.TextSize = 14
 		Instance.new("UICorner", toggle).CornerRadius = UDim.new(1, 0)
@@ -940,7 +947,7 @@ local PickupFilterButton = Instance.new("TextButton")
 PickupFilterButton.Name = "PickupFilterButton"
 PickupFilterButton.Size = UDim2.new(0, 64, 0, 26)
 PickupFilterButton.Position = UDim2.new(1, -128, 0.5, -13)
-PickupFilterButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+PickupFilterButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 PickupFilterButton.BackgroundTransparency = 0.2
 PickupFilterButton.BorderSizePixel = 0
 PickupFilterButton.Text = "Filter"
