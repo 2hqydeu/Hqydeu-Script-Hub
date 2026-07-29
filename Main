@@ -17,7 +17,7 @@ local AccentColor = Color3.fromRGB(255, 255, 255)
 local UIFont = Enum.Font.FredokaOne -- more playful/rounded than Ubuntu, per request
 -- Shared "on" purple -- the toggle switches fill with this when On, and the selected tab
 -- pill uses the same color so the two visual languages match.
-local ToggleOffColor = Color3.fromRGB(50, 50, 50)
+local ToggleOffColor = Color3.fromRGB(24, 24, 24)
 local ToggleOnColor = Color3.fromRGB(178, 155, 235)
 local ToggleKnobColor = Color3.fromRGB(238, 233, 250)
 
@@ -321,7 +321,13 @@ function AddFadeDivider(divider)
 	gradient.Parent = divider
 end
 
-MainFrame = Instance.new("Frame")
+-- CanvasGroup, not a plain Frame -- its GroupTransparency composites this WHOLE subtree
+-- (every row, label, button underneath) into one image and fades that as a single unit.
+-- The earlier fade-based minimize animation only ever tweened BackgroundTransparency,
+-- which is just this frame's own flat fill -- completely irrelevant once content is
+-- sitting on top of it, so nothing actually hid and everything bled through. This is the
+-- real fix for that, not just a tuning tweak.
+MainFrame = Instance.new("CanvasGroup")
 MainFrame.Name = "MainFrame"
 MainFrame.Size = FULL_SIZE
 MainFrame.Position = WINDOW_POSITION
@@ -364,7 +370,7 @@ SettingsIconButton.Parent = MainFrame
 AddPressBounce(SettingsIconButton)
 SettingsIconButton.MouseButton1Click:Connect(function()
 	PlayClick()
-	SelectTab("Settings")
+	OpenSettingsOverlay()
 end)
 
 -- %I zero-pads single-digit hours ("08:00:00 PM") -- stripped off so it reads "8:00:00 PM"
@@ -395,6 +401,23 @@ task.spawn(function()
 	end
 end)
 
+-- Sits directly under the clock, hidden until the Settings overlay is open -- the only way
+-- back out of it, since the overlay covers the tab bar and content area entirely (nothing
+-- else underneath is clickable while it's up).
+local SettingsBackButton = Instance.new("TextButton")
+SettingsBackButton.Name = "SettingsBackButton"
+SettingsBackButton.Size = UDim2.new(0, 80, 0, 14)
+SettingsBackButton.Position = UDim2.new(0, 52, 0, 38)
+SettingsBackButton.BackgroundTransparency = 1
+SettingsBackButton.Text = "< Back"
+SettingsBackButton.Font = UIFont
+SettingsBackButton.TextSize = 12
+SettingsBackButton.TextColor3 = Color3.fromRGB(178, 155, 235)
+SettingsBackButton.TextXAlignment = Enum.TextXAlignment.Left
+SettingsBackButton.Visible = false
+SettingsBackButton.Parent = MainFrame
+AddPressBounce(SettingsBackButton)
+
 -- Minimize + destroy, smallest they can be while still tappable -- farthest right is
 -- destroy (X), minimize sits directly to its left.
 -- Traffic-light style: tiny plain colored circles (yellow = minimize, red = close), no
@@ -402,7 +425,7 @@ end)
 local MiniButton = Instance.new("TextButton")
 MiniButton.Name = "MiniButton"
 MiniButton.Size = UDim2.new(0, 12, 0, 12)
-MiniButton.Position = UDim2.new(1, -40, 0, HEADER_HEIGHT / 2 - 6)
+MiniButton.Position = UDim2.new(1, -46, 0, HEADER_HEIGHT / 2 - 6)
 MiniButton.BackgroundColor3 = Color3.fromRGB(255, 189, 46)
 MiniButton.BorderSizePixel = 0
 MiniButton.Text = ""
@@ -424,7 +447,7 @@ AddPressBounce(MiniButton)
 local GuiDestroyButton = Instance.new("TextButton")
 GuiDestroyButton.Name = "GuiDestroyButton"
 GuiDestroyButton.Size = UDim2.new(0, 12, 0, 12)
-GuiDestroyButton.Position = UDim2.new(1, -22, 0, HEADER_HEIGHT / 2 - 6)
+GuiDestroyButton.Position = UDim2.new(1, -28, 0, HEADER_HEIGHT / 2 - 6)
 GuiDestroyButton.BackgroundColor3 = Color3.fromRGB(255, 95, 87)
 GuiDestroyButton.BorderSizePixel = 0
 GuiDestroyButton.Text = ""
@@ -443,61 +466,63 @@ GuiDestroyButton.MouseLeave:Connect(function()
 end)
 AddPressBounce(GuiDestroyButton)
 
--- "Are you sure?" confirmation for the destroy button -- centered over the hub window
--- (recomputed against MainFrame's current position each time it's shown, since the window
--- is draggable). Parented to ScreenGui rather than MainFrame so it isn't clipped by
--- MainFrame's own ClipsDescendants. Wired up further below, next to DestroyGui itself.
+-- "Are you sure?" confirmation for the destroy button -- now a full overlay covering the
+-- same tab-bar + content-area footprint the Settings overlay uses (built further below),
+-- rather than a small centered dialog. Parented to MainFrame directly, so it automatically
+-- tracks the window's position/size/minimize state with no manual recentering needed --
+-- the old version had to recompute its position against MainFrame's AbsolutePosition each
+-- time it opened since it lived under ScreenGui instead. A higher ZIndex than the Settings
+-- overlay means it still draws on top even if triggered while Settings is open.
 local DestroyConfirmPopup = Instance.new("Frame")
 DestroyConfirmPopup.Name = "DestroyConfirmPopup"
-DestroyConfirmPopup.AnchorPoint = Vector2.new(0.5, 0.5)
-DestroyConfirmPopup.Size = UDim2.new(0, 220, 0, 104)
+DestroyConfirmPopup.Size = UDim2.new(1, -32, 1, -(HEADER_HEIGHT + 8 + 16))
+DestroyConfirmPopup.Position = UDim2.new(0, 16, 0, HEADER_HEIGHT + 8)
 DestroyConfirmPopup.BackgroundColor3 = FrameColor
 DestroyConfirmPopup.BorderSizePixel = 0
 DestroyConfirmPopup.Visible = false
-DestroyConfirmPopup.ZIndex = 50
-DestroyConfirmPopup.Parent = ScreenGui
-Instance.new("UICorner", DestroyConfirmPopup).CornerRadius = UDim.new(0, 12)
-local destroyConfirmStroke = Instance.new("UIStroke")
-destroyConfirmStroke.Color = Color3.fromRGB(0, 0, 0)
-destroyConfirmStroke.Thickness = 1
-destroyConfirmStroke.Parent = DestroyConfirmPopup
+DestroyConfirmPopup.Active = true
+DestroyConfirmPopup.ZIndex = 30
+DestroyConfirmPopup.Parent = MainFrame
 
 local DestroyConfirmLabel = Instance.new("TextLabel")
-DestroyConfirmLabel.Size = UDim2.new(1, -16, 0, 40)
-DestroyConfirmLabel.Position = UDim2.new(0, 8, 0, 12)
+DestroyConfirmLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+DestroyConfirmLabel.Size = UDim2.new(1, -32, 0, 30)
+DestroyConfirmLabel.Position = UDim2.new(0.5, 0, 0.5, -30)
 DestroyConfirmLabel.BackgroundTransparency = 1
 DestroyConfirmLabel.Text = "Destroy the script?"
 DestroyConfirmLabel.Font = UIFont
-DestroyConfirmLabel.TextSize = 15
+DestroyConfirmLabel.TextSize = 17
 DestroyConfirmLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-DestroyConfirmLabel.TextWrapped = true
-DestroyConfirmLabel.ZIndex = 51
+DestroyConfirmLabel.TextXAlignment = Enum.TextXAlignment.Center
+DestroyConfirmLabel.ZIndex = 31
 DestroyConfirmLabel.Parent = DestroyConfirmPopup
 
 local DestroyConfirmYes = Instance.new("TextButton")
-DestroyConfirmYes.Size = UDim2.new(0, 90, 0, 32)
-DestroyConfirmYes.Position = UDim2.new(0, 14, 1, -44)
+DestroyConfirmYes.AnchorPoint = Vector2.new(0.5, 0.5)
+DestroyConfirmYes.Size = UDim2.new(0, 110, 0, 36)
+DestroyConfirmYes.Position = UDim2.new(0.5, -62, 0.5, 30)
 DestroyConfirmYes.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
 DestroyConfirmYes.BorderSizePixel = 0
 DestroyConfirmYes.Text = "Yes"
 DestroyConfirmYes.Font = UIFont
 DestroyConfirmYes.TextSize = 15
 DestroyConfirmYes.TextColor3 = Color3.fromRGB(255, 255, 255)
-DestroyConfirmYes.ZIndex = 51
+DestroyConfirmYes.ZIndex = 31
 DestroyConfirmYes.Parent = DestroyConfirmPopup
 Instance.new("UICorner", DestroyConfirmYes).CornerRadius = UDim.new(1, 0)
 AddPressBounce(DestroyConfirmYes)
 
 local DestroyConfirmNo = Instance.new("TextButton")
-DestroyConfirmNo.Size = UDim2.new(0, 90, 0, 32)
-DestroyConfirmNo.Position = UDim2.new(1, -104, 1, -44)
+DestroyConfirmNo.AnchorPoint = Vector2.new(0.5, 0.5)
+DestroyConfirmNo.Size = UDim2.new(0, 110, 0, 36)
+DestroyConfirmNo.Position = UDim2.new(0.5, 62, 0.5, 30)
 DestroyConfirmNo.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 DestroyConfirmNo.BorderSizePixel = 0
 DestroyConfirmNo.Text = "No"
 DestroyConfirmNo.Font = UIFont
 DestroyConfirmNo.TextSize = 15
 DestroyConfirmNo.TextColor3 = Color3.fromRGB(255, 255, 255)
-DestroyConfirmNo.ZIndex = 51
+DestroyConfirmNo.ZIndex = 31
 DestroyConfirmNo.Parent = DestroyConfirmPopup
 Instance.new("UICorner", DestroyConfirmNo).CornerRadius = UDim.new(1, 0)
 AddPressBounce(DestroyConfirmNo)
@@ -1339,7 +1364,7 @@ end
 -- Functionality tab: sits between Player and Visuals. No icon for now -- CreateTab already
 -- handles a nil iconId by just leaving the tab's icon slot blank. Instant Prompt lives here
 -- now instead of at the bottom of Player.
-local FunctionalityPage = CreateTab("Functions", 3, "129520582193954", true, 28)
+local FunctionalityPage = CreateTab("Functions", 3, "129520582193954", true, 28, 4)
 do
 	-- Instant Prompt: drives every ProximityPrompt's HoldDuration to 0 (and drops its line-
 	-- of-sight requirement) so prompts complete the instant you press their key. The first
@@ -2365,7 +2390,7 @@ end
 -- PopupToggleButton/PopupKeybind left un-declared here (the popup section further down, in
 -- its own separate do block, needs to read/update them too) so they fall back to globals
 -- instead of costing more top-level local slots.
-local TeleportPage = CreateTab("Teleport", 8, "134833734515120", true)
+local TeleportPage = CreateTab("Teleport", 8, "134833734515120", true, 34)
 do
 	local TAB_ROW_H = 30
 	local ROW_H = 26
@@ -3519,18 +3544,41 @@ CreateUtilityRow(ScriptsPage, 216, "Dex Explorer", "https://github.com/AZYsGithu
 
 ScriptsPage.CanvasSize = UDim2.new(0, 0, 0, 268)
 
--- Settings tab: Reset Character / Destroy Gui utility buttons (ported from the old hub)
--- and the row-transparency control. DestroyGuiButton's click handler is wired further
--- down, right after DestroyGui itself is defined -- that function doesn't exist yet at
--- this point in the file, so wiring it here would silently fall through to nil.
+-- Settings: Reset Character / Destroy Gui utility buttons (ported from the old hub) and
+-- the row-transparency control. DestroyGuiButton's click handler is wired further down,
+-- right after DestroyGui itself is defined -- that function doesn't exist yet at this
+-- point in the file, so wiring it here would silently fall through to nil.
 -- Left un-declared (not a top-level local) so it falls back to a global.
+-- No longer a tab -- it's a full overlay reached only via the header's settings-icon
+-- shortcut, covering the tab bar + content area exactly (the header itself, with the
+-- clock and minimize/destroy buttons, stays visible and uncovered above it).
 do
-	local SettingsPage = CreateTab("Settings", 7, "139383907261718", true)
-	-- No visible tab button for this one -- only reachable via the header's settings-icon
-	-- shortcut now. The page/Tabs entry still gets built normally so SelectTab("Settings")
-	-- still works; UIListLayout skips invisible children when arranging the rest, so this
-	-- doesn't leave a gap in the tab bar either.
-	Tabs["Settings"].Button.Visible = false
+	local SettingsPage = Instance.new("ScrollingFrame")
+	SettingsPage.Name = "SettingsOverlay"
+	SettingsPage.Size = UDim2.new(1, -32, 1, -(HEADER_HEIGHT + 8 + 16))
+	SettingsPage.Position = UDim2.new(0, 16, 0, HEADER_HEIGHT + 8)
+	SettingsPage.BackgroundColor3 = FrameColor
+	SettingsPage.BorderSizePixel = 0
+	SettingsPage.ScrollBarThickness = 3
+	SettingsPage.ScrollBarImageColor3 = AccentColor
+	SettingsPage.Active = true
+	SettingsPage.Visible = false
+	SettingsPage.ZIndex = 20
+	SettingsPage.Parent = MainFrame
+	SettingsOverlay = SettingsPage
+
+	function OpenSettingsOverlay()
+		SettingsOverlay.Visible = true
+		SettingsBackButton.Visible = true
+	end
+	function CloseSettingsOverlay()
+		SettingsOverlay.Visible = false
+		SettingsBackButton.Visible = false
+	end
+	SettingsBackButton.MouseButton1Click:Connect(function()
+		PlayClick()
+		CloseSettingsOverlay()
+	end)
 
 	-- Gui Fade: while minimized and left alone (not hovered) for a couple seconds, the mini
 	-- circle fades down to a low, unobtrusive opacity so it sits out of the way. The actual
@@ -3539,12 +3587,13 @@ do
 	-- Defaults on now, per request.
 	GuiFadeEnabled = true
 	GuiFadeKeybind = Enum.KeyCode.Unknown
-	-- Bottom-aligned within the tab's visible viewport (267px tall now that the tab bar
-	-- itself takes up more room) instead of stacked at the top with empty space below --
+	-- Bottom-aligned within the overlay's visible viewport (348px tall -- it now covers the
+	-- tab bar's footprint too, not just the old content area, so it's taller than the
+	-- per-tab pages ever were) instead of stacked at the top with empty space below --
 	-- SETTINGS_TOP is the Y where this group of controls (plus the local-count label after
 	-- it) starts so the whole block's bottom edge lands flush with the viewport's own
 	-- bottom edge.
-	local SETTINGS_TOP = 153
+	local SETTINGS_TOP = 234
 	local GuiFadeToggle = CreateToggleRow(SettingsPage, SETTINGS_TOP, "GuiFadeKeybind", function(k) GuiFadeKeybind = k end, "Gui Fade")
 	-- CreateToggleRow's switch always starts visually "Off" -- sync it to match the
 	-- GuiFadeEnabled default above instead of the two disagreeing on load.
@@ -3612,10 +3661,9 @@ do
 	LocalCountLabel.TextXAlignment = Enum.TextXAlignment.Center
 	LocalCountLabel.Parent = SettingsPage
 
-	-- Matches the tab's own visible viewport height (267px: FULL_SIZE.Y minus the header/tab
-	-- bar/content padding above it) exactly, so the bottom-aligned controls just fill it
-	-- with no separate scrolling required.
-	SettingsPage.CanvasSize = UDim2.new(0, 0, 0, 267)
+	-- Matches the overlay's own visible viewport height (348px) exactly, so the
+	-- bottom-aligned controls just fill it with no separate scrolling required.
+	SettingsPage.CanvasSize = UDim2.new(0, 0, 0, 348)
 end
 
 SelectTab("Home")
@@ -3655,6 +3703,7 @@ function ToggleGUI()
 		CloseKeybindClearPrompt()
 		CloseESPColorPicker()
 		DestroyConfirmPopup.Visible = false
+		CloseSettingsOverlay()
 	end
 	local targetPosition
 	if minimized then
@@ -3672,14 +3721,13 @@ function ToggleGUI()
 	-- Visible=true while MainFrame was still sized/positioned as the OTHER state for the
 	-- whole fade-out duration, clipped into whatever tiny/large shape hadn't swapped yet
 	-- and visibly bleeding through. Bundling every change into this one instant, mid-fade,
-	-- swap fixes that. TimeLabel fades in lockstep with MainFrame's own background too --
-	-- it has its own TextTransparency separate from the frame's, so without this the clock
-	-- stayed fully visible through the whole "invisible" swap and bled through the same way.
+	-- swap fixes that. GroupTransparency (MainFrame is a CanvasGroup) covers every
+	-- descendant -- rows, labels, the clock, all of it -- as one composited fade, so
+	-- nothing needs its own separate transparency tween anymore.
 	local fadeOutInfo = TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 	local fadeInInfo = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-	local fadeOutTween = TweenService:Create(MainFrame, fadeOutInfo, {BackgroundTransparency = 1})
+	local fadeOutTween = TweenService:Create(MainFrame, fadeOutInfo, {GroupTransparency = 1})
 	fadeOutTween:Play()
-	TweenService:Create(TimeLabel, fadeOutInfo, {TextTransparency = 1}):Play()
 	fadeOutTween.Completed:Wait()
 
 	HeaderDivider.Visible = not minimized
@@ -3697,8 +3745,7 @@ function ToggleGUI()
 	TimeLabel.Size = timeGoal.Size
 	TimeLabel.TextXAlignment = minimized and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left
 
-	TweenService:Create(MainFrame, fadeInInfo, {BackgroundTransparency = 0}):Play()
-	TweenService:Create(TimeLabel, fadeInInfo, {TextTransparency = 0}):Play()
+	TweenService:Create(MainFrame, fadeInInfo, {GroupTransparency = 0}):Play()
 
 	if minimized then
 		ScheduleGuiFade()
@@ -3722,8 +3769,7 @@ local isHoveringMini = false
 
 function CancelGuiFade()
 	guiFadeToken += 1
-	TweenService:Create(MainFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0}):Play()
-	TweenService:Create(TimeLabel, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {TextTransparency = 0}):Play()
+	TweenService:Create(MainFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {GroupTransparency = 0}):Play()
 end
 
 function ScheduleGuiFade()
@@ -3734,8 +3780,7 @@ function ScheduleGuiFade()
 		if myToken ~= guiFadeToken then return end
 		if not (GuiFadeEnabled and minimized) or isHoveringMini then return end
 		local fadeInfo = TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-		TweenService:Create(MainFrame, fadeInfo, {BackgroundTransparency = GUI_FADE_TRANSPARENCY}):Play()
-		TweenService:Create(TimeLabel, fadeInfo, {TextTransparency = GUI_FADE_TRANSPARENCY}):Play()
+		TweenService:Create(MainFrame, fadeInfo, {GroupTransparency = GUI_FADE_TRANSPARENCY}):Play()
 	end)
 end
 
@@ -3806,8 +3851,6 @@ end)
 -- confirmation since it's one accidental click away at all times instead of tucked in a tab.
 GuiDestroyButton.MouseButton1Click:Connect(function()
 	PlayClick()
-	local center = MainFrame.AbsolutePosition + MainFrame.AbsoluteSize / 2
-	DestroyConfirmPopup.Position = UDim2.fromOffset(center.X, center.Y)
 	DestroyConfirmPopup.Visible = true
 end)
 DestroyConfirmYes.MouseButton1Click:Connect(function()
