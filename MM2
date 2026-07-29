@@ -32,6 +32,13 @@ local function SetRootUpright(root, currentCFrame, targetPosition)
 end
 
 -- UI: a small standalone panel, matching Serenity's look for consistency (same shell as UE/QOD).
+-- Re-running this script (Scripts tab's Execute/Open button re-executes the whole chunk
+-- every click, it never just no-ops on an already-open panel) used to stack a brand new
+-- ScreenGui on top of any already-open one instead of replacing it -- only one of THIS
+-- game's panel should ever exist at a time, so tear down a previous instance first.
+local existingScreenGui = CoreGui:FindFirstChild("SerenityMM2")
+if existingScreenGui then existingScreenGui:Destroy() end
+
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SerenityMM2"
 ScreenGui.Parent = CoreGui
@@ -302,7 +309,7 @@ local function CreateFeatureRow(order, labelText, isNavButton)
 		-- normal labeled pill button instead of the switch styling every other row gets.
 		toggle.Size = UDim2.new(0, 64, 0, 26)
 		toggle.Position = UDim2.new(1, -74, 0.5, -13)
-		toggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+		toggle.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 		toggle.BackgroundTransparency = 0.2
 		toggle.TextSize = 14
 		Instance.new("UICorner", toggle).CornerRadius = UDim.new(1, 0)
@@ -401,7 +408,7 @@ local function CreateRoleDisplay(order, roleName, color)
 	avatar.Name = roleName .. "Avatar"
 	avatar.Size = UDim2.new(0, 50, 0, 50)
 	avatar.Position = UDim2.new(0, 6, 0, 6)
-	avatar.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	avatar.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 	avatar.BackgroundTransparency = 0.3
 	avatar.BorderSizePixel = 0
 	avatar.Image = ""
