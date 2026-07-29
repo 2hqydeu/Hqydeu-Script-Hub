@@ -17,7 +17,7 @@ local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Player = Players.LocalPlayer
-local FrameColor = Color3.fromRGB(8, 8, 8)
+local FrameColor = Color3.fromRGB(3, 3, 3)
 local AccentColor = Color3.fromRGB(255, 255, 255)
 local UIFont = Enum.Font.FredokaOne -- more playful/rounded than Ubuntu, per request
 local GameRowTransparency = 0
@@ -271,7 +271,7 @@ local function CreateFeatureRow(order, labelText, isNavButton)
 	row.LayoutOrder = order or nextRowOrder
 	nextRowOrder = math.max(nextRowOrder, row.LayoutOrder) + 1
 	row.Size = UDim2.new(1, 0, 0, 48)
-	row.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
+	row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 	row.BackgroundTransparency = GameRowTransparency
 	row.BorderSizePixel = 0
 	row.Parent = ContentScroll
@@ -390,7 +390,7 @@ local function CreateRoleDisplay(order, roleName, color)
 	local row = Instance.new("Frame")
 	row.LayoutOrder = order
 	row.Size = UDim2.new(1, 0, 0, 62)
-	row.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
+	row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 	row.BackgroundTransparency = GameRowTransparency
 	row.BorderSizePixel = 0
 	row.ZIndex = 41
