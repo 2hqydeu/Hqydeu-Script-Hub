@@ -731,10 +731,33 @@ end
 do
 	local HomePage = CreateTab("Home", 1, "94154918683502", nil, 30, 5)
 
+	-- Soft circular glow behind the avatar -- three concentric rings, each bigger and more
+	-- transparent than the last, since Roblox has no native radial gradient for a plain
+	-- Frame (UIGradient only fades linearly across a shape, not outward from its center).
+	-- Stacking rings like this is the standard cheap approximation of a real radial glow.
+	local avatarCenter = UDim2.new(0.5, 0, 0, 72)
+	for i, ring in ipairs({
+		{size = 132, transparency = 0.9},
+		{size = 116, transparency = 0.8},
+		{size = 104, transparency = 0.65},
+	}) do
+		local glow = Instance.new("Frame")
+		glow.Name = "AvatarGlow" .. i
+		glow.AnchorPoint = Vector2.new(0.5, 0.5)
+		glow.Size = UDim2.new(0, ring.size, 0, ring.size)
+		glow.Position = avatarCenter
+		glow.BackgroundColor3 = Color3.fromRGB(178, 155, 235)
+		glow.BackgroundTransparency = ring.transparency
+		glow.BorderSizePixel = 0
+		glow.Parent = HomePage
+		Instance.new("UICorner", glow).CornerRadius = UDim.new(1, 0)
+	end
+
 	local AvatarImage = Instance.new("ImageLabel")
 	AvatarImage.Name = "Avatar"
+	AvatarImage.AnchorPoint = Vector2.new(0.5, 0.5)
 	AvatarImage.Size = UDim2.new(0, 96, 0, 96)
-	AvatarImage.Position = UDim2.new(0.5, -48, 0, 24)
+	AvatarImage.Position = avatarCenter
 	AvatarImage.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	AvatarImage.BorderSizePixel = 0
 	AvatarImage.Parent = HomePage
@@ -2192,12 +2215,16 @@ function UpdateFreeCamSelfESP()
 	end
 	if FreeCamSelfAdornee ~= character then
 		ClearFreeCamSelfESP()
+		-- Adornee is the whole character Model, so this already outlines every part of the
+		-- player, not just one limb -- bumped the fill up from barely-there to properly
+		-- visible so the "whole player" silhouette actually reads as highlighted instead of
+		-- just a faint line.
 		local highlight = Instance.new("Highlight")
 		highlight.Name = "SerenityFreeCamSelfHighlight"
 		highlight.Adornee = character
 		highlight.FillColor = FreeCamSelfColor
 		highlight.OutlineColor = FreeCamSelfColor
-		highlight.FillTransparency = 0.82
+		highlight.FillTransparency = 0.55
 		highlight.OutlineTransparency = 0
 		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 		highlight.Parent = ScreenGui
@@ -2206,7 +2233,7 @@ function UpdateFreeCamSelfESP()
 		local label = Instance.new("BillboardGui")
 		label.Name = "SerenityFreeCamSelfLabel"
 		label.Adornee = head or root
-		label.Size = UDim2.new(0, 70, 0, 24)
+		label.Size = UDim2.new(0, 110, 0, 36)
 		label.StudsOffsetWorldSpace = Vector3.new(0, 2.8, 0)
 		label.AlwaysOnTop = true
 		label.Parent = ScreenGui
@@ -2215,7 +2242,7 @@ function UpdateFreeCamSelfESP()
 		text.BackgroundTransparency = 1
 		text.Text = "You"
 		text.Font = UIFont
-		text.TextSize = 12
+		text.TextSize = 22
 		text.TextColor3 = FreeCamSelfColor
 		text.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 		text.TextStrokeTransparency = 0.15
@@ -3708,6 +3735,17 @@ do
 	-- Comfortably taller than the actual content (ends around 220px down) so nothing
 	-- crowds the bottom edge -- well within the 348px visible viewport, no scrolling needed.
 	SettingsPage.CanvasSize = UDim2.new(0, 0, 0, 240)
+
+	-- SettingsPage sits at ZIndex 20 (above the tab bar/content it covers), but every row
+	-- and button built above it (CreateToggleRow's rows, the Reset/Destroy buttons, the
+	-- locals label) got created at the default ZIndex of 1 -- exactly the bug the QOD/UE
+	-- popups already ran into (see their own BumpZIndex helpers): a high-ZIndex container
+	-- with low-ZIndex descendants renders the container but not what's inside it. Bumping
+	-- every descendant to match is what actually made those popups visible, so do the same
+	-- retroactively here instead of threading a ZIndex parameter through CreateToggleRow.
+	for _, descendant in ipairs(SettingsPage:GetDescendants()) do
+		if descendant:IsA("GuiObject") then descendant.ZIndex = 20 end
+	end
 end
 
 SelectTab("Home")
