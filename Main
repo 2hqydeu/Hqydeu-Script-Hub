@@ -411,7 +411,7 @@ SettingsBackButton.Position = UDim2.new(0, 52, 0, 38)
 SettingsBackButton.BackgroundTransparency = 1
 SettingsBackButton.Text = "< Back"
 SettingsBackButton.Font = UIFont
-SettingsBackButton.TextSize = 12
+SettingsBackButton.TextSize = 10
 SettingsBackButton.TextColor3 = Color3.fromRGB(178, 155, 235)
 SettingsBackButton.TextXAlignment = Enum.TextXAlignment.Left
 SettingsBackButton.Visible = false
@@ -2390,7 +2390,7 @@ end
 -- PopupToggleButton/PopupKeybind left un-declared here (the popup section further down, in
 -- its own separate do block, needs to read/update them too) so they fall back to globals
 -- instead of costing more top-level local slots.
-local TeleportPage = CreateTab("Teleport", 8, "134833734515120", true, 34)
+local TeleportPage = CreateTab("Teleport", 8, "134833734515120", true, 30)
 do
 	local TAB_ROW_H = 30
 	local ROW_H = 26
@@ -3587,13 +3587,10 @@ do
 	-- Defaults on now, per request.
 	GuiFadeEnabled = true
 	GuiFadeKeybind = Enum.KeyCode.Unknown
-	-- Bottom-aligned within the overlay's visible viewport (348px tall -- it now covers the
-	-- tab bar's footprint too, not just the old content area, so it's taller than the
-	-- per-tab pages ever were) instead of stacked at the top with empty space below --
-	-- SETTINGS_TOP is the Y where this group of controls (plus the local-count label after
-	-- it) starts so the whole block's bottom edge lands flush with the viewport's own
-	-- bottom edge.
-	local SETTINGS_TOP = 234
+	-- Top-aligned with a modest padding now -- the overlay's visible viewport (348px) is
+	-- taller than the per-tab pages ever were (it covers the tab bar's old footprint too),
+	-- so there's no need to hug the bottom edge to avoid a big empty gap anymore.
+	local SETTINGS_TOP = 16
 	local GuiFadeToggle = CreateToggleRow(SettingsPage, SETTINGS_TOP, "GuiFadeKeybind", function(k) GuiFadeKeybind = k end, "Gui Fade")
 	-- CreateToggleRow's switch always starts visually "Off" -- sync it to match the
 	-- GuiFadeEnabled default above instead of the two disagreeing on load.
@@ -3605,13 +3602,59 @@ do
 	end
 	GuiFadeToggle.MouseButton1Click:Connect(function() PlayClick() ToggleGuiFade() end)
 
+	-- Mute Music: mutes any Sound anywhere in the game (Workspace, SoundService, wherever)
+	-- with a length of 20+ seconds -- a rough but effective heuristic for "background
+	-- music" vs short one-off sound effects (footsteps, UI clicks, hit sounds), which all
+	-- stay audible either way. Each muted sound's original volume is remembered so turning
+	-- this back off restores exactly what it was, not just a flat guess.
+	local MUSIC_MIN_LENGTH = 20
+	local MutedSounds = {}
+	MusicMuted = false
+	local function ApplyMusicMute(sound)
+		pcall(function()
+			local qualifies = sound.TimeLength >= MUSIC_MIN_LENGTH
+			if MusicMuted and qualifies then
+				if MutedSounds[sound] == nil then
+					MutedSounds[sound] = sound.Volume
+					sound.Volume = 0
+				end
+			elseif MutedSounds[sound] ~= nil then
+				sound.Volume = MutedSounds[sound]
+				MutedSounds[sound] = nil
+			end
+		end)
+	end
+	local function WatchSound(sound)
+		ApplyMusicMute(sound)
+		-- TimeLength can still be 0 (not loaded yet) the instant a Sound is added --
+		-- catches it once the real duration comes in instead of missing long sounds that
+		-- just hadn't reported their length yet.
+		sound:GetPropertyChangedSignal("TimeLength"):Connect(function() ApplyMusicMute(sound) end)
+	end
+	for _, sound in ipairs(game:GetDescendants()) do
+		if sound:IsA("Sound") then WatchSound(sound) end
+	end
+	game.DescendantAdded:Connect(function(descendant)
+		if descendant:IsA("Sound") then WatchSound(descendant) end
+	end)
+	MusicMuteKeybind = Enum.KeyCode.Unknown
+	local MuteMusicToggle = CreateToggleRow(SettingsPage, SETTINGS_TOP + 68, "MusicMuteKeybind", function(k) MusicMuteKeybind = k end, "Mute Music")
+	ToggleMusicMute = function()
+		MusicMuted = not MusicMuted
+		MuteMusicToggle.Text = MusicMuted and "On" or "Off"
+		for _, sound in ipairs(game:GetDescendants()) do
+			if sound:IsA("Sound") then ApplyMusicMute(sound) end
+		end
+	end
+	MuteMusicToggle.MouseButton1Click:Connect(function() PlayClick() ToggleMusicMute() end)
+
 	-- Reset Character and Destroy Gui now share one row, side by side, instead of stacking
 	-- as two full-width rows -- narrower, but still comfortably far apart (a real gap
 	-- between them, not just touching edges).
 	local ResetCharacterButton = Instance.new("TextButton")
 	ResetCharacterButton.Name = "ResetCharacterButton"
 	ResetCharacterButton.Size = UDim2.new(0.5, -7, 0, 28)
-	ResetCharacterButton.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 68)
+	ResetCharacterButton.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 136)
 	ResetCharacterButton.BackgroundColor3 = Color3.fromRGB(255, 230, 0)
 	ResetCharacterButton.BorderSizePixel = 0
 	ResetCharacterButton.Text = "Reset Character"
@@ -3631,7 +3674,7 @@ do
 	DestroyGuiButton = Instance.new("TextButton")
 	DestroyGuiButton.Name = "DestroyGuiButton"
 	DestroyGuiButton.Size = UDim2.new(0.5, -7, 0, 28)
-	DestroyGuiButton.Position = UDim2.new(0.5, 3, 0, SETTINGS_TOP + 68)
+	DestroyGuiButton.Position = UDim2.new(0.5, 3, 0, SETTINGS_TOP + 136)
 	DestroyGuiButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
 	DestroyGuiButton.BorderSizePixel = 0
 	DestroyGuiButton.Text = "Destroy Gui"
@@ -3651,19 +3694,19 @@ do
 	local LocalCountLabel = Instance.new("TextLabel")
 	LocalCountLabel.Name = "LocalCountLabel"
 	LocalCountLabel.Size = UDim2.new(1, 0, 0, 10)
-	LocalCountLabel.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 104)
+	LocalCountLabel.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 172)
 	LocalCountLabel.BackgroundTransparency = 1
 	LocalCountLabel.BorderSizePixel = 0
-	LocalCountLabel.Text = "129 / 200"
+	LocalCountLabel.Text = "130 / 200"
 	LocalCountLabel.Font = UIFont
 	LocalCountLabel.TextSize = 7
 	LocalCountLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
 	LocalCountLabel.TextXAlignment = Enum.TextXAlignment.Center
 	LocalCountLabel.Parent = SettingsPage
 
-	-- Matches the overlay's own visible viewport height (348px) exactly, so the
-	-- bottom-aligned controls just fill it with no separate scrolling required.
-	SettingsPage.CanvasSize = UDim2.new(0, 0, 0, 348)
+	-- Comfortably taller than the actual content (ends around 220px down) so nothing
+	-- crowds the bottom edge -- well within the 348px visible viewport, no scrolling needed.
+	SettingsPage.CanvasSize = UDim2.new(0, 0, 0, 240)
 end
 
 SelectTab("Home")
@@ -3694,6 +3737,23 @@ function GetSnappedMinimizedPosition()
 	return UDim2.new(0, snappedX, 0, snappedY)
 end
 
+-- Guards against a restore ever landing the (much bigger) full-size window somewhere that
+-- doesn't fit the current viewport at all -- dragging the minimized pill around updates
+-- MainFrame's live Position repeatedly, and while preMinimizePosition itself isn't touched
+-- by that, this clamp makes a restore impossible to get stuck off-screen no matter what
+-- position it's handed.
+local function ClampToViewport(position, size)
+	local camera = workspace.CurrentCamera
+	local viewportSize = (camera and camera.ViewportSize) or Vector2.new(1920, 1080)
+	local width = size.X.Offset
+	local height = size.Y.Offset
+	local absX = viewportSize.X * position.X.Scale + position.X.Offset
+	local absY = viewportSize.Y * position.Y.Scale + position.Y.Offset
+	local clampedX = math.clamp(absX, 8, math.max(8, viewportSize.X - width - 8))
+	local clampedY = math.clamp(absY, 8, math.max(8, viewportSize.Y - height - 8))
+	return UDim2.new(0, clampedX, 0, clampedY)
+end
+
 function ToggleGUI()
 	minimized = not minimized
 	if minimized then
@@ -3710,25 +3770,30 @@ function ToggleGUI()
 		targetPosition = lastMinimizedPosition or GetSnappedMinimizedPosition()
 		lastMinimizedPosition = targetPosition
 	else
-		targetPosition = preMinimizePosition or WINDOW_POSITION
+		targetPosition = ClampToViewport(preMinimizePosition or WINDOW_POSITION, FULL_SIZE)
 	end
 
-	-- Fades out, swaps EVERYTHING (visibility, size/shape/position, the clock's own
-	-- goal) instantly while fully invisible, then fades back in -- reads as a clean
-	-- cross-fade instead of visibly stretching a rectangle into a circle. Visibility used
-	-- to flip at the very top of this function, before the fade-out even started -- which
-	-- meant the full-size tab bar/content (or the header buttons) would already be
-	-- Visible=true while MainFrame was still sized/positioned as the OTHER state for the
-	-- whole fade-out duration, clipped into whatever tiny/large shape hadn't swapped yet
-	-- and visibly bleeding through. Bundling every change into this one instant, mid-fade,
-	-- swap fixes that. GroupTransparency (MainFrame is a CanvasGroup) covers every
-	-- descendant -- rows, labels, the clock, all of it -- as one composited fade, so
-	-- nothing needs its own separate transparency tween anymore.
-	local fadeOutInfo = TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-	local fadeInInfo = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-	local fadeOutTween = TweenService:Create(MainFrame, fadeOutInfo, {GroupTransparency = 1})
-	fadeOutTween:Play()
-	fadeOutTween.Completed:Wait()
+	-- Swipes the whole window straight up off the top of the screen, swaps everything
+	-- (visibility, size/shape/position, the clock's own goal) the instant it's fully off
+	-- screen, then slides the new shape back down into place from the top -- restoring is
+	-- the exact mirror of minimizing. This replaces the fade-based approach entirely: no
+	-- matter how CanvasGroup's GroupTransparency was tuned, the content kept bleeding
+	-- through mid-fade. Physically moving the whole window off-screen instead sidesteps
+	-- that problem altogether -- there's no moment where hidden-but-still-there content
+	-- needs to render invisibly, since it's just not overlapping anything on screen.
+	local camera = workspace.CurrentCamera
+	local viewportSize = (camera and camera.ViewportSize) or Vector2.new(1920, 1080)
+	local slideOutInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	local slideInInfo = TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+	local currentPos = MainFrame.Position
+	local currentSize = MainFrame.Size
+	local exitY = -(currentSize.Y.Offset + (viewportSize.Y * currentSize.Y.Scale) + 40)
+	local slideOutTween = TweenService:Create(MainFrame, slideOutInfo, {
+		Position = UDim2.new(currentPos.X.Scale, currentPos.X.Offset, 0, exitY),
+	})
+	slideOutTween:Play()
+	slideOutTween.Completed:Wait()
 
 	HeaderDivider.Visible = not minimized
 	TabBar.Visible = not minimized
@@ -3738,21 +3803,25 @@ function ToggleGUI()
 	MiniButton.Visible = not minimized
 	GuiDestroyButton.Visible = not minimized
 	MainFrame.Size = minimized and MINI_SIZE or FULL_SIZE
-	MainFrame.Position = targetPosition
 	MainCorner.CornerRadius = minimized and MINI_CORNER or FULL_CORNER
 	local timeGoal = minimized and MINI_TIME_GOAL or NORMAL_TIME_GOAL
 	TimeLabel.Position = timeGoal.Position
 	TimeLabel.Size = timeGoal.Size
 	TimeLabel.TextXAlignment = minimized and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left
 
-	TweenService:Create(MainFrame, fadeInInfo, {GroupTransparency = 0}):Play()
+	-- Jump to directly above the landing spot (same X as targetPosition, off the top edge
+	-- at the NEW size) so the slide-in travels straight down into place.
+	local newSize = MainFrame.Size
+	local entryY = -(newSize.Y.Offset + (viewportSize.Y * newSize.Y.Scale) + 40)
+	MainFrame.Position = UDim2.new(targetPosition.X.Scale, targetPosition.X.Offset, 0, entryY)
+	TweenService:Create(MainFrame, slideInInfo, {Position = targetPosition}):Play()
 
 	if minimized then
 		ScheduleGuiFade()
 	else
 		-- Restoring always snaps back to fully visible immediately, no matter how far
-		-- into a fade it was -- a translucent full-size window would be a real bug, not a
-		-- cosmetic one.
+		-- into a Gui-Fade ghost it was -- a translucent full-size window would be a real
+		-- bug, not a cosmetic one.
 		CancelGuiFade()
 	end
 end
