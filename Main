@@ -128,7 +128,7 @@ ScreenGui.ResetOnSpawn = false
 
 -- Sound Effects
 local StartupSound = Instance.new("Sound")
-StartupSound.SoundId = "rbxassetid://116627196004523"
+StartupSound.SoundId = "rbxassetid://138118203571469"
 StartupSound.Volume = 0.8
 StartupSound.Parent = ScreenGui
 StartupSound:Play()
@@ -402,13 +402,15 @@ task.spawn(function()
 	end
 end)
 
--- Sits directly under the clock, hidden until the Settings overlay is open -- the only way
--- back out of it, since the overlay covers the tab bar and content area entirely (nothing
--- else underneath is clickable while it's up).
+-- Sits just below the header divider, right at the top edge of the Settings overlay it
+-- controls -- the only way back out of it, since the overlay covers the tab bar and
+-- content area entirely (nothing else underneath is clickable while it's up). ZIndex has
+-- to beat the overlay's own (20) or it'd render underneath that panel's opaque background
+-- and disappear, same as anything else sitting inside that Y range.
 local SettingsBackButton = Instance.new("TextButton")
 SettingsBackButton.Name = "SettingsBackButton"
 SettingsBackButton.Size = UDim2.new(0, 80, 0, 14)
-SettingsBackButton.Position = UDim2.new(0, 52, 0, 38)
+SettingsBackButton.Position = UDim2.new(0, 16, 0, HEADER_HEIGHT + 8)
 SettingsBackButton.BackgroundTransparency = 1
 SettingsBackButton.Text = "< Back"
 SettingsBackButton.Font = UIFont
@@ -416,6 +418,7 @@ SettingsBackButton.TextSize = 10
 SettingsBackButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 SettingsBackButton.TextXAlignment = Enum.TextXAlignment.Left
 SettingsBackButton.Visible = false
+SettingsBackButton.ZIndex = 21
 SettingsBackButton.Parent = MainFrame
 AddPressBounce(SettingsBackButton)
 
@@ -730,16 +733,22 @@ end
 -- rest of the script; nothing here is referenced outside this block.
 do
 	local HomePage = CreateTab("Home", 1, "94154918683502", nil, 30, 5)
+	-- Yields once per tab section while the rest of this (very long) script keeps building
+	-- everything else -- without this, hundreds of Instance.new calls across every tab run
+	-- back-to-back with no yield at all, which starves the renderer of any chance to
+	-- actually paint a frame, including the fake loading screen kicked off above. That's
+	-- exactly why it could go completely unseen on a slower client: the whole hub finished
+	-- building before the engine ever got a turn to draw the loading bar's progress.
+	task.wait()
 
-	-- Soft circular glow behind the avatar -- five concentric rings, each bigger and more
-	-- transparent than the last, since Roblox has no native radial gradient for a plain
-	-- Frame (UIGradient only fades linearly across a shape, not outward from its center).
-	-- Stacking enough rings with a gentle falloff between them is the cheap way to
-	-- approximate a soft, realistic-looking radial glow instead of a few hard-edged bands.
-	-- The whole stack breathes together (a shared UIScale tweening size, each ring's own
-	-- transparency tweening in lockstep) for a slow pulsing/flowing glow instead of a
-	-- static one.
+	-- Avatar glow, take two: a soft diffuse backdrop (a couple of large, faint, breathing
+	-- rings, since Roblox still has no native radial gradient for a plain Frame) plus a
+	-- slim glowing ring hugging the avatar's own edge, colored by a UIGradient whose
+	-- Rotation is continuously animated -- an actual band of light travels around the
+	-- circle instead of everything just sitting there as flat static rings. That
+	-- continuous rotation is the "flow"; the soft backdrop behind it is the ambient glow.
 	local avatarCenter = UDim2.new(0.5, 0, 0, 72)
+
 	local avatarGlowContainer = Instance.new("Frame")
 	avatarGlowContainer.Name = "AvatarGlowContainer"
 	avatarGlowContainer.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -750,13 +759,10 @@ do
 	local avatarGlowScale = Instance.new("UIScale")
 	avatarGlowScale.Parent = avatarGlowContainer
 
-	local glowRings = {}
 	for i, ring in ipairs({
-		{size = 168, transparency = 0.94},
-		{size = 150, transparency = 0.88},
-		{size = 132, transparency = 0.8},
-		{size = 116, transparency = 0.7},
-		{size = 104, transparency = 0.58},
+		{size = 152, transparency = 0.93},
+		{size = 128, transparency = 0.84},
+		{size = 108, transparency = 0.72},
 	}) do
 		local glow = Instance.new("Frame")
 		glow.Name = "AvatarGlow" .. i
@@ -768,14 +774,45 @@ do
 		glow.BorderSizePixel = 0
 		glow.Parent = avatarGlowContainer
 		Instance.new("UICorner", glow).CornerRadius = UDim.new(1, 0)
-		table.insert(glowRings, {instance = glow, baseTransparency = ring.transparency})
 	end
 
 	task.spawn(function()
-		local pulseInfo = TweenInfo.new(2.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
-		TweenService:Create(avatarGlowScale, pulseInfo, {Scale = 1.12}):Play()
-		for _, ring in ipairs(glowRings) do
-			TweenService:Create(ring.instance, pulseInfo, {BackgroundTransparency = math.min(ring.baseTransparency + 0.15, 0.97)}):Play()
+		local pulseInfo = TweenInfo.new(2.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+		TweenService:Create(avatarGlowScale, pulseInfo, {Scale = 1.1}):Play()
+	end)
+
+	-- The flowing ring itself -- a UIStroke traced around a circle the same size as the
+	-- avatar, with a UIGradient painting the stroke instead of a flat color. Light/dark/
+	-- light keypoints (rather than a single flat tint) is what reads as a bright band
+	-- moving through the ring instead of a plain colored outline.
+	local avatarRing = Instance.new("Frame")
+	avatarRing.Name = "AvatarRing"
+	avatarRing.AnchorPoint = Vector2.new(0.5, 0.5)
+	avatarRing.Size = UDim2.new(0, 100, 0, 100)
+	avatarRing.Position = avatarCenter
+	avatarRing.BackgroundTransparency = 1
+	avatarRing.Parent = HomePage
+	Instance.new("UICorner", avatarRing).CornerRadius = UDim.new(1, 0)
+	local avatarRingStroke = Instance.new("UIStroke")
+	avatarRingStroke.Thickness = 2
+	avatarRingStroke.Color = Color3.fromRGB(178, 155, 235)
+	avatarRingStroke.Parent = avatarRing
+	local avatarRingGradient = Instance.new("UIGradient")
+	avatarRingGradient.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(238, 233, 250)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(178, 155, 235)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(238, 233, 250)),
+	})
+	avatarRingGradient.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0),
+		NumberSequenceKeypoint.new(0.5, 0.75),
+		NumberSequenceKeypoint.new(1, 0),
+	})
+	avatarRingGradient.Parent = avatarRingStroke
+	task.spawn(function()
+		while avatarRing.Parent do
+			avatarRingGradient.Rotation = (avatarRingGradient.Rotation + 2) % 360
+			task.wait(0.03)
 		end
 	end)
 
@@ -815,6 +852,7 @@ end
 
 -- Player tab (scrolling: three feature sections stack well past one screen's height)
 local PlayerPage = CreateTab("Player", 2, "84967055105923", true)
+task.wait()
 
 function CreateSectionHeading(parent, y, text)
 	local heading = Instance.new("TextLabel")
@@ -1129,7 +1167,10 @@ function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, def
 	local keybindBtn = CreateKeybindButton(row, storageKey, onKeybindChanged, defaultKeyCode)
 	-- AddHoverStroke(row, keybindBtn) -- highlighting disabled for now while the pop animation gets sorted out
 
-	return toggle, keybindBtn
+	-- row is a trailing return (every existing call site only ever captured `toggle`, so
+	-- adding this after it is non-breaking) -- needed by call sites that want to attach
+	-- their own extra control into the same row, like the Macro Play row's Edit button.
+	return toggle, keybindBtn, row
 end
 
 local DEFAULT_WALKSPEED = 16
@@ -1415,6 +1456,7 @@ end
 -- handles a nil iconId by just leaving the tab's icon slot blank. Instant Prompt lives here
 -- now instead of at the bottom of Player.
 local FunctionalityPage = CreateTab("Functions", 3, "129520582193954", true, 28, 4)
+task.wait()
 do
 	-- Instant Prompt: drives every ProximityPrompt's HoldDuration to 0 (and drops its line-
 	-- of-sight requirement) so prompts complete the instant you press their key. The first
@@ -1501,6 +1543,235 @@ do
 	FunctionalityPage.CanvasSize = UDim2.new(0, 0, 0, INSTANT_PROMPT_SECTION_BOTTOM + 16)
 end
 
+do
+	-- Macro: records raw mouse movement plus left/right click press/release while Record
+	-- is on, each event timestamped relative to when recording started, then Play replays
+	-- them at the same pace. Roblox's own UserInputService has no way to synthesize input
+	-- (there's no legitimate API for a LocalScript to move the cursor or fire a click) --
+	-- this leans on mousemoveabs/mouse1press/mouse1release/mouse2press/mouse2release, the
+	-- input-simulation functions most executors expose (the same UNC surface getgenv()
+	-- itself comes from). Every call is guarded with an existence check, so on an executor
+	-- that doesn't support them, playback just silently does nothing instead of erroring.
+	local MacroEvents = {}
+	local MacroRecording = false
+	local MacroPlaying = false
+	MacroLoopEnabled = false
+	local macroRecordStart = 0
+	local macroConnections = {}
+	MacroRecordKeybind = Enum.KeyCode.Unknown
+	MacroPlayKeybind = Enum.KeyCode.Unknown
+
+	-- INSTANT_PROMPT_SECTION_BOTTOM lives in the do block above and doesn't escape it (freed
+	-- once that block ended, same reason it's a do block in the first place) -- 106 is that
+	-- same value (INSTANT_PROMPT_TOP 8 + 30 + row height 52 + 16 gap) written out instead.
+	local MACRO_TOP = 106
+	CreateSectionHeading(FunctionalityPage, MACRO_TOP, "Macro")
+	local RecordToggle = CreateToggleRow(FunctionalityPage, MACRO_TOP + 30, "MacroRecordKeybind", function(k) MacroRecordKeybind = k end, "Record")
+	local PlayToggle, _, PlayRow = CreateToggleRow(FunctionalityPage, MACRO_TOP + 90, "MacroPlayKeybind", function(k) MacroPlayKeybind = k end, "Play")
+
+	StopMacroRecording = function()
+		if not MacroRecording then return end
+		MacroRecording = false
+		RecordToggle.Text = "Off"
+		for _, connection in ipairs(macroConnections) do connection:Disconnect() end
+		macroConnections = {}
+	end
+
+	local function StartMacroRecording()
+		if MacroRecording then return end
+		if MacroPlaying then StopMacroPlayback() end
+		MacroRecording = true
+		RecordToggle.Text = "On"
+		MacroEvents = {}
+		macroRecordStart = os.clock()
+		table.insert(macroConnections, UserInputService.InputChanged:Connect(function(input)
+			if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+			table.insert(MacroEvents, {t = os.clock() - macroRecordStart, kind = "move", x = input.Position.X, y = input.Position.Y})
+		end))
+		table.insert(macroConnections, UserInputService.InputBegan:Connect(function(input, processed)
+			if processed then return end
+			if input.UserInputType == Enum.UserInputType.MouseButton1 then
+				table.insert(MacroEvents, {t = os.clock() - macroRecordStart, kind = "press1"})
+			elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
+				table.insert(MacroEvents, {t = os.clock() - macroRecordStart, kind = "press2"})
+			end
+		end))
+		table.insert(macroConnections, UserInputService.InputEnded:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 then
+				table.insert(MacroEvents, {t = os.clock() - macroRecordStart, kind = "release1"})
+			elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
+				table.insert(MacroEvents, {t = os.clock() - macroRecordStart, kind = "release2"})
+			end
+		end))
+	end
+
+	ToggleMacroRecord = function()
+		if MacroRecording then StopMacroRecording() else StartMacroRecording() end
+	end
+	RecordToggle.MouseButton1Click:Connect(function() PlayClick() ToggleMacroRecord() end)
+
+	local function RunMacroOnce()
+		local startTime = os.clock()
+		for _, event in ipairs(MacroEvents) do
+			if not MacroPlaying then return end
+			local delay = event.t - (os.clock() - startTime)
+			if delay > 0 then task.wait(delay) end
+			if not MacroPlaying then return end
+			if event.kind == "move" then
+				if mousemoveabs then mousemoveabs(event.x, event.y) end
+			elseif event.kind == "press1" then
+				if mouse1press then mouse1press() end
+			elseif event.kind == "release1" then
+				if mouse1release then mouse1release() end
+			elseif event.kind == "press2" then
+				if mouse2press then mouse2press() end
+			elseif event.kind == "release2" then
+				if mouse2release then mouse2release() end
+			end
+		end
+	end
+
+	StopMacroPlayback = function()
+		if not MacroPlaying then return end
+		MacroPlaying = false
+		PlayToggle.Text = "Off"
+	end
+
+	local function StartMacroPlayback()
+		if MacroPlaying or #MacroEvents == 0 then return end
+		StopMacroRecording()
+		MacroPlaying = true
+		PlayToggle.Text = "On"
+		task.spawn(function()
+			repeat
+				RunMacroOnce()
+			until not MacroPlaying or not MacroLoopEnabled
+			MacroPlaying = false
+			PlayToggle.Text = "Off"
+		end)
+	end
+
+	ToggleMacroPlay = function()
+		if MacroPlaying then StopMacroPlayback() else StartMacroPlayback() end
+	end
+	PlayToggle.MouseButton1Click:Connect(function() PlayClick() ToggleMacroPlay() end)
+
+	-- Edit popup, next to the Play row's keybind input -- just the one Loop Macro toggle
+	-- for now, but a popup (rather than cramming a second control into the row itself)
+	-- leaves room to grow without redesigning the row.
+	local MacroEditButton = Instance.new("TextButton")
+	MacroEditButton.Name = "MacroEditButton"
+	MacroEditButton.Size = UDim2.new(0, 40, 0, 26)
+	MacroEditButton.Position = UDim2.new(1, -186, 0.5, -13)
+	MacroEditButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+	MacroEditButton.BorderSizePixel = 0
+	MacroEditButton.Text = "Edit"
+	MacroEditButton.Font = UIFont
+	MacroEditButton.TextSize = 12
+	MacroEditButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	MacroEditButton.Parent = PlayRow
+	Instance.new("UICorner", MacroEditButton).CornerRadius = UDim.new(0, 6)
+	AddPressBounce(MacroEditButton)
+
+	local MacroOptionsPopup = Instance.new("Frame")
+	MacroOptionsPopup.Name = "MacroOptionsPopup"
+	MacroOptionsPopup.AnchorPoint = Vector2.new(0.5, 0.5)
+	MacroOptionsPopup.Position = UDim2.new(0.5, 0, 0.5, 0)
+	MacroOptionsPopup.Size = UDim2.new(0, 220, 0, 100)
+	MacroOptionsPopup.BackgroundColor3 = FrameColor
+	MacroOptionsPopup.BorderSizePixel = 0
+	MacroOptionsPopup.Visible = false
+	MacroOptionsPopup.ZIndex = 40
+	MacroOptionsPopup.Parent = ScreenGui
+	Instance.new("UICorner", MacroOptionsPopup).CornerRadius = UDim.new(0, 12)
+	local macroPopupStroke = Instance.new("UIStroke")
+	macroPopupStroke.Color = Color3.fromRGB(0, 0, 0)
+	macroPopupStroke.Thickness = 1
+	macroPopupStroke.Parent = MacroOptionsPopup
+
+	local MacroPopupTitle = Instance.new("TextLabel")
+	MacroPopupTitle.Size = UDim2.new(1, -40, 0, 26)
+	MacroPopupTitle.Position = UDim2.new(0, 12, 0, 8)
+	MacroPopupTitle.BackgroundTransparency = 1
+	MacroPopupTitle.Text = "Macro Options"
+	MacroPopupTitle.Font = UIFont
+	MacroPopupTitle.TextSize = 14
+	MacroPopupTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+	MacroPopupTitle.TextXAlignment = Enum.TextXAlignment.Left
+	MacroPopupTitle.ZIndex = 41
+	MacroPopupTitle.Parent = MacroOptionsPopup
+
+	-- Small red circle, matching every other close button across this hub now.
+	local MacroPopupClose = Instance.new("TextButton")
+	MacroPopupClose.Size = UDim2.new(0, 12, 0, 12)
+	MacroPopupClose.Position = UDim2.new(1, -22, 0, 11)
+	MacroPopupClose.BackgroundColor3 = Color3.fromRGB(255, 95, 87)
+	MacroPopupClose.BorderSizePixel = 0
+	MacroPopupClose.Text = ""
+	MacroPopupClose.AutoButtonColor = false
+	MacroPopupClose.ZIndex = 41
+	MacroPopupClose.Parent = MacroOptionsPopup
+	Instance.new("UICorner", MacroPopupClose).CornerRadius = UDim.new(1, 0)
+	local macroPopupCloseStroke = Instance.new("UIStroke")
+	macroPopupCloseStroke.Color = Color3.fromRGB(196, 68, 62)
+	macroPopupCloseStroke.Thickness = 1
+	macroPopupCloseStroke.Parent = MacroPopupClose
+	MacroPopupClose.MouseEnter:Connect(function()
+		TweenService:Create(MacroPopupClose, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 130, 123)}):Play()
+	end)
+	MacroPopupClose.MouseLeave:Connect(function()
+		TweenService:Create(MacroPopupClose, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 95, 87)}):Play()
+	end)
+	AddPressBounce(MacroPopupClose)
+	MacroPopupClose.MouseButton1Click:Connect(function() PlayClick() MacroOptionsPopup.Visible = false end)
+
+	local LoopRow = Instance.new("Frame")
+	LoopRow.Size = UDim2.new(1, -16, 0, 40)
+	LoopRow.Position = UDim2.new(0, 8, 0, 44)
+	LoopRow.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
+	LoopRow.BorderSizePixel = 0
+	LoopRow.ZIndex = 41
+	LoopRow.Parent = MacroOptionsPopup
+	Instance.new("UICorner", LoopRow).CornerRadius = UDim.new(0, 8)
+
+	local LoopLabel = Instance.new("TextLabel")
+	LoopLabel.Size = UDim2.new(0, 120, 1, 0)
+	LoopLabel.Position = UDim2.new(0, 12, 0, 0)
+	LoopLabel.BackgroundTransparency = 1
+	LoopLabel.Text = "Loop Macro"
+	LoopLabel.Font = UIFont
+	LoopLabel.TextSize = 14
+	LoopLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	LoopLabel.TextXAlignment = Enum.TextXAlignment.Left
+	LoopLabel.TextYAlignment = Enum.TextYAlignment.Center
+	LoopLabel.ZIndex = 41
+	LoopLabel.Parent = LoopRow
+
+	local LoopToggle = Instance.new("TextButton")
+	LoopToggle.Size = UDim2.new(0, 46, 0, 24)
+	LoopToggle.Position = UDim2.new(1, -56, 0.5, -12)
+	LoopToggle.Text = "Off"
+	LoopToggle.Font = UIFont
+	LoopToggle.TextSize = 14
+	LoopToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+	LoopToggle.ZIndex = 41
+	LoopToggle.Parent = LoopRow
+	StyleAsToggleSwitch(LoopToggle)
+	AddPressBounce(LoopToggle)
+	LoopToggle.MouseButton1Click:Connect(function()
+		PlayClick()
+		MacroLoopEnabled = not MacroLoopEnabled
+		LoopToggle.Text = MacroLoopEnabled and "On" or "Off"
+	end)
+
+	MacroEditButton.MouseButton1Click:Connect(function()
+		PlayClick()
+		MacroOptionsPopup.Visible = not MacroOptionsPopup.Visible
+	end)
+
+	FunctionalityPage.CanvasSize = UDim2.new(0, 0, 0, MACRO_TOP + 90 + 52 + 16)
+end
+
 -- Visuals tab: Outline ESP, Body ESP (per-limb boxes, Infinite Yield-style, ported from
 -- the old feature-rich hub), ESP Labels (name/health/distance), and Camera (Free Cam +
 -- FOV, also ported). All three ESP effects share one color, set from the ESP Color row's
@@ -1516,6 +1787,7 @@ end
 do
 
 local VisualsPage = CreateTab("Visuals", 4, "128664215189887", true, 34)
+task.wait()
 
 local ESPDefaultColor = Color3.fromRGB(100, 255, 100)
 local ESPColor = LoadFeatureColor("ESPColor", ESPDefaultColor)
@@ -2445,6 +2717,7 @@ end
 -- its own separate do block, needs to read/update them too) so they fall back to globals
 -- instead of costing more top-level local slots.
 local TeleportPage = CreateTab("Teleport", 8, "134833734515120", true, 30)
+task.wait()
 do
 	local TAB_ROW_H = 30
 	local ROW_H = 26
@@ -3334,6 +3607,7 @@ end
 -- slots.
 AutoLockKeybind = Enum.KeyCode.Unknown
 local CombatPage = CreateTab("Combat", 5, "133776763887173", true, 34)
+task.wait()
 do
 	local AutoLockEnabled = false
 
@@ -3385,6 +3659,7 @@ end
 -- Scripts tab: launches the separate game modules (loadstring + HttpGet, same as the
 -- old hub). Each module only ever gets fetched once per execution.
 local ScriptsPage = CreateTab("Scripts", 6, "94167840974597", true, 30)
+task.wait()
 
 -- Caches the fetched source per game so re-running it (see below) never re-hits the
 -- network, but still actually executes the chunk again each time -- these game modules
@@ -3620,6 +3895,7 @@ do
 	SettingsPage.ZIndex = 20
 	SettingsPage.Parent = MainFrame
 	SettingsOverlay = SettingsPage
+	task.wait()
 
 	function OpenSettingsOverlay()
 		SettingsOverlay.Visible = true
@@ -3972,6 +4248,8 @@ function DestroyGui()
 	if FlyBodyVelocity then FlyBodyVelocity:Destroy() FlyBodyVelocity = nil end
 	if FlyBodyGyro then FlyBodyGyro:Destroy() FlyBodyGyro = nil end
 	if DisableInstantPrompt then DisableInstantPrompt() end
+	if StopMacroRecording then StopMacroRecording() end
+	if StopMacroPlayback then StopMacroPlayback() end
 	DisableFreeCam()
 	if workspace.CurrentCamera then workspace.CurrentCamera.FieldOfView = DEFAULT_FOV end
 	OutlineESPEnabled = false
@@ -4036,6 +4314,8 @@ mainInputConnection = UserInputService.InputBegan:Connect(function(input, proces
 	if ESPLabelsKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == ESPLabelsKeybind then ToggleESPLabels() end
 	if AutoLockKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == AutoLockKeybind then ToggleAutoLock() end
 	if InstantPromptKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == InstantPromptKeybind then ToggleInstantPrompt() end
+	if MacroRecordKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == MacroRecordKeybind then ToggleMacroRecord() end
+	if MacroPlayKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == MacroPlayKeybind then ToggleMacroPlay() end
 end)
 
 -- Dragging. Minimized has no visible button left to click to restore (it's just the
