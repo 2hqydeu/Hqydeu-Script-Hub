@@ -19,7 +19,7 @@ local TweenService = game:GetService("TweenService")
 local Player = Players.LocalPlayer
 local FrameColor = Color3.fromRGB(8, 8, 8)
 local AccentColor = Color3.fromRGB(255, 255, 255)
-local UIFont = Enum.Font.Ubuntu
+local UIFont = Enum.Font.FredokaOne -- more playful/rounded than Ubuntu, per request
 local GameRowTransparency = 0
 
 -- Carried over from the old hub's Undead Expedition module.
@@ -304,7 +304,7 @@ local function AddPressBounce(button)
 	end
 	button.MouseButton1Down:Connect(function()
 		pressed = true
-		TweenService:Create(scale, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 0.94}):Play()
+		TweenService:Create(scale, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 0.8}):Play()
 	end)
 	button.MouseButton1Up:Connect(release)
 	button.MouseLeave:Connect(release)
