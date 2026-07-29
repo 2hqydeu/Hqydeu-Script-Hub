@@ -14,7 +14,7 @@ local Player = Players.LocalPlayer
 -- contrast between window and row instead of relying on any transparency/gradient blend.
 local FrameColor = Color3.fromRGB(8, 8, 8)
 local AccentColor = Color3.fromRGB(255, 255, 255)
-local UIFont = Enum.Font.Ubuntu
+local UIFont = Enum.Font.FredokaOne -- more playful/rounded than Ubuntu, per request
 -- Shared "on" purple -- the toggle switches fill with this when On, and the selected tab
 -- pill uses the same color so the two visual languages match.
 local ToggleOffColor = Color3.fromRGB(50, 50, 50)
@@ -281,7 +281,7 @@ function AddPressBounce(button, target)
 	end
 	button.MouseButton1Down:Connect(function()
 		pressed = true
-		TweenService:Create(scale, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 0.94}):Play()
+		TweenService:Create(scale, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 0.8}):Play()
 	end)
 	button.MouseButton1Up:Connect(release)
 	button.MouseLeave:Connect(release)
@@ -390,45 +390,49 @@ end)
 
 -- Minimize + destroy, smallest they can be while still tappable -- farthest right is
 -- destroy (X), minimize sits directly to its left.
+-- Traffic-light style: tiny plain colored circles (yellow = minimize, red = close), no
+-- glyph inside either -- a thin darker ring gives them definition without needing text.
 local MiniButton = Instance.new("TextButton")
 MiniButton.Name = "MiniButton"
-MiniButton.Size = UDim2.new(0, 20, 0, 20)
-MiniButton.Position = UDim2.new(1, -52, 0, 19)
-MiniButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-MiniButton.BackgroundTransparency = 0.4
+MiniButton.Size = UDim2.new(0, 12, 0, 12)
+MiniButton.Position = UDim2.new(1, -40, 0, HEADER_HEIGHT / 2 - 6)
+MiniButton.BackgroundColor3 = Color3.fromRGB(255, 189, 46)
 MiniButton.BorderSizePixel = 0
-MiniButton.Text = "-"
-MiniButton.Font = UIFont
-MiniButton.TextSize = 14
-MiniButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+MiniButton.Text = ""
+MiniButton.AutoButtonColor = false
 MiniButton.Parent = MainFrame
 Instance.new("UICorner", MiniButton).CornerRadius = UDim.new(1, 0)
+local miniButtonStroke = Instance.new("UIStroke")
+miniButtonStroke.Color = Color3.fromRGB(196, 142, 20)
+miniButtonStroke.Thickness = 1
+miniButtonStroke.Parent = MiniButton
 MiniButton.MouseEnter:Connect(function()
-	TweenService:Create(MiniButton, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.1, BackgroundColor3 = Color3.fromRGB(65, 65, 65)}):Play()
+	TweenService:Create(MiniButton, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 205, 92)}):Play()
 end)
 MiniButton.MouseLeave:Connect(function()
-	TweenService:Create(MiniButton, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.4, BackgroundColor3 = Color3.fromRGB(45, 45, 45)}):Play()
+	TweenService:Create(MiniButton, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 189, 46)}):Play()
 end)
 AddPressBounce(MiniButton)
 
 local GuiDestroyButton = Instance.new("TextButton")
 GuiDestroyButton.Name = "GuiDestroyButton"
-GuiDestroyButton.Size = UDim2.new(0, 20, 0, 20)
-GuiDestroyButton.Position = UDim2.new(1, -28, 0, 19)
-GuiDestroyButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
-GuiDestroyButton.BackgroundTransparency = 0.4
+GuiDestroyButton.Size = UDim2.new(0, 12, 0, 12)
+GuiDestroyButton.Position = UDim2.new(1, -22, 0, HEADER_HEIGHT / 2 - 6)
+GuiDestroyButton.BackgroundColor3 = Color3.fromRGB(255, 95, 87)
 GuiDestroyButton.BorderSizePixel = 0
-GuiDestroyButton.Text = "X"
-GuiDestroyButton.Font = UIFont
-GuiDestroyButton.TextSize = 13
-GuiDestroyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+GuiDestroyButton.Text = ""
+GuiDestroyButton.AutoButtonColor = false
 GuiDestroyButton.Parent = MainFrame
 Instance.new("UICorner", GuiDestroyButton).CornerRadius = UDim.new(1, 0)
+local guiDestroyButtonStroke = Instance.new("UIStroke")
+guiDestroyButtonStroke.Color = Color3.fromRGB(196, 68, 62)
+guiDestroyButtonStroke.Thickness = 1
+guiDestroyButtonStroke.Parent = GuiDestroyButton
 GuiDestroyButton.MouseEnter:Connect(function()
-	TweenService:Create(GuiDestroyButton, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.1, BackgroundColor3 = Color3.fromRGB(220, 75, 75)}):Play()
+	TweenService:Create(GuiDestroyButton, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 130, 123)}):Play()
 end)
 GuiDestroyButton.MouseLeave:Connect(function()
-	TweenService:Create(GuiDestroyButton, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.4, BackgroundColor3 = Color3.fromRGB(200, 60, 60)}):Play()
+	TweenService:Create(GuiDestroyButton, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 95, 87)}):Play()
 end)
 AddPressBounce(GuiDestroyButton)
 
@@ -503,9 +507,12 @@ AddFadeDivider(HeaderDivider)
 
 -- Tabs -- horizontally scrolling so adding more tabs later never crowds the bar; they
 -- just keep their full width and the row scrolls instead of squeezing.
+-- Taller than the 30px tab buttons themselves need -- more surrounding breathing room for
+-- the tab bar as its own section, not bigger buttons.
+local TAB_BAR_HEIGHT = 64
 local TabBar = Instance.new("ScrollingFrame")
 TabBar.Name = "TabBar"
-TabBar.Size = UDim2.new(1, -32, 0, 46)
+TabBar.Size = UDim2.new(1, -32, 0, TAB_BAR_HEIGHT)
 TabBar.Position = UDim2.new(0, 16, 0, HEADER_HEIGHT + 8)
 TabBar.BackgroundTransparency = 1
 TabBar.BorderSizePixel = 0
@@ -524,7 +531,7 @@ TabBarLayout.Padding = UDim.new(0, 8)
 TabBarLayout.SortOrder = Enum.SortOrder.LayoutOrder
 TabBarLayout.Parent = TabBar
 
-local TAB_BAR_BOTTOM = HEADER_HEIGHT + 8 + 46
+local TAB_BAR_BOTTOM = HEADER_HEIGHT + 8 + TAB_BAR_HEIGHT
 local TabDivider = Instance.new("Frame")
 TabDivider.Name = "TabDivider"
 TabDivider.Size = UDim2.new(1, 0, 0, 1)
@@ -677,7 +684,7 @@ end
 -- compiler free a section's locals once it ends instead of holding them all open for the
 -- rest of the script; nothing here is referenced outside this block.
 do
-	local HomePage = CreateTab("Home", 1, "96269089530329")
+	local HomePage = CreateTab("Home", 1, "94154918683502")
 
 	local AvatarImage = Instance.new("ImageLabel")
 	AvatarImage.Name = "Avatar"
@@ -709,7 +716,7 @@ do
 end
 
 -- Player tab (scrolling: three feature sections stack well past one screen's height)
-local PlayerPage = CreateTab("Player", 2, "87870052960106", true)
+local PlayerPage = CreateTab("Player", 2, "84967055105923", true)
 
 function CreateSectionHeading(parent, y, text)
 	local heading = Instance.new("TextLabel")
@@ -1309,7 +1316,7 @@ end
 -- Functionality tab: sits between Player and Visuals. No icon for now -- CreateTab already
 -- handles a nil iconId by just leaving the tab's icon slot blank. Instant Prompt lives here
 -- now instead of at the bottom of Player.
-local FunctionalityPage = CreateTab("Functionality", 3, nil, true)
+local FunctionalityPage = CreateTab("Functions", 3, "129520582193954", true)
 do
 	-- Instant Prompt: drives every ProximityPrompt's HoldDuration to 0 (and drops its line-
 	-- of-sight requirement) so prompts complete the instant you press their key. The first
@@ -1410,7 +1417,7 @@ end
 -- against the script's 200-local cap for the rest of the file.
 do
 
-local VisualsPage = CreateTab("Visuals", 4, "90467794700971", true)
+local VisualsPage = CreateTab("Visuals", 4, "128664215189887", true)
 
 local ESPDefaultColor = Color3.fromRGB(100, 255, 100)
 local ESPColor = LoadFeatureColor("ESPColor", ESPDefaultColor)
@@ -2335,7 +2342,7 @@ end
 -- PopupToggleButton/PopupKeybind left un-declared here (the popup section further down, in
 -- its own separate do block, needs to read/update them too) so they fall back to globals
 -- instead of costing more top-level local slots.
-local TeleportPage = CreateTab("Teleport", 5, "90261647722333", true)
+local TeleportPage = CreateTab("Teleport", 5, "134833734515120", true)
 do
 	local TAB_ROW_H = 30
 	local ROW_H = 26
@@ -3224,7 +3231,7 @@ end
 -- to reach them by name) so they fall back to globals instead of costing top-level local
 -- slots.
 AutoLockKeybind = Enum.KeyCode.Unknown
-local CombatPage = CreateTab("Combat", 6, "97448523184491", true)
+local CombatPage = CreateTab("Combat", 6, "133776763887173", true)
 do
 	local AutoLockEnabled = false
 
@@ -3275,7 +3282,7 @@ end
 
 -- Scripts tab: launches the separate game modules (loadstring + HttpGet, same as the
 -- old hub). Each module only ever gets fetched once per execution.
-local ScriptsPage = CreateTab("Scripts", 7, "79977771810097", true)
+local ScriptsPage = CreateTab("Scripts", 7, "94167840974597", true)
 
 -- Caches the fetched source per game so re-running it (see below) never re-hits the
 -- network, but still actually executes the chunk again each time -- these game modules
@@ -3495,7 +3502,7 @@ ScriptsPage.CanvasSize = UDim2.new(0, 0, 0, 268)
 -- this point in the file, so wiring it here would silently fall through to nil.
 -- Left un-declared (not a top-level local) so it falls back to a global.
 do
-	local SettingsPage = CreateTab("Settings", 8, "132212578355544", true)
+	local SettingsPage = CreateTab("Settings", 8, "139383907261718", true)
 
 	-- Gui Fade: while minimized and left alone (not hovered) for a couple seconds, the mini
 	-- circle fades down to a low, unobtrusive opacity so it sits out of the way. The actual
@@ -3503,11 +3510,12 @@ do
 	-- minimized/MainFrame state actually lives -- this row just owns the on/off state.
 	GuiFadeEnabled = false
 	GuiFadeKeybind = Enum.KeyCode.Unknown
-	-- Bottom-aligned within the tab's visible viewport (285px tall) instead of stacked at
-	-- the top with empty space below -- SETTINGS_TOP is the Y where this group of controls
-	-- (plus the local-count label after it) starts so the whole block's bottom edge lands
-	-- flush with the viewport's own bottom edge.
-	local SETTINGS_TOP = 131
+	-- Bottom-aligned within the tab's visible viewport (267px tall now that the tab bar
+	-- itself takes up more room) instead of stacked at the top with empty space below --
+	-- SETTINGS_TOP is the Y where this group of controls (plus the local-count label after
+	-- it) starts so the whole block's bottom edge lands flush with the viewport's own
+	-- bottom edge.
+	local SETTINGS_TOP = 113
 	local GuiFadeToggle = CreateToggleRow(SettingsPage, SETTINGS_TOP, "GuiFadeKeybind", function(k) GuiFadeKeybind = k end, "Gui Fade")
 	ToggleGuiFade = function()
 		GuiFadeEnabled = not GuiFadeEnabled
@@ -3568,10 +3576,10 @@ do
 	LocalCountLabel.TextXAlignment = Enum.TextXAlignment.Right
 	LocalCountLabel.Parent = SettingsPage
 
-	-- Matches the tab's own visible viewport height (285px: FULL_SIZE.Y minus the header/tab
+	-- Matches the tab's own visible viewport height (267px: FULL_SIZE.Y minus the header/tab
 	-- bar/content padding above it) exactly, so the bottom-aligned controls just fill it
 	-- with no separate scrolling required.
-	SettingsPage.CanvasSize = UDim2.new(0, 0, 0, 285)
+	SettingsPage.CanvasSize = UDim2.new(0, 0, 0, 267)
 end
 
 SelectTab("Home")
@@ -3630,16 +3638,26 @@ function ToggleGUI()
 	else
 		targetPosition = preMinimizePosition or WINDOW_POSITION
 	end
-	local tweenInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-	TweenService:Create(MainFrame, tweenInfo, {
-		Size = minimized and MINI_SIZE or FULL_SIZE,
-		Position = targetPosition,
-	}):Play()
-	TweenService:Create(MainCorner, tweenInfo, {CornerRadius = minimized and MINI_CORNER or FULL_CORNER}):Play()
+
+	-- Fades out, swaps size/shape/position instantly while fully invisible, then fades
+	-- back in -- reads as a clean cross-fade instead of visibly stretching a rectangle into
+	-- a circle (or back), which is what tweening Size directly used to look like.
+	local fadeOutInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local fadeInInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local fadeOutTween = TweenService:Create(MainFrame, fadeOutInfo, {BackgroundTransparency = 1})
+	fadeOutTween:Play()
+	fadeOutTween.Completed:Wait()
+
+	MainFrame.Size = minimized and MINI_SIZE or FULL_SIZE
+	MainFrame.Position = targetPosition
+	MainCorner.CornerRadius = minimized and MINI_CORNER or FULL_CORNER
 	local timeGoal = minimized and MINI_TIME_GOAL or NORMAL_TIME_GOAL
-	TweenService:Create(TimeLabel, tweenInfo, {Position = timeGoal.Position, Size = timeGoal.Size}):Play()
+	TimeLabel.Position = timeGoal.Position
+	TimeLabel.Size = timeGoal.Size
 	TimeLabel.TextXAlignment = minimized and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left
-	MiniButton.Text = minimized and "+" or "-"
+
+	TweenService:Create(MainFrame, fadeInInfo, {BackgroundTransparency = 0}):Play()
+
 	if minimized then
 		ScheduleGuiFade()
 	else
