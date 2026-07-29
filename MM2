@@ -371,19 +371,29 @@ RoleRevealTitle.TextXAlignment = Enum.TextXAlignment.Left
 RoleRevealTitle.ZIndex = 41
 RoleRevealTitle.Parent = RoleRevealPopup
 
+-- Traffic-light style, matching Serenity's own close circle: a tiny plain red circle, no
+-- glyph, with a thin darker ring for definition.
 local RoleRevealClose = Instance.new("TextButton")
-RoleRevealClose.Size = UDim2.new(0, 20, 0, 20)
-RoleRevealClose.Position = UDim2.new(1, -28, 0, 6)
-RoleRevealClose.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
-RoleRevealClose.BackgroundTransparency = 0.4
+RoleRevealClose.Size = UDim2.new(0, 12, 0, 12)
+RoleRevealClose.Position = UDim2.new(1, -20, 0, 11)
+RoleRevealClose.BackgroundColor3 = Color3.fromRGB(255, 95, 87)
 RoleRevealClose.BorderSizePixel = 0
-RoleRevealClose.Text = "X"
-RoleRevealClose.Font = UIFont
-RoleRevealClose.TextSize = 13
-RoleRevealClose.TextColor3 = Color3.fromRGB(255, 255, 255)
+RoleRevealClose.Text = ""
+RoleRevealClose.AutoButtonColor = false
 RoleRevealClose.ZIndex = 41
 RoleRevealClose.Parent = RoleRevealPopup
 Instance.new("UICorner", RoleRevealClose).CornerRadius = UDim.new(1, 0)
+local roleRevealCloseStroke = Instance.new("UIStroke")
+roleRevealCloseStroke.Color = Color3.fromRGB(196, 68, 62)
+roleRevealCloseStroke.Thickness = 1
+roleRevealCloseStroke.Parent = RoleRevealClose
+RoleRevealClose.MouseEnter:Connect(function()
+	TweenService:Create(RoleRevealClose, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 130, 123)}):Play()
+end)
+RoleRevealClose.MouseLeave:Connect(function()
+	TweenService:Create(RoleRevealClose, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 95, 87)}):Play()
+end)
+AddPressBounce(RoleRevealClose)
 
 local RoleRevealList = Instance.new("Frame")
 RoleRevealList.BackgroundTransparency = 1
