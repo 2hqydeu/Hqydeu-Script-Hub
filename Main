@@ -128,13 +128,13 @@ ScreenGui.ResetOnSpawn = false
 
 -- Sound Effects
 local StartupSound = Instance.new("Sound")
-StartupSound.SoundId = "rbxassetid://134699420140804"
+StartupSound.SoundId = "rbxassetid://116627196004523"
 StartupSound.Volume = 0.8
 StartupSound.Parent = ScreenGui
 StartupSound:Play()
 
 local ClickSound = Instance.new("Sound")
-ClickSound.SoundId = "rbxassetid://88442833509532"
+ClickSound.SoundId = "rbxassetid://95635059379804"
 ClickSound.Volume = 0.5
 ClickSound.Parent = ScreenGui
 
@@ -413,7 +413,7 @@ SettingsBackButton.BackgroundTransparency = 1
 SettingsBackButton.Text = "< Back"
 SettingsBackButton.Font = UIFont
 SettingsBackButton.TextSize = 10
-SettingsBackButton.TextColor3 = Color3.fromRGB(178, 155, 235)
+SettingsBackButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 SettingsBackButton.TextXAlignment = Enum.TextXAlignment.Left
 SettingsBackButton.Visible = false
 SettingsBackButton.Parent = MainFrame
@@ -731,27 +731,53 @@ end
 do
 	local HomePage = CreateTab("Home", 1, "94154918683502", nil, 30, 5)
 
-	-- Soft circular glow behind the avatar -- three concentric rings, each bigger and more
+	-- Soft circular glow behind the avatar -- five concentric rings, each bigger and more
 	-- transparent than the last, since Roblox has no native radial gradient for a plain
 	-- Frame (UIGradient only fades linearly across a shape, not outward from its center).
-	-- Stacking rings like this is the standard cheap approximation of a real radial glow.
+	-- Stacking enough rings with a gentle falloff between them is the cheap way to
+	-- approximate a soft, realistic-looking radial glow instead of a few hard-edged bands.
+	-- The whole stack breathes together (a shared UIScale tweening size, each ring's own
+	-- transparency tweening in lockstep) for a slow pulsing/flowing glow instead of a
+	-- static one.
 	local avatarCenter = UDim2.new(0.5, 0, 0, 72)
+	local avatarGlowContainer = Instance.new("Frame")
+	avatarGlowContainer.Name = "AvatarGlowContainer"
+	avatarGlowContainer.AnchorPoint = Vector2.new(0.5, 0.5)
+	avatarGlowContainer.Size = UDim2.new(0, 1, 0, 1)
+	avatarGlowContainer.Position = avatarCenter
+	avatarGlowContainer.BackgroundTransparency = 1
+	avatarGlowContainer.Parent = HomePage
+	local avatarGlowScale = Instance.new("UIScale")
+	avatarGlowScale.Parent = avatarGlowContainer
+
+	local glowRings = {}
 	for i, ring in ipairs({
-		{size = 132, transparency = 0.9},
-		{size = 116, transparency = 0.8},
-		{size = 104, transparency = 0.65},
+		{size = 168, transparency = 0.94},
+		{size = 150, transparency = 0.88},
+		{size = 132, transparency = 0.8},
+		{size = 116, transparency = 0.7},
+		{size = 104, transparency = 0.58},
 	}) do
 		local glow = Instance.new("Frame")
 		glow.Name = "AvatarGlow" .. i
 		glow.AnchorPoint = Vector2.new(0.5, 0.5)
 		glow.Size = UDim2.new(0, ring.size, 0, ring.size)
-		glow.Position = avatarCenter
+		glow.Position = UDim2.new(0.5, 0, 0.5, 0)
 		glow.BackgroundColor3 = Color3.fromRGB(178, 155, 235)
 		glow.BackgroundTransparency = ring.transparency
 		glow.BorderSizePixel = 0
-		glow.Parent = HomePage
+		glow.Parent = avatarGlowContainer
 		Instance.new("UICorner", glow).CornerRadius = UDim.new(1, 0)
+		table.insert(glowRings, {instance = glow, baseTransparency = ring.transparency})
 	end
+
+	task.spawn(function()
+		local pulseInfo = TweenInfo.new(2.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+		TweenService:Create(avatarGlowScale, pulseInfo, {Scale = 1.12}):Play()
+		for _, ring in ipairs(glowRings) do
+			TweenService:Create(ring.instance, pulseInfo, {BackgroundTransparency = math.min(ring.baseTransparency + 0.15, 0.97)}):Play()
+		end
+	end)
 
 	local AvatarImage = Instance.new("ImageLabel")
 	AvatarImage.Name = "Avatar"
@@ -3615,10 +3641,11 @@ do
 	-- Defaults on now, per request.
 	GuiFadeEnabled = true
 	GuiFadeKeybind = Enum.KeyCode.Unknown
-	-- Top-aligned with a modest padding now -- the overlay's visible viewport (348px) is
-	-- taller than the per-tab pages ever were (it covers the tab bar's old footprint too),
-	-- so there's no need to hug the bottom edge to avoid a big empty gap anymore.
-	local SETTINGS_TOP = 16
+	-- Bottom-aligned within the overlay's visible viewport (348px tall -- it covers the tab
+	-- bar's old footprint too, not just the content area, so it's taller than the per-tab
+	-- pages ever were) so the whole block's bottom edge lands flush with the viewport's own
+	-- bottom edge instead of sitting stranded up top with empty space below.
+	local SETTINGS_TOP = 150
 	local GuiFadeToggle = CreateToggleRow(SettingsPage, SETTINGS_TOP, "GuiFadeKeybind", function(k) GuiFadeKeybind = k end, "Gui Fade")
 	-- CreateToggleRow's switch always starts visually "Off" -- sync it to match the
 	-- GuiFadeEnabled default above instead of the two disagreeing on load.
@@ -3637,41 +3664,57 @@ do
 	-- this back off restores exactly what it was, not just a flat guess.
 	local MUSIC_MIN_LENGTH = 20
 	local MutedSounds = {}
+	local KnownSounds = {}
 	MusicMuted = false
+	-- Enforces the mute continuously rather than a one-time flip -- some games reuse the
+	-- SAME Sound instance across an entire playlist (swapping SoundId instead of creating a
+	-- new instance per track), so a mute that only fires once on first-seen would get
+	-- silently undone the moment that instance's own script sets Volume back up for the
+	-- next song. Reacting to Volume changes too means every subsequent track gets caught
+	-- and re-muted the instant the game tries to raise it again.
 	local function ApplyMusicMute(sound)
 		pcall(function()
 			local qualifies = sound.TimeLength >= MUSIC_MIN_LENGTH
 			if MusicMuted and qualifies then
-				if MutedSounds[sound] == nil then
+				if sound.Volume > 0 then
 					MutedSounds[sound] = sound.Volume
 					sound.Volume = 0
 				end
-			elseif MutedSounds[sound] ~= nil then
+			elseif not MusicMuted and MutedSounds[sound] ~= nil then
 				sound.Volume = MutedSounds[sound]
 				MutedSounds[sound] = nil
 			end
 		end)
 	end
 	local function WatchSound(sound)
+		KnownSounds[sound] = true
 		ApplyMusicMute(sound)
-		-- TimeLength can still be 0 (not loaded yet) the instant a Sound is added --
-		-- catches it once the real duration comes in instead of missing long sounds that
-		-- just hadn't reported their length yet.
+		-- TimeLength can still be 0 (not loaded yet) the instant a Sound is added -- catches
+		-- it once the real duration comes in. Volume is watched for the reused-instance
+		-- playlist case described above.
 		sound:GetPropertyChangedSignal("TimeLength"):Connect(function() ApplyMusicMute(sound) end)
-	end
-	for _, sound in ipairs(game:GetDescendants()) do
-		if sound:IsA("Sound") then WatchSound(sound) end
+		sound:GetPropertyChangedSignal("Volume"):Connect(function() ApplyMusicMute(sound) end)
 	end
 	game.DescendantAdded:Connect(function(descendant)
 		if descendant:IsA("Sound") then WatchSound(descendant) end
+	end)
+	-- Walking every descendant of the ENTIRE game (Workspace, SoundService, all of it) is
+	-- expensive in a big game -- doing it synchronously right here was blocking the rest of
+	-- the hub's own setup, causing a bad lag spike on execute (bad enough the loading
+	-- screen sometimes never got a chance to render at all). Deferred to its own thread so
+	-- everything else finishes loading immediately instead of waiting on this.
+	task.spawn(function()
+		for _, sound in ipairs(game:GetDescendants()) do
+			if sound:IsA("Sound") then WatchSound(sound) end
+		end
 	end)
 	MusicMuteKeybind = Enum.KeyCode.Unknown
 	local MuteMusicToggle = CreateToggleRow(SettingsPage, SETTINGS_TOP + 68, "MusicMuteKeybind", function(k) MusicMuteKeybind = k end, "Mute Music")
 	ToggleMusicMute = function()
 		MusicMuted = not MusicMuted
 		MuteMusicToggle.Text = MusicMuted and "On" or "Off"
-		for _, sound in ipairs(game:GetDescendants()) do
-			if sound:IsA("Sound") then ApplyMusicMute(sound) end
+		for sound in pairs(KnownSounds) do
+			ApplyMusicMute(sound)
 		end
 	end
 	MuteMusicToggle.MouseButton1Click:Connect(function() PlayClick() ToggleMusicMute() end)
@@ -3732,9 +3775,9 @@ do
 	LocalCountLabel.TextXAlignment = Enum.TextXAlignment.Center
 	LocalCountLabel.Parent = SettingsPage
 
-	-- Comfortably taller than the actual content (ends around 220px down) so nothing
-	-- crowds the bottom edge -- well within the 348px visible viewport, no scrolling needed.
-	SettingsPage.CanvasSize = UDim2.new(0, 0, 0, 240)
+	-- Matches the overlay's own visible viewport height (348px) exactly -- content is now
+	-- bottom-aligned to fill it, no separate scrolling needed.
+	SettingsPage.CanvasSize = UDim2.new(0, 0, 0, 348)
 
 	-- SettingsPage sits at ZIndex 20 (above the tab bar/content it covers), but every row
 	-- and button built above it (CreateToggleRow's rows, the Reset/Destroy buttons, the
