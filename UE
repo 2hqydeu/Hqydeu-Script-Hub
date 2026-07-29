@@ -246,7 +246,11 @@ local MINI_HEIGHT = 44
 local PanelFrame = Instance.new("Frame")
 PanelFrame.Name = "UEPanel"
 PanelFrame.Size = UDim2.new(0, 280, 0, FULL_HEIGHT)
-PanelFrame.Position = UDim2.new(0.5, -140, 0.5, -200)
+-- Reopening after closing re-runs this whole script fresh, which would otherwise always
+-- reset back to the centered default position -- getgenv() is the only thing that survives
+-- across separate executions, so the panel's last dragged spot gets remembered there
+-- (written to on every drag update below) and restored here if present.
+PanelFrame.Position = getgenv().Serenity_UE_PanelPosition or UDim2.new(0.5, -140, 0.5, -200)
 PanelFrame.AnchorPoint = Vector2.new(0, 0)
 PanelFrame.BackgroundColor3 = FrameColor
 PanelFrame.BorderSizePixel = 0
@@ -2890,4 +2894,5 @@ UserInputService.InputChanged:Connect(function(input)
 	if not dragging or (input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch) then return end
 	local delta = input.Position - dragStart
 	PanelFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	getgenv().Serenity_UE_PanelPosition = PanelFrame.Position
 end)
