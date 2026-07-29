@@ -135,8 +135,15 @@ StartupSound:Play()
 
 local ClickSound = Instance.new("Sound")
 ClickSound.SoundId = "rbxassetid://135244211779631"
-ClickSound.Volume = 0.5
+-- Turned way down (was 0.5) and pitched slightly lower -- PitchShiftSoundEffect changes
+-- pitch independent of playback speed (unlike Sound.PlaybackSpeed, which would also slow
+-- the click down), so it's just a touch deeper/softer, not slower, without needing a
+-- different asset every time this gets tuned.
+ClickSound.Volume = 0.2
 ClickSound.Parent = ScreenGui
+local clickSoundPitch = Instance.new("PitchShiftSoundEffect")
+clickSoundPitch.Octave = 0.85
+clickSoundPitch.Parent = ClickSound
 
 function PlayClick() ClickSound:Play() end
 
@@ -264,7 +271,11 @@ end
 -- UIListLayout (e.g. the tab bar) should pass an inner descendant instead -- scaling the
 -- UIListLayout child itself changes the Size Roblox lays siblings out against, which is
 -- exactly what was shoving neighboring tabs sideways every time one got pressed.
-function AddPressBounce(button, target)
+-- shouldBounce is an optional predicate, checked at press-time -- lets a caller skip the
+-- squish entirely for presses that are about to be a no-op anyway (e.g. re-clicking the
+-- tab you're already on), instead of it playing every time regardless of whether the
+-- press actually does anything.
+function AddPressBounce(button, target, shouldBounce)
 	target = target or button
 	local scale = GetOrCreateUIScale(target)
 	-- Guarded by "pressed" -- this used to reset to Scale=1 on every single MouseLeave,
@@ -280,6 +291,7 @@ function AddPressBounce(button, target)
 		TweenService:Create(scale, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
 	end
 	button.MouseButton1Down:Connect(function()
+		if shouldBounce and not shouldBounce() then return end
 		pressed = true
 		TweenService:Create(scale, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 0.8}):Play()
 	end)
@@ -657,8 +669,10 @@ function CreateTab(name, order, iconId, scrolling, iconSize, iconYOffset)
 	content.Parent = button
 	-- Bounces "content" (icon + label), not "button" -- button is the direct child the
 	-- TabBar's UIListLayout tracks, so scaling it directly would nudge every tab after it
-	-- sideways each time this one gets pressed.
-	AddPressBounce(button, content)
+	-- sideways each time this one gets pressed. Skipped entirely for a tab that's already
+	-- selected -- the click handler below is already a no-op for that case, so the squish
+	-- played for nothing.
+	AddPressBounce(button, content, function() return SelectedTabName ~= name end)
 
 	local contentLayout = Instance.new("UIListLayout")
 	contentLayout.FillDirection = Enum.FillDirection.Horizontal
@@ -751,36 +765,9 @@ do
 	-- building before the engine ever got a turn to draw the loading bar's progress.
 	task.wait()
 
-	-- Avatar glow, take three: down to just one soft ring (the others were extra clutter
-	-- that barely showed anyway) plus the flowing rim below -- cleaner without losing the
-	-- glow itself. Still breathes gently via a shared UIScale.
+	-- Avatar glow, take four: dropped the soft pulsing backdrop ring entirely -- just the
+	-- flowing rim now, which was the part that actually looked good.
 	local avatarCenter = UDim2.new(0.5, 0, 0, 72)
-
-	local avatarGlowContainer = Instance.new("Frame")
-	avatarGlowContainer.Name = "AvatarGlowContainer"
-	avatarGlowContainer.AnchorPoint = Vector2.new(0.5, 0.5)
-	avatarGlowContainer.Size = UDim2.new(0, 1, 0, 1)
-	avatarGlowContainer.Position = avatarCenter
-	avatarGlowContainer.BackgroundTransparency = 1
-	avatarGlowContainer.Parent = HomePage
-	local avatarGlowScale = Instance.new("UIScale")
-	avatarGlowScale.Parent = avatarGlowContainer
-
-	local avatarGlow = Instance.new("Frame")
-	avatarGlow.Name = "AvatarGlow"
-	avatarGlow.AnchorPoint = Vector2.new(0.5, 0.5)
-	avatarGlow.Size = UDim2.new(0, 108, 0, 108)
-	avatarGlow.Position = UDim2.new(0.5, 0, 0.5, 0)
-	avatarGlow.BackgroundColor3 = Color3.fromRGB(178, 155, 235)
-	avatarGlow.BackgroundTransparency = 0.72
-	avatarGlow.BorderSizePixel = 0
-	avatarGlow.Parent = avatarGlowContainer
-	Instance.new("UICorner", avatarGlow).CornerRadius = UDim.new(1, 0)
-
-	task.spawn(function()
-		local pulseInfo = TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
-		TweenService:Create(avatarGlowScale, pulseInfo, {Scale = 1.1}):Play()
-	end)
 
 	-- The flowing ring itself -- a UIStroke traced around a circle the same size as the
 	-- avatar, with a UIGradient painting the stroke instead of a flat color. Light/dark/
@@ -833,22 +820,66 @@ do
 		if success then AvatarImage.Image = content end
 	end)
 
+	-- Split into two labels (rather than one RichText label) so the name specifically can
+	-- carry its own animated UIGradient -- a plain TextLabel/RichText color is flat, and a
+	-- gradient covering the whole sentence would shimmer "Welcome" and "!" too, not just
+	-- the name.
+	local WelcomeContainer = Instance.new("Frame")
+	WelcomeContainer.Name = "WelcomeContainer"
+	WelcomeContainer.Size = UDim2.new(1, 0, 0, 40)
+	WelcomeContainer.Position = UDim2.new(0, 0, 0, 136)
+	WelcomeContainer.BackgroundTransparency = 1
+	WelcomeContainer.Parent = HomePage
+	local welcomeLayout = Instance.new("UIListLayout")
+	welcomeLayout.FillDirection = Enum.FillDirection.Horizontal
+	welcomeLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	welcomeLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+	welcomeLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	welcomeLayout.Parent = WelcomeContainer
+
 	local WelcomeLabel = Instance.new("TextLabel")
 	WelcomeLabel.Name = "WelcomeLabel"
-	WelcomeLabel.Size = UDim2.new(1, 0, 0, 40)
-	WelcomeLabel.Position = UDim2.new(0, 0, 0, 136)
+	WelcomeLabel.LayoutOrder = 1
+	WelcomeLabel.AutomaticSize = Enum.AutomaticSize.X
+	WelcomeLabel.Size = UDim2.new(0, 0, 1, 0)
 	WelcomeLabel.BackgroundTransparency = 1
-	WelcomeLabel.RichText = true
-	-- Just the name in that same lavender used everywhere (toggle switches, tab pill,
-	-- accents) so it ties back into the rest of the hub's color language instead of being
-	-- plain white like the rest of the sentence.
-	WelcomeLabel.Text = "Welcome <font color=\"rgb(178,155,235)\">" .. Player.DisplayName .. "</font>!"
+	WelcomeLabel.Text = "Welcome "
 	WelcomeLabel.Font = UIFont
 	WelcomeLabel.TextSize = 26
 	WelcomeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-	WelcomeLabel.TextXAlignment = Enum.TextXAlignment.Center
+	WelcomeLabel.TextXAlignment = Enum.TextXAlignment.Left
 	WelcomeLabel.TextYAlignment = Enum.TextYAlignment.Center
-	WelcomeLabel.Parent = HomePage
+	WelcomeLabel.Parent = WelcomeContainer
+
+	-- The name itself -- same fast flowing-light trick as the avatar ring (a UIGradient
+	-- with light/lavender/light keypoints, Rotation animated continuously) instead of a
+	-- flat color, so it visibly shimmers instead of just sitting there tinted.
+	local NameLabel = Instance.new("TextLabel")
+	NameLabel.Name = "NameLabel"
+	NameLabel.LayoutOrder = 2
+	NameLabel.AutomaticSize = Enum.AutomaticSize.X
+	NameLabel.Size = UDim2.new(0, 0, 1, 0)
+	NameLabel.BackgroundTransparency = 1
+	NameLabel.Text = Player.DisplayName .. "!"
+	NameLabel.Font = UIFont
+	NameLabel.TextSize = 26
+	NameLabel.TextColor3 = Color3.fromRGB(178, 155, 235)
+	NameLabel.TextXAlignment = Enum.TextXAlignment.Left
+	NameLabel.TextYAlignment = Enum.TextYAlignment.Center
+	NameLabel.Parent = WelcomeContainer
+	local nameGradient = Instance.new("UIGradient")
+	nameGradient.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(238, 233, 250)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(178, 155, 235)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(238, 233, 250)),
+	})
+	nameGradient.Parent = NameLabel
+	task.spawn(function()
+		while NameLabel.Parent do
+			nameGradient.Rotation = (nameGradient.Rotation + 10) % 360
+			task.wait(0.015)
+		end
+	end)
 end
 
 -- Player tab (scrolling: three feature sections stack well past one screen's height)
@@ -3430,13 +3461,15 @@ end
 local ScriptsPage = CreateTab("Scripts", 6, "94167840974597", true, 30)
 task.wait()
 
--- Each game is independent -- opening one no longer resets any other back to Execute, and
--- once a game has been opened once, its own button is permanently "Open" and does nothing
--- on further clicks. There's no hook back into a game module to know if its live UI later
--- gets closed by its own close button, so this is a one-way door on purpose: reopening a
--- closed panel means reloading the hub, rather than silently re-running a script whose
--- effects (connections, state) may already be halfway torn down by that close.
-local ScriptRunner = {Sources = {}, Opened = {}, Busy = false}
+-- Each game is independent -- opening one doesn't affect any other. Once a game has been
+-- opened successfully at least once, its button permanently reads "Open" (EverOpened) --
+-- but Live tracks whether a panel is ACTUALLY up right now, watched via the game module's
+-- own ScreenGui (named "Serenity" .. the URL's last path segment, e.g. "SerenityUE") going
+-- AncestryChanged with a nil parent, which is what :Destroy() does. While Live, clicking
+-- does nothing; once the panel's been closed (Live false again), clicking re-runs the
+-- cached source and opens it again -- each game module remembers its own last dragged
+-- panel position via getgenv() across that re-run, so it reopens where it was left.
+local ScriptRunner = {Sources = {}, EverOpened = {}, Live = {}, Busy = false}
 function RunScriptOnce(key, url)
 	local source = ScriptRunner.Sources[key]
 	if not source then
@@ -3494,11 +3527,27 @@ function CreateGameRow(parent, y, gameTitle, url)
 	AddPressBounce(executeBtn)
 	-- AddHoverStroke(row, executeBtn) -- highlighting disabled for now while the pop animation gets sorted out
 
+	-- Derived from the URL itself (every game module's own repo path ends in its short
+	-- name -- UE/QOD/MM2) rather than a separate lookup table, since that's exactly what
+	-- each module names its own ScreenGui after (see the existingScreenGui guard at the
+	-- top of each one).
+	local screenGuiName = "Serenity" .. (url:match("([^/]+)$") or "")
+
+	local function WatchForClose()
+		local liveScreenGui = CoreGui:FindFirstChild(screenGuiName)
+		if not liveScreenGui then return end
+		liveScreenGui.AncestryChanged:Connect(function(_, newParent)
+			if not newParent then
+				ScriptRunner.Live[gameTitle] = false
+			end
+		end)
+	end
+
 	executeBtn.MouseButton1Click:Connect(function()
-		-- Once opened, this game's button is permanently "Open" and does nothing on
-		-- further clicks -- no re-run, no destroying/respawning its panel. The only way
-		-- back in is closing that panel yourself; clicking here again can't do it.
-		if ScriptRunner.Opened[gameTitle] then return end
+		-- While a panel is actually up, this does nothing at all -- no re-run, no
+		-- destroying/respawning it. Once it's been closed (Live goes false, caught above),
+		-- clicking re-runs the cached source and opens it again.
+		if ScriptRunner.Live[gameTitle] then return end
 		PlayClick()
 		if ScriptRunner.Busy then return end -- debounce: ignore double-clicks mid-launch
 		ScriptRunner.Busy = true
@@ -3507,9 +3556,11 @@ function CreateGameRow(parent, y, gameTitle, url)
 		local ok = RunScriptOnce(gameTitle, url)
 		if ok then
 			executeBtn.Text = "Open"
-			ScriptRunner.Opened[gameTitle] = true
+			ScriptRunner.EverOpened[gameTitle] = true
+			ScriptRunner.Live[gameTitle] = true
+			WatchForClose()
 		else
-			executeBtn.Text = "Execute"
+			executeBtn.Text = ScriptRunner.EverOpened[gameTitle] and "Open" or "Execute"
 		end
 		ScriptRunner.Busy = false
 	end)
@@ -3805,7 +3856,7 @@ do
 	LocalCountLabel.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 172)
 	LocalCountLabel.BackgroundTransparency = 1
 	LocalCountLabel.BorderSizePixel = 0
-	LocalCountLabel.Text = "131 / 200"
+	LocalCountLabel.Text = "132 / 200"
 	LocalCountLabel.Font = UIFont
 	LocalCountLabel.TextSize = 7
 	LocalCountLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
