@@ -78,6 +78,13 @@ local function IsQuietOrDieKiller()
 end
 
 -- UI: a small standalone panel, matching Serenity's look for consistency (same shell as UE).
+-- Re-running this script (Scripts tab's Execute/Open button re-executes the whole chunk
+-- every click, it never just no-ops on an already-open panel) used to stack a brand new
+-- ScreenGui on top of any already-open one instead of replacing it -- only one of THIS
+-- game's panel should ever exist at a time, so tear down a previous instance first.
+local existingScreenGui = CoreGui:FindFirstChild("SerenityQOD")
+if existingScreenGui then existingScreenGui:Destroy() end
+
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SerenityQOD"
 ScreenGui.Parent = CoreGui
@@ -367,7 +374,7 @@ local FarmEditButton = Instance.new("TextButton")
 FarmEditButton.Name = "EditButton"
 FarmEditButton.Size = UDim2.new(0, 44, 0, 26)
 FarmEditButton.Position = UDim2.new(1, -108, 0.5, -13)
-FarmEditButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+FarmEditButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 FarmEditButton.BackgroundTransparency = 0.2
 FarmEditButton.BorderSizePixel = 0
 FarmEditButton.Text = "Edit"
