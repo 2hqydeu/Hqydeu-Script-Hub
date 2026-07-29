@@ -12,7 +12,7 @@ local ContextActionService = game:GetService("ContextActionService")
 local Player = Players.LocalPlayer
 -- Darker than the (14,14,14) rows sitting on top of it, so there's plain flat-color
 -- contrast between window and row instead of relying on any transparency/gradient blend.
-local FrameColor = Color3.fromRGB(8, 8, 8)
+local FrameColor = Color3.fromRGB(3, 3, 3)
 local AccentColor = Color3.fromRGB(255, 255, 255)
 local UIFont = Enum.Font.FredokaOne -- more playful/rounded than Ubuntu, per request
 -- Shared "on" purple -- the toggle switches fill with this when On, and the selected tab
@@ -338,27 +338,34 @@ local MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = FULL_CORNER
 MainCorner.Parent = MainFrame
 
--- Header: live local clock, title, minimize + destroy buttons -- all top-anchored so a
--- minimize shrinks the window straight up toward this row instead of shrinking from the
--- center. Minimized is now just a small circle with the clock centered in it -- everything
--- else (title, minimize/destroy buttons) simply hides, handled in ToggleGUI() below.
-local NORMAL_TITLE_GOAL = {Position = UDim2.new(0.5, 0, 0, HEADER_HEIGHT / 2), Size = UDim2.new(0, 280, 0, 60)}
-local NORMAL_TIME_GOAL = {Position = UDim2.new(0, 16, 0, 23), Size = UDim2.new(0, 160, 0, 12)}
+-- Header: settings shortcut icon, live local clock, minimize + destroy buttons -- all
+-- top-anchored so a minimize shrinks the window straight up toward this row instead of
+-- shrinking from the center. Minimized is now just a small circle with the clock centered
+-- in it -- everything else (icon, minimize/destroy buttons) simply hides, handled in
+-- ToggleGUI() below. The Serenity title image is gone -- this icon sits where it used to.
+local NORMAL_TIME_GOAL = {Position = UDim2.new(0, 52, 0, 23), Size = UDim2.new(0, 160, 0, 12)}
 -- Centered in the mini circle (AnchorPoint stays (0,0), so Position is offset by half of
 -- Size to land the label dead-center) -- shrunk and center-aligned so the full "11:59:59
 -- PM" string comfortably fits inside the circle without MainFrame's ClipsDescendants
 -- cutting off the edges.
 local MINI_TIME_GOAL = {Position = UDim2.new(0.5, -36, 0.5, -7), Size = UDim2.new(0, 72, 0, 14)}
 
-local TitleImage = Instance.new("ImageLabel")
-TitleImage.Name = "TitleImage"
-TitleImage.AnchorPoint = Vector2.new(0.5, 0.5)
-TitleImage.Size = NORMAL_TITLE_GOAL.Size
-TitleImage.Position = NORMAL_TITLE_GOAL.Position
-TitleImage.BackgroundTransparency = 1
-TitleImage.Image = "rbxassetid://73340929918505"
-TitleImage.ScaleType = Enum.ScaleType.Fit
-TitleImage.Parent = MainFrame
+-- Quick-access shortcut straight to the Settings tab -- just the icon, not a full tab
+-- button, sitting in the header's top-left corner where the old title logo used to be.
+local SettingsIconButton = Instance.new("ImageButton")
+SettingsIconButton.Name = "SettingsIconButton"
+SettingsIconButton.AnchorPoint = Vector2.new(0, 0.5)
+SettingsIconButton.Size = UDim2.new(0, 28, 0, 28)
+SettingsIconButton.Position = UDim2.new(0, 16, 0, HEADER_HEIGHT / 2)
+SettingsIconButton.BackgroundTransparency = 1
+SettingsIconButton.Image = "rbxassetid://139383907261718"
+SettingsIconButton.ScaleType = Enum.ScaleType.Fit
+SettingsIconButton.Parent = MainFrame
+AddPressBounce(SettingsIconButton)
+SettingsIconButton.MouseButton1Click:Connect(function()
+	PlayClick()
+	SelectTab("Settings")
+end)
 
 -- %I zero-pads single-digit hours ("08:00:00 PM") -- stripped off so it reads "8:00:00 PM"
 -- instead, in both the normal and minimized-circle clock.
@@ -563,13 +570,11 @@ function SelectTab(name)
 		entry.Page.Visible = isSelected
 		-- Button.BackgroundColor3 is already the same purple the toggle switches fill with
 		-- when On -- it just read as a faint tint at 0.85 transparency. Dropping
-		-- transparency way down makes it read as a solid purple pill; the label switches to
-		-- dark text so it stays legible against that lighter fill. Tweened instead of an
+		-- transparency way down makes it read as a solid purple pill. Text stays white in
+		-- both states now -- it used to flip to dark text on the selected pill for
+		-- contrast, but that read as a bug more than a feature. Tweened instead of an
 		-- instant snap so switching tabs reads as a soft fade, not a hard cut.
 		TweenService:Create(entry.Button, tabTweenInfo, {BackgroundTransparency = isSelected and 0.1 or 1}):Play()
-		if entry.Label then
-			TweenService:Create(entry.Label, tabTweenInfo, {TextColor3 = isSelected and Color3.fromRGB(20, 20, 20) or Color3.fromRGB(255, 255, 255)}):Play()
-		end
 	end
 end
 
@@ -590,7 +595,7 @@ end
 
 -- Icon + label are grouped as one horizontally-centered unit (via a nested UIListLayout)
 -- so they read as a single "logo + wordmark," not two separately-positioned pieces.
-function CreateTab(name, order, iconId, scrolling)
+function CreateTab(name, order, iconId, scrolling, iconSize)
 	local button = Instance.new("TextButton")
 	button.Name = name .. "Tab"
 	button.LayoutOrder = order
@@ -631,7 +636,10 @@ function CreateTab(name, order, iconId, scrolling)
 	local icon = Instance.new("ImageLabel")
 	icon.Name = "Icon"
 	icon.LayoutOrder = 1
-	icon.Size = UDim2.new(0, 24, 0, 24)
+	-- Some icon assets (e.g. Combat's) have extra baked-in padding, so they render visibly
+	-- smaller than the others at the same box size -- iconSize lets a specific tab override
+	-- that box to compensate, defaulting to the normal size everywhere else.
+	icon.Size = UDim2.new(0, iconSize or 24, 0, iconSize or 24)
 	icon.BackgroundTransparency = 1
 	if iconId then icon.Image = "rbxassetid://" .. iconId end
 	icon.Parent = content
@@ -742,7 +750,7 @@ function CreateStrengthRow(parent, y, rowLabelText, defaultValue)
 	-- corner) instead of leaving it visible.
 	row.Size = UDim2.new(1, -10, 0, 52)
 	row.Position = UDim2.new(0, 0, 0, y)
-	row.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
+	row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 	row.BackgroundTransparency = RowTransparencyValue / 100
 	row.BorderSizePixel = 0
 	row.Parent = parent
@@ -989,7 +997,7 @@ function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, def
 	-- corner) instead of leaving it visible.
 	row.Size = UDim2.new(1, -10, 0, 52)
 	row.Position = UDim2.new(0, 0, 0, y)
-	row.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
+	row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 	row.BackgroundTransparency = RowTransparencyValue / 100
 	row.BorderSizePixel = 0
 	row.Parent = parent
@@ -1704,7 +1712,7 @@ local ESPColorRow = Instance.new("Frame")
 ESPColorRow.Name = "ESPColorRow"
 ESPColorRow.Size = UDim2.new(1, -10, 0, 52)
 ESPColorRow.Position = UDim2.new(0, 0, 0, 218)
-ESPColorRow.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
+ESPColorRow.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 ESPColorRow.BackgroundTransparency = RowTransparencyValue / 100
 ESPColorRow.BorderSizePixel = 0
 ESPColorRow.Parent = VisualsPage
@@ -2054,7 +2062,7 @@ local FOVRow = Instance.new("Frame")
 FOVRow.Name = "FOVRow"
 FOVRow.Size = UDim2.new(1, -10, 0, 52)
 FOVRow.Position = UDim2.new(0, 0, 0, CAMERA_TOP + 90)
-FOVRow.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
+FOVRow.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 FOVRow.BackgroundTransparency = RowTransparencyValue / 100
 FOVRow.BorderSizePixel = 0
 FOVRow.Parent = VisualsPage
@@ -2342,7 +2350,7 @@ end
 -- PopupToggleButton/PopupKeybind left un-declared here (the popup section further down, in
 -- its own separate do block, needs to read/update them too) so they fall back to globals
 -- instead of costing more top-level local slots.
-local TeleportPage = CreateTab("Teleport", 5, "134833734515120", true)
+local TeleportPage = CreateTab("Teleport", 8, "134833734515120", true)
 do
 	local TAB_ROW_H = 30
 	local ROW_H = 26
@@ -2526,7 +2534,7 @@ do
 			-- Narrowed so the row's right edge (including the name text) clears this
 			-- list's own scrollbar instead of running underneath it.
 			row.Size = UDim2.new(1, -10, 0, 36)
-			row.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
+			row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 			row.BackgroundTransparency = 0.5
 			row.BorderSizePixel = 0
 			row.Parent = PlayerList
@@ -2586,7 +2594,7 @@ do
 				-- Narrowed so the row's right edge clears this list's own scrollbar
 				-- instead of running underneath it.
 				row.Size = UDim2.new(1, -10, 0, 36)
-				row.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
+				row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 				row.BackgroundTransparency = 0.5
 				row.BorderSizePixel = 0
 				row.Parent = WaypointList
@@ -2981,7 +2989,7 @@ do
 			-- Narrowed so the row's right edge clears this list's own scrollbar instead
 			-- of running underneath it.
 			row.Size = UDim2.new(1, -10, 0, 30)
-			row.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
+			row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 			row.BackgroundTransparency = 0.5
 			row.BorderSizePixel = 0
 			row.ZIndex = 31
@@ -3043,7 +3051,7 @@ do
 				-- Narrowed so the row's right edge clears this list's own scrollbar
 				-- instead of running underneath it.
 				row.Size = UDim2.new(1, -10, 0, 30)
-				row.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
+				row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 				row.BackgroundTransparency = 0.5
 				row.BorderSizePixel = 0
 				row.ZIndex = 31
@@ -3231,7 +3239,7 @@ end
 -- to reach them by name) so they fall back to globals instead of costing top-level local
 -- slots.
 AutoLockKeybind = Enum.KeyCode.Unknown
-local CombatPage = CreateTab("Combat", 6, "133776763887173", true)
+local CombatPage = CreateTab("Combat", 5, "133776763887173", true, 34)
 do
 	local AutoLockEnabled = false
 
@@ -3282,7 +3290,7 @@ end
 
 -- Scripts tab: launches the separate game modules (loadstring + HttpGet, same as the
 -- old hub). Each module only ever gets fetched once per execution.
-local ScriptsPage = CreateTab("Scripts", 7, "94167840974597", true)
+local ScriptsPage = CreateTab("Scripts", 6, "94167840974597", true)
 
 -- Caches the fetched source per game so re-running it (see below) never re-hits the
 -- network, but still actually executes the chunk again each time -- these game modules
@@ -3315,7 +3323,7 @@ function CreateGameRow(parent, y, gameTitle, url)
 	-- corner) instead of leaving it visible.
 	row.Size = UDim2.new(1, -10, 0, 44)
 	row.Position = UDim2.new(0, 0, 0, y)
-	row.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
+	row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 	row.BackgroundTransparency = RowTransparencyValue / 100
 	row.BorderSizePixel = 0
 	row.Parent = parent
@@ -3397,7 +3405,7 @@ function CreateUtilityRow(parent, y, title, url)
 	-- corner) instead of leaving it visible.
 	row.Size = UDim2.new(1, -10, 0, 44)
 	row.Position = UDim2.new(0, 0, 0, y)
-	row.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
+	row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 	row.BackgroundTransparency = RowTransparencyValue / 100
 	row.BorderSizePixel = 0
 	row.Parent = parent
@@ -3502,7 +3510,7 @@ ScriptsPage.CanvasSize = UDim2.new(0, 0, 0, 268)
 -- this point in the file, so wiring it here would silently fall through to nil.
 -- Left un-declared (not a top-level local) so it falls back to a global.
 do
-	local SettingsPage = CreateTab("Settings", 8, "139383907261718", true)
+	local SettingsPage = CreateTab("Settings", 7, "139383907261718", true)
 
 	-- Gui Fade: while minimized and left alone (not hovered) for a couple seconds, the mini
 	-- circle fades down to a low, unobtrusive opacity so it sits out of the way. The actual
@@ -3533,7 +3541,7 @@ do
 	ResetCharacterButton.Text = "Reset Character"
 	ResetCharacterButton.Font = UIFont
 	ResetCharacterButton.TextSize = 14
-	ResetCharacterButton.TextColor3 = Color3.fromRGB(30, 30, 30)
+	ResetCharacterButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 	ResetCharacterButton.Parent = SettingsPage
 	Instance.new("UICorner", ResetCharacterButton).CornerRadius = UDim.new(0, 8)
 	AddPressBounce(ResetCharacterButton)
@@ -3620,7 +3628,7 @@ function ToggleGUI()
 	-- hide instead of shrinking/repositioning into the small space. Restoring happens by
 	-- tapping the circle itself (see the drag handler further below, which distinguishes a
 	-- tap from a drag), not a visible "+" button -- there's nothing else on it to click.
-	TitleImage.Visible = not minimized
+	SettingsIconButton.Visible = not minimized
 	MiniButton.Visible = not minimized
 	GuiDestroyButton.Visible = not minimized
 	if minimized then
@@ -3641,11 +3649,15 @@ function ToggleGUI()
 
 	-- Fades out, swaps size/shape/position instantly while fully invisible, then fades
 	-- back in -- reads as a clean cross-fade instead of visibly stretching a rectangle into
-	-- a circle (or back), which is what tweening Size directly used to look like.
-	local fadeOutInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-	local fadeInInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	-- a circle (or back), which is what tweening Size directly used to look like. TimeLabel
+	-- fades in lockstep with MainFrame's own background -- it has its own TextTransparency
+	-- separate from the frame's, so without this the clock stayed fully visible through the
+	-- whole "invisible" swap and looked like it was bleeding through instead of hiding.
+	local fadeOutInfo = TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local fadeInInfo = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 	local fadeOutTween = TweenService:Create(MainFrame, fadeOutInfo, {BackgroundTransparency = 1})
 	fadeOutTween:Play()
+	TweenService:Create(TimeLabel, fadeOutInfo, {TextTransparency = 1}):Play()
 	fadeOutTween.Completed:Wait()
 
 	MainFrame.Size = minimized and MINI_SIZE or FULL_SIZE
@@ -3657,6 +3669,7 @@ function ToggleGUI()
 	TimeLabel.TextXAlignment = minimized and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left
 
 	TweenService:Create(MainFrame, fadeInInfo, {BackgroundTransparency = 0}):Play()
+	TweenService:Create(TimeLabel, fadeInInfo, {TextTransparency = 0}):Play()
 
 	if minimized then
 		ScheduleGuiFade()
