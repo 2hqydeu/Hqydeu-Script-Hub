@@ -371,7 +371,11 @@ SettingsIconButton.Parent = MainFrame
 AddPressBounce(SettingsIconButton)
 SettingsIconButton.MouseButton1Click:Connect(function()
 	PlayClick()
-	OpenSettingsOverlay()
+	if SettingsOverlay and SettingsOverlay.Visible then
+		CloseSettingsOverlay()
+	else
+		OpenSettingsOverlay()
+	end
 end)
 
 -- %I zero-pads single-digit hours ("08:00:00 PM") -- stripped off so it reads "8:00:00 PM"
@@ -741,12 +745,9 @@ do
 	-- building before the engine ever got a turn to draw the loading bar's progress.
 	task.wait()
 
-	-- Avatar glow, take two: a soft diffuse backdrop (a couple of large, faint, breathing
-	-- rings, since Roblox still has no native radial gradient for a plain Frame) plus a
-	-- slim glowing ring hugging the avatar's own edge, colored by a UIGradient whose
-	-- Rotation is continuously animated -- an actual band of light travels around the
-	-- circle instead of everything just sitting there as flat static rings. That
-	-- continuous rotation is the "flow"; the soft backdrop behind it is the ambient glow.
+	-- Avatar glow, take three: down to just one soft ring (the others were extra clutter
+	-- that barely showed anyway) plus the flowing rim below -- cleaner without losing the
+	-- glow itself. Still breathes gently via a shared UIScale.
 	local avatarCenter = UDim2.new(0.5, 0, 0, 72)
 
 	local avatarGlowContainer = Instance.new("Frame")
@@ -759,22 +760,16 @@ do
 	local avatarGlowScale = Instance.new("UIScale")
 	avatarGlowScale.Parent = avatarGlowContainer
 
-	for i, ring in ipairs({
-		{size = 152, transparency = 0.93},
-		{size = 128, transparency = 0.84},
-		{size = 108, transparency = 0.72},
-	}) do
-		local glow = Instance.new("Frame")
-		glow.Name = "AvatarGlow" .. i
-		glow.AnchorPoint = Vector2.new(0.5, 0.5)
-		glow.Size = UDim2.new(0, ring.size, 0, ring.size)
-		glow.Position = UDim2.new(0.5, 0, 0.5, 0)
-		glow.BackgroundColor3 = Color3.fromRGB(178, 155, 235)
-		glow.BackgroundTransparency = ring.transparency
-		glow.BorderSizePixel = 0
-		glow.Parent = avatarGlowContainer
-		Instance.new("UICorner", glow).CornerRadius = UDim.new(1, 0)
-	end
+	local avatarGlow = Instance.new("Frame")
+	avatarGlow.Name = "AvatarGlow"
+	avatarGlow.AnchorPoint = Vector2.new(0.5, 0.5)
+	avatarGlow.Size = UDim2.new(0, 108, 0, 108)
+	avatarGlow.Position = UDim2.new(0.5, 0, 0.5, 0)
+	avatarGlow.BackgroundColor3 = Color3.fromRGB(178, 155, 235)
+	avatarGlow.BackgroundTransparency = 0.72
+	avatarGlow.BorderSizePixel = 0
+	avatarGlow.Parent = avatarGlowContainer
+	Instance.new("UICorner", avatarGlow).CornerRadius = UDim.new(1, 0)
 
 	task.spawn(function()
 		local pulseInfo = TweenInfo.new(2.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
@@ -1584,9 +1579,18 @@ do
 		RecordToggle.Text = "On"
 		MacroEvents = {}
 		macroRecordStart = os.clock()
+		-- Throttled to ~33 times a second instead of recording every single InputChanged
+		-- firing (which fires far more often than that) -- an untouched recording could
+		-- otherwise pile up thousands of near-duplicate move events for even a short drag,
+		-- which was making playback process a huge unyielding burst of them back-to-back
+		-- with no visible motion in between (see RunMacroOnce below).
+		local lastMoveRecordTime = -1
 		table.insert(macroConnections, UserInputService.InputChanged:Connect(function(input)
 			if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
-			table.insert(MacroEvents, {t = os.clock() - macroRecordStart, kind = "move", x = input.Position.X, y = input.Position.Y})
+			local now = os.clock()
+			if now - lastMoveRecordTime < 0.03 then return end
+			lastMoveRecordTime = now
+			table.insert(MacroEvents, {t = now - macroRecordStart, kind = "move", x = input.Position.X, y = input.Position.Y})
 		end))
 		table.insert(macroConnections, UserInputService.InputBegan:Connect(function(input, processed)
 			if processed then return end
@@ -1615,7 +1619,14 @@ do
 		for _, event in ipairs(MacroEvents) do
 			if not MacroPlaying then return end
 			local delay = event.t - (os.clock() - startTime)
-			if delay > 0 then task.wait(delay) end
+			-- Always yields at least once per event, even when playback has caught up and
+			-- delay is 0 or negative -- without this, a long run of events lands in a tight
+			-- loop with zero yields between them, and Roblox never gets a frame to actually
+			-- render the mouse at any of the intermediate positions. The visible result was
+			-- exactly the reported bug: every move silently happens, but only the very last
+			-- one is ever seen, so the cursor looks like it "instantly" teleports to
+			-- wherever the recording ended instead of visibly traveling the path.
+			if delay > 0 then task.wait(delay) else task.wait() end
 			if not MacroPlaying then return end
 			if event.kind == "move" then
 				if mousemoveabs then mousemoveabs(event.x, event.y) end
@@ -1670,7 +1681,10 @@ do
 	MacroEditButton.TextSize = 12
 	MacroEditButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 	MacroEditButton.Parent = PlayRow
-	Instance.new("UICorner", MacroEditButton).CornerRadius = UDim.new(0, 6)
+	-- Full pill radius, not a modest rounded-rect -- its row neighbors (the keybind pill,
+	-- the toggle switch) are both fully rounded, so anything less looked noticeably
+	-- squarer sitting right between them.
+	Instance.new("UICorner", MacroEditButton).CornerRadius = UDim.new(1, 0)
 	AddPressBounce(MacroEditButton)
 
 	local MacroOptionsPopup = Instance.new("Frame")
@@ -4131,24 +4145,36 @@ function ToggleGUI()
 		targetPosition = ClampToViewport(preMinimizePosition or WINDOW_POSITION, FULL_SIZE)
 	end
 
-	-- Swipes the whole window straight up off the top of the screen, swaps everything
-	-- (visibility, size/shape/position, the clock's own goal) the instant it's fully off
-	-- screen, then slides the new shape back down into place from the top -- restoring is
-	-- the exact mirror of minimizing. This replaces the fade-based approach entirely: no
-	-- matter how the fade was tuned, the content kept bleeding through mid-fade. Physically
-	-- moving the whole window off-screen instead sidesteps that problem altogether --
-	-- there's no moment where hidden-but-still-there content needs to render invisibly,
-	-- since it's just not overlapping anything on screen.
+	-- Swipes the whole window sideways off whichever edge (left or right) it's currently
+	-- closest to, swaps everything (visibility, size/shape/position, the clock's own goal)
+	-- the instant it's fully off screen, then slides the new shape back in from whichever
+	-- edge the TARGET position is closest to -- restoring is the exact mirror of
+	-- minimizing. Physically moving the whole window off-screen (rather than fading it in
+	-- place) sidesteps the old bleed-through problem entirely: there's no moment where
+	-- hidden-but-still-there content needs to render invisibly, since it's just not
+	-- overlapping anything on screen.
 	local camera = workspace.CurrentCamera
 	local viewportSize = (camera and camera.ViewportSize) or Vector2.new(1920, 1080)
 	local slideOutInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 	local slideInInfo = TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
+	-- Same closest-edge logic GetSnappedMinimizedPosition already uses for the mini pill --
+	-- left half of the screen exits/enters from the left, right half from the right.
+	local function NearestSideExitX(position, size)
+		local absX = viewportSize.X * position.X.Scale + position.X.Offset
+		local centerX = absX + size.X.Offset / 2
+		if centerX < viewportSize.X / 2 then
+			return -(size.X.Offset + 40)
+		else
+			return viewportSize.X + 40
+		end
+	end
+
 	local currentPos = MainFrame.Position
 	local currentSize = MainFrame.Size
-	local exitY = -(currentSize.Y.Offset + (viewportSize.Y * currentSize.Y.Scale) + 40)
+	local exitX = NearestSideExitX(currentPos, currentSize)
 	local slideOutTween = TweenService:Create(MainFrame, slideOutInfo, {
-		Position = UDim2.new(currentPos.X.Scale, currentPos.X.Offset, 0, exitY),
+		Position = UDim2.new(0, exitX, currentPos.Y.Scale, currentPos.Y.Offset),
 	})
 	slideOutTween:Play()
 	slideOutTween.Completed:Wait()
@@ -4167,11 +4193,11 @@ function ToggleGUI()
 	TimeLabel.Size = timeGoal.Size
 	TimeLabel.TextXAlignment = minimized and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left
 
-	-- Jump to directly above the landing spot (same X as targetPosition, off the top edge
-	-- at the NEW size) so the slide-in travels straight down into place.
+	-- Jump to just off whichever edge the landing spot is closest to (same Y as
+	-- targetPosition, at the NEW size) so the slide-in travels straight in from that side.
 	local newSize = MainFrame.Size
-	local entryY = -(newSize.Y.Offset + (viewportSize.Y * newSize.Y.Scale) + 40)
-	MainFrame.Position = UDim2.new(targetPosition.X.Scale, targetPosition.X.Offset, 0, entryY)
+	local entryX = NearestSideExitX(targetPosition, newSize)
+	MainFrame.Position = UDim2.new(0, entryX, targetPosition.Y.Scale, targetPosition.Y.Offset)
 	TweenService:Create(MainFrame, slideInInfo, {Position = targetPosition}):Play()
 
 	if minimized then
