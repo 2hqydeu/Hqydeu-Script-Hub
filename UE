@@ -437,7 +437,7 @@ end)
 -- toggle call site already just does `toggle.Text = enabled and "On" or "Off"`, so this
 -- hooks that same Text property instead of needing every call site rewritten: nothing
 -- outside this function has to change to get the new visual.
-local ToggleOffColor = Color3.fromRGB(50, 50, 50)
+local ToggleOffColor = Color3.fromRGB(24, 24, 24)
 local ToggleOnColor = Color3.fromRGB(178, 155, 235)
 local ToggleKnobColor = Color3.fromRGB(238, 233, 250)
 
