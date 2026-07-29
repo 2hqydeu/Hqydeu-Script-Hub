@@ -321,13 +321,14 @@ function AddFadeDivider(divider)
 	gradient.Parent = divider
 end
 
--- CanvasGroup, not a plain Frame -- its GroupTransparency composites this WHOLE subtree
--- (every row, label, button underneath) into one image and fades that as a single unit.
--- The earlier fade-based minimize animation only ever tweened BackgroundTransparency,
--- which is just this frame's own flat fill -- completely irrelevant once content is
--- sitting on top of it, so nothing actually hid and everything bled through. This is the
--- real fix for that, not just a tuning tweak.
-MainFrame = Instance.new("CanvasGroup")
+-- Back to a plain Frame -- CanvasGroup (tried for the minimize fade's GroupTransparency)
+-- turned out to render some nested content (the Settings overlay's ScrollingFrame) blank
+-- on the actual client, not just the mock harness. Minimize/restore no longer needs it
+-- anyway now that it slides the whole window off-screen instead of fading it, and the idle
+-- Gui-Fade ghost only ever needs to dim the mini circle's own background + the clock text
+-- (everything else is already Visible=false while minimized), which plain
+-- BackgroundTransparency/TextTransparency handles fine on their own.
+MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Size = FULL_SIZE
 MainFrame.Position = WINDOW_POSITION
@@ -3777,10 +3778,10 @@ function ToggleGUI()
 	-- (visibility, size/shape/position, the clock's own goal) the instant it's fully off
 	-- screen, then slides the new shape back down into place from the top -- restoring is
 	-- the exact mirror of minimizing. This replaces the fade-based approach entirely: no
-	-- matter how CanvasGroup's GroupTransparency was tuned, the content kept bleeding
-	-- through mid-fade. Physically moving the whole window off-screen instead sidesteps
-	-- that problem altogether -- there's no moment where hidden-but-still-there content
-	-- needs to render invisibly, since it's just not overlapping anything on screen.
+	-- matter how the fade was tuned, the content kept bleeding through mid-fade. Physically
+	-- moving the whole window off-screen instead sidesteps that problem altogether --
+	-- there's no moment where hidden-but-still-there content needs to render invisibly,
+	-- since it's just not overlapping anything on screen.
 	local camera = workspace.CurrentCamera
 	local viewportSize = (camera and camera.ViewportSize) or Vector2.new(1920, 1080)
 	local slideOutInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
@@ -3838,7 +3839,9 @@ local isHoveringMini = false
 
 function CancelGuiFade()
 	guiFadeToken += 1
-	TweenService:Create(MainFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {GroupTransparency = 0}):Play()
+	local resetInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	TweenService:Create(MainFrame, resetInfo, {BackgroundTransparency = 0}):Play()
+	TweenService:Create(TimeLabel, resetInfo, {TextTransparency = 0}):Play()
 end
 
 function ScheduleGuiFade()
@@ -3849,7 +3852,8 @@ function ScheduleGuiFade()
 		if myToken ~= guiFadeToken then return end
 		if not (GuiFadeEnabled and minimized) or isHoveringMini then return end
 		local fadeInfo = TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-		TweenService:Create(MainFrame, fadeInfo, {GroupTransparency = GUI_FADE_TRANSPARENCY}):Play()
+		TweenService:Create(MainFrame, fadeInfo, {BackgroundTransparency = GUI_FADE_TRANSPARENCY}):Play()
+		TweenService:Create(TimeLabel, fadeInfo, {TextTransparency = GUI_FADE_TRANSPARENCY}):Play()
 	end)
 end
 
