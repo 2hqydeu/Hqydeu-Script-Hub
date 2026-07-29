@@ -177,21 +177,21 @@ task.spawn(function()
 	local LoadingLabel = Instance.new("TextLabel")
 	LoadingLabel.Name = "LoadingLabel"
 	LoadingLabel.AnchorPoint = Vector2.new(0.5, 0)
-	LoadingLabel.Size = UDim2.new(0, 300, 0, 20)
-	LoadingLabel.Position = UDim2.new(0.5, 0, 0.5, 16)
+	LoadingLabel.Size = UDim2.new(0, 380, 0, 24)
+	LoadingLabel.Position = UDim2.new(0.5, 0, 0.5, 22)
 	LoadingLabel.BackgroundTransparency = 1
 	LoadingLabel.Text = FakeLoadingMessages[1]
 	LoadingLabel.Font = UIFont
-	LoadingLabel.TextSize = 13
-	LoadingLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
+	LoadingLabel.TextSize = 16
+	LoadingLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 	LoadingLabel.Parent = ScreenGui
 
 	local LoadingTrack = Instance.new("Frame")
 	LoadingTrack.Name = "LoadingTrack"
 	LoadingTrack.AnchorPoint = Vector2.new(0.5, 0.5)
-	LoadingTrack.Size = UDim2.new(0, 300, 0, 6)
+	LoadingTrack.Size = UDim2.new(0, 380, 0, 8)
 	LoadingTrack.Position = UDim2.new(0.5, 0, 0.5, 0)
-	LoadingTrack.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	LoadingTrack.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 	LoadingTrack.BorderSizePixel = 0
 	LoadingTrack.Parent = ScreenGui
 	Instance.new("UICorner", LoadingTrack).CornerRadius = UDim.new(1, 0)
@@ -491,7 +491,7 @@ AddPressBounce(DestroyConfirmYes)
 local DestroyConfirmNo = Instance.new("TextButton")
 DestroyConfirmNo.Size = UDim2.new(0, 90, 0, 32)
 DestroyConfirmNo.Position = UDim2.new(1, -104, 1, -44)
-DestroyConfirmNo.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+DestroyConfirmNo.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 DestroyConfirmNo.BorderSizePixel = 0
 DestroyConfirmNo.Text = "No"
 DestroyConfirmNo.Font = UIFont
@@ -595,7 +595,7 @@ end
 
 -- Icon + label are grouped as one horizontally-centered unit (via a nested UIListLayout)
 -- so they read as a single "logo + wordmark," not two separately-positioned pieces.
-function CreateTab(name, order, iconId, scrolling, iconSize)
+function CreateTab(name, order, iconId, scrolling, iconSize, iconYOffset)
 	local button = Instance.new("TextButton")
 	button.Name = name .. "Tab"
 	button.LayoutOrder = order
@@ -633,16 +633,27 @@ function CreateTab(name, order, iconId, scrolling, iconSize)
 	contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	contentLayout.Parent = content
 
+	-- Some icon assets (e.g. Combat's) have extra baked-in padding, so they render visibly
+	-- smaller -- or, in Home's case, off-center -- than the others at the same box size.
+	-- iconHolder is the thing the tab's UIListLayout actually centers (fixed box, no
+	-- offset); the real icon image sits inside it and can be freely nudged via
+	-- iconYOffset without fighting the parent layout's own vertical centering (which
+	-- would otherwise just re-center a plain Position change every layout pass).
+	local iconHolder = Instance.new("Frame")
+	iconHolder.Name = "IconHolder"
+	iconHolder.LayoutOrder = 1
+	iconHolder.Size = UDim2.new(0, iconSize or 24, 0, iconSize or 24)
+	iconHolder.BackgroundTransparency = 1
+	iconHolder.Parent = content
+
 	local icon = Instance.new("ImageLabel")
 	icon.Name = "Icon"
-	icon.LayoutOrder = 1
-	-- Some icon assets (e.g. Combat's) have extra baked-in padding, so they render visibly
-	-- smaller than the others at the same box size -- iconSize lets a specific tab override
-	-- that box to compensate, defaulting to the normal size everywhere else.
-	icon.Size = UDim2.new(0, iconSize or 24, 0, iconSize or 24)
+	icon.AnchorPoint = Vector2.new(0.5, 0.5)
+	icon.Size = UDim2.new(1, 0, 1, 0)
+	icon.Position = UDim2.new(0.5, 0, 0.5, iconYOffset or 0)
 	icon.BackgroundTransparency = 1
 	if iconId then icon.Image = "rbxassetid://" .. iconId end
-	icon.Parent = content
+	icon.Parent = iconHolder
 
 	local label = Instance.new("TextLabel")
 	label.Name = "Label"
@@ -692,7 +703,7 @@ end
 -- compiler free a section's locals once it ends instead of holding them all open for the
 -- rest of the script; nothing here is referenced outside this block.
 do
-	local HomePage = CreateTab("Home", 1, "94154918683502")
+	local HomePage = CreateTab("Home", 1, "94154918683502", nil, 30, 5)
 
 	local AvatarImage = Instance.new("ImageLabel")
 	AvatarImage.Name = "Avatar"
@@ -714,7 +725,11 @@ do
 	WelcomeLabel.Size = UDim2.new(1, 0, 0, 40)
 	WelcomeLabel.Position = UDim2.new(0, 0, 0, 136)
 	WelcomeLabel.BackgroundTransparency = 1
-	WelcomeLabel.Text = "Welcome " .. Player.DisplayName .. "!"
+	WelcomeLabel.RichText = true
+	-- Just the name in that same lavender used everywhere (toggle switches, tab pill,
+	-- accents) so it ties back into the rest of the hub's color language instead of being
+	-- plain white like the rest of the sentence.
+	WelcomeLabel.Text = "Welcome <font color=\"rgb(178,155,235)\">" .. Player.DisplayName .. "</font>!"
 	WelcomeLabel.Font = UIFont
 	WelcomeLabel.TextSize = 26
 	WelcomeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -773,7 +788,7 @@ function CreateStrengthRow(parent, y, rowLabelText, defaultValue)
 	input.Name = "Input"
 	input.Size = UDim2.new(0, 80, 0, 30)
 	input.Position = UDim2.new(1, -96, 0.5, -15)
-	input.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	input.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 	input.BackgroundTransparency = 0.2
 	input.BorderSizePixel = 0
 	input.ClearTextOnFocus = false
@@ -858,7 +873,7 @@ function ShowKeybindClearPrompt(button, onCleared)
 	local cancelBtn = Instance.new("TextButton")
 	cancelBtn.Size = UDim2.new(0, 68, 0, 26)
 	cancelBtn.Position = UDim2.new(0, 84, 0, 38)
-	cancelBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	cancelBtn.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 	cancelBtn.BorderSizePixel = 0
 	cancelBtn.Text = "Cancel"
 	cancelBtn.Font = UIFont
@@ -889,7 +904,7 @@ function CreateKeybindButton(parent, storageKey, onKeybindChanged, defaultKeyCod
 	btn.Name = "KeybindButton"
 	btn.Size = UDim2.new(0, 70, 0, 30)
 	btn.Position = UDim2.new(1, -140, 0.5, -15)
-	btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	btn.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 	btn.BackgroundTransparency = 0.2
 	btn.BorderSizePixel = 0
 	btn.Font = UIFont
@@ -1071,7 +1086,7 @@ do
 	SpeedModeButton.Name = "SpeedModeButton"
 	SpeedModeButton.Size = UDim2.new(0, 70, 0, 30)
 	SpeedModeButton.Position = UDim2.new(1, -174, 0.5, -15)
-	SpeedModeButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	SpeedModeButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 	SpeedModeButton.BackgroundTransparency = 0.2
 	SpeedModeButton.BorderSizePixel = 0
 	SpeedModeButton.Text = "CFrame"
@@ -1324,7 +1339,7 @@ end
 -- Functionality tab: sits between Player and Visuals. No icon for now -- CreateTab already
 -- handles a nil iconId by just leaving the tab's icon slot blank. Instant Prompt lives here
 -- now instead of at the bottom of Player.
-local FunctionalityPage = CreateTab("Functions", 3, "129520582193954", true)
+local FunctionalityPage = CreateTab("Functions", 3, "129520582193954", true, 28)
 do
 	-- Instant Prompt: drives every ProximityPrompt's HoldDuration to 0 (and drops its line-
 	-- of-sight requirement) so prompts complete the instant you press their key. The first
@@ -1425,7 +1440,7 @@ end
 -- against the script's 200-local cap for the rest of the file.
 do
 
-local VisualsPage = CreateTab("Visuals", 4, "128664215189887", true)
+local VisualsPage = CreateTab("Visuals", 4, "128664215189887", true, 34)
 
 local ESPDefaultColor = Color3.fromRGB(100, 255, 100)
 local ESPColor = LoadFeatureColor("ESPColor", ESPDefaultColor)
@@ -1895,7 +1910,7 @@ local SaveColorButton = Instance.new("TextButton")
 SaveColorButton.Name = "SaveColorButton"
 SaveColorButton.Size = UDim2.new(0, 114, 0, 24)
 SaveColorButton.Position = UDim2.new(0, 8, 0, 102)
-SaveColorButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+SaveColorButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 SaveColorButton.BorderSizePixel = 0
 SaveColorButton.Text = "Save Color"
 SaveColorButton.Font = UIFont
@@ -1910,7 +1925,7 @@ for index = 1, 5 do
 	swatch.Name = "SavedColorSlot" .. index
 	swatch.Size = UDim2.new(0, 18, 0, 18)
 	swatch.Position = UDim2.new(0, 8 + ((index - 1) * 24), 0, 138)
-	swatch.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	swatch.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 	swatch.BorderSizePixel = 0
 	swatch.Text = "+"
 	swatch.Font = UIFont
@@ -1941,7 +1956,7 @@ function RefreshSavedColorButtons()
 	local savedColors = type(SavedKeybinds.ESPSavedColors) == "table" and SavedKeybinds.ESPSavedColors or {}
 	for index, swatch in ipairs(SavedColorButtons) do
 		local color = UnpackColor(savedColors[index], nil)
-		swatch.BackgroundColor3 = color or Color3.fromRGB(60, 60, 60)
+		swatch.BackgroundColor3 = color or Color3.fromRGB(24, 24, 24)
 		swatch.Text = color and "" or "+"
 	end
 end
@@ -2085,7 +2100,7 @@ local FOVInput = Instance.new("TextBox")
 FOVInput.Name = "Input"
 FOVInput.Size = UDim2.new(0, 80, 0, 30)
 FOVInput.Position = UDim2.new(1, -96, 0.5, -15)
-FOVInput.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+FOVInput.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 FOVInput.BackgroundTransparency = 0.2
 FOVInput.BorderSizePixel = 0
 FOVInput.ClearTextOnFocus = false
@@ -2100,7 +2115,7 @@ local FOVResetButton = Instance.new("TextButton")
 FOVResetButton.Name = "ResetButton"
 FOVResetButton.Size = UDim2.new(0, 80, 0, 30)
 FOVResetButton.Position = UDim2.new(1, -184, 0.5, -15)
-FOVResetButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+FOVResetButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 FOVResetButton.BackgroundTransparency = 0.2
 FOVResetButton.BorderSizePixel = 0
 FOVResetButton.Text = "Reset"
@@ -2640,7 +2655,7 @@ do
 				local editButton = Instance.new("TextButton")
 				editButton.Size = UDim2.new(0, 32, 0, 26)
 				editButton.Position = UDim2.new(1, -68, 0.5, -13)
-				editButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+				editButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 				editButton.BorderSizePixel = 0
 				editButton.Text = "Edit"
 				editButton.Font = UIFont
@@ -2673,7 +2688,7 @@ do
 					local editBox = Instance.new("TextBox")
 					editBox.Size = UDim2.new(1, -78, 1, -6)
 					editBox.Position = UDim2.new(0, 8, 0, 3)
-					editBox.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+					editBox.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 					editBox.BackgroundTransparency = 0.2
 					editBox.BorderSizePixel = 0
 					editBox.Text = waypointName
@@ -3099,7 +3114,7 @@ do
 				local editButton = Instance.new("TextButton")
 				editButton.Size = UDim2.new(0, 26, 0, 22)
 				editButton.Position = UDim2.new(1, -56, 0.5, -11)
-				editButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+				editButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 				editButton.BorderSizePixel = 0
 				editButton.Text = "Edit"
 				editButton.Font = UIFont
@@ -3134,7 +3149,7 @@ do
 					local editBox = Instance.new("TextBox")
 					editBox.Size = UDim2.new(1, -64, 1, -6)
 					editBox.Position = UDim2.new(0, 6, 0, 3)
-					editBox.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+					editBox.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 					editBox.BackgroundTransparency = 0.2
 					editBox.BorderSizePixel = 0
 					editBox.Text = waypointName
@@ -3244,7 +3259,7 @@ do
 	local AutoLockEnabled = false
 
 	CreateSectionHeading(CombatPage, 8, "Auto Lock")
-	local AutoLockToggle = CreateToggleRow(CombatPage, 38, "AutoLockKeybind", function(k) AutoLockKeybind = k end, "Auto Lock")
+	local AutoLockToggle = CreateToggleRow(CombatPage, 38, "AutoLockKeybind", function(k) AutoLockKeybind = k end)
 	CombatPage.CanvasSize = UDim2.new(0, 0, 0, 106)
 
 	-- Nearest player to the mouse cursor in screen space (not world space) -- same approach
@@ -3290,7 +3305,7 @@ end
 
 -- Scripts tab: launches the separate game modules (loadstring + HttpGet, same as the
 -- old hub). Each module only ever gets fetched once per execution.
-local ScriptsPage = CreateTab("Scripts", 6, "94167840974597", true)
+local ScriptsPage = CreateTab("Scripts", 6, "94167840974597", true, 30)
 
 -- Caches the fetched source per game so re-running it (see below) never re-hits the
 -- network, but still actually executes the chunk again each time -- these game modules
@@ -3346,7 +3361,7 @@ function CreateGameRow(parent, y, gameTitle, url)
 	executeBtn.Name = "ExecuteButton"
 	executeBtn.Size = UDim2.new(0, 90, 0, 32)
 	executeBtn.Position = UDim2.new(1, -106, 0.5, -16)
-	executeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	executeBtn.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 	executeBtn.BackgroundTransparency = 0.2
 	executeBtn.BorderSizePixel = 0
 	executeBtn.Text = "Execute"
@@ -3445,7 +3460,7 @@ function CreateUtilityRow(parent, y, title, url)
 	executeBtn.Name = "ExecuteButton"
 	executeBtn.Size = UDim2.new(0, 90, 0, 32)
 	executeBtn.Position = UDim2.new(1, -106, 0.5, -16)
-	executeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	executeBtn.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 	executeBtn.BackgroundTransparency = 0.2
 	executeBtn.BorderSizePixel = 0
 	executeBtn.Text = "Execute"
@@ -3511,20 +3526,29 @@ ScriptsPage.CanvasSize = UDim2.new(0, 0, 0, 268)
 -- Left un-declared (not a top-level local) so it falls back to a global.
 do
 	local SettingsPage = CreateTab("Settings", 7, "139383907261718", true)
+	-- No visible tab button for this one -- only reachable via the header's settings-icon
+	-- shortcut now. The page/Tabs entry still gets built normally so SelectTab("Settings")
+	-- still works; UIListLayout skips invisible children when arranging the rest, so this
+	-- doesn't leave a gap in the tab bar either.
+	Tabs["Settings"].Button.Visible = false
 
 	-- Gui Fade: while minimized and left alone (not hovered) for a couple seconds, the mini
 	-- circle fades down to a low, unobtrusive opacity so it sits out of the way. The actual
 	-- fade logic lives further below, right after ToggleGUI, since that's where
 	-- minimized/MainFrame state actually lives -- this row just owns the on/off state.
-	GuiFadeEnabled = false
+	-- Defaults on now, per request.
+	GuiFadeEnabled = true
 	GuiFadeKeybind = Enum.KeyCode.Unknown
 	-- Bottom-aligned within the tab's visible viewport (267px tall now that the tab bar
 	-- itself takes up more room) instead of stacked at the top with empty space below --
 	-- SETTINGS_TOP is the Y where this group of controls (plus the local-count label after
 	-- it) starts so the whole block's bottom edge lands flush with the viewport's own
 	-- bottom edge.
-	local SETTINGS_TOP = 113
+	local SETTINGS_TOP = 153
 	local GuiFadeToggle = CreateToggleRow(SettingsPage, SETTINGS_TOP, "GuiFadeKeybind", function(k) GuiFadeKeybind = k end, "Gui Fade")
+	-- CreateToggleRow's switch always starts visually "Off" -- sync it to match the
+	-- GuiFadeEnabled default above instead of the two disagreeing on load.
+	GuiFadeToggle.Text = "On"
 	ToggleGuiFade = function()
 		GuiFadeEnabled = not GuiFadeEnabled
 		GuiFadeToggle.Text = GuiFadeEnabled and "On" or "Off"
@@ -3532,16 +3556,20 @@ do
 	end
 	GuiFadeToggle.MouseButton1Click:Connect(function() PlayClick() ToggleGuiFade() end)
 
+	-- Reset Character and Destroy Gui now share one row, side by side, instead of stacking
+	-- as two full-width rows -- narrower, but still comfortably far apart (a real gap
+	-- between them, not just touching edges).
 	local ResetCharacterButton = Instance.new("TextButton")
 	ResetCharacterButton.Name = "ResetCharacterButton"
-	ResetCharacterButton.Size = UDim2.new(1, -10, 0, 28)
+	ResetCharacterButton.Size = UDim2.new(0.5, -7, 0, 28)
 	ResetCharacterButton.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 68)
 	ResetCharacterButton.BackgroundColor3 = Color3.fromRGB(255, 230, 0)
 	ResetCharacterButton.BorderSizePixel = 0
 	ResetCharacterButton.Text = "Reset Character"
 	ResetCharacterButton.Font = UIFont
-	ResetCharacterButton.TextSize = 14
+	ResetCharacterButton.TextSize = 13
 	ResetCharacterButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	ResetCharacterButton.TextWrapped = true
 	ResetCharacterButton.Parent = SettingsPage
 	Instance.new("UICorner", ResetCharacterButton).CornerRadius = UDim.new(0, 8)
 	AddPressBounce(ResetCharacterButton)
@@ -3551,16 +3579,15 @@ do
 		if character then character:BreakJoints() end
 	end)
 
-	-- Destroy Gui: moved to the very bottom of the list, below Reset Character, per request.
 	DestroyGuiButton = Instance.new("TextButton")
 	DestroyGuiButton.Name = "DestroyGuiButton"
-	DestroyGuiButton.Size = UDim2.new(1, -10, 0, 28)
-	DestroyGuiButton.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 112)
+	DestroyGuiButton.Size = UDim2.new(0.5, -7, 0, 28)
+	DestroyGuiButton.Position = UDim2.new(0.5, 3, 0, SETTINGS_TOP + 68)
 	DestroyGuiButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
 	DestroyGuiButton.BorderSizePixel = 0
 	DestroyGuiButton.Text = "Destroy Gui"
 	DestroyGuiButton.Font = UIFont
-	DestroyGuiButton.TextSize = 14
+	DestroyGuiButton.TextSize = 13
 	DestroyGuiButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 	DestroyGuiButton.Parent = SettingsPage
 	Instance.new("UICorner", DestroyGuiButton).CornerRadius = UDim.new(0, 8)
@@ -3570,18 +3597,19 @@ do
 	-- way to introspect the compiler's actual peak register usage at runtime, so like the
 	-- original this is a static reference number, not a live measurement -- just a
 	-- reminder of roughly how close the file is to Luau's 200-local ceiling, updated by
-	-- hand whenever a pass like this one changes it.
+	-- hand whenever a pass like this one changes it. Centered under the Reset/Destroy row
+	-- now instead of tucked in the corner.
 	local LocalCountLabel = Instance.new("TextLabel")
 	LocalCountLabel.Name = "LocalCountLabel"
-	LocalCountLabel.Size = UDim2.new(0, 60, 0, 10)
-	LocalCountLabel.Position = UDim2.new(1, -68, 0, SETTINGS_TOP + 144)
+	LocalCountLabel.Size = UDim2.new(1, 0, 0, 10)
+	LocalCountLabel.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 104)
 	LocalCountLabel.BackgroundTransparency = 1
 	LocalCountLabel.BorderSizePixel = 0
-	LocalCountLabel.Text = "127 / 200"
+	LocalCountLabel.Text = "129 / 200"
 	LocalCountLabel.Font = UIFont
 	LocalCountLabel.TextSize = 7
 	LocalCountLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-	LocalCountLabel.TextXAlignment = Enum.TextXAlignment.Right
+	LocalCountLabel.TextXAlignment = Enum.TextXAlignment.Center
 	LocalCountLabel.Parent = SettingsPage
 
 	-- Matches the tab's own visible viewport height (267px: FULL_SIZE.Y minus the header/tab
@@ -3620,17 +3648,6 @@ end
 
 function ToggleGUI()
 	minimized = not minimized
-	HeaderDivider.Visible = not minimized
-	TabBar.Visible = not minimized
-	TabDivider.Visible = not minimized
-	ContentArea.Visible = not minimized
-	-- Minimized view is just the clock in a circle -- title and both header buttons fully
-	-- hide instead of shrinking/repositioning into the small space. Restoring happens by
-	-- tapping the circle itself (see the drag handler further below, which distinguishes a
-	-- tap from a drag), not a visible "+" button -- there's nothing else on it to click.
-	SettingsIconButton.Visible = not minimized
-	MiniButton.Visible = not minimized
-	GuiDestroyButton.Visible = not minimized
 	if minimized then
 		preMinimizePosition = MainFrame.Position
 		-- Both popups anchor to controls that are about to shrink/disappear -- rather
@@ -3647,12 +3664,17 @@ function ToggleGUI()
 		targetPosition = preMinimizePosition or WINDOW_POSITION
 	end
 
-	-- Fades out, swaps size/shape/position instantly while fully invisible, then fades
-	-- back in -- reads as a clean cross-fade instead of visibly stretching a rectangle into
-	-- a circle (or back), which is what tweening Size directly used to look like. TimeLabel
-	-- fades in lockstep with MainFrame's own background -- it has its own TextTransparency
-	-- separate from the frame's, so without this the clock stayed fully visible through the
-	-- whole "invisible" swap and looked like it was bleeding through instead of hiding.
+	-- Fades out, swaps EVERYTHING (visibility, size/shape/position, the clock's own
+	-- goal) instantly while fully invisible, then fades back in -- reads as a clean
+	-- cross-fade instead of visibly stretching a rectangle into a circle. Visibility used
+	-- to flip at the very top of this function, before the fade-out even started -- which
+	-- meant the full-size tab bar/content (or the header buttons) would already be
+	-- Visible=true while MainFrame was still sized/positioned as the OTHER state for the
+	-- whole fade-out duration, clipped into whatever tiny/large shape hadn't swapped yet
+	-- and visibly bleeding through. Bundling every change into this one instant, mid-fade,
+	-- swap fixes that. TimeLabel fades in lockstep with MainFrame's own background too --
+	-- it has its own TextTransparency separate from the frame's, so without this the clock
+	-- stayed fully visible through the whole "invisible" swap and bled through the same way.
 	local fadeOutInfo = TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 	local fadeInInfo = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 	local fadeOutTween = TweenService:Create(MainFrame, fadeOutInfo, {BackgroundTransparency = 1})
@@ -3660,6 +3682,13 @@ function ToggleGUI()
 	TweenService:Create(TimeLabel, fadeOutInfo, {TextTransparency = 1}):Play()
 	fadeOutTween.Completed:Wait()
 
+	HeaderDivider.Visible = not minimized
+	TabBar.Visible = not minimized
+	TabDivider.Visible = not minimized
+	ContentArea.Visible = not minimized
+	SettingsIconButton.Visible = not minimized
+	MiniButton.Visible = not minimized
+	GuiDestroyButton.Visible = not minimized
 	MainFrame.Size = minimized and MINI_SIZE or FULL_SIZE
 	MainFrame.Position = targetPosition
 	MainCorner.CornerRadius = minimized and MINI_CORNER or FULL_CORNER
