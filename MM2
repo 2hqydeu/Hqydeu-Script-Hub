@@ -134,45 +134,50 @@ local function AddFadeDivider(divider)
 end
 
 
+-- Traffic-light style, matching Serenity's own minimize/close circles: tiny plain colored
+-- circles (yellow = minimize, red = close), no glyph inside either -- a thin darker ring
+-- gives them definition without needing text.
 local MinimizeButton = Instance.new("TextButton")
 MinimizeButton.Name = "MinimizeButton"
-MinimizeButton.Size = UDim2.new(0, 20, 0, 20)
-MinimizeButton.Position = UDim2.new(1, -52, 0, 12)
-MinimizeButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-MinimizeButton.BackgroundTransparency = 0.4
+MinimizeButton.Size = UDim2.new(0, 12, 0, 12)
+MinimizeButton.Position = UDim2.new(1, -38, 0, 16)
+MinimizeButton.BackgroundColor3 = Color3.fromRGB(255, 189, 46)
 MinimizeButton.BorderSizePixel = 0
-MinimizeButton.Text = "-"
-MinimizeButton.Font = UIFont
-MinimizeButton.TextSize = 14
-MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinimizeButton.Text = ""
+MinimizeButton.AutoButtonColor = false
 MinimizeButton.Parent = PanelFrame
 Instance.new("UICorner", MinimizeButton).CornerRadius = UDim.new(1, 0)
+local minimizeButtonStroke = Instance.new("UIStroke")
+minimizeButtonStroke.Color = Color3.fromRGB(196, 142, 20)
+minimizeButtonStroke.Thickness = 1
+minimizeButtonStroke.Parent = MinimizeButton
 MinimizeButton.MouseEnter:Connect(function()
-	TweenService:Create(MinimizeButton, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.1, BackgroundColor3 = Color3.fromRGB(65, 65, 65)}):Play()
+	TweenService:Create(MinimizeButton, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 205, 92)}):Play()
 end)
 MinimizeButton.MouseLeave:Connect(function()
-	TweenService:Create(MinimizeButton, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.4, BackgroundColor3 = Color3.fromRGB(45, 45, 45)}):Play()
+	TweenService:Create(MinimizeButton, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 189, 46)}):Play()
 end)
 AddPressBounce(MinimizeButton)
 
 local CloseButton = Instance.new("TextButton")
 CloseButton.Name = "CloseButton"
-CloseButton.Size = UDim2.new(0, 20, 0, 20)
-CloseButton.Position = UDim2.new(1, -28, 0, 12)
-CloseButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
-CloseButton.BackgroundTransparency = 0.4
+CloseButton.Size = UDim2.new(0, 12, 0, 12)
+CloseButton.Position = UDim2.new(1, -20, 0, 16)
+CloseButton.BackgroundColor3 = Color3.fromRGB(255, 95, 87)
 CloseButton.BorderSizePixel = 0
-CloseButton.Text = "X"
-CloseButton.Font = UIFont
-CloseButton.TextSize = 13
-CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseButton.Text = ""
+CloseButton.AutoButtonColor = false
 CloseButton.Parent = PanelFrame
 Instance.new("UICorner", CloseButton).CornerRadius = UDim.new(1, 0)
+local closeButtonStroke = Instance.new("UIStroke")
+closeButtonStroke.Color = Color3.fromRGB(196, 68, 62)
+closeButtonStroke.Thickness = 1
+closeButtonStroke.Parent = CloseButton
 CloseButton.MouseEnter:Connect(function()
-	TweenService:Create(CloseButton, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.1, BackgroundColor3 = Color3.fromRGB(220, 75, 75)}):Play()
+	TweenService:Create(CloseButton, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 130, 123)}):Play()
 end)
 CloseButton.MouseLeave:Connect(function()
-	TweenService:Create(CloseButton, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.4, BackgroundColor3 = Color3.fromRGB(200, 60, 60)}):Play()
+	TweenService:Create(CloseButton, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 95, 87)}):Play()
 end)
 AddPressBounce(CloseButton)
 
@@ -1361,7 +1366,6 @@ local function ToggleMinimize()
 	HeaderDivider.Visible = not minimized
 	ContentScroll.Visible = not minimized
 	PanelFrame.Size = UDim2.new(0, 280, 0, minimized and MINI_HEIGHT or FULL_HEIGHT)
-	MinimizeButton.Text = minimized and "+" or "-"
 end
 MinimizeButton.MouseButton1Click:Connect(ToggleMinimize)
 
