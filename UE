@@ -422,8 +422,8 @@ local BaseTPButton = Instance.new("TextButton")
 BaseTPButton.Name = "BaseTPButton"
 BaseTPButton.LayoutOrder = 0
 BaseTPButton.Size = UDim2.new(1, 0, 0, 36)
-BaseTPButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-BaseTPButton.BackgroundTransparency = 0.3
+BaseTPButton.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
+BaseTPButton.BackgroundTransparency = GameRowTransparency
 BaseTPButton.BorderSizePixel = 0
 BaseTPButton.Text = "Base TP"
 BaseTPButton.Font = UIFont
@@ -606,19 +606,29 @@ local function CreatePopupDock(title, width, height)
 	header.ZIndex = 41
 	header.Parent = dock
 
+	-- Traffic-light style, matching Serenity's own close circle: a tiny plain red circle,
+	-- no glyph, with a thin darker ring for definition.
 	local closeButton = Instance.new("TextButton")
-	closeButton.Size = UDim2.new(0, 20, 0, 20)
-	closeButton.Position = UDim2.new(1, -28, 0, 6)
-	closeButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
-	closeButton.BackgroundTransparency = 0.4
+	closeButton.Size = UDim2.new(0, 12, 0, 12)
+	closeButton.Position = UDim2.new(1, -20, 0, 11)
+	closeButton.BackgroundColor3 = Color3.fromRGB(255, 95, 87)
 	closeButton.BorderSizePixel = 0
-	closeButton.Text = "×"
-	closeButton.Font = UIFont
-	closeButton.TextSize = 13
-	closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	closeButton.Text = ""
+	closeButton.AutoButtonColor = false
 	closeButton.ZIndex = 41
 	closeButton.Parent = dock
 	Instance.new("UICorner", closeButton).CornerRadius = UDim.new(1, 0)
+	local closeButtonStroke = Instance.new("UIStroke")
+	closeButtonStroke.Color = Color3.fromRGB(196, 68, 62)
+	closeButtonStroke.Thickness = 1
+	closeButtonStroke.Parent = closeButton
+	closeButton.MouseEnter:Connect(function()
+		TweenService:Create(closeButton, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 130, 123)}):Play()
+	end)
+	closeButton.MouseLeave:Connect(function()
+		TweenService:Create(closeButton, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 95, 87)}):Play()
+	end)
+	AddPressBounce(closeButton)
 	closeButton.MouseButton1Click:Connect(function() dock.Visible = false end)
 
 	local scroll = Instance.new("ScrollingFrame")
@@ -669,8 +679,8 @@ local function CreateFilterCard(scroll, order, title)
 	card.LayoutOrder = order
 	card.Size = UDim2.new(1, 0, 0, 0)
 	card.AutomaticSize = Enum.AutomaticSize.Y
-	card.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-	card.BackgroundTransparency = 0.4
+	card.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
+	card.BackgroundTransparency = GameRowTransparency
 	card.BorderSizePixel = 0
 	card.ZIndex = 41
 	card.Parent = scroll
