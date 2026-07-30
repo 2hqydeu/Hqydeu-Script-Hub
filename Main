@@ -799,8 +799,8 @@ do
 	avatarRingGradient.Parent = avatarRingStroke
 	task.spawn(function()
 		while avatarRing.Parent do
-			avatarRingGradient.Rotation = (avatarRingGradient.Rotation + 10) % 360
-			task.wait(0.015)
+			avatarRingGradient.Rotation = (avatarRingGradient.Rotation + 6) % 360
+			task.wait(0.018)
 		end
 	end)
 
@@ -820,72 +820,43 @@ do
 		if success then AvatarImage.Image = content end
 	end)
 
-	-- Split into two labels (rather than one RichText label) so the name specifically can
-	-- carry its own animated UIGradient -- a plain TextLabel/RichText color is flat, and a
-	-- gradient covering the whole sentence would shimmer "Welcome" and "!" too, not just
-	-- the name.
-	local WelcomeContainer = Instance.new("Frame")
-	WelcomeContainer.Name = "WelcomeContainer"
-	WelcomeContainer.Size = UDim2.new(1, 0, 0, 40)
-	WelcomeContainer.Position = UDim2.new(0, 0, 0, 136)
-	WelcomeContainer.BackgroundTransparency = 1
-	WelcomeContainer.Parent = HomePage
-	local welcomeLayout = Instance.new("UIListLayout")
-	welcomeLayout.FillDirection = Enum.FillDirection.Horizontal
-	welcomeLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	welcomeLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-	welcomeLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	welcomeLayout.Parent = WelcomeContainer
-
 	local WelcomeLabel = Instance.new("TextLabel")
 	WelcomeLabel.Name = "WelcomeLabel"
-	WelcomeLabel.LayoutOrder = 1
-	WelcomeLabel.AutomaticSize = Enum.AutomaticSize.X
-	WelcomeLabel.Size = UDim2.new(0, 0, 1, 0)
+	WelcomeLabel.Size = UDim2.new(1, 0, 0, 40)
+	WelcomeLabel.Position = UDim2.new(0, 0, 0, 136)
 	WelcomeLabel.BackgroundTransparency = 1
-	WelcomeLabel.Text = "Welcome "
+	WelcomeLabel.RichText = true
+	-- Just the name in that same lavender used everywhere (toggle switches, tab pill,
+	-- accents) so it ties back into the rest of the hub's color language instead of being
+	-- plain white like the rest of the sentence.
+	WelcomeLabel.Text = "Welcome <font color=\"rgb(178,155,235)\">" .. Player.DisplayName .. "</font>!"
 	WelcomeLabel.Font = UIFont
 	WelcomeLabel.TextSize = 26
 	WelcomeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-	WelcomeLabel.TextXAlignment = Enum.TextXAlignment.Left
+	WelcomeLabel.TextXAlignment = Enum.TextXAlignment.Center
 	WelcomeLabel.TextYAlignment = Enum.TextYAlignment.Center
-	WelcomeLabel.Parent = WelcomeContainer
+	WelcomeLabel.Parent = HomePage
 
-	-- The name itself -- same fast flowing-light trick as the avatar ring (a UIGradient
-	-- with light/lavender/light keypoints, Rotation animated continuously) instead of a
-	-- flat color, so it visibly shimmers instead of just sitting there tinted.
-	local NameLabel = Instance.new("TextLabel")
-	NameLabel.Name = "NameLabel"
-	NameLabel.LayoutOrder = 2
-	NameLabel.AutomaticSize = Enum.AutomaticSize.X
-	NameLabel.Size = UDim2.new(0, 0, 1, 0)
-	NameLabel.BackgroundTransparency = 1
-	NameLabel.Text = Player.DisplayName .. "!"
-	NameLabel.Font = UIFont
-	NameLabel.TextSize = 26
-	NameLabel.TextColor3 = Color3.fromRGB(178, 155, 235)
-	NameLabel.TextXAlignment = Enum.TextXAlignment.Left
-	NameLabel.TextYAlignment = Enum.TextYAlignment.Center
-	NameLabel.Parent = WelcomeContainer
-	-- Same two colors as the avatar ring's own gradient (178,155,235 base / 238,233,250
-	-- highlight) -- the earlier version used a darker, more saturated purple that didn't
-	-- match the ring's lighter periwinkle-lavender at all. Kept the sharp, narrow band
-	-- (rather than a smooth fade) so the sweep still reads as a real flash, not just a
-	-- subtle tint shift.
-	local nameGradient = Instance.new("UIGradient")
-	nameGradient.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(178, 155, 235)),
-		ColorSequenceKeypoint.new(0.42, Color3.fromRGB(178, 155, 235)),
-		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(238, 233, 250)),
-		ColorSequenceKeypoint.new(0.58, Color3.fromRGB(178, 155, 235)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(178, 155, 235)),
-	})
-	nameGradient.Parent = NameLabel
-	task.spawn(function()
-		while NameLabel.Parent do
-			nameGradient.Rotation = (nameGradient.Rotation + 10) % 360
-			task.wait(0.015)
-		end
+	-- Opens the Favorites overlay -- built later in the file (once every favoritable
+	-- row across every tab actually exists), referenced here only inside a click closure
+	-- that won't fire until well after the whole script has finished loading.
+	local FavoritesButton = Instance.new("TextButton")
+	FavoritesButton.Name = "FavoritesButton"
+	FavoritesButton.AnchorPoint = Vector2.new(0.5, 0)
+	FavoritesButton.Position = UDim2.new(0.5, 0, 0, 190)
+	FavoritesButton.Size = UDim2.new(0, 150, 0, 34)
+	FavoritesButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+	FavoritesButton.BorderSizePixel = 0
+	FavoritesButton.Text = "\226\152\133 Favorites"
+	FavoritesButton.Font = UIFont
+	FavoritesButton.TextSize = 15
+	FavoritesButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	FavoritesButton.Parent = HomePage
+	Instance.new("UICorner", FavoritesButton).CornerRadius = UDim.new(1, 0)
+	AddPressBounce(FavoritesButton)
+	FavoritesButton.MouseButton1Click:Connect(function()
+		PlayClick()
+		OpenFavoritesOverlay()
 	end)
 end
 
@@ -1153,10 +1124,49 @@ function StyleAsToggleSwitch(toggle)
 	Refresh(false)
 end
 
+-- Favorites: a tiny star on a feature's row lets it (and a stand-in for its section
+-- heading, since the real heading is often shared by several rows and can't just be
+-- yanked away) get pinned into the dedicated Favorites view opened from Home. The row
+-- itself is MOVED there, not cloned -- same live toggle/keybind, zero state-sync needed,
+-- and since Favorites and the row's home tab are never visible at the same time anyway,
+-- it not being in its usual spot while parked in Favorites is invisible in practice.
+-- Persisted the same way keybinds are, in the same settings file/getgenv blob.
+local FavoritesList = {}
+SavedKeybinds.Favorites = type(SavedKeybinds.Favorites) == "table" and SavedKeybinds.Favorites or {}
+local FavoritedKeys = SavedKeybinds.Favorites
+
+function RegisterFavoritable(row, key, displayName)
+	local star = Instance.new("TextButton")
+	star.Name = "FavoriteStar"
+	star.Size = UDim2.new(0, 14, 0, 14)
+	star.Position = UDim2.new(0, 2, 0.5, -7)
+	star.BackgroundTransparency = 1
+	star.Text = "\226\152\133" -- star glyph
+	star.Font = UIFont
+	star.TextSize = 14
+	star.TextColor3 = FavoritedKeys[key] and Color3.fromRGB(255, 210, 60) or Color3.fromRGB(255, 255, 255)
+	star.Parent = row
+	AddPressBounce(star)
+
+	table.insert(FavoritesList, {key = key, name = displayName, row = row, originalParent = row.Parent, originalPosition = row.Position})
+
+	star.MouseButton1Click:Connect(function()
+		PlayClick()
+		if FavoritedKeys[key] then
+			FavoritedKeys[key] = nil
+		else
+			FavoritedKeys[key] = true
+		end
+		star.TextColor3 = FavoritedKeys[key] and Color3.fromRGB(255, 210, 60) or Color3.fromRGB(255, 255, 255)
+		SavePersistentSettings()
+		if RefreshFavoritesView then RefreshFavoritesView() end
+	end)
+end
+
 -- On/Off toggle plus its keybind button, in their own row below the strength row.
 -- labelText overrides the row's own label (defaults to "Toggle" for rows that already
 -- have their feature name shown above, e.g. via CreateStrengthRow).
-function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, defaultKeyCode)
+function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, defaultKeyCode, favoriteName)
 	local row = Instance.new("Frame")
 	row.Name = "ToggleRow"
 	-- Narrowed from the full 100% width -- otherwise the row's own right edge sits exactly
@@ -1169,6 +1179,14 @@ function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, def
 	row.BorderSizePixel = 0
 	row.Parent = parent
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+
+	-- favoriteName is only passed for rows that represent a real standalone feature (not
+	-- every CreateToggleRow call site is one -- e.g. Settings' own Gui Fade/Mute Music, or
+	-- the Teleport popup toggle, aren't really "features" worth pinning). Sits in the
+	-- existing 16px gap between the row's edge and the label, so nothing else has to move.
+	if favoriteName then
+		RegisterFavoritable(row, storageKey, favoriteName)
+	end
 
 	local rowLabel = Instance.new("TextLabel")
 	rowLabel.Name = "RowLabel"
@@ -1230,7 +1248,7 @@ do
 
 	CreateSectionHeading(PlayerPage, 8, "Speed")
 	local SpeedInput = CreateStrengthRow(PlayerPage, 38, "Speed Strength", SpeedValue)
-	local SpeedToggle = CreateToggleRow(PlayerPage, 98, "SpeedKeybind", function(k) SpeedKeybind = k end)
+	local SpeedToggle = CreateToggleRow(PlayerPage, 98, "SpeedKeybind", function(k) SpeedKeybind = k end, nil, nil, "Speed")
 
 	-- Mode used to be its own full-width row below; squished down to a single button the
 	-- same size as the strength input, sitting directly to its left, inside that same row.
@@ -1306,7 +1324,7 @@ do
 	local JUMP_TOP = SPEED_SECTION_BOTTOM + SECTION_GAP
 	CreateSectionHeading(PlayerPage, JUMP_TOP, "Jump")
 	local JumpInput = CreateStrengthRow(PlayerPage, JUMP_TOP + 30, "Jump Strength", JumpValue)
-	local JumpToggle = CreateToggleRow(PlayerPage, JUMP_TOP + 90, "JumpKeybind", function(k) JumpKeybind = k end)
+	local JumpToggle = CreateToggleRow(PlayerPage, JUMP_TOP + 90, "JumpKeybind", function(k) JumpKeybind = k end, nil, nil, "Jump")
 	local JUMP_SECTION_BOTTOM = JUMP_TOP + 90 + 52
 
 	local function ApplyJump()
@@ -1376,7 +1394,7 @@ do
 	local FLY_TOP = JUMP_SECTION_BOTTOM + SECTION_GAP
 	CreateSectionHeading(PlayerPage, FLY_TOP, "Fly")
 	local FlyInput = CreateStrengthRow(PlayerPage, FLY_TOP + 30, "Fly Strength", FlyValue)
-	local FlyToggle = CreateToggleRow(PlayerPage, FLY_TOP + 90, "FlyKeybind", function(k) FlyKeybind = k end)
+	local FlyToggle = CreateToggleRow(PlayerPage, FLY_TOP + 90, "FlyKeybind", function(k) FlyKeybind = k end, nil, nil, "Fly")
 	local FLY_SECTION_BOTTOM = FLY_TOP + 90 + 52
 
 	local function UprightCFrame(sourceCFrame, position)
@@ -1456,7 +1474,7 @@ do
 	NoclipKeybind = Enum.KeyCode.Unknown
 	local NOCLIP_TOP = FLY_SECTION_BOTTOM + SECTION_GAP
 	CreateSectionHeading(PlayerPage, NOCLIP_TOP, "NoClip")
-	local NoclipToggle = CreateToggleRow(PlayerPage, NOCLIP_TOP + 30, "NoclipKeybind", function(k) NoclipKeybind = k end)
+	local NoclipToggle = CreateToggleRow(PlayerPage, NOCLIP_TOP + 30, "NoclipKeybind", function(k) NoclipKeybind = k end, nil, nil, "NoClip")
 	local NOCLIP_SECTION_BOTTOM = NOCLIP_TOP + 30 + 52
 
 	ToggleNoclip = function()
@@ -1512,7 +1530,7 @@ do
 	-- The heading already names the feature, so the row itself just says "Toggle" instead
 	-- of repeating "Instant Prompt" right underneath it.
 	CreateSectionHeading(FunctionalityPage, INSTANT_PROMPT_TOP, "Instant Prompt")
-	local InstantPromptToggle = CreateToggleRow(FunctionalityPage, INSTANT_PROMPT_TOP + 30, "InstantPromptKeybind", function(k) InstantPromptKeybind = k end)
+	local InstantPromptToggle = CreateToggleRow(FunctionalityPage, INSTANT_PROMPT_TOP + 30, "InstantPromptKeybind", function(k) InstantPromptKeybind = k end, nil, nil, "Instant Prompt")
 	local INSTANT_PROMPT_SECTION_BOTTOM = INSTANT_PROMPT_TOP + 30 + 52
 
 	local ProximityPromptService = game:GetService("ProximityPromptService")
@@ -1582,6 +1600,76 @@ do
 	end
 
 	FunctionalityPage.CanvasSize = UDim2.new(0, 0, 0, INSTANT_PROMPT_SECTION_BOTTOM + 16)
+end
+
+do
+	-- Anti-AFK: Roblox kicks/logs an idle player after a timeout, detected internally via
+	-- Player.Idled firing once no real input (mouse/keyboard/gamepad) has been seen for a
+	-- while. Simulating a keypress through UserInputService or a mouse-click function
+	-- doesn't reset that timer at all -- it's tracked at the engine's own input-device
+	-- level, not from script-visible events, which is most likely why past attempts at
+	-- this never actually worked. VirtualUser is Roblox's own sanctioned way to inject
+	-- input at that level (built for automated testing), so it's the only thing that
+	-- reliably resets Idled.
+	local VirtualUser = game:GetService("VirtualUser")
+	AntiAFKEnabled = false
+	AntiAFKKeybind = Enum.KeyCode.Unknown
+
+	-- INSTANT_PROMPT_SECTION_BOTTOM lives in the do block above and doesn't escape it --
+	-- 106 is that same value (INSTANT_PROMPT_TOP 8 + 30 + row height 52 + 16 gap) written
+	-- out instead.
+	local ANTI_AFK_TOP = 106
+	CreateSectionHeading(FunctionalityPage, ANTI_AFK_TOP, "Anti-AFK")
+	local AntiAFKToggle = CreateToggleRow(FunctionalityPage, ANTI_AFK_TOP + 30, "AntiAFKKeybind", function(k) AntiAFKKeybind = k end, nil, nil, "Anti-AFK")
+
+	ToggleAntiAFK = function()
+		AntiAFKEnabled = not AntiAFKEnabled
+		AntiAFKToggle.Text = AntiAFKEnabled and "On" or "Off"
+	end
+	AntiAFKToggle.MouseButton1Click:Connect(function() PlayClick() ToggleAntiAFK() end)
+
+	table.insert(looseConnections, Player.Idled:Connect(function()
+		if not AntiAFKEnabled then return end
+		VirtualUser:CaptureController()
+		VirtualUser:ClickButton2(Vector2.new(0, 0))
+	end))
+
+	FunctionalityPage.CanvasSize = UDim2.new(0, 0, 0, ANTI_AFK_TOP + 30 + 52 + 16)
+end
+
+do
+	-- Rejoin: reloads the CURRENT server, same as Roblox's own "Rejoin" option in its
+	-- pause menu -- NOT a recovery from an actual kick/disconnect. Once the client is
+	-- actually kicked, this whole script (and everything else running under it) stops
+	-- existing along with the rest of that game session -- there is no way for a
+	-- LocalScript to reach back out and rejoin or re-execute anything after that already
+	-- happened. A genuine "auto rejoin + reopen the hub after getting kicked" would need
+	-- the executor's own auto-execute/auto-rejoin features (if it has any), which live
+	-- entirely outside anything a loaded script can reach or configure.
+	local REJOIN_TOP = 204
+	CreateSectionHeading(FunctionalityPage, REJOIN_TOP, "Rejoin")
+
+	local RejoinButton = Instance.new("TextButton")
+	RejoinButton.Name = "RejoinButton"
+	RejoinButton.Size = UDim2.new(1, 0, 0, 34)
+	RejoinButton.Position = UDim2.new(0, 0, 0, REJOIN_TOP + 30)
+	RejoinButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+	RejoinButton.BorderSizePixel = 0
+	RejoinButton.Text = "Rejoin Server"
+	RejoinButton.Font = UIFont
+	RejoinButton.TextSize = 15
+	RejoinButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	RejoinButton.Parent = FunctionalityPage
+	Instance.new("UICorner", RejoinButton).CornerRadius = UDim.new(0, 8)
+	AddPressBounce(RejoinButton)
+	RejoinButton.MouseButton1Click:Connect(function()
+		PlayClick()
+		pcall(function()
+			game:GetService("TeleportService"):Teleport(game.PlaceId, Player)
+		end)
+	end)
+
+	FunctionalityPage.CanvasSize = UDim2.new(0, 0, 0, REJOIN_TOP + 30 + 34 + 16)
 end
 
 -- Visuals tab: Outline ESP, Body ESP (per-limb boxes, Infinite Yield-style, ported from
@@ -1855,9 +1943,9 @@ end)
 
 CreateSectionHeading(VisualsPage, 8, "ESP")
 
-local OutlineESPToggle = CreateToggleRow(VisualsPage, 38, "OutlineESPKeybind", function(k) OutlineESPKeybind = k end, "Outline ESP")
-local BoxESPToggle = CreateToggleRow(VisualsPage, 98, "BoxESPKeybind", function(k) BoxESPKeybind = k end, "Box ESP")
-local ESPLabelsToggle = CreateToggleRow(VisualsPage, 158, "ESPLabelsKeybind", function(k) ESPLabelsKeybind = k end, "ESP Labels")
+local OutlineESPToggle = CreateToggleRow(VisualsPage, 38, "OutlineESPKeybind", function(k) OutlineESPKeybind = k end, "Outline ESP", nil, "Outline ESP")
+local BoxESPToggle = CreateToggleRow(VisualsPage, 98, "BoxESPKeybind", function(k) BoxESPKeybind = k end, "Box ESP", nil, "Box ESP")
+local ESPLabelsToggle = CreateToggleRow(VisualsPage, 158, "ESPLabelsKeybind", function(k) ESPLabelsKeybind = k end, "ESP Labels", nil, "ESP Labels")
 
 function ToggleOutlineESP()
 	OutlineESPEnabled = not OutlineESPEnabled
@@ -2227,7 +2315,7 @@ local FreeCamSelfColor = Color3.fromRGB(34, 139, 34)
 
 local CAMERA_TOP = ESP_SECTION_BOTTOM + SECTION_GAP
 CreateSectionHeading(VisualsPage, CAMERA_TOP, "Camera")
-local FreeCamToggle = CreateToggleRow(VisualsPage, CAMERA_TOP + 30, "FreeCamKeybind", function(k) FreeCamKeybind = k end, "Free Cam")
+local FreeCamToggle = CreateToggleRow(VisualsPage, CAMERA_TOP + 30, "FreeCamKeybind", function(k) FreeCamKeybind = k end, "Free Cam", nil, "Free Cam")
 
 DEFAULT_FOV = 70
 local FOVValue = (workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView) or DEFAULT_FOV
@@ -3424,7 +3512,7 @@ do
 	local AutoLockEnabled = false
 
 	CreateSectionHeading(CombatPage, 8, "Auto Lock")
-	local AutoLockToggle = CreateToggleRow(CombatPage, 38, "AutoLockKeybind", function(k) AutoLockKeybind = k end)
+	local AutoLockToggle = CreateToggleRow(CombatPage, 38, "AutoLockKeybind", function(k) AutoLockKeybind = k end, nil, nil, "Auto Lock")
 	CombatPage.CanvasSize = UDim2.new(0, 0, 0, 106)
 
 	-- Nearest player to the mouse cursor in screen space (not world space) -- same approach
@@ -3721,7 +3809,11 @@ do
 	SettingsOverlay = SettingsPage
 	task.wait()
 
+	-- Settings and Favorites share the same footprint and the same Back button -- opening
+	-- one closes the other first (guarded since Favorites, built later in the file, isn't
+	-- defined yet the moment this connects, only by the time it could ever actually fire).
 	function OpenSettingsOverlay()
+		if CloseFavoritesOverlay then CloseFavoritesOverlay() end
 		SettingsOverlay.Visible = true
 		SettingsBackButton.Visible = true
 	end
@@ -3732,6 +3824,7 @@ do
 	SettingsBackButton.MouseButton1Click:Connect(function()
 		PlayClick()
 		CloseSettingsOverlay()
+		if CloseFavoritesOverlay then CloseFavoritesOverlay() end
 	end)
 
 	-- Gui Fade: while minimized and left alone (not hovered) for a couple seconds, the mini
@@ -3868,7 +3961,7 @@ do
 	LocalCountLabel.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 172)
 	LocalCountLabel.BackgroundTransparency = 1
 	LocalCountLabel.BorderSizePixel = 0
-	LocalCountLabel.Text = "133 / 200"
+	LocalCountLabel.Text = "135 / 200"
 	LocalCountLabel.Font = UIFont
 	LocalCountLabel.TextSize = 7
 	LocalCountLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
@@ -3888,6 +3981,114 @@ do
 	-- retroactively here instead of threading a ZIndex parameter through CreateToggleRow.
 	for _, descendant in ipairs(SettingsPage:GetDescendants()) do
 		if descendant:IsA("GuiObject") then descendant.ZIndex = 20 end
+	end
+end
+
+do
+	-- Favorites overlay: same footprint/ZIndex scheme as Settings above (covers the tab
+	-- bar + content area, shares its Back button). Favorited rows are MOVED here (not
+	-- cloned) from wherever they actually live -- same live toggle/keybind, no state-sync
+	-- needed -- along with a plain stand-in heading label, since the real section heading
+	-- is often shared by several rows and can't just be taken along with only one of them.
+	local FavoritesPage = Instance.new("ScrollingFrame")
+	FavoritesPage.Name = "FavoritesOverlay"
+	FavoritesPage.Size = UDim2.new(1, -32, 1, -(HEADER_HEIGHT + 8 + 16))
+	FavoritesPage.Position = UDim2.new(0, 16, 0, HEADER_HEIGHT + 8)
+	FavoritesPage.BackgroundColor3 = FrameColor
+	FavoritesPage.BorderSizePixel = 0
+	FavoritesPage.ScrollBarThickness = 3
+	FavoritesPage.ScrollBarImageColor3 = AccentColor
+	FavoritesPage.Active = true
+	FavoritesPage.Visible = false
+	FavoritesPage.ZIndex = 20
+	FavoritesPage.Parent = MainFrame
+	FavoritesOverlay = FavoritesPage
+
+	local EmptyLabel = Instance.new("TextLabel")
+	EmptyLabel.Name = "EmptyLabel"
+	EmptyLabel.Size = UDim2.new(1, 0, 0, 40)
+	EmptyLabel.Position = UDim2.new(0, 0, 0, 16)
+	EmptyLabel.BackgroundTransparency = 1
+	EmptyLabel.Text = "No favorites yet -- tap the star on any feature's row to pin it here."
+	EmptyLabel.Font = UIFont
+	EmptyLabel.TextSize = 14
+	EmptyLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+	EmptyLabel.TextWrapped = true
+	EmptyLabel.TextXAlignment = Enum.TextXAlignment.Left
+	EmptyLabel.ZIndex = 20
+	EmptyLabel.Parent = FavoritesPage
+
+	-- Same ZIndex bug as Settings above -- a row moved in here needs every descendant
+	-- bumped to match this container's own ZIndex (20) or it renders invisibly underneath
+	-- it, and reset back to 1 (every row's own baseline everywhere else) when it leaves.
+	local function SetDescendantsZIndex(instance, zIndex)
+		instance.ZIndex = zIndex
+		for _, descendant in ipairs(instance:GetDescendants()) do
+			if descendant:IsA("GuiObject") then descendant.ZIndex = zIndex end
+		end
+	end
+
+	local function RestoreFavorite(entry)
+		if entry.headingLabel then
+			entry.headingLabel:Destroy()
+			entry.headingLabel = nil
+		end
+		SetDescendantsZIndex(entry.row, 1)
+		entry.row.Position = entry.originalPosition
+		entry.row.Parent = entry.originalParent
+	end
+
+	function RefreshFavoritesView()
+		if not FavoritesPage.Visible then return end
+		for _, entry in ipairs(FavoritesList) do
+			if entry.row.Parent == FavoritesPage then
+				RestoreFavorite(entry)
+			end
+		end
+		local y = 16
+		local anyFavorited = false
+		for _, entry in ipairs(FavoritesList) do
+			if FavoritedKeys[entry.key] then
+				anyFavorited = true
+				local heading = Instance.new("TextLabel")
+				heading.Name = "FavHeading"
+				heading.Size = UDim2.new(1, 0, 0, 22)
+				heading.Position = UDim2.new(0, 0, 0, y)
+				heading.BackgroundTransparency = 1
+				heading.Text = entry.name
+				heading.Font = UIFont
+				heading.TextSize = 16
+				heading.TextColor3 = Color3.fromRGB(255, 255, 255)
+				heading.TextXAlignment = Enum.TextXAlignment.Left
+				heading.ZIndex = 20
+				heading.Parent = FavoritesPage
+				entry.headingLabel = heading
+				y = y + 30
+
+				entry.row.Position = UDim2.new(0, 0, 0, y)
+				entry.row.Parent = FavoritesPage
+				SetDescendantsZIndex(entry.row, 20)
+				y = y + 52 + 16
+			end
+		end
+		EmptyLabel.Visible = not anyFavorited
+		FavoritesPage.CanvasSize = UDim2.new(0, 0, 0, math.max(y, 348))
+	end
+
+	function OpenFavoritesOverlay()
+		if CloseSettingsOverlay then CloseSettingsOverlay() end
+		FavoritesPage.Visible = true
+		SettingsBackButton.Visible = true
+		RefreshFavoritesView()
+	end
+	function CloseFavoritesOverlay()
+		FavoritesPage.Visible = false
+		SettingsBackButton.Visible = false
+		for _, entry in ipairs(FavoritesList) do
+			if entry.row.Parent == FavoritesPage then
+				RestoreFavorite(entry)
+			end
+		end
 	end
 end
 
@@ -3963,6 +4164,7 @@ function ToggleGUI()
 		CloseESPColorPicker()
 		DestroyConfirmPopup.Visible = false
 		CloseSettingsOverlay()
+		if CloseFavoritesOverlay then CloseFavoritesOverlay() end
 	end
 	local targetPosition
 	if minimized then
@@ -4165,6 +4367,7 @@ mainInputConnection = UserInputService.InputBegan:Connect(function(input, proces
 	if ESPLabelsKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == ESPLabelsKeybind then ToggleESPLabels() end
 	if AutoLockKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == AutoLockKeybind then ToggleAutoLock() end
 	if InstantPromptKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == InstantPromptKeybind then ToggleInstantPrompt() end
+	if AntiAFKKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == AntiAFKKeybind then ToggleAntiAFK() end
 end)
 
 -- Dragging. Minimized has no visible button left to click to restore (it's just the
