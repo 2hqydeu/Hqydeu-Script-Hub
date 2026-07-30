@@ -1159,15 +1159,15 @@ local FavoritedKeys = SavedKeybinds.Favorites
 local FAVORITE_STAR_ON = Color3.fromRGB(255, 210, 60)
 local FAVORITE_STAR_OFF = Color3.fromRGB(255, 255, 255)
 
--- parent/x/y place the star explicitly (same manual-position convention as everything
--- else in this file) rather than deriving it from anchor, since anchor is sometimes a
--- heading (section favorites) and sometimes the row itself (item favorites). headingLabel,
--- when given, gets nudged right to make room for the star sitting to its left of it.
-local function CreateFavoriteStar(parent, x, y, key, groupName, rows, headingLabel)
+-- Plain star button at an explicit position (same manual-position convention as
+-- everything else in this file) -- toggles FavoritedKeys[key] and refreshes the
+-- Favorites view if it's open, nothing else. Used for section/item stars AND the
+-- unfavorite star on a single-key group's heading clone inside Favorites itself.
+function CreateFavoriteStar(parent, position, key)
 	local star = Instance.new("TextButton")
 	star.Name = "FavoriteStar"
 	star.Size = UDim2.new(0, 14, 0, 14)
-	star.Position = UDim2.new(0, x, 0, y)
+	star.Position = position
 	star.BackgroundTransparency = 1
 	star.Text = "\226\152\133" -- star glyph
 	star.Font = UIFont
@@ -1175,14 +1175,24 @@ local function CreateFavoriteStar(parent, x, y, key, groupName, rows, headingLab
 	star.TextColor3 = FavoritedKeys[key] and FAVORITE_STAR_ON or FAVORITE_STAR_OFF
 	star.Parent = parent
 	AddPressBounce(star)
+	star.MouseButton1Click:Connect(function()
+		PlayClick()
+		if FavoritedKeys[key] then
+			FavoritedKeys[key] = nil
+		else
+			FavoritedKeys[key] = true
+		end
+		star.TextColor3 = FavoritedKeys[key] and FAVORITE_STAR_ON or FAVORITE_STAR_OFF
+		SavePersistentSettings()
+		if RefreshFavoritesView then RefreshFavoritesView() end
+	end)
+	return star
+end
 
-	if headingLabel then
-		headingLabel.Position = UDim2.new(0, 20, headingLabel.Position.Y.Scale, headingLabel.Position.Y.Offset)
-		headingLabel.Size = UDim2.new(headingLabel.Size.X.Scale, headingLabel.Size.X.Offset - 20, headingLabel.Size.Y.Scale, headingLabel.Size.Y.Offset)
-	end
-
-	-- originals captured now, while every row is still sitting in its real home -- read
-	-- back later to put each row exactly where it came from.
+-- Bookkeeping shared by both favorite flavors: remembers where each row actually lives
+-- (read back later to put it exactly where it came from) and slots the key into its
+-- group, creating the group the first time a key claims that name.
+local function RegisterFavoriteEntry(key, groupName, rows)
 	local originals = {}
 	for _, row in ipairs(rows) do
 		originals[row] = {parent = row.Parent, position = row.Position}
@@ -1197,31 +1207,24 @@ local function CreateFavoriteStar(parent, x, y, key, groupName, rows, headingLab
 		table.insert(FavoriteGroups, group)
 	end
 	table.insert(group.keys, key)
-
-	star.MouseButton1Click:Connect(function()
-		PlayClick()
-		if FavoritedKeys[key] then
-			FavoritedKeys[key] = nil
-		else
-			FavoritedKeys[key] = true
-		end
-		star.TextColor3 = FavoritedKeys[key] and FAVORITE_STAR_ON or FAVORITE_STAR_OFF
-		SavePersistentSettings()
-		if RefreshFavoritesView then RefreshFavoritesView() end
-	end)
 end
 
--- Whole section: star sits beside the heading (nudged right to make room), favoriting
--- moves every row passed in together as one unit, grouped under the heading's own text.
+-- Whole section: star sits on the RIGHT side of the heading (heading's own width shrinks
+-- to make room), favoriting moves every row passed in together as one unit, grouped under
+-- the heading's own text.
 function RegisterSectionFavorite(heading, key, displayName, rows)
-	CreateFavoriteStar(heading.Parent, 0, heading.Position.Y.Offset + 4, key, displayName, rows, heading)
+	heading.Size = UDim2.new(heading.Size.X.Scale, heading.Size.X.Offset - 24, heading.Size.Y.Scale, heading.Size.Y.Offset)
+	CreateFavoriteStar(heading.Parent, UDim2.new(1, -18, 0, heading.Position.Y.Offset + 4), key)
+	RegisterFavoriteEntry(key, displayName, rows)
 end
 
--- One row, its own star, grouped under a shared heading (created fresh in the Favorites
--- view, same as any section heading) instead of getting one of its own. The star is a
--- child of the row itself so it travels along when the row gets moved.
+-- One row, its own star (bottom-left corner, in the row's own natural left margin),
+-- grouped under a shared heading (created fresh in the Favorites view, same as any
+-- section heading) instead of getting one of its own. The star is a child of the row
+-- itself so it travels along when the row gets moved.
 function RegisterItemFavorite(row, key, groupName)
-	CreateFavoriteStar(row, 2, 19, key, groupName, {row})
+	CreateFavoriteStar(row, UDim2.new(0, 2, 0, 19), key)
+	RegisterFavoriteEntry(key, groupName, {row})
 end
 
 -- On/Off toggle plus its keybind button, in their own row below the strength row.
@@ -1697,41 +1700,6 @@ do
 	end))
 
 	FunctionalityPage.CanvasSize = UDim2.new(0, 0, 0, ANTI_AFK_TOP + 30 + 52 + 16)
-end
-
-do
-	-- Rejoin: reloads the CURRENT server, same as Roblox's own "Rejoin" option in its
-	-- pause menu -- NOT a recovery from an actual kick/disconnect. Once the client is
-	-- actually kicked, this whole script (and everything else running under it) stops
-	-- existing along with the rest of that game session -- there is no way for a
-	-- LocalScript to reach back out and rejoin or re-execute anything after that already
-	-- happened. A genuine "auto rejoin + reopen the hub after getting kicked" would need
-	-- the executor's own auto-execute/auto-rejoin features (if it has any), which live
-	-- entirely outside anything a loaded script can reach or configure.
-	local REJOIN_TOP = 204
-	CreateSectionHeading(FunctionalityPage, REJOIN_TOP, "Rejoin")
-
-	local RejoinButton = Instance.new("TextButton")
-	RejoinButton.Name = "RejoinButton"
-	RejoinButton.Size = UDim2.new(1, 0, 0, 34)
-	RejoinButton.Position = UDim2.new(0, 0, 0, REJOIN_TOP + 30)
-	RejoinButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
-	RejoinButton.BorderSizePixel = 0
-	RejoinButton.Text = "Rejoin Server"
-	RejoinButton.Font = UIFont
-	RejoinButton.TextSize = 15
-	RejoinButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-	RejoinButton.Parent = FunctionalityPage
-	Instance.new("UICorner", RejoinButton).CornerRadius = UDim.new(0, 8)
-	AddPressBounce(RejoinButton)
-	RejoinButton.MouseButton1Click:Connect(function()
-		PlayClick()
-		pcall(function()
-			game:GetService("TeleportService"):Teleport(game.PlaceId, Player)
-		end)
-	end)
-
-	FunctionalityPage.CanvasSize = UDim2.new(0, 0, 0, REJOIN_TOP + 30 + 34 + 16)
 end
 
 -- Visuals tab: Outline ESP, Body ESP (per-limb boxes, Infinite Yield-style, ported from
@@ -3908,8 +3876,10 @@ do
 	-- Bottom-aligned within the overlay's visible viewport (348px tall -- it covers the tab
 	-- bar's old footprint too, not just the content area, so it's taller than the per-tab
 	-- pages ever were) so the whole block's bottom edge lands flush with the viewport's own
-	-- bottom edge instead of sitting stranded up top with empty space below.
-	local SETTINGS_TOP = 150
+	-- bottom edge instead of sitting stranded up top with empty space below. Recomputed to
+	-- 114 (was 150, now stale) after Edit Keybinds/Rejoin were added below -- the old value
+	-- pushed the last couple rows past the bottom of the viewport entirely.
+	local SETTINGS_TOP = 114
 	local GuiFadeToggle = CreateToggleRow(SettingsPage, SETTINGS_TOP, "GuiFadeKeybind", function(k) GuiFadeKeybind = k end, "Gui Fade")
 	-- CreateToggleRow's switch always starts visually "Off" -- sync it to match the
 	-- GuiFadeEnabled default above instead of the two disagreeing on load.
@@ -3983,19 +3953,20 @@ do
 	end
 	MuteMusicToggle.MouseButton1Click:Connect(function() PlayClick() ToggleMusicMute() end)
 
-	-- Opens the Keybind Editor -- built later in the file (needs every feature's keybind
-	-- to already exist so it can create synced copies of each). Referenced only inside a
-	-- click closure, which won't fire until well after the whole script has loaded.
+	-- 2x2 grid: Edit Keybinds + Rejoin on top, Reset Character + Destroy Gui below -- all
+	-- four the same half-width/28px size instead of Edit Keybinds and Rejoin being their
+	-- own full-width rows.
 	local EditKeybindsButton = Instance.new("TextButton")
 	EditKeybindsButton.Name = "EditKeybindsButton"
-	EditKeybindsButton.Size = UDim2.new(1, 0, 0, 34)
+	EditKeybindsButton.Size = UDim2.new(0.5, -7, 0, 28)
 	EditKeybindsButton.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 136)
 	EditKeybindsButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 	EditKeybindsButton.BorderSizePixel = 0
 	EditKeybindsButton.Text = "Edit Keybinds"
 	EditKeybindsButton.Font = UIFont
-	EditKeybindsButton.TextSize = 15
+	EditKeybindsButton.TextSize = 13
 	EditKeybindsButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	EditKeybindsButton.TextWrapped = true
 	EditKeybindsButton.Parent = SettingsPage
 	Instance.new("UICorner", EditKeybindsButton).CornerRadius = UDim.new(0, 8)
 	AddPressBounce(EditKeybindsButton)
@@ -4004,13 +3975,36 @@ do
 		OpenKeybindEditorOverlay()
 	end)
 
+	-- Reloads the current server via TeleportService, same as Roblox's own "Rejoin" --
+	-- NOT a recovery from an actual kick/disconnect. Moved here from the Functions tab.
+	local RejoinButton = Instance.new("TextButton")
+	RejoinButton.Name = "RejoinButton"
+	RejoinButton.Size = UDim2.new(0.5, -7, 0, 28)
+	RejoinButton.Position = UDim2.new(0.5, 3, 0, SETTINGS_TOP + 136)
+	RejoinButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+	RejoinButton.BorderSizePixel = 0
+	RejoinButton.Text = "Rejoin Server"
+	RejoinButton.Font = UIFont
+	RejoinButton.TextSize = 13
+	RejoinButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	RejoinButton.TextWrapped = true
+	RejoinButton.Parent = SettingsPage
+	Instance.new("UICorner", RejoinButton).CornerRadius = UDim.new(0, 8)
+	AddPressBounce(RejoinButton)
+	RejoinButton.MouseButton1Click:Connect(function()
+		PlayClick()
+		pcall(function()
+			game:GetService("TeleportService"):Teleport(game.PlaceId, Player)
+		end)
+	end)
+
 	-- Reset Character and Destroy Gui now share one row, side by side, instead of stacking
 	-- as two full-width rows -- narrower, but still comfortably far apart (a real gap
 	-- between them, not just touching edges).
 	local ResetCharacterButton = Instance.new("TextButton")
 	ResetCharacterButton.Name = "ResetCharacterButton"
 	ResetCharacterButton.Size = UDim2.new(0.5, -7, 0, 28)
-	ResetCharacterButton.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 184)
+	ResetCharacterButton.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 172)
 	ResetCharacterButton.BackgroundColor3 = Color3.fromRGB(255, 230, 0)
 	ResetCharacterButton.BorderSizePixel = 0
 	ResetCharacterButton.Text = "Reset Character"
@@ -4030,7 +4024,7 @@ do
 	DestroyGuiButton = Instance.new("TextButton")
 	DestroyGuiButton.Name = "DestroyGuiButton"
 	DestroyGuiButton.Size = UDim2.new(0.5, -7, 0, 28)
-	DestroyGuiButton.Position = UDim2.new(0.5, 3, 0, SETTINGS_TOP + 184)
+	DestroyGuiButton.Position = UDim2.new(0.5, 3, 0, SETTINGS_TOP + 172)
 	DestroyGuiButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
 	DestroyGuiButton.BorderSizePixel = 0
 	DestroyGuiButton.Text = "Destroy Gui"
@@ -4050,7 +4044,7 @@ do
 	local LocalCountLabel = Instance.new("TextLabel")
 	LocalCountLabel.Name = "LocalCountLabel"
 	LocalCountLabel.Size = UDim2.new(1, 0, 0, 10)
-	LocalCountLabel.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 220)
+	LocalCountLabel.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 208)
 	LocalCountLabel.BackgroundTransparency = 1
 	LocalCountLabel.BorderSizePixel = 0
 	LocalCountLabel.Text = "140 / 200"
@@ -4161,7 +4155,11 @@ do
 				anyFavorited = true
 				local heading = Instance.new("TextLabel")
 				heading.Name = "FavHeading"
-				heading.Size = UDim2.new(1, 0, 0, 22)
+				-- Single-key groups (every section favorite) get their own unfavorite star
+				-- right here, parented to the heading so it's destroyed along with it on
+				-- the next refresh -- no separate tracking needed. Multi-key groups (ESP)
+				-- skip it since each of their rows already carries its own star.
+				heading.Size = UDim2.new(1, #group.keys == 1 and -24 or 0, 0, 22)
 				heading.Position = UDim2.new(0, 0, 0, y)
 				heading.BackgroundTransparency = 1
 				heading.Text = group.groupName
@@ -4172,6 +4170,10 @@ do
 				heading.ZIndex = 20
 				heading.Parent = FavoritesPage
 				group.headingLabel = heading
+				if #group.keys == 1 then
+					local star = CreateFavoriteStar(heading, UDim2.new(1, 4, 0.5, -7), group.keys[1])
+					star.ZIndex = 20
+				end
 				y = y + 30
 
 				for _, key in ipairs(group.keys) do
@@ -4228,6 +4230,12 @@ do
 	-- the original pill on its own tab no matter which one is used to rebind. Also adds
 	-- brand new keybinds that didn't exist before: one per tab (plus Favorites) to jump
 	-- straight to it, and Minimize, previously hardcoded to Left Control.
+	--
+	-- Each tab is a real collapsible dropdown now, not just a static heading -- built with
+	-- a UIListLayout (page) containing per-section Frames (also UIListLayout, each with
+	-- AutomaticSize.Y), so hiding a section's rows container collapses the space it took
+	-- up automatically. UIListLayout skips invisible children when sizing its parent, so
+	-- toggling one Visible is the entire show/hide mechanism -- no manual reflow math.
 	local KeybindEditorPage = Instance.new("ScrollingFrame")
 	KeybindEditorPage.Name = "KeybindEditorOverlay"
 	KeybindEditorPage.Size = UDim2.new(1, -32, 1, -(HEADER_HEIGHT + 8 + 16))
@@ -4236,23 +4244,41 @@ do
 	KeybindEditorPage.BorderSizePixel = 0
 	KeybindEditorPage.ScrollBarThickness = 3
 	KeybindEditorPage.ScrollBarImageColor3 = AccentColor
+	KeybindEditorPage.CanvasSize = UDim2.new(0, 0, 0, 0)
+	KeybindEditorPage.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	KeybindEditorPage.Active = true
 	KeybindEditorPage.Visible = false
 	KeybindEditorPage.ZIndex = 20
 	KeybindEditorPage.Parent = MainFrame
 	KeybindEditorOverlay = KeybindEditorPage
 
+	local outerPadding = Instance.new("UIPadding")
+	outerPadding.PaddingTop = UDim.new(0, 16)
+	outerPadding.PaddingBottom = UDim.new(0, 16)
+	outerPadding.Parent = KeybindEditorPage
+
+	local outerLayout = Instance.new("UIListLayout")
+	outerLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	outerLayout.Padding = UDim.new(0, 8)
+	outerLayout.Parent = KeybindEditorPage
+
+	local nextOrder = 0
+	local function NextOrder()
+		nextOrder = nextOrder + 1
+		return nextOrder
+	end
+
 	-- Plain label + keybind pill, no toggle switch (these aren't On/Off features, just
 	-- shortcuts), so the pill sits closer to the right edge instead of leaving a gap where
 	-- a switch would otherwise go.
-	local function CreateKeybindEditRow(y, labelText, storageKey, onKeybindChanged, defaultKeyCode)
+	local function CreateKeybindEditRow(container, labelText, storageKey, onKeybindChanged, defaultKeyCode)
 		local row = Instance.new("Frame")
 		row.Name = "KeybindEditRow"
-		row.Size = UDim2.new(1, -10, 0, 44)
-		row.Position = UDim2.new(0, 0, 0, y)
+		row.Size = UDim2.new(1, 0, 0, 44)
+		row.LayoutOrder = NextOrder()
 		row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 		row.BorderSizePixel = 0
-		row.Parent = KeybindEditorPage
+		row.Parent = container
 		Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 
 		local rowLabel = Instance.new("TextLabel")
@@ -4272,75 +4298,139 @@ do
 		keybindBtn.Position = UDim2.new(1, -86, 0.5, -15)
 	end
 
-	local y = 16
-	local function AddHeading(text)
-		CreateSectionHeading(KeybindEditorPage, y, text)
-		y = y + 30
+	-- A plain, non-collapsible heading -- used for Window/Favorites up top, which each
+	-- only ever hold a single row and don't need a dropdown to organize.
+	local function CreatePlainHeading(text)
+		local heading = Instance.new("TextLabel")
+		heading.Name = text .. "Heading"
+		heading.Size = UDim2.new(1, 0, 0, 22)
+		heading.LayoutOrder = NextOrder()
+		heading.BackgroundTransparency = 1
+		heading.Text = text
+		heading.Font = UIFont
+		heading.TextSize = 16
+		heading.TextColor3 = Color3.fromRGB(255, 255, 255)
+		heading.TextXAlignment = Enum.TextXAlignment.Left
+		heading.Parent = KeybindEditorPage
 	end
-	local function AddRow(labelText, storageKey, onKeybindChanged, defaultKeyCode)
-		CreateKeybindEditRow(y, labelText, storageKey, onKeybindChanged, defaultKeyCode)
-		y = y + 44 + 8
+
+	-- One collapsible tab section: a header button (name + arrow) that toggles its own
+	-- rows container. Starts collapsed. Returns the rows container so callers can add
+	-- rows into it directly.
+	local function CreateSection(title)
+		local container = Instance.new("Frame")
+		container.Name = title .. "Section"
+		container.Size = UDim2.new(1, 0, 0, 0)
+		container.AutomaticSize = Enum.AutomaticSize.Y
+		container.BackgroundTransparency = 1
+		container.LayoutOrder = NextOrder()
+		container.Parent = KeybindEditorPage
+		local containerLayout = Instance.new("UIListLayout")
+		containerLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		containerLayout.Padding = UDim.new(0, 8)
+		containerLayout.Parent = container
+
+		local header = Instance.new("TextButton")
+		header.Name = "SectionHeader"
+		header.Size = UDim2.new(1, 0, 0, 34)
+		header.LayoutOrder = 1
+		header.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+		header.BorderSizePixel = 0
+		header.AutoButtonColor = false
+		header.Text = ""
+		header.Parent = container
+		Instance.new("UICorner", header).CornerRadius = UDim.new(0, 8)
+		AddPressBounce(header)
+
+		local headerLabel = Instance.new("TextLabel")
+		headerLabel.Size = UDim2.new(1, -40, 1, 0)
+		headerLabel.Position = UDim2.new(0, 16, 0, 0)
+		headerLabel.BackgroundTransparency = 1
+		headerLabel.Text = title
+		headerLabel.Font = UIFont
+		headerLabel.TextSize = 16
+		headerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+		headerLabel.TextXAlignment = Enum.TextXAlignment.Left
+		headerLabel.Parent = header
+
+		local arrow = Instance.new("TextLabel")
+		arrow.Size = UDim2.new(0, 24, 1, 0)
+		arrow.Position = UDim2.new(1, -32, 0, 0)
+		arrow.BackgroundTransparency = 1
+		arrow.Text = "\226\150\188" -- (down-pointing triangle, collapsed)
+		arrow.Font = UIFont
+		arrow.TextSize = 14
+		arrow.TextColor3 = Color3.fromRGB(255, 255, 255)
+		arrow.Parent = header
+
+		local rowsContainer = Instance.new("Frame")
+		rowsContainer.Name = "Rows"
+		rowsContainer.Size = UDim2.new(1, 0, 0, 0)
+		rowsContainer.AutomaticSize = Enum.AutomaticSize.Y
+		rowsContainer.BackgroundTransparency = 1
+		rowsContainer.LayoutOrder = 2
+		rowsContainer.Visible = false
+		rowsContainer.Parent = container
+		local rowsLayout = Instance.new("UIListLayout")
+		rowsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		rowsLayout.Padding = UDim.new(0, 8)
+		rowsLayout.Parent = rowsContainer
+
+		header.MouseButton1Click:Connect(function()
+			PlayClick()
+			rowsContainer.Visible = not rowsContainer.Visible
+			arrow.Text = rowsContainer.Visible and "\226\150\178" or "\226\150\188" -- up / down
+		end)
+
+		return rowsContainer
 	end
-	local function EndSection()
-		y = y + 8
-	end
 
-	AddHeading("Home")
-	SwitchHomeKeybind = Enum.KeyCode.Unknown
-	AddRow("Switch to Home", "SwitchHomeKeybind", function(k) SwitchHomeKeybind = k end)
-	EndSection()
+	CreatePlainHeading("Window")
+	CreateKeybindEditRow(KeybindEditorPage, "Minimize", "MinimizeKeybind", function(k) MinimizeKeybind = k end, Enum.KeyCode.LeftControl)
 
-	AddHeading("Player")
-	SwitchPlayerKeybind = Enum.KeyCode.Unknown
-	AddRow("Switch to Player", "SwitchPlayerKeybind", function(k) SwitchPlayerKeybind = k end)
-	AddRow("Speed", "SpeedKeybind", function(k) SpeedKeybind = k end)
-	AddRow("Jump", "JumpKeybind", function(k) JumpKeybind = k end)
-	AddRow("Fly", "FlyKeybind", function(k) FlyKeybind = k end)
-	AddRow("NoClip", "NoclipKeybind", function(k) NoclipKeybind = k end)
-	EndSection()
-
-	AddHeading("Functions")
-	SwitchFunctionsKeybind = Enum.KeyCode.Unknown
-	AddRow("Switch to Functions", "SwitchFunctionsKeybind", function(k) SwitchFunctionsKeybind = k end)
-	AddRow("Instant Prompt", "InstantPromptKeybind", function(k) InstantPromptKeybind = k end)
-	AddRow("Anti-AFK", "AntiAFKKeybind", function(k) AntiAFKKeybind = k end)
-	EndSection()
-
-	AddHeading("Visuals")
-	SwitchVisualsKeybind = Enum.KeyCode.Unknown
-	AddRow("Switch to Visuals", "SwitchVisualsKeybind", function(k) SwitchVisualsKeybind = k end)
-	AddRow("Outline ESP", "OutlineESPKeybind", function(k) OutlineESPKeybind = k end)
-	AddRow("Box ESP", "BoxESPKeybind", function(k) BoxESPKeybind = k end)
-	AddRow("ESP Labels", "ESPLabelsKeybind", function(k) ESPLabelsKeybind = k end)
-	AddRow("Free Cam", "FreeCamKeybind", function(k) FreeCamKeybind = k end)
-	EndSection()
-
-	AddHeading("Combat")
-	SwitchCombatKeybind = Enum.KeyCode.Unknown
-	AddRow("Switch to Combat", "SwitchCombatKeybind", function(k) SwitchCombatKeybind = k end)
-	AddRow("Auto Lock", "AutoLockKeybind", function(k) AutoLockKeybind = k end)
-	EndSection()
-
-	AddHeading("Scripts")
-	SwitchScriptsKeybind = Enum.KeyCode.Unknown
-	AddRow("Switch to Scripts", "SwitchScriptsKeybind", function(k) SwitchScriptsKeybind = k end)
-	EndSection()
-
-	AddHeading("Teleport")
-	SwitchTeleportKeybind = Enum.KeyCode.Unknown
-	AddRow("Switch to Teleport", "SwitchTeleportKeybind", function(k) SwitchTeleportKeybind = k end)
-	AddRow("TP Menu Popup", "TPMenuKeybind", function(k) PopupKeybind = k end, Enum.KeyCode.LeftAlt)
-	EndSection()
-
-	AddHeading("Favorites")
+	CreatePlainHeading("Favorites")
 	SwitchFavoritesKeybind = Enum.KeyCode.Unknown
-	AddRow("Switch to Favorites", "SwitchFavoritesKeybind", function(k) SwitchFavoritesKeybind = k end)
-	EndSection()
+	CreateKeybindEditRow(KeybindEditorPage, "Switch to Favorites", "SwitchFavoritesKeybind", function(k) SwitchFavoritesKeybind = k end)
 
-	AddHeading("Window")
-	AddRow("Minimize", "MinimizeKeybind", function(k) MinimizeKeybind = k end, Enum.KeyCode.LeftControl)
+	local homeRows = CreateSection("Home")
+	SwitchHomeKeybind = Enum.KeyCode.Unknown
+	CreateKeybindEditRow(homeRows, "Switch to Home", "SwitchHomeKeybind", function(k) SwitchHomeKeybind = k end)
 
-	KeybindEditorPage.CanvasSize = UDim2.new(0, 0, 0, y + 16)
+	local playerRows = CreateSection("Player")
+	SwitchPlayerKeybind = Enum.KeyCode.Unknown
+	CreateKeybindEditRow(playerRows, "Switch to Player", "SwitchPlayerKeybind", function(k) SwitchPlayerKeybind = k end)
+	CreateKeybindEditRow(playerRows, "Speed", "SpeedKeybind", function(k) SpeedKeybind = k end)
+	CreateKeybindEditRow(playerRows, "Jump", "JumpKeybind", function(k) JumpKeybind = k end)
+	CreateKeybindEditRow(playerRows, "Fly", "FlyKeybind", function(k) FlyKeybind = k end)
+	CreateKeybindEditRow(playerRows, "NoClip", "NoclipKeybind", function(k) NoclipKeybind = k end)
+
+	local functionsRows = CreateSection("Functions")
+	SwitchFunctionsKeybind = Enum.KeyCode.Unknown
+	CreateKeybindEditRow(functionsRows, "Switch to Functions", "SwitchFunctionsKeybind", function(k) SwitchFunctionsKeybind = k end)
+	CreateKeybindEditRow(functionsRows, "Instant Prompt", "InstantPromptKeybind", function(k) InstantPromptKeybind = k end)
+	CreateKeybindEditRow(functionsRows, "Anti-AFK", "AntiAFKKeybind", function(k) AntiAFKKeybind = k end)
+
+	local visualsRows = CreateSection("Visuals")
+	SwitchVisualsKeybind = Enum.KeyCode.Unknown
+	CreateKeybindEditRow(visualsRows, "Switch to Visuals", "SwitchVisualsKeybind", function(k) SwitchVisualsKeybind = k end)
+	CreateKeybindEditRow(visualsRows, "Outline ESP", "OutlineESPKeybind", function(k) OutlineESPKeybind = k end)
+	CreateKeybindEditRow(visualsRows, "Box ESP", "BoxESPKeybind", function(k) BoxESPKeybind = k end)
+	CreateKeybindEditRow(visualsRows, "ESP Labels", "ESPLabelsKeybind", function(k) ESPLabelsKeybind = k end)
+	CreateKeybindEditRow(visualsRows, "Free Cam", "FreeCamKeybind", function(k) FreeCamKeybind = k end)
+
+	local combatRows = CreateSection("Combat")
+	SwitchCombatKeybind = Enum.KeyCode.Unknown
+	CreateKeybindEditRow(combatRows, "Switch to Combat", "SwitchCombatKeybind", function(k) SwitchCombatKeybind = k end)
+	CreateKeybindEditRow(combatRows, "Auto Lock", "AutoLockKeybind", function(k) AutoLockKeybind = k end)
+
+	local scriptsRows = CreateSection("Scripts")
+	SwitchScriptsKeybind = Enum.KeyCode.Unknown
+	CreateKeybindEditRow(scriptsRows, "Switch to Scripts", "SwitchScriptsKeybind", function(k) SwitchScriptsKeybind = k end)
+
+	local teleportRows = CreateSection("Teleport")
+	SwitchTeleportKeybind = Enum.KeyCode.Unknown
+	CreateKeybindEditRow(teleportRows, "Switch to Teleport", "SwitchTeleportKeybind", function(k) SwitchTeleportKeybind = k end)
+	CreateKeybindEditRow(teleportRows, "TP Menu Popup", "TPMenuKeybind", function(k) PopupKeybind = k end, Enum.KeyCode.LeftAlt)
 
 	for _, descendant in ipairs(KeybindEditorPage:GetDescendants()) do
 		if descendant:IsA("GuiObject") then descendant.ZIndex = 20 end
@@ -4361,12 +4451,15 @@ end
 SelectTab("Home")
 
 -- Minimize: now user-configurable (was hardcoded to Left Control) via the Keybind Editor
--- in Settings -- global rather than local so it doesn't matter that the editor's keybind
--- button, which actually assigns this on creation, is built later in the file. Everything
--- below the header (dividers, tabs, content) is explicitly hidden while minimized so
--- nothing peeks past the clipped frame. Minimizing snaps the pill to the nearest screen
--- edge, and restores to wherever the window was before minimizing.
-MinimizeKeybind = Enum.KeyCode.Unknown
+-- in Settings, which is what actually assigns MinimizeKeybind (built earlier in the file,
+-- right after Favorites) -- it must NOT be reset here too: this used to also set it to
+-- Unknown, which ran AFTER the editor's own CreateKeybindButton had already correctly
+-- loaded LeftControl (or whatever was saved), silently stomping it back to unbound every
+-- single load. That's exactly why Left Control stopped working until manually re-bound --
+-- the manual rebind was the only thing that ever ran AFTER this line. Everything below the
+-- header (dividers, tabs, content) is explicitly hidden while minimized so nothing peeks
+-- past the clipped frame. Minimizing snaps the pill to the nearest screen edge, and
+-- restores to wherever the window was before minimizing.
 local minimized = false
 local preMinimizePosition = nil
 -- Remembers the last snapped-to-edge corner across a maximize/re-minimize cycle -- without
