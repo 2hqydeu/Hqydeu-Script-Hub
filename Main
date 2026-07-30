@@ -604,12 +604,28 @@ ContentArea.Name = "ContentArea"
 ContentArea.Size = UDim2.new(1, -32, 1, -(CONTENT_TOP + 16))
 ContentArea.Position = UDim2.new(0, 16, 0, CONTENT_TOP)
 ContentArea.BackgroundTransparency = 1
+-- Pages slide fully outside the content box mid-transition -- clip so that only shows as a
+-- clean slide within this box, not spilling into the tab bar or the window's own padding.
+ContentArea.ClipsDescendants = true
 ContentArea.Parent = MainFrame
 
 local Tabs = {}
+local TabOrderByName = {} -- name -> its CreateTab order, so SelectTab can tell which way to slide
 local SelectedTabName = nil
+local tabSwitchToken = 0
+-- Keyed by page instance -- lets a rapid re-switch cancel a page's still-playing slide
+-- tween instead of fighting it with a second one on the same property.
+local PageTweens = {}
+local function StopPageTween(page)
+	local tween = PageTweens[page]
+	if tween then
+		tween:Cancel()
+		PageTweens[page] = nil
+	end
+end
+
 function SelectTab(name)
-	SelectedTabName = name
+	if SelectedTabName == name then return end
 	-- The color picker anchors to the ESP Color button on the Visuals tab -- switching away
 	-- from that tab would leave it floating over whatever tab you switched to instead, so
 	-- close it the same way minimizing already does. Guarded since CloseESPColorPicker is
@@ -617,16 +633,75 @@ function SelectTab(name)
 	if CloseESPColorPicker then CloseESPColorPicker() end
 	local tabTweenInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 	for tabName, entry in pairs(Tabs) do
-		local isSelected = tabName == name
-		entry.Page.Visible = isSelected
 		-- Button.BackgroundColor3 is already the same purple the toggle switches fill with
 		-- when On -- it just read as a faint tint at 0.85 transparency. Dropping
 		-- transparency way down makes it read as a solid purple pill. Text stays white in
 		-- both states now -- it used to flip to dark text on the selected pill for
 		-- contrast, but that read as a bug more than a feature. Tweened instead of an
 		-- instant snap so switching tabs reads as a soft fade, not a hard cut.
-		TweenService:Create(entry.Button, tabTweenInfo, {BackgroundTransparency = isSelected and 0.1 or 1}):Play()
+		TweenService:Create(entry.Button, tabTweenInfo, {BackgroundTransparency = (tabName == name) and 0.1 or 1}):Play()
 	end
+
+	local oldName = SelectedTabName
+	local oldEntry = oldName and Tabs[oldName]
+	local newEntry = Tabs[name]
+	SelectedTabName = name
+
+	tabSwitchToken = tabSwitchToken + 1
+	local myToken = tabSwitchToken
+	local width = ContentArea.AbsoluteSize.X
+
+	-- Any page that isn't part of THIS transition snaps back to a clean rest state right
+	-- away -- guards against a page left mid-slide (or off-screen) by a rapid earlier
+	-- switch landing on a third tab before its animation finished.
+	for tabName, entry in pairs(Tabs) do
+		if tabName ~= oldName and tabName ~= name then
+			StopPageTween(entry.Page)
+			entry.Page.Position = UDim2.new(0, 0, 0, 0)
+			entry.Page.Visible = false
+		end
+	end
+
+	if not oldEntry then
+		-- First-ever selection (startup) -- nothing to slide away from.
+		newEntry.Page.Position = UDim2.new(0, 0, 0, 0)
+		newEntry.Page.Visible = true
+		return
+	end
+
+	-- Moving to a tab further right in the tab order slides the old page out to the left
+	-- and brings the new one in from the right, and vice versa -- symmetric for every pair.
+	local movingForward = (TabOrderByName[name] or 0) > (TabOrderByName[oldName] or 0)
+	local exitOffset = movingForward and -width or width
+	local enterOffset = movingForward and width or -width
+
+	StopPageTween(oldEntry.Page)
+	StopPageTween(newEntry.Page)
+
+	newEntry.Page.Position = UDim2.new(0, enterOffset, 0, 0)
+	newEntry.Page.Visible = true
+
+	local slideInfo = TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+	local outTween = TweenService:Create(oldEntry.Page, slideInfo, {Position = UDim2.new(0, exitOffset, 0, 0)})
+	local inTween = TweenService:Create(newEntry.Page, slideInfo, {Position = UDim2.new(0, 0, 0, 0)})
+	PageTweens[oldEntry.Page] = outTween
+	PageTweens[newEntry.Page] = inTween
+	outTween:Play()
+	inTween:Play()
+
+	outTween.Completed:Connect(function(playbackState)
+		if playbackState ~= Enum.PlaybackState.Completed then return end
+		if tabSwitchToken ~= myToken then return end
+		oldEntry.Page.Visible = false
+		oldEntry.Page.Position = UDim2.new(0, 0, 0, 0)
+		PageTweens[oldEntry.Page] = nil
+	end)
+	inTween.Completed:Connect(function(playbackState)
+		if playbackState ~= Enum.PlaybackState.Completed then return end
+		if PageTweens[newEntry.Page] == inTween then
+			PageTweens[newEntry.Page] = nil
+		end
+	end)
 end
 
 -- Roblox's native scroll-wheel handling on a ScrollingFrame jumps the canvas an instant,
@@ -743,6 +818,7 @@ function CreateTab(name, order, iconId, scrolling, iconSize, iconYOffset)
 	page.Parent = ContentArea
 
 	Tabs[name] = {Button = button, Page = page, Label = label}
+	TabOrderByName[name] = order
 	button.MouseButton1Click:Connect(function()
 		-- Clicking the tab you're already on used to still play the click sound and
 		-- re-fire the whole select animation/color-picker-close logic for no reason --
@@ -1160,37 +1236,108 @@ local FavoriteGroups = {} -- ordered {groupName, keys = {key, ...}}
 local FavoritesByKey = {} -- key -> {rows = {...}}
 SavedKeybinds.Favorites = type(SavedKeybinds.Favorites) == "table" and SavedKeybinds.Favorites or {}
 local FavoritedKeys = SavedKeybinds.Favorites
-local FAVORITE_STAR_ON = Color3.fromRGB(255, 210, 60)
-local FAVORITE_STAR_OFF = Color3.fromRGB(255, 255, 255)
 
--- Plain star button at an explicit position (same manual-position convention as
--- everything else in this file) -- toggles FavoritedKeys[key] and refreshes the
--- Favorites view if it's open, nothing else. Used for section/item stars AND the
--- unfavorite star on a single-key group's heading clone inside Favorites itself.
-function CreateFavoriteStar(parent, position, key)
-	local star = Instance.new("TextButton")
-	star.Name = "FavoriteStar"
-	star.Size = UDim2.new(0, 14, 0, 14)
-	star.Position = position
-	star.BackgroundTransparency = 1
-	star.Text = "\226\152\133" -- star glyph
-	star.Font = UIFont
-	star.TextSize = 14
-	star.TextColor3 = FavoritedKeys[key] and FAVORITE_STAR_ON or FAVORITE_STAR_OFF
-	star.Parent = parent
-	AddPressBounce(star)
-	star.MouseButton1Click:Connect(function()
+-- Right-click a row (built once, lazily, the first time any row is right-clicked) instead
+-- of a star -- asks to favorite/unfavorite whatever that row represents. The same popup
+-- instance is reused every time; only its text and the Yes button's action change per
+-- press, tracked via a swapped-out connection rather than one connection per feature.
+local FavoriteConfirmPopup, FavoriteConfirmLabel, FavoriteConfirmYes, FavoriteConfirmNo
+local favoriteConfirmYesConnection = nil
+local function EnsureFavoriteConfirmPopup()
+	if FavoriteConfirmPopup then return end
+	FavoriteConfirmPopup = Instance.new("Frame")
+	FavoriteConfirmPopup.Name = "FavoriteConfirmPopup"
+	FavoriteConfirmPopup.AnchorPoint = Vector2.new(0.5, 0.5)
+	FavoriteConfirmPopup.Position = UDim2.new(0.5, 0, 0.5, 0)
+	FavoriteConfirmPopup.Size = UDim2.new(0, 240, 0, 110)
+	FavoriteConfirmPopup.BackgroundColor3 = FrameColor
+	FavoriteConfirmPopup.BorderSizePixel = 0
+	FavoriteConfirmPopup.Visible = false
+	FavoriteConfirmPopup.Active = true
+	FavoriteConfirmPopup.ZIndex = 60
+	FavoriteConfirmPopup.Parent = ScreenGui
+	Instance.new("UICorner", FavoriteConfirmPopup).CornerRadius = UDim.new(0, 12)
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(0, 0, 0)
+	stroke.Thickness = 1
+	stroke.Parent = FavoriteConfirmPopup
+
+	FavoriteConfirmLabel = Instance.new("TextLabel")
+	FavoriteConfirmLabel.AnchorPoint = Vector2.new(0.5, 0)
+	FavoriteConfirmLabel.Size = UDim2.new(1, -20, 0, 44)
+	FavoriteConfirmLabel.Position = UDim2.new(0.5, 0, 0, 14)
+	FavoriteConfirmLabel.BackgroundTransparency = 1
+	FavoriteConfirmLabel.Font = UIFont
+	FavoriteConfirmLabel.TextSize = 15
+	FavoriteConfirmLabel.TextWrapped = true
+	FavoriteConfirmLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	FavoriteConfirmLabel.ZIndex = 61
+	FavoriteConfirmLabel.Parent = FavoriteConfirmPopup
+
+	FavoriteConfirmYes = Instance.new("TextButton")
+	FavoriteConfirmYes.AnchorPoint = Vector2.new(0.5, 0.5)
+	FavoriteConfirmYes.Size = UDim2.new(0, 90, 0, 32)
+	FavoriteConfirmYes.Position = UDim2.new(0.5, -52, 1, -30)
+	FavoriteConfirmYes.BackgroundColor3 = Color3.fromRGB(178, 155, 235)
+	FavoriteConfirmYes.BorderSizePixel = 0
+	FavoriteConfirmYes.Text = "Yes"
+	FavoriteConfirmYes.Font = UIFont
+	FavoriteConfirmYes.TextSize = 15
+	FavoriteConfirmYes.TextColor3 = Color3.fromRGB(255, 255, 255)
+	FavoriteConfirmYes.ZIndex = 61
+	FavoriteConfirmYes.Parent = FavoriteConfirmPopup
+	Instance.new("UICorner", FavoriteConfirmYes).CornerRadius = UDim.new(1, 0)
+	AddPressBounce(FavoriteConfirmYes)
+
+	FavoriteConfirmNo = Instance.new("TextButton")
+	FavoriteConfirmNo.AnchorPoint = Vector2.new(0.5, 0.5)
+	FavoriteConfirmNo.Size = UDim2.new(0, 90, 0, 32)
+	FavoriteConfirmNo.Position = UDim2.new(0.5, 52, 1, -30)
+	FavoriteConfirmNo.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+	FavoriteConfirmNo.BorderSizePixel = 0
+	FavoriteConfirmNo.Text = "No"
+	FavoriteConfirmNo.Font = UIFont
+	FavoriteConfirmNo.TextSize = 15
+	FavoriteConfirmNo.TextColor3 = Color3.fromRGB(255, 255, 255)
+	FavoriteConfirmNo.ZIndex = 61
+	FavoriteConfirmNo.Parent = FavoriteConfirmPopup
+	Instance.new("UICorner", FavoriteConfirmNo).CornerRadius = UDim.new(1, 0)
+	AddPressBounce(FavoriteConfirmNo)
+	FavoriteConfirmNo.MouseButton1Click:Connect(function()
+		PlayClick()
+		FavoriteConfirmPopup.Visible = false
+	end)
+end
+
+local function ShowFavoriteConfirm(key, displayName)
+	EnsureFavoriteConfirmPopup()
+	local alreadyFavorited = FavoritedKeys[key] == true
+	FavoriteConfirmLabel.Text = alreadyFavorited
+		and ("Remove " .. displayName .. " from Favorites?")
+		or ("Favorite " .. displayName .. "?")
+	if favoriteConfirmYesConnection then favoriteConfirmYesConnection:Disconnect() end
+	favoriteConfirmYesConnection = FavoriteConfirmYes.MouseButton1Click:Connect(function()
 		PlayClick()
 		if FavoritedKeys[key] then
 			FavoritedKeys[key] = nil
 		else
 			FavoritedKeys[key] = true
 		end
-		star.TextColor3 = FavoritedKeys[key] and FAVORITE_STAR_ON or FAVORITE_STAR_OFF
 		SavePersistentSettings()
 		if RefreshFavoritesView then RefreshFavoritesView() end
+		FavoriteConfirmPopup.Visible = false
 	end)
-	return star
+	FavoriteConfirmPopup.Visible = true
+end
+
+-- Frame/TextLabel don't have MouseButton2Click (that's GuiButton-only), but every
+-- GuiObject still fires InputBegan on a right-click regardless of type -- same trick
+-- already used elsewhere in this file for drag-detection on plain Frames.
+local function AddFavoriteRightClick(instance, key, displayName)
+	instance.InputBegan:Connect(function(input)
+		if input.UserInputType ~= Enum.UserInputType.MouseButton2 then return end
+		ShowFavoriteConfirm(key, displayName)
+	end)
 end
 
 -- Bookkeeping shared by both favorite flavors: remembers where each row actually lives
@@ -1213,44 +1360,23 @@ local function RegisterFavoriteEntry(key, groupName, rows)
 	table.insert(group.keys, key)
 end
 
--- Whole section: star sits immediately after the heading's own text (not pinned to the
--- far edge of the row) -- the heading gets wrapped in a small horizontal-UIListLayout
--- container so the star's position tracks the text's actual rendered width automatically,
--- since that's not knowable synchronously right after switching the heading to
--- AutomaticSize. Favoriting moves every row passed in together as one unit, grouped under
--- the heading's own text.
+-- Whole section: right-clicking ANY row belonging to it asks to favorite/unfavorite the
+-- whole thing at once -- favoriting moves every row passed in together as one unit,
+-- grouped under displayName. The right-click keeps working once the row(s) are sitting in
+-- Favorites too (same instance, same connection), which is how unfavoriting from there
+-- works -- no separate mechanism needed.
 function RegisterSectionFavorite(heading, key, displayName, rows)
-	local container = Instance.new("Frame")
-	container.Name = "HeadingFavoriteRow"
-	container.Size = UDim2.new(1, 0, heading.Size.Y.Scale, heading.Size.Y.Offset)
-	container.Position = heading.Position
-	container.BackgroundTransparency = 1
-	container.Parent = heading.Parent
-
-	local layout = Instance.new("UIListLayout")
-	layout.FillDirection = Enum.FillDirection.Horizontal
-	layout.VerticalAlignment = Enum.VerticalAlignment.Center
-	layout.Padding = UDim.new(0, 6)
-	layout.SortOrder = Enum.SortOrder.LayoutOrder
-	layout.Parent = container
-
-	heading.Position = UDim2.new(0, 0, 0, 0)
-	heading.Size = UDim2.new(0, 0, 1, 0)
-	heading.AutomaticSize = Enum.AutomaticSize.X
-	heading.LayoutOrder = 1
-	heading.Parent = container
-
-	local star = CreateFavoriteStar(container, UDim2.new(0, 0, 0, 0), key)
-	star.LayoutOrder = 2
+	for _, row in ipairs(rows) do
+		AddFavoriteRightClick(row, key, displayName)
+	end
 	RegisterFavoriteEntry(key, displayName, rows)
 end
 
--- One row, its own star -- sits right after the row's own (fixed-width, 200px) label
--- instead of in the row's far-left corner, grouped under a shared heading (created fresh
--- in the Favorites view, same as any section heading) instead of getting one of its own.
--- The star is a child of the row itself so it travels along when the row gets moved.
-function RegisterItemFavorite(row, key, groupName)
-	CreateFavoriteStar(row, UDim2.new(0, 222, 0.5, -7), key)
+-- One row -- right-clicking it asks to favorite/unfavorite just this one (itemName),
+-- grouped under a shared heading (created fresh in the Favorites view, same as any
+-- section heading) instead of getting one of its own.
+function RegisterItemFavorite(row, key, itemName, groupName)
+	AddFavoriteRightClick(row, key, itemName)
 	RegisterFavoriteEntry(key, groupName, {row})
 end
 
@@ -2062,11 +2188,11 @@ end)
 CreateSectionHeading(VisualsPage, 8, "ESP")
 
 local OutlineESPToggle, _, OutlineESPRow = CreateToggleRow(VisualsPage, 38, "OutlineESPKeybind", function(k) OutlineESPKeybind = k end, "Outline ESP")
-RegisterItemFavorite(OutlineESPRow, "OutlineESPKeybind", "ESP")
+RegisterItemFavorite(OutlineESPRow, "OutlineESPKeybind", "Outline ESP", "ESP")
 local BoxESPToggle, _, BoxESPRow = CreateToggleRow(VisualsPage, 98, "BoxESPKeybind", function(k) BoxESPKeybind = k end, "Box ESP")
-RegisterItemFavorite(BoxESPRow, "BoxESPKeybind", "ESP")
+RegisterItemFavorite(BoxESPRow, "BoxESPKeybind", "Box ESP", "ESP")
 local ESPLabelsToggle, _, ESPLabelsRow = CreateToggleRow(VisualsPage, 158, "ESPLabelsKeybind", function(k) ESPLabelsKeybind = k end, "ESP Labels")
-RegisterItemFavorite(ESPLabelsRow, "ESPLabelsKeybind", "ESP")
+RegisterItemFavorite(ESPLabelsRow, "ESPLabelsKeybind", "ESP Labels", "ESP")
 
 function ToggleOutlineESP()
 	OutlineESPEnabled = not OutlineESPEnabled
@@ -2129,7 +2255,7 @@ local ESPColorButtonStroke = Instance.new("UIStroke")
 ESPColorButtonStroke.Color = Color3.fromRGB(0, 0, 0)
 ESPColorButtonStroke.Thickness = 1
 ESPColorButtonStroke.Parent = ESPColorButton
-RegisterItemFavorite(ESPColorRow, "ESPColorFavorite", "ESP")
+RegisterItemFavorite(ESPColorRow, "ESPColorFavorite", "ESP Color", "ESP")
 
 function ApplyESPColor()
 	ESPColorButton.BackgroundColor3 = ESPColor
@@ -4083,7 +4209,7 @@ do
 	LocalCountLabel.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 208)
 	LocalCountLabel.BackgroundTransparency = 1
 	LocalCountLabel.BorderSizePixel = 0
-	LocalCountLabel.Text = "139 / 200"
+	LocalCountLabel.Text = "146 / 200"
 	LocalCountLabel.Font = UIFont
 	LocalCountLabel.TextSize = 7
 	LocalCountLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
@@ -4126,8 +4252,21 @@ do
 	FavoritesPage.Parent = MainFrame
 	FavoritesOverlay = FavoritesPage
 
-	-- Pushed down from the very top edge (was 16, now 40) -- crammed right up against the
-	-- Back button with barely any breathing room otherwise.
+	-- Title up top so players know where they landed, same convention as any page heading.
+	local FavoritesTitle = Instance.new("TextLabel")
+	FavoritesTitle.Name = "FavoritesTitle"
+	FavoritesTitle.Size = UDim2.new(1, 0, 0, 24)
+	FavoritesTitle.Position = UDim2.new(0, 0, 0, 8)
+	FavoritesTitle.BackgroundTransparency = 1
+	FavoritesTitle.Text = "Favorites"
+	FavoritesTitle.Font = UIFont
+	FavoritesTitle.TextSize = 18
+	FavoritesTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+	FavoritesTitle.TextXAlignment = Enum.TextXAlignment.Left
+	FavoritesTitle.ZIndex = 20
+	FavoritesTitle.Parent = FavoritesPage
+
+	-- Pushed down from the very top edge to clear the title above it.
 	local FAVORITES_TOP = 40
 
 	local EmptyLabel = Instance.new("TextLabel")
@@ -4135,7 +4274,7 @@ do
 	EmptyLabel.Size = UDim2.new(1, 0, 0, 40)
 	EmptyLabel.Position = UDim2.new(0, 0, 0, FAVORITES_TOP)
 	EmptyLabel.BackgroundTransparency = 1
-	EmptyLabel.Text = "No favorites yet -- tap the star next to any feature to pin it here."
+	EmptyLabel.Text = "No favorites yet -- right-click any feature and choose Yes to pin it here."
 	EmptyLabel.Font = UIFont
 	EmptyLabel.TextSize = 14
 	EmptyLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
@@ -4189,33 +4328,13 @@ do
 			end
 			if groupHasFavorite then
 				anyFavorited = true
-				-- Wrapped in a small horizontal-UIListLayout container (same trick as
-				-- RegisterSectionFavorite) so the star sits right after the heading's own
-				-- text instead of pinned to the far edge -- AutomaticSize.X means the
-				-- text's actual rendered width isn't known synchronously, so the layout
-				-- handles the star's placement instead of a manually computed offset.
-				local headingContainer = Instance.new("Frame")
-				headingContainer.Name = "FavHeadingContainer"
-				headingContainer.Size = UDim2.new(1, 0, 0, 22)
-				headingContainer.Position = UDim2.new(0, 0, 0, y)
-				headingContainer.BackgroundTransparency = 1
-				headingContainer.ZIndex = 20
-				headingContainer.Parent = FavoritesPage
-				-- headingLabel points at the container -- destroying it (see
-				-- RestoreAllFavorites) takes the text label and star along with it.
-				group.headingLabel = headingContainer
-
-				local headingLayout = Instance.new("UIListLayout")
-				headingLayout.FillDirection = Enum.FillDirection.Horizontal
-				headingLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-				headingLayout.Padding = UDim.new(0, 6)
-				headingLayout.SortOrder = Enum.SortOrder.LayoutOrder
-				headingLayout.Parent = headingContainer
-
+				-- Plain stand-in heading -- unfavoriting now happens by right-clicking the
+				-- row itself (it carries the same connection wherever it's parented), so
+				-- the heading here needs no star/right-click of its own.
 				local heading = Instance.new("TextLabel")
 				heading.Name = "FavHeading"
-				heading.Size = UDim2.new(0, 0, 1, 0)
-				heading.AutomaticSize = Enum.AutomaticSize.X
+				heading.Size = UDim2.new(1, 0, 0, 22)
+				heading.Position = UDim2.new(0, 0, 0, y)
 				heading.BackgroundTransparency = 1
 				heading.Text = group.groupName
 				heading.Font = UIFont
@@ -4223,17 +4342,10 @@ do
 				heading.TextColor3 = Color3.fromRGB(255, 255, 255)
 				heading.TextXAlignment = Enum.TextXAlignment.Left
 				heading.ZIndex = 20
-				heading.LayoutOrder = 1
-				heading.Parent = headingContainer
-
-				-- Single-key groups (every section favorite) get their own unfavorite star
-				-- right here. Multi-key groups (ESP) skip it since each of their rows
-				-- already carries its own star.
-				if #group.keys == 1 then
-					local star = CreateFavoriteStar(headingContainer, UDim2.new(0, 0, 0, 0), group.keys[1])
-					star.ZIndex = 20
-					star.LayoutOrder = 2
-				end
+				heading.Parent = FavoritesPage
+				-- headingLabel points at this label -- destroying it (see
+				-- RestoreAllFavorites) is all the cleanup a plain label needs.
+				group.headingLabel = heading
 				y = y + 30
 
 				for _, key in ipairs(group.keys) do
