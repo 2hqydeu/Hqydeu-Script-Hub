@@ -68,6 +68,20 @@ local PanelCorner = Instance.new("UICorner")
 PanelCorner.CornerRadius = UDim.new(0, 14)
 PanelCorner.Parent = PanelFrame
 
+-- Opens with a quick pop + fade instead of just appearing instantly. UIScale (unlike
+-- BackgroundTransparency) scales the whole rendered panel -- rows, buttons, everything
+-- underneath it -- uniformly, so this doesn't hit the same "children don't fade with the
+-- parent" problem a plain transparency tween would (that's exactly what CanvasGroup was
+-- for over in the main hub, and it turned out to have its own rendering problems on the
+-- actual client -- this sidesteps needing it here at all). PanelScale is reused by the
+-- close animation below.
+local PanelScale = Instance.new("UIScale")
+PanelScale.Scale = 0.85
+PanelScale.Parent = PanelFrame
+PanelFrame.BackgroundTransparency = 1
+TweenService:Create(PanelScale, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+TweenService:Create(PanelFrame, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0}):Play()
+
 
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
@@ -1383,13 +1397,23 @@ local function ToggleMinimize()
 end
 MinimizeButton.MouseButton1Click:Connect(ToggleMinimize)
 
+-- Plays the reverse of the open animation (pop + fade out) before actually destroying,
+-- instead of just vanishing -- debounced so a double-click mid-fade can't fire this twice.
+local closingPanel = false
 CloseButton.MouseButton1Click:Connect(function()
+	if closingPanel then return end
+	closingPanel = true
 	coinFarmEnabled = false
 	autoGunEnabled = false
 	SetUnderground(false)
 	RestoreKillHitboxes()
 	ClearGunDropESP()
 	ClearAllRoleHighlights()
+	local fadeOutInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	TweenService:Create(PanelScale, fadeOutInfo, {Scale = 0.85}):Play()
+	local fadeOutTween = TweenService:Create(PanelFrame, fadeOutInfo, {BackgroundTransparency = 1})
+	fadeOutTween:Play()
+	fadeOutTween.Completed:Wait()
 	ScreenGui:Destroy()
 end)
 
