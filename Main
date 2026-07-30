@@ -134,7 +134,7 @@ StartupSound.Parent = ScreenGui
 StartupSound:Play()
 
 local ClickSound = Instance.new("Sound")
-ClickSound.SoundId = "rbxassetid://135244211779631"
+ClickSound.SoundId = "rbxassetid://88442833509532"
 -- Turned way down (was 0.5) and pitched slightly lower -- PitchShiftSoundEffect changes
 -- pitch independent of playback speed (unlike Sound.PlaybackSpeed, which would also slow
 -- the click down), so it's just a touch deeper/softer, not slower, without needing a
@@ -863,21 +863,22 @@ do
 	NameLabel.Text = Player.DisplayName .. "!"
 	NameLabel.Font = UIFont
 	NameLabel.TextSize = 26
-	NameLabel.TextColor3 = Color3.fromRGB(120, 85, 200)
+	NameLabel.TextColor3 = Color3.fromRGB(178, 155, 235)
 	NameLabel.TextXAlignment = Enum.TextXAlignment.Left
 	NameLabel.TextYAlignment = Enum.TextYAlignment.Center
 	NameLabel.Parent = WelcomeContainer
-	-- A deep purple base with a sharp, narrow bright-white band sweeping through (not a
-	-- smooth pale-to-pale fade) -- the earlier version's three stops were all similar
-	-- light shades of lavender, so the "shimmer" barely registered. A real bright/dark
-	-- contrast is what actually reads as a noticeable flash sweeping across the letters.
+	-- Same two colors as the avatar ring's own gradient (178,155,235 base / 238,233,250
+	-- highlight) -- the earlier version used a darker, more saturated purple that didn't
+	-- match the ring's lighter periwinkle-lavender at all. Kept the sharp, narrow band
+	-- (rather than a smooth fade) so the sweep still reads as a real flash, not just a
+	-- subtle tint shift.
 	local nameGradient = Instance.new("UIGradient")
 	nameGradient.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(120, 85, 200)),
-		ColorSequenceKeypoint.new(0.42, Color3.fromRGB(120, 85, 200)),
-		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 255)),
-		ColorSequenceKeypoint.new(0.58, Color3.fromRGB(120, 85, 200)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(120, 85, 200)),
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(178, 155, 235)),
+		ColorSequenceKeypoint.new(0.42, Color3.fromRGB(178, 155, 235)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(238, 233, 250)),
+		ColorSequenceKeypoint.new(0.58, Color3.fromRGB(178, 155, 235)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(178, 155, 235)),
 	})
 	nameGradient.Parent = NameLabel
 	task.spawn(function()
@@ -3867,7 +3868,7 @@ do
 	LocalCountLabel.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 172)
 	LocalCountLabel.BackgroundTransparency = 1
 	LocalCountLabel.BorderSizePixel = 0
-	LocalCountLabel.Text = "132 / 200"
+	LocalCountLabel.Text = "133 / 200"
 	LocalCountLabel.Font = UIFont
 	LocalCountLabel.TextSize = 7
 	LocalCountLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
@@ -3932,6 +3933,23 @@ local function ClampToViewport(position, size)
 	local absY = viewportSize.Y * position.Y.Scale + position.Y.Offset
 	local clampedX = math.clamp(absX, 8, math.max(8, viewportSize.X - width - 8))
 	local clampedY = math.clamp(absY, 8, math.max(8, viewportSize.Y - height - 8))
+	return UDim2.new(0, clampedX, 0, clampedY)
+end
+
+-- Full-size dragging is explicitly allowed to go most of the way off any edge -- unlike
+-- the minimized pill, which ClampToViewport above keeps fully on screen at all times --
+-- but never so far that literally none of it stays reachable, which is what would
+-- actually get it stuck. minVisible pixels of whichever edge it's nearest always stay on
+-- screen; everything else is free to hang off.
+local function ClampPartiallyOnScreen(position, size, minVisible)
+	local camera = workspace.CurrentCamera
+	local viewportSize = (camera and camera.ViewportSize) or Vector2.new(1920, 1080)
+	local width = size.X.Offset
+	local height = size.Y.Offset
+	local absX = viewportSize.X * position.X.Scale + position.X.Offset
+	local absY = viewportSize.Y * position.Y.Scale + position.Y.Offset
+	local clampedX = math.clamp(absX, minVisible - width, viewportSize.X - minVisible)
+	local clampedY = math.clamp(absY, minVisible - height, viewportSize.Y - minVisible)
 	return UDim2.new(0, clampedX, 0, clampedY)
 end
 
@@ -4187,5 +4205,14 @@ end)
 dragChangedConnection = UserInputService.InputChanged:Connect(function(input)
 	if not dragging or (input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch) then return end
 	local delta = input.Position - dragStart
-	MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	local rawPosition = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	-- Clamped live, not just at drop -- the minimized pill stays fully on screen on every
+	-- edge (top/bottom/left/right alike) the whole time it's being dragged, and the
+	-- full-size window is free to go mostly off any edge but can never be dragged
+	-- completely off screen and out of reach.
+	if minimized then
+		MainFrame.Position = ClampToViewport(rawPosition, MINI_SIZE)
+	else
+		MainFrame.Position = ClampPartiallyOnScreen(rawPosition, FULL_SIZE, 48)
+	end
 end)
