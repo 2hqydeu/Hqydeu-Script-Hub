@@ -425,17 +425,21 @@ end)
 -- and disappear, same as anything else sitting inside that Y range.
 local SettingsBackButton = Instance.new("TextButton")
 SettingsBackButton.Name = "SettingsBackButton"
-SettingsBackButton.Size = UDim2.new(0, 80, 0, 14)
-SettingsBackButton.Position = UDim2.new(0, 16, 0, HEADER_HEIGHT + 8)
-SettingsBackButton.BackgroundTransparency = 1
+SettingsBackButton.Size = UDim2.new(0, 64, 0, 20)
+SettingsBackButton.Position = UDim2.new(0, 16, 0, HEADER_HEIGHT + 6)
+-- Small oval-ish background now -- plain text with nothing behind it was blending into
+-- whatever the overlay's own content happened to sit near, hard to make out at a glance.
+SettingsBackButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+SettingsBackButton.BackgroundTransparency = 0.2
+SettingsBackButton.BorderSizePixel = 0
 SettingsBackButton.Text = "< Back"
 SettingsBackButton.Font = UIFont
-SettingsBackButton.TextSize = 10
+SettingsBackButton.TextSize = 11
 SettingsBackButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-SettingsBackButton.TextXAlignment = Enum.TextXAlignment.Left
 SettingsBackButton.Visible = false
 SettingsBackButton.ZIndex = 21
 SettingsBackButton.Parent = MainFrame
+Instance.new("UICorner", SettingsBackButton).CornerRadius = UDim.new(1, 0)
 AddPressBounce(SettingsBackButton)
 
 -- Minimize + destroy, smallest they can be while still tappable -- farthest right is
@@ -843,20 +847,20 @@ do
 	local FavoritesButton = Instance.new("TextButton")
 	FavoritesButton.Name = "FavoritesButton"
 	FavoritesButton.AnchorPoint = Vector2.new(0.5, 0)
-	FavoritesButton.Position = UDim2.new(0.5, 0, 0, 190)
-	FavoritesButton.Size = UDim2.new(0, 150, 0, 34)
+	FavoritesButton.Position = UDim2.new(0.5, 0, 0, 182)
+	FavoritesButton.Size = UDim2.new(0, 130, 0, 24)
 	FavoritesButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 	FavoritesButton.BorderSizePixel = 0
 	FavoritesButton.Text = "\226\152\133 Favorites"
 	FavoritesButton.Font = UIFont
-	FavoritesButton.TextSize = 15
+	FavoritesButton.TextSize = 13
 	FavoritesButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 	FavoritesButton.Parent = HomePage
 	Instance.new("UICorner", FavoritesButton).CornerRadius = UDim.new(1, 0)
 	AddPressBounce(FavoritesButton)
 	FavoritesButton.MouseButton1Click:Connect(function()
 		PlayClick()
-		OpenFavoritesOverlay()
+		SwitchToFavorites()
 	end)
 end
 
@@ -1209,21 +1213,44 @@ local function RegisterFavoriteEntry(key, groupName, rows)
 	table.insert(group.keys, key)
 end
 
--- Whole section: star sits on the RIGHT side of the heading (heading's own width shrinks
--- to make room), favoriting moves every row passed in together as one unit, grouped under
+-- Whole section: star sits immediately after the heading's own text (not pinned to the
+-- far edge of the row) -- the heading gets wrapped in a small horizontal-UIListLayout
+-- container so the star's position tracks the text's actual rendered width automatically,
+-- since that's not knowable synchronously right after switching the heading to
+-- AutomaticSize. Favoriting moves every row passed in together as one unit, grouped under
 -- the heading's own text.
 function RegisterSectionFavorite(heading, key, displayName, rows)
-	heading.Size = UDim2.new(heading.Size.X.Scale, heading.Size.X.Offset - 24, heading.Size.Y.Scale, heading.Size.Y.Offset)
-	CreateFavoriteStar(heading.Parent, UDim2.new(1, -18, 0, heading.Position.Y.Offset + 4), key)
+	local container = Instance.new("Frame")
+	container.Name = "HeadingFavoriteRow"
+	container.Size = UDim2.new(1, 0, heading.Size.Y.Scale, heading.Size.Y.Offset)
+	container.Position = heading.Position
+	container.BackgroundTransparency = 1
+	container.Parent = heading.Parent
+
+	local layout = Instance.new("UIListLayout")
+	layout.FillDirection = Enum.FillDirection.Horizontal
+	layout.VerticalAlignment = Enum.VerticalAlignment.Center
+	layout.Padding = UDim.new(0, 6)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = container
+
+	heading.Position = UDim2.new(0, 0, 0, 0)
+	heading.Size = UDim2.new(0, 0, 1, 0)
+	heading.AutomaticSize = Enum.AutomaticSize.X
+	heading.LayoutOrder = 1
+	heading.Parent = container
+
+	local star = CreateFavoriteStar(container, UDim2.new(0, 0, 0, 0), key)
+	star.LayoutOrder = 2
 	RegisterFavoriteEntry(key, displayName, rows)
 end
 
--- One row, its own star (bottom-left corner, in the row's own natural left margin),
--- grouped under a shared heading (created fresh in the Favorites view, same as any
--- section heading) instead of getting one of its own. The star is a child of the row
--- itself so it travels along when the row gets moved.
+-- One row, its own star -- sits right after the row's own (fixed-width, 200px) label
+-- instead of in the row's far-left corner, grouped under a shared heading (created fresh
+-- in the Favorites view, same as any section heading) instead of getting one of its own.
+-- The star is a child of the row itself so it travels along when the row gets moved.
 function RegisterItemFavorite(row, key, groupName)
-	CreateFavoriteStar(row, UDim2.new(0, 2, 0, 19), key)
+	CreateFavoriteStar(row, UDim2.new(0, 222, 0.5, -7), key)
 	RegisterFavoriteEntry(key, groupName, {row})
 end
 
@@ -1572,7 +1599,7 @@ end
 -- Functionality tab: sits between Player and Visuals. No icon for now -- CreateTab already
 -- handles a nil iconId by just leaving the tab's icon slot blank. Instant Prompt lives here
 -- now instead of at the bottom of Player.
-local FunctionalityPage = CreateTab("Functions", 3, "129520582193954", true, 28, 4)
+local FunctionalityPage = CreateTab("Functions", 3, "129520582193954", true, 28, 1)
 task.wait()
 do
 	-- Instant Prompt: drives every ProximityPrompt's HoldDuration to 0 (and drops its line-
@@ -1667,6 +1694,68 @@ do
 end
 
 do
+	-- Auto Lock: moved here from its own now-removed Combat tab -- while held, Right Mouse
+	-- Button snaps the camera to face whichever player's head is currently closest to the
+	-- mouse cursor on screen. Ported straight from the old hub's Auto Lock (Main Features
+	-- section), which worked flawlessly there.
+	-- AutoLockKeybind/ToggleAutoLock left un-declared (the keybind dispatcher far below
+	-- needs to reach them by name) so they fall back to globals instead of costing
+	-- top-level local slots.
+	AutoLockKeybind = Enum.KeyCode.Unknown
+	local AutoLockEnabled = false
+
+	-- INSTANT_PROMPT_SECTION_BOTTOM lives in the do block above and doesn't escape it --
+	-- 106 is that same value (INSTANT_PROMPT_TOP 8 + 30 + row height 52 + 16 gap) written
+	-- out instead.
+	local AUTO_LOCK_TOP = 106
+	local AutoLockHeading = CreateSectionHeading(FunctionalityPage, AUTO_LOCK_TOP, "Auto Lock")
+	local AutoLockToggle, _, AutoLockRow = CreateToggleRow(FunctionalityPage, AUTO_LOCK_TOP + 30, "AutoLockKeybind", function(k) AutoLockKeybind = k end)
+	RegisterSectionFavorite(AutoLockHeading, "AutoLockKeybind", "Auto Lock", {AutoLockRow})
+
+	-- Nearest player to the mouse cursor in screen space (not world space) -- same approach
+	-- as the old hub: project every other player's head into viewport coordinates and pick
+	-- whichever one is closest to where the mouse actually is, skipping anyone off-screen.
+	local function GetClosestPlayerToMouse()
+		local nearest, nearestDistance
+		local camera = workspace.CurrentCamera
+		local mousePosition = UserInputService:GetMouseLocation()
+		for _, plr in ipairs(Players:GetPlayers()) do
+			if plr ~= Player and plr.Character and plr.Character:FindFirstChild("Head") then
+				local headPosition, onScreen = camera:WorldToViewportPoint(plr.Character.Head.Position)
+				if onScreen then
+					local distance = (Vector2.new(headPosition.X, headPosition.Y) - mousePosition).Magnitude
+					if not nearestDistance or distance < nearestDistance then
+						nearest = plr
+						nearestDistance = distance
+					end
+				end
+			end
+		end
+		return nearest
+	end
+
+	ToggleAutoLock = function()
+		AutoLockEnabled = not AutoLockEnabled
+		AutoLockToggle.Text = AutoLockEnabled and "On" or "Off"
+	end
+	AutoLockToggle.MouseButton1Click:Connect(function() PlayClick() ToggleAutoLock() end)
+
+	autoLockRenderConnection = RunService.RenderStepped:Connect(function()
+		if not AutoLockEnabled then return end
+		if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then return end
+		local character = Player.Character
+		if not (character and character:FindFirstChild("HumanoidRootPart")) then return end
+		local target = GetClosestPlayerToMouse()
+		if target and target.Character and target.Character:FindFirstChild("Head") then
+			local camera = workspace.CurrentCamera
+			camera.CFrame = CFrame.lookAt(camera.CFrame.Position, target.Character.Head.Position)
+		end
+	end)
+
+	FunctionalityPage.CanvasSize = UDim2.new(0, 0, 0, AUTO_LOCK_TOP + 30 + 52 + 16)
+end
+
+do
 	-- Anti-AFK: Roblox kicks/logs an idle player after a timeout, detected internally via
 	-- Player.Idled firing once no real input (mouse/keyboard/gamepad) has been seen for a
 	-- while. Simulating a keypress through UserInputService or a mouse-click function
@@ -1679,10 +1768,9 @@ do
 	AntiAFKEnabled = false
 	AntiAFKKeybind = Enum.KeyCode.Unknown
 
-	-- INSTANT_PROMPT_SECTION_BOTTOM lives in the do block above and doesn't escape it --
-	-- 106 is that same value (INSTANT_PROMPT_TOP 8 + 30 + row height 52 + 16 gap) written
-	-- out instead.
-	local ANTI_AFK_TOP = 106
+	-- AUTO_LOCK_TOP (106) + its own heading/row/gap (30 + 52 + 16) lives in the do block
+	-- above and doesn't escape it -- 204 is that same total written out instead.
+	local ANTI_AFK_TOP = 204
 	local AntiAFKHeading = CreateSectionHeading(FunctionalityPage, ANTI_AFK_TOP, "Anti-AFK")
 	local AntiAFKToggle, _, AntiAFKRow = CreateToggleRow(FunctionalityPage, ANTI_AFK_TOP + 30, "AntiAFKKeybind", function(k) AntiAFKKeybind = k end)
 	RegisterSectionFavorite(AntiAFKHeading, "AntiAFKKeybind", "Anti-AFK", {AntiAFKRow})
@@ -2674,8 +2762,11 @@ do
 	PlayersTabButton.Name = "PlayersTabButton"
 	PlayersTabButton.Size = UDim2.new(0.5, -3, 0, TAB_ROW_H)
 	PlayersTabButton.Position = UDim2.new(0, 0, 0, HEADER_H)
-	PlayersTabButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-	PlayersTabButton.BackgroundTransparency = 0.2
+	-- Same accent purple the main tab pills use for their selected state (0.1 transparency
+	-- when selected, fully invisible at 1 when not), instead of a plain gray that didn't
+	-- distinguish which of Players/Waypoints was actually showing.
+	PlayersTabButton.BackgroundColor3 = Color3.fromRGB(178, 155, 235)
+	PlayersTabButton.BackgroundTransparency = 0.1
 	PlayersTabButton.BorderSizePixel = 0
 	PlayersTabButton.Text = "Players"
 	PlayersTabButton.Font = UIFont
@@ -2688,8 +2779,8 @@ do
 	WaypointsTabButton.Name = "WaypointsTabButton"
 	WaypointsTabButton.Size = UDim2.new(0.5, -13, 0, TAB_ROW_H)
 	WaypointsTabButton.Position = UDim2.new(0.5, 3, 0, HEADER_H)
-	WaypointsTabButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-	WaypointsTabButton.BackgroundTransparency = 0.5
+	WaypointsTabButton.BackgroundColor3 = Color3.fromRGB(178, 155, 235)
+	WaypointsTabButton.BackgroundTransparency = 1
 	WaypointsTabButton.BorderSizePixel = 0
 	WaypointsTabButton.Text = "Waypoints"
 	WaypointsTabButton.Font = UIFont
@@ -3093,8 +3184,8 @@ do
 		SetHereButton.Visible = showingWaypoints
 		WaypointSearch.Visible = showingWaypoints
 		WaypointList.Visible = showingWaypoints
-		PlayersTabButton.BackgroundTransparency = showingWaypoints and 0.5 or 0.2
-		WaypointsTabButton.BackgroundTransparency = showingWaypoints and 0.2 or 0.5
+		PlayersTabButton.BackgroundTransparency = showingWaypoints and 1 or 0.1
+		WaypointsTabButton.BackgroundTransparency = showingWaypoints and 0.1 or 1
 		if showingWaypoints then RefreshWaypointList() else RefreshPlayerList() end
 	end
 
@@ -3168,8 +3259,8 @@ do
 	local PopupPlayersTab = Instance.new("TextButton")
 	PopupPlayersTab.Size = UDim2.new(0.5, -15, 0, TAB_ROW_H)
 	PopupPlayersTab.Position = UDim2.new(0, 12, 0, 36)
-	PopupPlayersTab.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-	PopupPlayersTab.BackgroundTransparency = 0.2
+	PopupPlayersTab.BackgroundColor3 = Color3.fromRGB(178, 155, 235)
+	PopupPlayersTab.BackgroundTransparency = 0.1
 	PopupPlayersTab.BorderSizePixel = 0
 	PopupPlayersTab.Text = "Players"
 	PopupPlayersTab.Font = UIFont
@@ -3182,8 +3273,8 @@ do
 	local PopupWaypointsTab = Instance.new("TextButton")
 	PopupWaypointsTab.Size = UDim2.new(0.5, -15, 0, TAB_ROW_H)
 	PopupWaypointsTab.Position = UDim2.new(0.5, 3, 0, 36)
-	PopupWaypointsTab.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-	PopupWaypointsTab.BackgroundTransparency = 0.5
+	PopupWaypointsTab.BackgroundColor3 = Color3.fromRGB(178, 155, 235)
+	PopupWaypointsTab.BackgroundTransparency = 1
 	PopupWaypointsTab.BorderSizePixel = 0
 	PopupWaypointsTab.Text = "Waypoints"
 	PopupWaypointsTab.Font = UIFont
@@ -3476,8 +3567,8 @@ do
 		PopupPlayerList.Visible = not showingWaypoints
 		PopupWaypointSearch.Visible = showingWaypoints
 		PopupWaypointList.Visible = showingWaypoints
-		PopupPlayersTab.BackgroundTransparency = showingWaypoints and 0.5 or 0.2
-		PopupWaypointsTab.BackgroundTransparency = showingWaypoints and 0.2 or 0.5
+		PopupPlayersTab.BackgroundTransparency = showingWaypoints and 1 or 0.1
+		PopupWaypointsTab.BackgroundTransparency = showingWaypoints and 0.1 or 1
 		if showingWaypoints then RefreshPopupWaypointList() else RefreshPopupPlayerList() end
 	end
 
@@ -3531,65 +3622,6 @@ do
 		local delta = input.Position - dragStart
 		PopupFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
 	end))
-end
-
--- Combat tab: ported from the old hub's Auto Lock (Main Features section) -- while held,
--- Right Mouse Button snaps the camera to face whichever player's head is currently closest
--- to the mouse cursor on screen. Worked flawlessly there, so this is a straight port of
--- that same small render-loop rather than a rebuild.
--- AutoLockKeybind/ToggleAutoLock left un-declared (the keybind dispatcher far below needs
--- to reach them by name) so they fall back to globals instead of costing top-level local
--- slots.
-AutoLockKeybind = Enum.KeyCode.Unknown
-local CombatPage = CreateTab("Combat", 5, "133776763887173", true, 34)
-task.wait()
-do
-	local AutoLockEnabled = false
-
-	local AutoLockHeading = CreateSectionHeading(CombatPage, 8, "Auto Lock")
-	local AutoLockToggle, _, AutoLockRow = CreateToggleRow(CombatPage, 38, "AutoLockKeybind", function(k) AutoLockKeybind = k end)
-	RegisterSectionFavorite(AutoLockHeading, "AutoLockKeybind", "Auto Lock", {AutoLockRow})
-	CombatPage.CanvasSize = UDim2.new(0, 0, 0, 106)
-
-	-- Nearest player to the mouse cursor in screen space (not world space) -- same approach
-	-- as the old hub: project every other player's head into viewport coordinates and pick
-	-- whichever one is closest to where the mouse actually is, skipping anyone off-screen.
-	local function GetClosestPlayerToMouse()
-		local nearest, nearestDistance
-		local camera = workspace.CurrentCamera
-		local mousePosition = UserInputService:GetMouseLocation()
-		for _, plr in ipairs(Players:GetPlayers()) do
-			if plr ~= Player and plr.Character and plr.Character:FindFirstChild("Head") then
-				local headPosition, onScreen = camera:WorldToViewportPoint(plr.Character.Head.Position)
-				if onScreen then
-					local distance = (Vector2.new(headPosition.X, headPosition.Y) - mousePosition).Magnitude
-					if not nearestDistance or distance < nearestDistance then
-						nearest = plr
-						nearestDistance = distance
-					end
-				end
-			end
-		end
-		return nearest
-	end
-
-	ToggleAutoLock = function()
-		AutoLockEnabled = not AutoLockEnabled
-		AutoLockToggle.Text = AutoLockEnabled and "On" or "Off"
-	end
-	AutoLockToggle.MouseButton1Click:Connect(function() PlayClick() ToggleAutoLock() end)
-
-	autoLockRenderConnection = RunService.RenderStepped:Connect(function()
-		if not AutoLockEnabled then return end
-		if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then return end
-		local character = Player.Character
-		if not (character and character:FindFirstChild("HumanoidRootPart")) then return end
-		local target = GetClosestPlayerToMouse()
-		if target and target.Character and target.Character:FindFirstChild("Head") then
-			local camera = workspace.CurrentCamera
-			camera.CFrame = CFrame.lookAt(camera.CFrame.Position, target.Character.Head.Position)
-		end
-	end)
 end
 
 -- Scripts tab: launches the separate game modules (loadstring + HttpGet, same as the
@@ -3819,7 +3851,11 @@ end
 CreateUtilityRow(ScriptsPage, 164, "Infinite Yield", "https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source")
 CreateUtilityRow(ScriptsPage, 216, "Dex Explorer", "https://github.com/AZYsGithub/DexPlusPlus/releases/latest/download/out.lua")
 
-ScriptsPage.CanvasSize = UDim2.new(0, 0, 0, 268)
+-- Was 268 -- barely 1px taller than the 267px viewport, which left almost no real
+-- scroll range at all (the thumb sat at ~99.6% of the track, basically imperceptible as
+-- an actual scrollbar). A modest buffer above the real content (ends around 260) gives it
+-- genuine, visible scrollbar proportions instead.
+ScriptsPage.CanvasSize = UDim2.new(0, 0, 0, 340)
 
 -- Settings: Reset Character / Destroy Gui utility buttons (ported from the old hub) and
 -- the row-transparency control. DestroyGuiButton's click handler is wired further down,
@@ -4047,7 +4083,7 @@ do
 	LocalCountLabel.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 208)
 	LocalCountLabel.BackgroundTransparency = 1
 	LocalCountLabel.BorderSizePixel = 0
-	LocalCountLabel.Text = "140 / 200"
+	LocalCountLabel.Text = "139 / 200"
 	LocalCountLabel.Font = UIFont
 	LocalCountLabel.TextSize = 7
 	LocalCountLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
@@ -4153,14 +4189,33 @@ do
 			end
 			if groupHasFavorite then
 				anyFavorited = true
+				-- Wrapped in a small horizontal-UIListLayout container (same trick as
+				-- RegisterSectionFavorite) so the star sits right after the heading's own
+				-- text instead of pinned to the far edge -- AutomaticSize.X means the
+				-- text's actual rendered width isn't known synchronously, so the layout
+				-- handles the star's placement instead of a manually computed offset.
+				local headingContainer = Instance.new("Frame")
+				headingContainer.Name = "FavHeadingContainer"
+				headingContainer.Size = UDim2.new(1, 0, 0, 22)
+				headingContainer.Position = UDim2.new(0, 0, 0, y)
+				headingContainer.BackgroundTransparency = 1
+				headingContainer.ZIndex = 20
+				headingContainer.Parent = FavoritesPage
+				-- headingLabel points at the container -- destroying it (see
+				-- RestoreAllFavorites) takes the text label and star along with it.
+				group.headingLabel = headingContainer
+
+				local headingLayout = Instance.new("UIListLayout")
+				headingLayout.FillDirection = Enum.FillDirection.Horizontal
+				headingLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+				headingLayout.Padding = UDim.new(0, 6)
+				headingLayout.SortOrder = Enum.SortOrder.LayoutOrder
+				headingLayout.Parent = headingContainer
+
 				local heading = Instance.new("TextLabel")
 				heading.Name = "FavHeading"
-				-- Single-key groups (every section favorite) get their own unfavorite star
-				-- right here, parented to the heading so it's destroyed along with it on
-				-- the next refresh -- no separate tracking needed. Multi-key groups (ESP)
-				-- skip it since each of their rows already carries its own star.
-				heading.Size = UDim2.new(1, #group.keys == 1 and -24 or 0, 0, 22)
-				heading.Position = UDim2.new(0, 0, 0, y)
+				heading.Size = UDim2.new(0, 0, 1, 0)
+				heading.AutomaticSize = Enum.AutomaticSize.X
 				heading.BackgroundTransparency = 1
 				heading.Text = group.groupName
 				heading.Font = UIFont
@@ -4168,11 +4223,16 @@ do
 				heading.TextColor3 = Color3.fromRGB(255, 255, 255)
 				heading.TextXAlignment = Enum.TextXAlignment.Left
 				heading.ZIndex = 20
-				heading.Parent = FavoritesPage
-				group.headingLabel = heading
+				heading.LayoutOrder = 1
+				heading.Parent = headingContainer
+
+				-- Single-key groups (every section favorite) get their own unfavorite star
+				-- right here. Multi-key groups (ESP) skip it since each of their rows
+				-- already carries its own star.
 				if #group.keys == 1 then
-					local star = CreateFavoriteStar(heading, UDim2.new(1, 4, 0.5, -7), group.keys[1])
+					local star = CreateFavoriteStar(headingContainer, UDim2.new(0, 0, 0, 0), group.keys[1])
 					star.ZIndex = 20
+					star.LayoutOrder = 2
 				end
 				y = y + 30
 
@@ -4217,6 +4277,12 @@ function SwitchToTab(name)
 	SelectTab(name)
 end
 function SwitchToFavorites()
+	-- A real toggle -- pressing the keybind again while Favorites is already open closes
+	-- it, same as the Favorites button itself.
+	if FavoritesOverlay and FavoritesOverlay.Visible then
+		CloseFavoritesOverlay()
+		return
+	end
 	if CloseSettingsOverlay then CloseSettingsOverlay() end
 	if CloseKeybindEditorOverlay then CloseKeybindEditorOverlay() end
 	OpenFavoritesOverlay()
@@ -4408,6 +4474,7 @@ do
 	SwitchFunctionsKeybind = Enum.KeyCode.Unknown
 	CreateKeybindEditRow(functionsRows, "Switch to Functions", "SwitchFunctionsKeybind", function(k) SwitchFunctionsKeybind = k end)
 	CreateKeybindEditRow(functionsRows, "Instant Prompt", "InstantPromptKeybind", function(k) InstantPromptKeybind = k end)
+	CreateKeybindEditRow(functionsRows, "Auto Lock", "AutoLockKeybind", function(k) AutoLockKeybind = k end)
 	CreateKeybindEditRow(functionsRows, "Anti-AFK", "AntiAFKKeybind", function(k) AntiAFKKeybind = k end)
 
 	local visualsRows = CreateSection("Visuals")
@@ -4417,11 +4484,6 @@ do
 	CreateKeybindEditRow(visualsRows, "Box ESP", "BoxESPKeybind", function(k) BoxESPKeybind = k end)
 	CreateKeybindEditRow(visualsRows, "ESP Labels", "ESPLabelsKeybind", function(k) ESPLabelsKeybind = k end)
 	CreateKeybindEditRow(visualsRows, "Free Cam", "FreeCamKeybind", function(k) FreeCamKeybind = k end)
-
-	local combatRows = CreateSection("Combat")
-	SwitchCombatKeybind = Enum.KeyCode.Unknown
-	CreateKeybindEditRow(combatRows, "Switch to Combat", "SwitchCombatKeybind", function(k) SwitchCombatKeybind = k end)
-	CreateKeybindEditRow(combatRows, "Auto Lock", "AutoLockKeybind", function(k) AutoLockKeybind = k end)
 
 	local scriptsRows = CreateSection("Scripts")
 	SwitchScriptsKeybind = Enum.KeyCode.Unknown
@@ -4734,7 +4796,6 @@ mainInputConnection = UserInputService.InputBegan:Connect(function(input, proces
 	if SwitchPlayerKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == SwitchPlayerKeybind then SwitchToTab("Player") end
 	if SwitchFunctionsKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == SwitchFunctionsKeybind then SwitchToTab("Functions") end
 	if SwitchVisualsKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == SwitchVisualsKeybind then SwitchToTab("Visuals") end
-	if SwitchCombatKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == SwitchCombatKeybind then SwitchToTab("Combat") end
 	if SwitchScriptsKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == SwitchScriptsKeybind then SwitchToTab("Scripts") end
 	if SwitchTeleportKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == SwitchTeleportKeybind then SwitchToTab("Teleport") end
 	if SwitchFavoritesKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == SwitchFavoritesKeybind then SwitchToFavorites() end
@@ -4771,6 +4832,11 @@ MainFrame.InputBegan:Connect(function(input)
 				TweenService:Create(MainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
 					Position = snapped,
 				}):Play()
+			else
+				-- Belt-and-suspenders re-clamp on release, on top of the continuous one in
+				-- InputChanged below -- guards against the final resting position ever
+				-- landing outside bounds on either axis, no matter how the drag ended.
+				MainFrame.Position = ClampPartiallyOnScreen(MainFrame.Position, FULL_SIZE, 48)
 			end
 		end
 	end)
