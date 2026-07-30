@@ -863,15 +863,21 @@ do
 	NameLabel.Text = Player.DisplayName .. "!"
 	NameLabel.Font = UIFont
 	NameLabel.TextSize = 26
-	NameLabel.TextColor3 = Color3.fromRGB(178, 155, 235)
+	NameLabel.TextColor3 = Color3.fromRGB(120, 85, 200)
 	NameLabel.TextXAlignment = Enum.TextXAlignment.Left
 	NameLabel.TextYAlignment = Enum.TextYAlignment.Center
 	NameLabel.Parent = WelcomeContainer
+	-- A deep purple base with a sharp, narrow bright-white band sweeping through (not a
+	-- smooth pale-to-pale fade) -- the earlier version's three stops were all similar
+	-- light shades of lavender, so the "shimmer" barely registered. A real bright/dark
+	-- contrast is what actually reads as a noticeable flash sweeping across the letters.
 	local nameGradient = Instance.new("UIGradient")
 	nameGradient.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(238, 233, 250)),
-		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(178, 155, 235)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(238, 233, 250)),
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(120, 85, 200)),
+		ColorSequenceKeypoint.new(0.42, Color3.fromRGB(120, 85, 200)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 255)),
+		ColorSequenceKeypoint.new(0.58, Color3.fromRGB(120, 85, 200)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(120, 85, 200)),
 	})
 	nameGradient.Parent = NameLabel
 	task.spawn(function()
@@ -1494,11 +1500,9 @@ do
 	-- visible/in-range, undoing our one-time fix before you ever get to hold it. Re-asserting
 	-- on PromptShown as well (fires whenever a prompt enters view/range, right before the
 	-- player can interact with it) closes that gap without needing an expensive full-tree
-	-- sweep every frame. Toggling it off mid-session still doesn't restore already-sped-up
-	-- prompts (same tradeoff as NoClip's CanCollide in the Player tab), but closing the hub
-	-- entirely does -- OriginalPromptValues remembers whatever each touched prompt's real
-	-- HoldDuration/RequiresLineOfSight was so DisableInstantPrompt (called from DestroyGui)
-	-- can put every one of them back.
+	-- sweep every frame. OriginalPromptValues remembers whatever each touched prompt's real
+	-- HoldDuration/RequiresLineOfSight was so it can be handed back both when the toggle
+	-- itself gets switched off and when the whole hub gets destroyed.
 	local InstantPromptEnabled = false
 	local OriginalPromptValues = {}
 	InstantPromptKeybind = Enum.KeyCode.Unknown
@@ -1529,6 +1533,16 @@ do
 		end
 	end
 
+	local function RestorePrompts()
+		for prompt, original in pairs(OriginalPromptValues) do
+			if prompt.Parent then
+				prompt.HoldDuration = original.HoldDuration
+				prompt.RequiresLineOfSight = original.RequiresLineOfSight
+			end
+		end
+		OriginalPromptValues = {}
+	end
+
 	ToggleInstantPrompt = function()
 		InstantPromptEnabled = not InstantPromptEnabled
 		InstantPromptToggle.Text = InstantPromptEnabled and "On" or "Off"
@@ -1536,6 +1550,8 @@ do
 			for _, object in ipairs(game:GetDescendants()) do
 				OptimizePrompt(object)
 			end
+		else
+			RestorePrompts()
 		end
 	end
 	InstantPromptToggle.MouseButton1Click:Connect(function() PlayClick() ToggleInstantPrompt() end)
@@ -1560,13 +1576,8 @@ do
 	-- turns the feature off and hands every touched prompt its real values back.
 	DisableInstantPrompt = function()
 		InstantPromptEnabled = false
-		for prompt, original in pairs(OriginalPromptValues) do
-			if prompt.Parent then
-				prompt.HoldDuration = original.HoldDuration
-				prompt.RequiresLineOfSight = original.RequiresLineOfSight
-			end
-		end
-		OriginalPromptValues = {}
+		InstantPromptToggle.Text = "Off"
+		RestorePrompts()
 	end
 
 	FunctionalityPage.CanvasSize = UDim2.new(0, 0, 0, INSTANT_PROMPT_SECTION_BOTTOM + 16)
