@@ -309,11 +309,24 @@ end
 local ESPRow, ESPToggle = CreateFeatureRow(1, "ESP")
 
 -- ESP -----------------------------------------------------------------------------------
--- Colors/labels per classification. "Unknown" (yellow) covers any NPC-tagged model that
--- doesn't match a known signal -- could be an early-stage visitor not yet checked in,
--- could be a disguised Mimic with no pre-reveal tell -- rather than guessing either way.
+-- Patients and Visitors both carry a plain attribute; a few anomaly types carry their own
+-- persistent tag (see the comment block at the top of this file for how these were found).
+-- "Unique" covers the game's wildcard extras -- named lobby characters (Barney, the Clown,
+-- Officer Duckman, etc.) that sometimes just chit-chat and sometimes turn out to be part
+-- of a jumpscare -- flagged distinctly rather than lumped in with plain patients, since
+-- "this individual isn't a generic patient" is itself useful information even when the
+-- exact behavior isn't knowable in advance. "Unknown" is the true fallback, and per your
+-- testing that's very likely where the actual killer-disguised-as-a-patient case lands --
+-- I couldn't find ANY client-visible flag anywhere in the game's own scripts, tag or
+-- attribute, for that one before it actually attacks. The reveal looks entirely
+-- server-decided and only sent to the client the moment it happens (there's a paid
+-- "detect_skinwalker" gamepass built around that exact mystery), so a passive ESP has
+-- nothing to read there -- if you spot an actual pattern in-game (a tag, a mesh part
+-- becoming visible, anything) let me know and I'll wire it in.
 local ESP_PATIENT_COLOR = Color3.fromRGB(255, 255, 255)
+local ESP_VISITOR_COLOR = Color3.fromRGB(80, 220, 100)
 local ESP_ANOMALY_COLOR = Color3.fromRGB(255, 60, 60)
+local ESP_UNIQUE_COLOR = Color3.fromRGB(255, 150, 40)
 local ESP_UNKNOWN_COLOR = Color3.fromRGB(255, 210, 60)
 
 -- Checked in order -- first match wins. Add more entries here as more anomaly types get a
@@ -330,6 +343,9 @@ local function ClassifyNPC(model)
 	if model:GetAttribute("IsPatient") == true then
 		return "Patient", ESP_PATIENT_COLOR
 	end
+	if model:GetAttribute("IsVisitor") == true then
+		return "Visitor", ESP_VISITOR_COLOR
+	end
 	for _, signal in ipairs(ANOMALY_SIGNALS) do
 		if signal.tag and model:HasTag(signal.tag) then
 			return signal.label, ESP_ANOMALY_COLOR
@@ -338,13 +354,18 @@ local function ClassifyNPC(model)
 			return signal.label, ESP_ANOMALY_COLOR
 		end
 	end
+	if model:HasTag("Unique") then
+		return "Unique", ESP_UNIQUE_COLOR
+	end
 	return "Unknown", ESP_UNKNOWN_COLOR
 end
 
 local espEnabled = false
 local espTracked = {} -- model -> {Highlight, Billboard, Label, AncestryConn}
+local espPending = {} -- set of models currently waiting on a not-yet-loaded body part
 
 local function RemoveESPFromModel(model)
+	espPending[model] = nil
 	local entry = espTracked[model]
 	if not entry then return end
 	if entry.AncestryConn then entry.AncestryConn:Disconnect() end
@@ -353,42 +374,54 @@ local function RemoveESPFromModel(model)
 	espTracked[model] = nil
 end
 
+-- Head/HumanoidRootPart sometimes isn't loaded yet the instant a model shows up
+-- (streaming/character-building still in progress) -- waiting briefly instead of giving up
+-- immediately is what was actually behind ESP silently never appearing on some NPCs.
 local function AddESPToModel(model)
-	if espTracked[model] then return end
-	if not model:IsA("Model") then return end
-	local adornPart = model:FindFirstChild("Head") or model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
-	if not adornPart then return end
+	if not model:IsA("Model") or espTracked[model] or espPending[model] then return end
+	espPending[model] = true
 
-	local highlight = Instance.new("Highlight")
-	highlight.Name = "SerenityESP"
-	highlight.FillTransparency = 1
-	highlight.OutlineTransparency = 0
-	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-	highlight.Adornee = model
-	highlight.Parent = model
+	task.spawn(function()
+		local adornPart = model:FindFirstChild("Head") or model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
+		if not adornPart then
+			adornPart = model:WaitForChild("HumanoidRootPart", 5) or model:FindFirstChild("Head")
+		end
+		espPending[model] = nil
+		-- Bail if ESP got toggled off, the model got removed, or something else already
+		-- claimed it while this was waiting.
+		if not espEnabled or not model.Parent or not adornPart or espTracked[model] then return end
 
-	local billboard = Instance.new("BillboardGui")
-	billboard.Name = "SerenityESPLabel"
-	billboard.Adornee = adornPart
-	billboard.Size = UDim2.new(0, 160, 0, 24)
-	billboard.StudsOffset = Vector3.new(0, 1.6, 0)
-	billboard.AlwaysOnTop = true
-	billboard.Parent = model
+		local highlight = Instance.new("Highlight")
+		highlight.Name = "SerenityESP"
+		highlight.FillTransparency = 1
+		highlight.OutlineTransparency = 0
+		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		highlight.Adornee = model
+		highlight.Parent = model
 
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, 0, 1, 0)
-	label.BackgroundTransparency = 1
-	label.Font = UIFont
-	label.TextSize = 16
-	label.TextStrokeTransparency = 0
-	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-	label.Parent = billboard
+		local billboard = Instance.new("BillboardGui")
+		billboard.Name = "SerenityESPLabel"
+		billboard.Adornee = adornPart
+		billboard.Size = UDim2.new(0, 160, 0, 24)
+		billboard.StudsOffset = Vector3.new(0, 1.6, 0)
+		billboard.AlwaysOnTop = true
+		billboard.Parent = model
 
-	local entry = {Highlight = highlight, Billboard = billboard, Label = label}
-	espTracked[model] = entry
+		local label = Instance.new("TextLabel")
+		label.Size = UDim2.new(1, 0, 1, 0)
+		label.BackgroundTransparency = 1
+		label.Font = UIFont
+		label.TextSize = 16
+		label.TextStrokeTransparency = 0
+		label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+		label.Parent = billboard
 
-	entry.AncestryConn = model.AncestryChanged:Connect(function(_, parent)
-		if not parent then RemoveESPFromModel(model) end
+		local entry = {Highlight = highlight, Billboard = billboard, Label = label}
+		espTracked[model] = entry
+
+		entry.AncestryConn = model.AncestryChanged:Connect(function(_, parent)
+			if not parent then RemoveESPFromModel(model) end
+		end)
 	end)
 end
 
@@ -413,18 +446,36 @@ local function RefreshESPClassifications()
 	end
 end
 
-local npcTagConnections = {}
+-- Primary tracking is the actual workspace.NPCs folder every patient/visitor/anomaly gets
+-- parented into on spawn (confirmed directly in the place file, and matches what you saw
+-- in-game) -- ChildAdded/ChildRemoved catches new arrivals and departures in real time,
+-- which the tag-only approach this started with apparently wasn't doing reliably. The
+-- CollectionService "NPC"/"Unique" tags are watched too, as a fallback for anything tagged
+-- but not actually parented under that folder (the wildcard extras in particular may live
+-- somewhere else).
+local watchConnections = {}
 local function StartESP()
-	for _, model in ipairs(CollectionService:GetTagged("NPC")) do
-		AddESPToModel(model)
+	local npcFolder = workspace:FindFirstChild("NPCs")
+	if npcFolder then
+		for _, child in ipairs(npcFolder:GetChildren()) do
+			AddESPToModel(child)
+		end
+		table.insert(watchConnections, npcFolder.ChildAdded:Connect(AddESPToModel))
+		table.insert(watchConnections, npcFolder.ChildRemoved:Connect(RemoveESPFromModel))
 	end
-	table.insert(npcTagConnections, CollectionService:GetInstanceAddedSignal("NPC"):Connect(AddESPToModel))
-	table.insert(npcTagConnections, CollectionService:GetInstanceRemovedSignal("NPC"):Connect(RemoveESPFromModel))
+	for _, tagName in ipairs({"NPC", "Unique"}) do
+		for _, model in ipairs(CollectionService:GetTagged(tagName)) do
+			AddESPToModel(model)
+		end
+		table.insert(watchConnections, CollectionService:GetInstanceAddedSignal(tagName):Connect(AddESPToModel))
+		table.insert(watchConnections, CollectionService:GetInstanceRemovedSignal(tagName):Connect(RemoveESPFromModel))
+	end
 end
 
 local function StopESP()
-	for _, connection in ipairs(npcTagConnections) do connection:Disconnect() end
-	npcTagConnections = {}
+	for _, connection in ipairs(watchConnections) do connection:Disconnect() end
+	watchConnections = {}
+	espPending = {}
 	for model in pairs(espTracked) do RemoveESPFromModel(model) end
 end
 
