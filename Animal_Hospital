@@ -3,21 +3,23 @@
 -- the hub's look. First feature: ESP for patients and anomalies.
 --
 -- Classification (from reading the actual place file's client-replicated scripts, since
--- there's no live game access to test against): CollectionService's "NPC" tag is the
--- universal marker for every active patient/anomaly model in workspace. A confirmed real
--- patient additionally carries GetAttribute("IsPatient") == true. A handful of anomaly
--- types carry their own persistent identity tag, found the same way: HasTag("GhostAnomaly")
--- (Ghost), HasTag("AnomalyShadow") (Shadow), HasTag("StalkerJumpscare") (Stalker),
--- HasTag("TallMonsterSpawn") (Tall Monster), GetAttribute("IsSlimebert") (Slimebert).
--- Everything else the bestiary lists (Mass of Eyes, Hiders, Ritual, Head Banger, Camera
--- Monster, Bed Monster, Tentacles) has no client-readable signal findable this way, and
--- Mimic/Skinwalker specifically -- the type designed to look exactly like a patient --
--- only gets flagged to the client AFTER a server-triggered reveal (e.g. photographing it),
--- which appears deliberate (there's even a paid "detect_skinwalker" gamepass built around
--- that same mystery). An "NPC"-tagged model that doesn't match any known signal shows up
--- as a yellow "Unknown" instead of being silently skipped or guessed at as a safe patient
--- -- that in-between state is itself useful information (could be an early-stage visitor,
--- could be a disguised Mimic) rather than false confidence either way.
+-- there's no live game access to test against): the workspace.NPCs folder is where every
+-- active patient/anomaly/visitor model lives, watched directly for real-time add/remove.
+-- A confirmed real patient carries GetAttribute("IsPatient") == true, a visitor
+-- GetAttribute("IsVisitor") == true. Most anomaly templates under
+-- ReplicatedStorage.NPCs.Anomalies get cloned in without a randomized name, so model.Name
+-- itself usually identifies them; a handful also carry their own persistent tag, found the
+-- same way: HasTag("GhostAnomaly") (Ghost), HasTag("AnomalyShadow") (Shadow),
+-- HasTag("StalkerJumpscare") (Stalker), HasTag("TallMonsterSpawn") (Tall Monster),
+-- GetAttribute("IsSlimebert") (Slimebert). "Unique" covers the wildcard lobby extras
+-- (Barney, the Clown, Officer Duckman, etc. from ReplicatedStorage.NPCs.UniqueVisitors).
+--
+-- The patient-that-turns-out-to-attack-you case (Skinwalker/Mimic disguised as a normal
+-- patient) traces back to ReplicatedStorage.AnomalyEvents.DisguiseReveals -- see the
+-- longer comment right above ClassifyNPC below for how that one's actually detected, found
+-- by reading the reveal-effect modules themselves plus a live NPC you flagged in testing.
+-- An NPC that matches nothing at all still shows up as yellow "Unknown" rather than being
+-- silently skipped or guessed at as a safe patient.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -310,27 +312,86 @@ local ESPRow, ESPToggle = CreateFeatureRow(1, "ESP")
 
 -- ESP -----------------------------------------------------------------------------------
 -- Patients and Visitors both carry a plain attribute; a few anomaly types carry their own
--- persistent tag (see the comment block at the top of this file for how these were found).
--- "Unique" covers the game's wildcard extras -- named lobby characters (Barney, the Clown,
--- Officer Duckman, etc.) that sometimes just chit-chat and sometimes turn out to be part
--- of a jumpscare -- flagged distinctly rather than lumped in with plain patients, since
--- "this individual isn't a generic patient" is itself useful information even when the
--- exact behavior isn't knowable in advance. "Unknown" is the true fallback, and per your
--- testing that's very likely where the actual killer-disguised-as-a-patient case lands --
--- I couldn't find ANY client-visible flag anywhere in the game's own scripts, tag or
--- attribute, for that one before it actually attacks. The reveal looks entirely
--- server-decided and only sent to the client the moment it happens (there's a paid
--- "detect_skinwalker" gamepass built around that exact mystery), so a passive ESP has
--- nothing to read there -- if you spot an actual pattern in-game (a tag, a mesh part
--- becoming visible, anything) let me know and I'll wire it in.
+-- persistent tag; most of ReplicatedStorage.NPCs.Anomalies' templates get cloned into
+-- workspace.NPCs without a randomized name (unlike patients), so the model's own .Name
+-- usually still matches its template name directly. "Unique" covers the wildcard lobby
+-- extras (Barney, the Clown, Officer Duckman, etc. -- confirmed as the UniqueVisitors
+-- folder) that sometimes just chit-chat and sometimes turn out to be part of a jumpscare.
+--
+-- Disguised Threat (the patient-that-turns-out-to-attack-you case) traces back to
+-- ReplicatedStorage.AnomalyEvents.DisguiseReveals -- reading SkinwalkerOpensMouth's own
+-- Apply() confirms it sets Transparency = 0 on exactly {Gulp, Tooth, TongueMesh, Spit,
+-- Teeth} (normally 1, i.e. hidden) -- the literal mechanism behind the visible
+-- Tooth/TongueMesh spotted on "Lucy Acorns" in testing. That reveal itself is gated by a
+-- "CameraEffect"/"PhotoEffect" Attribute read directly off the model in
+-- AnomalyEvents.Local's ApplyDisguiseReveal -- since Attributes replicate the moment
+-- they're set server-side, reading it directly should catch the threat even before ever
+-- pointing a camera at them, which the three checks below are built around. All three are
+-- OR'd together so any one of them catching it is enough to flag it.
 local ESP_PATIENT_COLOR = Color3.fromRGB(255, 255, 255)
 local ESP_VISITOR_COLOR = Color3.fromRGB(80, 220, 100)
 local ESP_ANOMALY_COLOR = Color3.fromRGB(255, 60, 60)
 local ESP_UNIQUE_COLOR = Color3.fromRGB(255, 150, 40)
 local ESP_UNKNOWN_COLOR = Color3.fromRGB(255, 210, 60)
 
--- Checked in order -- first match wins. Add more entries here as more anomaly types get a
--- confirmed client-readable signal.
+local SKINWALKER_PARTS = {"Gulp", "Tooth", "TongueMesh", "Spit", "Teeth"}
+local DISGUISE_ATTRIBUTES = {"CameraEffect", "CameraEffect2", "PhotoEffect", "PhotoEffect2"}
+-- The two face TextureIDs you found directly on the real disguised NPC in testing --
+-- checked in addition to (not instead of) the general "doesn't match OriginalFace" check
+-- below, in case OriginalFace itself is ever missing/not set for some reason.
+local KNOWN_DISGUISE_FACE_IDS = {
+	["rbxassetid://117344367007423"] = true,
+	["rbxassetid://134031923875296"] = true,
+}
+
+local function HasDisguiseAttribute(model)
+	for _, attributeName in ipairs(DISGUISE_ATTRIBUTES) do
+		if model:GetAttribute(attributeName) then return true end
+	end
+	return false
+end
+
+local function HasVisibleSkinwalkerParts(model)
+	for _, partName in ipairs(SKINWALKER_PARTS) do
+		local part = model:FindFirstChild(partName)
+		if part and part:IsA("BasePart") and part.Transparency < 0.95 then
+			return true
+		end
+	end
+	return false
+end
+
+-- DifferentFace.Apply swaps a face MeshPart's TextureID and stashes the new value under a
+-- "SecondFace" attribute -- OriginalFace (present on every patient) is what it restores on
+-- UnDo, so a face that no longer matches its own OriginalFace has been swapped by *some*
+-- reveal effect, not just this specific one.
+local function HasSwappedOrKnownBadFace(model)
+	local facePart = model:FindFirstChild("Head.002") or model:FindFirstChild("Face")
+	if not facePart or not facePart:IsA("BasePart") then return false end
+	local textureId = facePart.TextureID
+	if not textureId or textureId == "" then return false end
+	if KNOWN_DISGUISE_FACE_IDS[textureId] then return true end
+	local originalFace = model:GetAttribute("OriginalFace")
+	return originalFace ~= nil and originalFace ~= "" and textureId ~= originalFace
+end
+
+local function IsDisguisedThreat(model)
+	return HasDisguiseAttribute(model) or HasVisibleSkinwalkerParts(model) or HasSwappedOrKnownBadFace(model)
+end
+
+-- Every child of ReplicatedStorage.NPCs.Anomalies, confirmed directly from the place file
+-- (Skinwalker included, from the neighboring Skinwalkers folder, as cheap defensive
+-- coverage even though the real one almost certainly runs around under a disguised human
+-- name instead).
+local ANOMALY_NAMES = {
+	Shadow = true, EyeMass = true, Candles = true, TallMonster2 = true, TallMonster0 = true,
+	TallMonsterFace = true, MonsterBedLarge = true, TallMonsterHead = true, Hider = true,
+	TallMonster = true, MonsterBed = true, Ghost = true, Skinwalker = true,
+}
+
+-- Confirmed persistent identity tags/attributes (found directly in the game's own scripts)
+-- for the subset of anomaly types that carry one -- checked in addition to the name match
+-- above since a tag survives even if something ever renames the model.
 local ANOMALY_SIGNALS = {
 	{label = "Ghost", tag = "GhostAnomaly"},
 	{label = "Shadow", tag = "AnomalyShadow"},
@@ -339,12 +400,20 @@ local ANOMALY_SIGNALS = {
 	{label = "Slimebert", attribute = "IsSlimebert"},
 }
 
+-- Named lobby extras from ReplicatedStorage.NPCs.UniqueVisitors -- checked by name as a
+-- backup to the "Unique" tag in case that tag isn't reliably applied to all of them.
+local UNIQUE_VISITOR_NAMES = {
+	["Officer Duckman"] = true, ["Barney"] = true, ["Clown"] = true, ["DoctorOld"] = true,
+	["Ratthew"] = true, ["Ron from Accounting"] = true, ["Liz"] = true, ["Doctor"] = true,
+	["Hazmat"] = true, ["TinyGuy"] = true, ["Sam"] = true,
+}
+
 local function ClassifyNPC(model)
-	if model:GetAttribute("IsPatient") == true then
-		return "Patient", ESP_PATIENT_COLOR
+	if IsDisguisedThreat(model) then
+		return "Disguised Threat", ESP_ANOMALY_COLOR
 	end
-	if model:GetAttribute("IsVisitor") == true then
-		return "Visitor", ESP_VISITOR_COLOR
+	if ANOMALY_NAMES[model.Name] then
+		return model.Name, ESP_ANOMALY_COLOR
 	end
 	for _, signal in ipairs(ANOMALY_SIGNALS) do
 		if signal.tag and model:HasTag(signal.tag) then
@@ -354,7 +423,13 @@ local function ClassifyNPC(model)
 			return signal.label, ESP_ANOMALY_COLOR
 		end
 	end
-	if model:HasTag("Unique") then
+	if model:GetAttribute("IsPatient") == true then
+		return "Patient", ESP_PATIENT_COLOR
+	end
+	if model:GetAttribute("IsVisitor") == true then
+		return "Visitor", ESP_VISITOR_COLOR
+	end
+	if model:HasTag("Unique") or UNIQUE_VISITOR_NAMES[model.Name] then
 		return "Unique", ESP_UNIQUE_COLOR
 	end
 	return "Unknown", ESP_UNKNOWN_COLOR
