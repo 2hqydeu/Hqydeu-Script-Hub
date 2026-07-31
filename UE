@@ -408,7 +408,10 @@ AddFadeDivider(HeaderDivider)
 -- adding/removing rows never requires recomputing everything after it.
 local ContentScroll = Instance.new("ScrollingFrame")
 ContentScroll.Name = "ContentScroll"
-ContentScroll.Size = UDim2.new(1, 0, 1, -MINI_HEIGHT - 8)
+-- Extra 20px reserved at the bottom, on top of the header's own space, so the Auto Farm
+-- status text anchored to the panel's bottom edge never overlaps whatever row happens to
+-- be scrolled all the way down.
+ContentScroll.Size = UDim2.new(1, 0, 1, -MINI_HEIGHT - 8 - 20)
 ContentScroll.Position = UDim2.new(0, 0, 0, MINI_HEIGHT + 8)
 ContentScroll.BackgroundTransparency = 1
 ContentScroll.BorderSizePixel = 0
@@ -515,7 +518,9 @@ local function CreateFeatureRow(order, labelText, isNavButton)
 	row.Name = labelText:gsub("%s+", "") .. "Row"
 	row.LayoutOrder = order or nextRowOrder
 	nextRowOrder = math.max(nextRowOrder, row.LayoutOrder) + 1
-	row.Size = UDim2.new(1, 0, 0, 48)
+	-- Narrowed from full width -- otherwise the row's own right edge (and its rounded
+	-- corner) sits exactly where the scrollbar renders, getting visibly cut off by it.
+	row.Size = UDim2.new(1, -10, 0, 48)
 	row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 	row.BackgroundTransparency = GameRowTransparency
 	row.BorderSizePixel = 0
@@ -842,23 +847,26 @@ end
 -- (Box/Structures/Items/Mobs) and their type/rarity filters live inside that popup instead
 -- of on the page itself.
 local _, ESPToggle = CreateFeatureRow(96, "ESP", true)
-ESPToggle.Text = "Options"
+ESPToggle.Text = "Edit"
 
 -- Auto Farm: wired to the ported Auto Trap logic further down this file. The row is
 -- grown a bit taller than the standard feature row to fit a phase/kill-count status line.
 local AutoFarmRow, AutoFarmToggle = CreateFeatureRow(140, "Auto Farm")
-AutoFarmRow.Size = UDim2.new(1, 0, 0, 62)
+
+-- Just the plain status text, centered at the very bottom of the whole panel -- not tucked
+-- inside the Auto Farm row itself, and no background/container of its own.
 local AutoFarmStatus = Instance.new("TextLabel")
 AutoFarmStatus.Name = "Status"
+AutoFarmStatus.AnchorPoint = Vector2.new(0.5, 1)
 AutoFarmStatus.Size = UDim2.new(1, -24, 0, 14)
-AutoFarmStatus.Position = UDim2.new(0, 12, 0, 44)
+AutoFarmStatus.Position = UDim2.new(0.5, 0, 1, -8)
 AutoFarmStatus.BackgroundTransparency = 1
 AutoFarmStatus.Text = "0 cleared"
 AutoFarmStatus.Font = UIFont
 AutoFarmStatus.TextSize = 11
 AutoFarmStatus.TextColor3 = Color3.fromRGB(190, 190, 190)
-AutoFarmStatus.TextXAlignment = Enum.TextXAlignment.Left
-AutoFarmStatus.Parent = AutoFarmRow
+AutoFarmStatus.TextXAlignment = Enum.TextXAlignment.Center
+AutoFarmStatus.Parent = PanelFrame
 
 local _, NoDarknessToggle = CreateFeatureRow(198, "No Darkness")
 local NoDarknessEnabledUI = false
@@ -2697,7 +2705,7 @@ do
 		if not StructureNotificationsEnabled then ClearStructureAlerts() end
 	end)
 
-	-- ESP Options popup: opened by the ESP row's "Options" button. Built from the same
+	-- ESP Options popup: opened by the ESP row's "Edit" button. Built from the same
 	-- shared dock/card/chip helpers as the Auto Farm Pickup Filter popup, so both read as
 	-- one consistent design instead of two different one-off layouts -- each category
 	-- (Mobs/Box/Structures/Item) gets its own clearly separated card with a proper header.
@@ -2875,6 +2883,7 @@ local function ToggleMinimize()
 	minimized = not minimized
 	HeaderDivider.Visible = not minimized
 	ContentScroll.Visible = not minimized
+	AutoFarmStatus.Visible = not minimized
 	PanelFrame.Size = UDim2.new(0, 280, 0, minimized and MINI_HEIGHT or FULL_HEIGHT)
 end
 MinimizeButton.MouseButton1Click:Connect(ToggleMinimize)
