@@ -328,16 +328,17 @@ local ESPRow, ESPToggle = CreateFeatureRow(1, "ESP")
 -- ReplicatedStorage.AnomalyEvents.DisguiseReveals. Four independent signals, OR'd together:
 -- SkinwalkerOpensMouth.Apply() sets Transparency = 0 on {Gulp, Tooth, TongueMesh, Spit,
 -- Teeth} (normally 1/hidden) -- confirmed by the visible Tooth/TongueMesh you spotted on
--- "Lucy Acorns". DifferentEars.Apply reveals a pre-built "SecondEars" child in place of the
--- normal "Ears" one -- a real patient never has that extra child at all, so its mere
--- presence is enough on its own, no reveal needed. DifferentFace.Apply swaps a face part's
--- TextureID (OriginalFace, present on every patient, is what it restores on UnDo) -- a face
--- that no longer matches its own OriginalFace has been swapped by some reveal effect. And
--- every mesh/texture ID you found directly on confirmed threats in testing is checked
--- against every part on the model. The reveal itself is also gated by a
--- "CameraEffect"/"PhotoEffect" Attribute read directly off the model -- since Attributes
--- replicate the moment they're set server-side, reading it directly should catch the
--- threat even before ever pointing a camera at them.
+-- "Lucy Acorns". The reveal itself is also gated by a "CameraEffect"/"PhotoEffect"
+-- Attribute read directly off the model -- since Attributes replicate the moment they're
+-- set server-side, reading it directly should catch the threat even before ever pointing a
+-- camera at them. And the two face TextureIDs found directly on a confirmed threat in
+-- testing are checked against the specific face part.
+--
+-- Reverted back to this narrower version after the broadened one (checking a "SecondEars"
+-- child's mere presence, plus every mesh/texture ID against every part on the model) turned
+-- out to flag literally everyone as a Disguised Threat -- "SecondEars" apparently isn't
+-- exclusive to the real one the way DifferentEars.Apply's own logic implied. This is the
+-- version confirmed working correctly in testing before that regression.
 local ESP_PATIENT_COLOR = Color3.fromRGB(255, 255, 255)
 local ESP_VISITOR_COLOR = Color3.fromRGB(80, 220, 100)
 local ESP_ANOMALY_COLOR = Color3.fromRGB(255, 60, 60)
@@ -347,15 +348,9 @@ local ESP_UNKNOWN_COLOR = Color3.fromRGB(255, 210, 60)
 
 local SKINWALKER_PARTS = {"Gulp", "Tooth", "TongueMesh", "Spit", "Teeth"}
 local DISGUISE_ATTRIBUTES = {"CameraEffect", "CameraEffect2", "PhotoEffect", "PhotoEffect2"}
--- Every mesh/texture ID found directly on confirmed disguised NPCs in testing.
-local KNOWN_DISGUISE_ASSET_IDS = {
+local KNOWN_DISGUISE_FACE_IDS = {
 	["rbxassetid://117344367007423"] = true,
 	["rbxassetid://134031923875296"] = true,
-	["rbxassetid://104746459518421"] = true,
-	["rbxassetid://95314486238009"] = true,
-	["rbxassetid://126271528392546"] = true,
-	["rbxassetid://8666406942"] = true,
-	["rbxassetid://125294235208418"] = true,
 }
 
 local function HasDisguiseAttribute(model)
@@ -375,44 +370,22 @@ local function HasVisibleSkinwalkerParts(model)
 	return false
 end
 
--- A real patient never has this extra child at all -- its mere presence is the tell, no
--- reveal needed first.
-local function HasSecondEars(model)
-	return model:FindFirstChild("SecondEars") ~= nil
-end
-
--- Checked against every BasePart under the model (not just the obvious Head.002/Face)
--- since the known-bad IDs above span both mesh and ear assets, not just faces.
-local function HasSwappedOrKnownBadAsset(model)
+-- DifferentFace.Apply swaps a face MeshPart's TextureID and stashes the new value under a
+-- "SecondFace" attribute -- OriginalFace (present on every patient) is what it restores on
+-- UnDo, so a face that no longer matches its own OriginalFace has been swapped by *some*
+-- reveal effect, not just this specific one.
+local function HasSwappedOrKnownBadFace(model)
+	local facePart = model:FindFirstChild("Head.002") or model:FindFirstChild("Face")
+	if not facePart or not facePart:IsA("MeshPart") then return false end
+	local textureId = facePart.TextureID
+	if not textureId or textureId == "" then return false end
+	if KNOWN_DISGUISE_FACE_IDS[textureId] then return true end
 	local originalFace = model:GetAttribute("OriginalFace")
-	for _, descendant in ipairs(model:GetDescendants()) do
-		-- TextureID/MeshId only exist on MeshPart -- checking :IsA("BasePart") instead
-		-- (true for plain Parts too, e.g. RootPart/HumanoidRootPart) was throwing "not a
-		-- valid member" the instant it hit the first non-mesh part on any tracked model,
-		-- which aborted classification entirely and left every ESP label stuck reading its
-		-- untouched default "Label" text -- exactly what you saw.
-		if descendant:IsA("MeshPart") then
-			local textureId = descendant.TextureID
-			if textureId and textureId ~= "" then
-				if KNOWN_DISGUISE_ASSET_IDS[textureId] then return true end
-				if descendant.Name == "Head.002" and originalFace and originalFace ~= "" and textureId ~= originalFace then
-					return true
-				end
-			end
-			local meshId = descendant.MeshId
-			if meshId and meshId ~= "" and KNOWN_DISGUISE_ASSET_IDS[meshId] then
-				return true
-			end
-		end
-	end
-	return false
+	return originalFace ~= nil and originalFace ~= "" and textureId ~= originalFace
 end
 
 local function IsDisguisedThreat(model)
-	return HasDisguiseAttribute(model)
-		or HasVisibleSkinwalkerParts(model)
-		or HasSecondEars(model)
-		or HasSwappedOrKnownBadAsset(model)
+	return HasDisguiseAttribute(model) or HasVisibleSkinwalkerParts(model) or HasSwappedOrKnownBadFace(model)
 end
 
 -- Anomaly templates that behave like actual attacking NPCs -- tracked through
