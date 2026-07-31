@@ -3986,6 +3986,51 @@ CreateUtilityRow(ScriptsPage, 268, "Infinite Yield", "https://raw.githubusercont
 -- Hospital game row pushing everything below it down by one row's worth of space.
 ScriptsPage.CanvasSize = UDim2.new(0, 0, 0, 392)
 
+-- Shared vertical slide-in/out for the Settings/Favorites/Keybind Editor overlays, all of
+-- which share the same rest position. Settings enters from above and exits back up.
+-- Favorites enters from below but -- per explicit request -- always exits upward too, not
+-- back down the way it came in. Each overlay gets its own token so a rapid re-toggle can't
+-- leave an older tween fighting a newer one, same guard already used for the tab-switch
+-- slide further up this file.
+local OVERLAY_REST_POSITION = UDim2.new(0, 16, 0, HEADER_HEIGHT + 8)
+local overlaySlideTokens = {}
+local function SlideOverlayOpen(overlay, restPosition, enterFromAbove)
+	if overlay.Visible then return end
+	overlaySlideTokens[overlay] = (overlaySlideTokens[overlay] or 0) + 1
+	local myToken = overlaySlideTokens[overlay]
+	local travel = MainFrame.AbsoluteSize.Y
+	local startPosition = UDim2.new(
+		restPosition.X.Scale, restPosition.X.Offset,
+		restPosition.Y.Scale, restPosition.Y.Offset + (enterFromAbove and -travel or travel)
+	)
+	overlay.Position = startPosition
+	overlay.Visible = true
+	local tween = TweenService:Create(overlay, TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = restPosition})
+	tween:Play()
+	tween.Completed:Connect(function(state)
+		if state ~= Enum.PlaybackState.Completed or overlaySlideTokens[overlay] ~= myToken then return end
+		overlay.Position = restPosition
+	end)
+end
+
+local function SlideOverlayCloseUp(overlay, restPosition)
+	if not overlay.Visible then return end
+	overlaySlideTokens[overlay] = (overlaySlideTokens[overlay] or 0) + 1
+	local myToken = overlaySlideTokens[overlay]
+	local travel = MainFrame.AbsoluteSize.Y
+	local exitPosition = UDim2.new(
+		restPosition.X.Scale, restPosition.X.Offset,
+		restPosition.Y.Scale, restPosition.Y.Offset - travel
+	)
+	local tween = TweenService:Create(overlay, TweenInfo.new(0.24, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {Position = exitPosition})
+	tween:Play()
+	tween.Completed:Connect(function(state)
+		if state ~= Enum.PlaybackState.Completed or overlaySlideTokens[overlay] ~= myToken then return end
+		overlay.Visible = false
+		overlay.Position = restPosition
+	end)
+end
+
 -- Settings: Reset Character / Destroy Gui utility buttons (ported from the old hub) and
 -- the row-transparency control. DestroyGuiButton's click handler is wired further down,
 -- right after DestroyGui itself is defined -- that function doesn't exist yet at this
@@ -4017,11 +4062,11 @@ do
 	function OpenSettingsOverlay()
 		if CloseFavoritesOverlay then CloseFavoritesOverlay() end
 		if CloseKeybindEditorOverlay then CloseKeybindEditorOverlay() end
-		SettingsOverlay.Visible = true
+		SlideOverlayOpen(SettingsOverlay, OVERLAY_REST_POSITION, true)
 		SettingsBackButton.Visible = true
 	end
 	function CloseSettingsOverlay()
-		SettingsOverlay.Visible = false
+		SlideOverlayCloseUp(SettingsOverlay, OVERLAY_REST_POSITION)
 		SettingsBackButton.Visible = false
 	end
 	SettingsBackButton.MouseButton1Click:Connect(function()
@@ -4212,7 +4257,7 @@ do
 	LocalCountLabel.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 208)
 	LocalCountLabel.BackgroundTransparency = 1
 	LocalCountLabel.BorderSizePixel = 0
-	LocalCountLabel.Text = "149 / 200"
+	LocalCountLabel.Text = "153 / 200"
 	LocalCountLabel.Font = UIFont
 	LocalCountLabel.TextSize = 7
 	LocalCountLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
@@ -4265,7 +4310,7 @@ do
 	FavoritesTitle.Font = UIFont
 	FavoritesTitle.TextSize = 18
 	FavoritesTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-	FavoritesTitle.TextXAlignment = Enum.TextXAlignment.Left
+	FavoritesTitle.TextXAlignment = Enum.TextXAlignment.Center
 	FavoritesTitle.ZIndex = 20
 	FavoritesTitle.Parent = FavoritesPage
 
@@ -4274,15 +4319,17 @@ do
 
 	local EmptyLabel = Instance.new("TextLabel")
 	EmptyLabel.Name = "EmptyLabel"
-	EmptyLabel.Size = UDim2.new(1, 0, 0, 40)
-	EmptyLabel.Position = UDim2.new(0, 0, 0, FAVORITES_TOP)
+	EmptyLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+	EmptyLabel.Size = UDim2.new(0.8, 0, 0, 60)
+	EmptyLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
 	EmptyLabel.BackgroundTransparency = 1
 	EmptyLabel.Text = "No favorites yet -- right-click any feature and choose Yes to pin it here."
 	EmptyLabel.Font = UIFont
 	EmptyLabel.TextSize = 14
 	EmptyLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
 	EmptyLabel.TextWrapped = true
-	EmptyLabel.TextXAlignment = Enum.TextXAlignment.Left
+	EmptyLabel.TextXAlignment = Enum.TextXAlignment.Center
+	EmptyLabel.TextYAlignment = Enum.TextYAlignment.Center
 	EmptyLabel.ZIndex = 20
 	EmptyLabel.Parent = FavoritesPage
 
@@ -4372,12 +4419,14 @@ do
 	function OpenFavoritesOverlay()
 		if CloseSettingsOverlay then CloseSettingsOverlay() end
 		if CloseKeybindEditorOverlay then CloseKeybindEditorOverlay() end
-		FavoritesPage.Visible = true
+		-- Enters from below, unlike Settings/Keybind Editor which enter from above.
+		SlideOverlayOpen(FavoritesPage, OVERLAY_REST_POSITION, false)
 		SettingsBackButton.Visible = true
 		RefreshFavoritesView()
 	end
 	function CloseFavoritesOverlay()
-		FavoritesPage.Visible = false
+		-- Always exits upward (per explicit request), not back down the way it entered.
+		SlideOverlayCloseUp(FavoritesPage, OVERLAY_REST_POSITION)
 		SettingsBackButton.Visible = false
 		RestoreAllFavorites()
 	end
