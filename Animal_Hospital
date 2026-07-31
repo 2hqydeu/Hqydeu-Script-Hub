@@ -1,1 +1,488 @@
+-- Animal Hospital module for Serenity. Standalone shell, same pattern as UE/QOD/MM2 --
+-- no shared runtime/theme table to hook into, so this builds its own small panel matching
+-- the hub's look. First feature: ESP for patients and anomalies.
+--
+-- Classification (from reading the actual place file's client-replicated scripts, since
+-- there's no live game access to test against): CollectionService's "NPC" tag is the
+-- universal marker for every active patient/anomaly model in workspace. A confirmed real
+-- patient additionally carries GetAttribute("IsPatient") == true. A handful of anomaly
+-- types carry their own persistent identity tag, found the same way: HasTag("GhostAnomaly")
+-- (Ghost), HasTag("AnomalyShadow") (Shadow), HasTag("StalkerJumpscare") (Stalker),
+-- HasTag("TallMonsterSpawn") (Tall Monster), GetAttribute("IsSlimebert") (Slimebert).
+-- Everything else the bestiary lists (Mass of Eyes, Hiders, Ritual, Head Banger, Camera
+-- Monster, Bed Monster, Tentacles) has no client-readable signal findable this way, and
+-- Mimic/Skinwalker specifically -- the type designed to look exactly like a patient --
+-- only gets flagged to the client AFTER a server-triggered reveal (e.g. photographing it),
+-- which appears deliberate (there's even a paid "detect_skinwalker" gamepass built around
+-- that same mystery). An "NPC"-tagged model that doesn't match any known signal shows up
+-- as a yellow "Unknown" instead of being silently skipped or guessed at as a safe patient
+-- -- that in-between state is itself useful information (could be an early-stage visitor,
+-- could be a disguised Mimic) rather than false confidence either way.
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local CollectionService = game:GetService("CollectionService")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
 
+local Player = Players.LocalPlayer
+local FrameColor = Color3.fromRGB(3, 3, 3)
+local AccentColor = Color3.fromRGB(255, 255, 255)
+local UIFont = Enum.Font.FredokaOne
+local GameRowTransparency = 0
+
+-- UI: a small standalone panel, matching Serenity's look for consistency (same shell as
+-- UE/QOD/MM2). Re-running this script (Scripts tab's Execute/Open button re-executes the
+-- whole chunk every click, it never just no-ops on an already-open panel) used to stack a
+-- brand new ScreenGui on top of any already-open one instead of replacing it -- only one
+-- of THIS game's panel should ever exist at a time, so tear down a previous instance first.
+local existingScreenGui = CoreGui:FindFirstChild("SerenityAnimal_Hospital")
+if existingScreenGui then existingScreenGui:Destroy() end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "SerenityAnimal_Hospital"
+ScreenGui.Parent = CoreGui
+ScreenGui.ResetOnSpawn = false
+
+-- Standardized to the same 280x400 size as UE/QOD/MM2's panels, so one background image
+-- size covers every game window.
+local FULL_HEIGHT = 400
+local MINI_HEIGHT = 44
+
+local PanelFrame = Instance.new("Frame")
+PanelFrame.Name = "AHPanel"
+PanelFrame.Size = UDim2.new(0, 280, 0, FULL_HEIGHT)
+-- Reopening after closing re-runs this whole script fresh, which would otherwise always
+-- reset back to the centered default position -- getgenv() is the only thing that survives
+-- across separate executions, so the panel's last dragged spot gets remembered there
+-- (written to on every drag update below) and restored here if present.
+PanelFrame.Position = getgenv().Serenity_AH_PanelPosition or UDim2.new(0.5, -140, 0.5, -200)
+PanelFrame.AnchorPoint = Vector2.new(0, 0)
+PanelFrame.BackgroundColor3 = FrameColor
+PanelFrame.BorderSizePixel = 0
+PanelFrame.ClipsDescendants = true
+PanelFrame.Active = true
+PanelFrame.Parent = ScreenGui
+
+local PanelCorner = Instance.new("UICorner")
+PanelCorner.CornerRadius = UDim.new(0, 14)
+PanelCorner.Parent = PanelFrame
+
+-- Opens with a quick pop + fade instead of just appearing instantly. UIScale (unlike
+-- BackgroundTransparency) scales the whole rendered panel -- rows, buttons, everything
+-- underneath it -- uniformly, avoiding the "children don't fade with the parent" problem a
+-- plain transparency tween would hit (that's exactly what CanvasGroup was for over in the
+-- main hub, and it turned out to have its own rendering problems on the actual client --
+-- this sidesteps needing it here at all). PanelScale is reused by the close animation below.
+local PanelScale = Instance.new("UIScale")
+PanelScale.Scale = 0.85
+PanelScale.Parent = PanelFrame
+PanelFrame.BackgroundTransparency = 1
+TweenService:Create(PanelScale, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+TweenService:Create(PanelFrame, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0}):Play()
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Name = "TitleLabel"
+TitleLabel.Size = UDim2.new(0, 160, 0, 24)
+TitleLabel.Position = UDim2.new(0, 16, 0, 10)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "Animal Hospital"
+TitleLabel.Font = UIFont
+TitleLabel.TextSize = 15
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Parent = PanelFrame
+
+-- Small shared polish helpers -- hover brighten, a tactile press-down "squish", and a
+-- divider that fades out at both ends instead of a flat bar. Same visual pass as the main
+-- hub, ported here for a consistent feel across every panel.
+local function GetOrCreateUIScale(target)
+	local scale = target:FindFirstChildOfClass("UIScale")
+	if not scale then
+		scale = Instance.new("UIScale")
+		scale.Parent = target
+	end
+	return scale
+end
+
+local function AddPressBounce(button)
+	local scale = GetOrCreateUIScale(button)
+	local pressed = false
+	local function release()
+		if not pressed then return end
+		pressed = false
+		TweenService:Create(scale, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+	end
+	button.MouseButton1Down:Connect(function()
+		pressed = true
+		TweenService:Create(scale, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 0.8}):Play()
+	end)
+	button.MouseButton1Up:Connect(release)
+	button.MouseLeave:Connect(release)
+end
+
+local function AddFadeDivider(divider)
+	local gradient = Instance.new("UIGradient")
+	gradient.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(0.5, 0),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	gradient.Parent = divider
+end
+
+-- Traffic-light style, matching Serenity's own minimize/close circles: tiny plain colored
+-- circles (yellow = minimize, red = close), no glyph inside either -- a thin darker ring
+-- gives them definition without needing text.
+local MinimizeButton = Instance.new("TextButton")
+MinimizeButton.Name = "MinimizeButton"
+MinimizeButton.Size = UDim2.new(0, 12, 0, 12)
+MinimizeButton.Position = UDim2.new(1, -38, 0, 16)
+MinimizeButton.BackgroundColor3 = Color3.fromRGB(255, 189, 46)
+MinimizeButton.BorderSizePixel = 0
+MinimizeButton.Text = ""
+MinimizeButton.AutoButtonColor = false
+MinimizeButton.Parent = PanelFrame
+Instance.new("UICorner", MinimizeButton).CornerRadius = UDim.new(1, 0)
+local minimizeButtonStroke = Instance.new("UIStroke")
+minimizeButtonStroke.Color = Color3.fromRGB(196, 142, 20)
+minimizeButtonStroke.Thickness = 1
+minimizeButtonStroke.Parent = MinimizeButton
+MinimizeButton.MouseEnter:Connect(function()
+	TweenService:Create(MinimizeButton, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 205, 92)}):Play()
+end)
+MinimizeButton.MouseLeave:Connect(function()
+	TweenService:Create(MinimizeButton, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 189, 46)}):Play()
+end)
+AddPressBounce(MinimizeButton)
+
+local CloseButton = Instance.new("TextButton")
+CloseButton.Name = "CloseButton"
+CloseButton.Size = UDim2.new(0, 12, 0, 12)
+CloseButton.Position = UDim2.new(1, -20, 0, 16)
+CloseButton.BackgroundColor3 = Color3.fromRGB(255, 95, 87)
+CloseButton.BorderSizePixel = 0
+CloseButton.Text = ""
+CloseButton.AutoButtonColor = false
+CloseButton.Parent = PanelFrame
+Instance.new("UICorner", CloseButton).CornerRadius = UDim.new(1, 0)
+local closeButtonStroke = Instance.new("UIStroke")
+closeButtonStroke.Color = Color3.fromRGB(196, 68, 62)
+closeButtonStroke.Thickness = 1
+closeButtonStroke.Parent = CloseButton
+CloseButton.MouseEnter:Connect(function()
+	TweenService:Create(CloseButton, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 130, 123)}):Play()
+end)
+CloseButton.MouseLeave:Connect(function()
+	TweenService:Create(CloseButton, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 95, 87)}):Play()
+end)
+AddPressBounce(CloseButton)
+
+local HeaderDivider = Instance.new("Frame")
+HeaderDivider.Name = "HeaderDivider"
+HeaderDivider.Size = UDim2.new(1, 0, 0, 1)
+HeaderDivider.Position = UDim2.new(0, 0, 0, MINI_HEIGHT)
+HeaderDivider.BackgroundColor3 = AccentColor
+HeaderDivider.BackgroundTransparency = 0.85
+HeaderDivider.Parent = PanelFrame
+AddFadeDivider(HeaderDivider)
+
+-- Content scrolls (so extra features never get cut off by the fixed panel height) and every
+-- row is spaced out via UIListLayout instead of hand-placed Y offsets.
+local ContentScroll = Instance.new("ScrollingFrame")
+ContentScroll.Name = "ContentScroll"
+ContentScroll.Size = UDim2.new(1, 0, 1, -MINI_HEIGHT - 8)
+ContentScroll.Position = UDim2.new(0, 0, 0, MINI_HEIGHT + 8)
+ContentScroll.BackgroundTransparency = 1
+ContentScroll.BorderSizePixel = 0
+ContentScroll.ScrollBarThickness = 3
+ContentScroll.ScrollBarImageColor3 = AccentColor
+ContentScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+ContentScroll.ElasticBehavior = Enum.ElasticBehavior.Never
+ContentScroll.Parent = PanelFrame
+
+local ContentLayout = Instance.new("UIListLayout")
+ContentLayout.Padding = UDim.new(0, 12)
+ContentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ContentLayout.Parent = ContentScroll
+-- Manual canvas sizing (not AutomaticCanvasSize -- untested against this executor).
+ContentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	ContentScroll.CanvasSize = UDim2.new(0, 0, 0, ContentLayout.AbsoluteContentSize.Y + 16)
+end)
+
+local ContentPadding = Instance.new("UIPadding")
+ContentPadding.PaddingLeft = UDim.new(0, 16)
+ContentPadding.PaddingRight = UDim.new(0, 16)
+ContentPadding.PaddingTop = UDim.new(0, 4)
+ContentPadding.PaddingBottom = UDim.new(0, 12)
+ContentPadding.Parent = ContentScroll
+
+-- Pill-shaped On/Off switch (oval track + round knob, track fills with a light color when
+-- On), same as every other panel in this hub. Every toggle call site just does
+-- `toggle.Text = enabled and "On" or "Off"`, so this hooks that same Text property instead
+-- of needing every call site rewritten.
+local ToggleOffColor = Color3.fromRGB(24, 24, 24)
+local ToggleOnColor = Color3.fromRGB(178, 155, 235)
+local ToggleKnobColor = Color3.fromRGB(238, 233, 250)
+
+local function StyleAsToggleSwitch(toggle)
+	toggle.AutoButtonColor = false
+	toggle.TextTransparency = 1
+	toggle.BackgroundColor3 = ToggleOffColor
+	toggle.BackgroundTransparency = 0
+	Instance.new("UICorner", toggle).CornerRadius = UDim.new(1, 0)
+
+	local knobSize = toggle.Size.Y.Offset - 6
+	local knob = Instance.new("Frame")
+	knob.Name = "Knob"
+	knob.AnchorPoint = Vector2.new(0, 0.5)
+	knob.Size = UDim2.new(0, knobSize, 0, knobSize)
+	knob.Position = UDim2.new(0, 3, 0.5, 0)
+	knob.BackgroundColor3 = ToggleKnobColor
+	knob.BorderSizePixel = 0
+	knob.ZIndex = toggle.ZIndex + 1
+	knob.Parent = toggle
+	Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+	toggle:GetPropertyChangedSignal("ZIndex"):Connect(function() knob.ZIndex = toggle.ZIndex + 1 end)
+
+	local function Refresh(animate)
+		local on = toggle.Text == "On"
+		local trackColor = on and ToggleOnColor or ToggleOffColor
+		local knobPosition = on and UDim2.new(1, -3 - knobSize, 0.5, 0) or UDim2.new(0, 3, 0.5, 0)
+		if animate then
+			local tweenInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			TweenService:Create(toggle, tweenInfo, {BackgroundColor3 = trackColor}):Play()
+			TweenService:Create(knob, tweenInfo, {Position = knobPosition}):Play()
+		else
+			toggle.BackgroundColor3 = trackColor
+			knob.Position = knobPosition
+		end
+	end
+
+	toggle:GetPropertyChangedSignal("Text"):Connect(function() Refresh(true) end)
+	Refresh(false)
+end
+
+-- Feature row layout: label left, toggle right.
+local nextRowOrder = 1
+local function CreateFeatureRow(order, labelText, parent)
+	local row = Instance.new("Frame")
+	row.Name = labelText:gsub("%s+", "") .. "Row"
+	row.LayoutOrder = order or nextRowOrder
+	nextRowOrder = math.max(nextRowOrder, row.LayoutOrder) + 1
+	row.Size = UDim2.new(1, 0, 0, 48)
+	row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
+	row.BackgroundTransparency = GameRowTransparency
+	row.BorderSizePixel = 0
+	row.Parent = parent or ContentScroll
+	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+
+	local label = Instance.new("TextLabel")
+	label.Name = "Label"
+	label.Size = UDim2.new(0, 140, 1, 0)
+	label.Position = UDim2.new(0, 12, 0, 0)
+	label.BackgroundTransparency = 1
+	label.Text = labelText
+	label.Font = UIFont
+	label.TextSize = 14
+	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextYAlignment = Enum.TextYAlignment.Center
+	label.Parent = row
+
+	local toggle = Instance.new("TextButton")
+	toggle.Name = "Toggle"
+	toggle.Size = UDim2.new(0, 46, 0, 24)
+	toggle.Position = UDim2.new(1, -56, 0.5, -12)
+	toggle.BorderSizePixel = 0
+	toggle.Text = "Off"
+	toggle.Font = UIFont
+	toggle.TextSize = 14
+	toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+	toggle.Parent = row
+	StyleAsToggleSwitch(toggle)
+	AddPressBounce(toggle)
+
+	return row, toggle
+end
+
+local ESPRow, ESPToggle = CreateFeatureRow(1, "ESP")
+
+-- ESP -----------------------------------------------------------------------------------
+-- Colors/labels per classification. "Unknown" (yellow) covers any NPC-tagged model that
+-- doesn't match a known signal -- could be an early-stage visitor not yet checked in,
+-- could be a disguised Mimic with no pre-reveal tell -- rather than guessing either way.
+local ESP_PATIENT_COLOR = Color3.fromRGB(255, 255, 255)
+local ESP_ANOMALY_COLOR = Color3.fromRGB(255, 60, 60)
+local ESP_UNKNOWN_COLOR = Color3.fromRGB(255, 210, 60)
+
+-- Checked in order -- first match wins. Add more entries here as more anomaly types get a
+-- confirmed client-readable signal.
+local ANOMALY_SIGNALS = {
+	{label = "Ghost", tag = "GhostAnomaly"},
+	{label = "Shadow", tag = "AnomalyShadow"},
+	{label = "Stalker", tag = "StalkerJumpscare"},
+	{label = "Tall Monster", tag = "TallMonsterSpawn"},
+	{label = "Slimebert", attribute = "IsSlimebert"},
+}
+
+local function ClassifyNPC(model)
+	if model:GetAttribute("IsPatient") == true then
+		return "Patient", ESP_PATIENT_COLOR
+	end
+	for _, signal in ipairs(ANOMALY_SIGNALS) do
+		if signal.tag and model:HasTag(signal.tag) then
+			return signal.label, ESP_ANOMALY_COLOR
+		end
+		if signal.attribute and model:GetAttribute(signal.attribute) then
+			return signal.label, ESP_ANOMALY_COLOR
+		end
+	end
+	return "Unknown", ESP_UNKNOWN_COLOR
+end
+
+local espEnabled = false
+local espTracked = {} -- model -> {Highlight, Billboard, Label, AncestryConn}
+
+local function RemoveESPFromModel(model)
+	local entry = espTracked[model]
+	if not entry then return end
+	if entry.AncestryConn then entry.AncestryConn:Disconnect() end
+	if entry.Highlight then entry.Highlight:Destroy() end
+	if entry.Billboard then entry.Billboard:Destroy() end
+	espTracked[model] = nil
+end
+
+local function AddESPToModel(model)
+	if espTracked[model] then return end
+	if not model:IsA("Model") then return end
+	local adornPart = model:FindFirstChild("Head") or model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
+	if not adornPart then return end
+
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "SerenityESP"
+	highlight.FillTransparency = 1
+	highlight.OutlineTransparency = 0
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.Adornee = model
+	highlight.Parent = model
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "SerenityESPLabel"
+	billboard.Adornee = adornPart
+	billboard.Size = UDim2.new(0, 160, 0, 24)
+	billboard.StudsOffset = Vector3.new(0, 1.6, 0)
+	billboard.AlwaysOnTop = true
+	billboard.Parent = model
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.BackgroundTransparency = 1
+	label.Font = UIFont
+	label.TextSize = 16
+	label.TextStrokeTransparency = 0
+	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	label.Parent = billboard
+
+	local entry = {Highlight = highlight, Billboard = billboard, Label = label}
+	espTracked[model] = entry
+
+	entry.AncestryConn = model.AncestryChanged:Connect(function(_, parent)
+		if not parent then RemoveESPFromModel(model) end
+	end)
+end
+
+-- Classification can change after a model's already tracked (patients gain IsPatient once
+-- checked in, an anomaly type's tag can get added after it activates), so this re-checks
+-- every tracked model on a light throttle instead of wiring per-attribute signals for each
+-- one -- simpler, and cheap at the handful of NPCs this game has active at once.
+local lastClassifyPass = 0
+local function RefreshESPClassifications()
+	local now = os.clock()
+	if now - lastClassifyPass < 0.25 then return end
+	lastClassifyPass = now
+	for model, entry in pairs(espTracked) do
+		if model.Parent then
+			local classification, color = ClassifyNPC(model)
+			if entry.Label.Text ~= classification then
+				entry.Label.Text = classification
+				entry.Label.TextColor3 = color
+				entry.Highlight.OutlineColor = color
+			end
+		end
+	end
+end
+
+local npcTagConnections = {}
+local function StartESP()
+	for _, model in ipairs(CollectionService:GetTagged("NPC")) do
+		AddESPToModel(model)
+	end
+	table.insert(npcTagConnections, CollectionService:GetInstanceAddedSignal("NPC"):Connect(AddESPToModel))
+	table.insert(npcTagConnections, CollectionService:GetInstanceRemovedSignal("NPC"):Connect(RemoveESPFromModel))
+end
+
+local function StopESP()
+	for _, connection in ipairs(npcTagConnections) do connection:Disconnect() end
+	npcTagConnections = {}
+	for model in pairs(espTracked) do RemoveESPFromModel(model) end
+end
+
+RunService.Heartbeat:Connect(function()
+	if not ScreenGui.Parent or not espEnabled then return end
+	RefreshESPClassifications()
+end)
+
+ESPToggle.MouseButton1Click:Connect(function()
+	espEnabled = not espEnabled
+	ESPToggle.Text = espEnabled and "On" or "Off"
+	if espEnabled then StartESP() else StopESP() end
+end)
+
+-- Minimize: shrinks to just the header, matching Serenity's own minimize behavior. Every
+-- row lives inside ContentScroll now, so hiding that one frame is enough.
+local minimized = false
+local function ToggleMinimize()
+	minimized = not minimized
+	HeaderDivider.Visible = not minimized
+	ContentScroll.Visible = not minimized
+	PanelFrame.Size = UDim2.new(0, 280, 0, minimized and MINI_HEIGHT or FULL_HEIGHT)
+end
+MinimizeButton.MouseButton1Click:Connect(ToggleMinimize)
+
+-- Plays the reverse of the open animation (pop + fade out) before actually destroying,
+-- instead of just vanishing -- debounced so a double-click mid-fade can't fire this twice.
+local closingPanel = false
+CloseButton.MouseButton1Click:Connect(function()
+	if closingPanel then return end
+	closingPanel = true
+	StopESP()
+	local fadeOutInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	TweenService:Create(PanelScale, fadeOutInfo, {Scale = 0.85}):Play()
+	local fadeOutTween = TweenService:Create(PanelFrame, fadeOutInfo, {BackgroundTransparency = 1})
+	fadeOutTween:Play()
+	fadeOutTween.Completed:Wait()
+	ScreenGui:Destroy()
+end)
+
+-- Dragging
+local dragging = false
+local dragStart = nil
+local startPos = nil
+PanelFrame.InputBegan:Connect(function(input)
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+	dragging = true
+	dragStart = input.Position
+	startPos = PanelFrame.Position
+	input.Changed:Connect(function()
+		if input.UserInputState == Enum.UserInputState.End then
+			dragging = false
+		end
+	end)
+end)
+UserInputService.InputChanged:Connect(function(input)
+	if not dragging or (input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch) then return end
+	local delta = input.Position - dragStart
+	PanelFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	getgenv().Serenity_AH_PanelPosition = PanelFrame.Position
+end)
