@@ -384,8 +384,29 @@ local function HasSwappedOrKnownBadFace(model)
 	return originalFace ~= nil and originalFace ~= "" and textureId ~= originalFace
 end
 
+-- Unconfirmed lead (flagged as such, not verified) -- an exaggerated stutter/jitter
+-- animation you spotted on an Unknown NPC you believed was the real threat. Checked as an
+-- extra OR'd signal since it costs nothing if it turns out to be wrong (never matches,
+-- changes nothing) but could catch exactly the jittering-Unknown case that's currently the
+-- only one slipping through.
+local JITTER_ANIMATION_ID = "rbxassetid://113812248601150"
+local function IsPlayingJitterAnimation(model)
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
+	if not animator then return false end
+	for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+		if track.Animation and track.Animation.AnimationId == JITTER_ANIMATION_ID then
+			return true
+		end
+	end
+	return false
+end
+
 local function IsDisguisedThreat(model)
-	return HasDisguiseAttribute(model) or HasVisibleSkinwalkerParts(model) or HasSwappedOrKnownBadFace(model)
+	return HasDisguiseAttribute(model)
+		or HasVisibleSkinwalkerParts(model)
+		or HasSwappedOrKnownBadFace(model)
+		or IsPlayingJitterAnimation(model)
 end
 
 -- Anomaly templates that behave like actual attacking NPCs -- tracked through
@@ -402,10 +423,12 @@ local ANOMALY_SIGNALS = {
 }
 
 -- Anomaly templates that are room-placed hazards/props instead -- never touch
--- workspace.NPCs, watched workspace-wide by name below.
+-- workspace.NPCs, watched workspace-wide by name below. Slime (workspace.Misc.Slime)
+-- included even though it lives outside workspace.Misc specifically rather than NPCs --
+-- the workspace-wide name scan below doesn't care which folder it's actually in.
 local EVENT_ANOMALY_NAMES = {
 	Shadow = true, EyeMass = true, Candles = true, Hider = true,
-	MonsterBed = true, MonsterBedLarge = true,
+	MonsterBed = true, MonsterBedLarge = true, Slime = true,
 }
 local EVENT_ANOMALY_SIGNALS = {
 	{label = "Shadow", tag = "AnomalyShadow"},
@@ -420,14 +443,13 @@ local UNIQUE_VISITOR_NAMES = {
 }
 
 -- Returns label, color, and a category key (used by the ESP Options popup's per-category
--- toggles further down) -- checked most-dangerous-first so a Disguised Threat never gets
--- reported as a plain Patient just because it also happens to carry IsPatient.
+-- toggles further down). Confirmed name/tag matches are checked BEFORE the Disguised Threat
+-- heuristic now, not after -- Hider (an Event, identified purely by name) was flickering
+-- between "Hider" and "Disguised Threat" because its own rig apparently trips one of the
+-- disguise heuristics on its own sometimes. A confident name/tag match should always win
+-- over a heuristic guess; the heuristic is really only meant to catch things that AREN'T
+-- already identifiable another way (a patient secretly being the real threat).
 local function ClassifyInstance(instance)
-	if instance:IsA("Model") and IsDisguisedThreat(instance) then
-		-- Same "anomaly" category as everything else red -- combined per your request so
-		-- there's one Anomalies toggle covering both instead of a separate Disguise one.
-		return "Disguised Threat", ESP_ANOMALY_COLOR, "anomaly"
-	end
 	if NPC_ANOMALY_NAMES[instance.Name] then
 		return instance.Name, ESP_ANOMALY_COLOR, "anomaly"
 	end
@@ -446,6 +468,11 @@ local function ClassifyInstance(instance)
 		if signal.tag and instance:HasTag(signal.tag) then
 			return signal.label, ESP_EVENT_COLOR, "event"
 		end
+	end
+	if instance:IsA("Model") and IsDisguisedThreat(instance) then
+		-- Same "anomaly" category as everything else red -- combined per your request so
+		-- there's one Anomalies toggle covering both instead of a separate Disguise one.
+		return "Disguised Threat", ESP_ANOMALY_COLOR, "anomaly"
 	end
 	if instance:GetAttribute("IsPatient") == true then
 		return "Patient", ESP_PATIENT_COLOR, "patient"
@@ -558,6 +585,22 @@ local function RefreshESPClassifications()
 	lastClassifyPass = now
 	for instance, entry in pairs(espTracked) do
 		if instance.Parent then
+			-- Self-heal the outline if something destroyed it out from under this instance
+			-- without the instance itself going anywhere -- likely cause of the outline
+			-- vanishing (while the label stayed put) specifically when patients lie down in
+			-- a bed: the game has its own built-in "PatientHighlight" Highlight on some
+			-- rigs, and bed logic that clears ITS OWN highlight by class rather than by name
+			-- would take this one down too as an innocent bystander sitting right next to it.
+			if not entry.Highlight or not entry.Highlight.Parent then
+				local highlight = Instance.new("Highlight")
+				highlight.Name = "SerenityESP"
+				highlight.FillTransparency = 1
+				highlight.OutlineTransparency = 0
+				highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+				highlight.Adornee = instance
+				highlight.Parent = instance
+				entry.Highlight = highlight
+			end
 			-- pcall'd so one bad instance erroring can't silently kill classification for
 			-- everything else tracked -- exactly what the MeshPart/BasePart bug above did.
 			local ok, classification, color, category = pcall(ClassifyInstance, instance)
@@ -565,8 +608,8 @@ local function RefreshESPClassifications()
 				if entry.Label.Text ~= classification then
 					entry.Label.Text = classification
 					entry.Label.TextColor3 = color
-					entry.Highlight.OutlineColor = color
 				end
+				entry.Highlight.OutlineColor = color
 				entry.Category = category
 				local visible = espShow[category] ~= false
 				entry.Highlight.Enabled = visible
