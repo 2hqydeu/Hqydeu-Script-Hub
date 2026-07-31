@@ -272,7 +272,9 @@ local function CreateFeatureRow(order, labelText, parent)
 	row.Name = labelText:gsub("%s+", "") .. "Row"
 	row.LayoutOrder = order or nextRowOrder
 	nextRowOrder = math.max(nextRowOrder, row.LayoutOrder) + 1
-	row.Size = UDim2.new(1, 0, 0, 48)
+	-- Narrowed from full width -- otherwise the row's own right edge (and its rounded
+	-- corner) sits exactly where the scrollbar renders, getting visibly cut off by it.
+	row.Size = UDim2.new(1, -10, 0, 48)
 	row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 	row.BackgroundTransparency = GameRowTransparency
 	row.BorderSizePixel = 0
@@ -384,7 +386,12 @@ end
 local function HasSwappedOrKnownBadAsset(model)
 	local originalFace = model:GetAttribute("OriginalFace")
 	for _, descendant in ipairs(model:GetDescendants()) do
-		if descendant:IsA("BasePart") then
+		-- TextureID/MeshId only exist on MeshPart -- checking :IsA("BasePart") instead
+		-- (true for plain Parts too, e.g. RootPart/HumanoidRootPart) was throwing "not a
+		-- valid member" the instant it hit the first non-mesh part on any tracked model,
+		-- which aborted classification entirely and left every ESP label stuck reading its
+		-- untouched default "Label" text -- exactly what you saw.
+		if descendant:IsA("MeshPart") then
 			local textureId = descendant.TextureID
 			if textureId and textureId ~= "" then
 				if KNOWN_DISGUISE_ASSET_IDS[textureId] then return true end
@@ -444,7 +451,9 @@ local UNIQUE_VISITOR_NAMES = {
 -- reported as a plain Patient just because it also happens to carry IsPatient.
 local function ClassifyInstance(instance)
 	if instance:IsA("Model") and IsDisguisedThreat(instance) then
-		return "Disguised Threat", ESP_ANOMALY_COLOR, "disguise"
+		-- Same "anomaly" category as everything else red -- combined per your request so
+		-- there's one Anomalies toggle covering both instead of a separate Disguise one.
+		return "Disguised Threat", ESP_ANOMALY_COLOR, "anomaly"
 	end
 	if NPC_ANOMALY_NAMES[instance.Name] then
 		return instance.Name, ESP_ANOMALY_COLOR, "anomaly"
@@ -480,7 +489,7 @@ end
 -- Per-category show/hide, wired up by the ESP Options popup further down -- declared this
 -- early (before anything that reads it as an upvalue) since Lua locals only apply to code
 -- after their own declaration in the same block.
-local espShow = {patient = true, visitor = true, anomaly = true, event = true, unique = true, disguise = true, unknown = true}
+local espShow = {patient = true, visitor = true, anomaly = true, event = true, unique = true, unknown = true}
 
 local espEnabled = false
 local espTracked = {} -- instance -> {Highlight, Billboard, Label, Category, AncestryConn}
@@ -576,16 +585,20 @@ local function RefreshESPClassifications()
 	lastClassifyPass = now
 	for instance, entry in pairs(espTracked) do
 		if instance.Parent then
-			local classification, color, category = ClassifyInstance(instance)
-			if entry.Label.Text ~= classification then
-				entry.Label.Text = classification
-				entry.Label.TextColor3 = color
-				entry.Highlight.OutlineColor = color
+			-- pcall'd so one bad instance erroring can't silently kill classification for
+			-- everything else tracked -- exactly what the MeshPart/BasePart bug above did.
+			local ok, classification, color, category = pcall(ClassifyInstance, instance)
+			if ok then
+				if entry.Label.Text ~= classification then
+					entry.Label.Text = classification
+					entry.Label.TextColor3 = color
+					entry.Highlight.OutlineColor = color
+				end
+				entry.Category = category
+				local visible = espShow[category] ~= false
+				entry.Highlight.Enabled = visible
+				entry.Billboard.Enabled = visible
 			end
-			entry.Category = category
-			local visible = espShow[category] ~= false
-			entry.Highlight.Enabled = visible
-			entry.Billboard.Enabled = visible
 		end
 	end
 end
@@ -641,9 +654,12 @@ ESPToggle.MouseButton1Click:Connect(function()
 	if espEnabled then StartESP() else StopESP() end
 end)
 
--- ESP Options: same Edit-button-opens-a-popup pattern as Auto Farm's Edit button, holding
--- one on/off toggle per category (NPC and Events, kept visually separate) so any category
--- can be hidden without turning ESP off entirely.
+-- ESP Options: an inline section that expands directly under the ESP row instead of a
+-- floating centered popup -- everything else in the list (and the options themselves)
+-- stays visible and in place instead of getting covered up. AutomaticSize.Y plus toggling
+-- Visible is the same "let UIListLayout handle the reflow" trick as the Keybind Editor's
+-- own collapsible sections back in the main hub -- hiding a child makes UIListLayout treat
+-- it as zero-height automatically, no manual resize math needed.
 local ESPEditButton = Instance.new("TextButton")
 ESPEditButton.Name = "EditButton"
 ESPEditButton.Size = UDim2.new(0, 44, 0, 26)
@@ -659,80 +675,31 @@ ESPEditButton.Parent = ESPRow
 Instance.new("UICorner", ESPEditButton).CornerRadius = UDim.new(1, 0)
 AddPressBounce(ESPEditButton)
 
-local ESP_POPUP_WIDTH, ESP_POPUP_HEIGHT = 220, 300
-local ESPOptionsPopup = Instance.new("Frame")
-ESPOptionsPopup.Name = "ESPOptionsPopup"
-ESPOptionsPopup.AnchorPoint = Vector2.new(0.5, 0.5)
-ESPOptionsPopup.Size = UDim2.new(0, ESP_POPUP_WIDTH, 0, ESP_POPUP_HEIGHT)
-ESPOptionsPopup.Position = UDim2.new(0.5, 0, 0.5, 0)
-ESPOptionsPopup.BackgroundColor3 = FrameColor
-ESPOptionsPopup.BorderSizePixel = 0
-ESPOptionsPopup.Visible = false
-ESPOptionsPopup.ZIndex = 40
-ESPOptionsPopup.Parent = ScreenGui
-Instance.new("UICorner", ESPOptionsPopup).CornerRadius = UDim.new(0, 10)
-local espOptionsStroke = Instance.new("UIStroke")
-espOptionsStroke.Color = AccentColor
-espOptionsStroke.Thickness = 1
-espOptionsStroke.Transparency = 0.4
-espOptionsStroke.Parent = ESPOptionsPopup
+local ESPOptionsContainer = Instance.new("Frame")
+ESPOptionsContainer.Name = "ESPOptionsContainer"
+ESPOptionsContainer.LayoutOrder = 2
+ESPOptionsContainer.Size = UDim2.new(1, -10, 0, 0)
+ESPOptionsContainer.AutomaticSize = Enum.AutomaticSize.Y
+ESPOptionsContainer.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
+ESPOptionsContainer.BackgroundTransparency = GameRowTransparency
+ESPOptionsContainer.BorderSizePixel = 0
+ESPOptionsContainer.Visible = false
+ESPOptionsContainer.Parent = ContentScroll
+Instance.new("UICorner", ESPOptionsContainer).CornerRadius = UDim.new(0, 8)
 
-local ESPOptionsTitle = Instance.new("TextLabel")
-ESPOptionsTitle.Size = UDim2.new(1, -40, 0, 26)
-ESPOptionsTitle.Position = UDim2.new(0, 12, 0, 4)
-ESPOptionsTitle.BackgroundTransparency = 1
-ESPOptionsTitle.Text = "ESP Options"
-ESPOptionsTitle.Font = UIFont
-ESPOptionsTitle.TextSize = 14
-ESPOptionsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-ESPOptionsTitle.TextXAlignment = Enum.TextXAlignment.Left
-ESPOptionsTitle.ZIndex = 41
-ESPOptionsTitle.Parent = ESPOptionsPopup
+local ESPOptionsPadding = Instance.new("UIPadding")
+ESPOptionsPadding.PaddingTop = UDim.new(0, 10)
+ESPOptionsPadding.PaddingBottom = UDim.new(0, 10)
+ESPOptionsPadding.PaddingLeft = UDim.new(0, 10)
+ESPOptionsPadding.PaddingRight = UDim.new(0, 10)
+ESPOptionsPadding.Parent = ESPOptionsContainer
 
--- Traffic-light style, matching Serenity's own close circle.
-local ESPOptionsClose = Instance.new("TextButton")
-ESPOptionsClose.Size = UDim2.new(0, 12, 0, 12)
-ESPOptionsClose.Position = UDim2.new(1, -20, 0, 11)
-ESPOptionsClose.BackgroundColor3 = Color3.fromRGB(255, 95, 87)
-ESPOptionsClose.BorderSizePixel = 0
-ESPOptionsClose.Text = ""
-ESPOptionsClose.AutoButtonColor = false
-ESPOptionsClose.ZIndex = 41
-ESPOptionsClose.Parent = ESPOptionsPopup
-Instance.new("UICorner", ESPOptionsClose).CornerRadius = UDim.new(1, 0)
-local espOptionsCloseStroke = Instance.new("UIStroke")
-espOptionsCloseStroke.Color = Color3.fromRGB(196, 68, 62)
-espOptionsCloseStroke.Thickness = 1
-espOptionsCloseStroke.Parent = ESPOptionsClose
-ESPOptionsClose.MouseEnter:Connect(function()
-	TweenService:Create(ESPOptionsClose, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 130, 123)}):Play()
-end)
-ESPOptionsClose.MouseLeave:Connect(function()
-	TweenService:Create(ESPOptionsClose, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 95, 87)}):Play()
-end)
-AddPressBounce(ESPOptionsClose)
+local ESPOptionsLayout = Instance.new("UIListLayout")
+ESPOptionsLayout.Padding = UDim.new(0, 8)
+ESPOptionsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ESPOptionsLayout.Parent = ESPOptionsContainer
 
-local ESPOptionsScroll = Instance.new("ScrollingFrame")
-ESPOptionsScroll.Size = UDim2.new(1, -16, 1, -38)
-ESPOptionsScroll.Position = UDim2.new(0, 8, 0, 34)
-ESPOptionsScroll.BackgroundTransparency = 1
-ESPOptionsScroll.BorderSizePixel = 0
-ESPOptionsScroll.ScrollBarThickness = 3
-ESPOptionsScroll.ScrollBarImageColor3 = AccentColor
-ESPOptionsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-ESPOptionsScroll.ElasticBehavior = Enum.ElasticBehavior.Never
-ESPOptionsScroll.ZIndex = 41
-ESPOptionsScroll.Parent = ESPOptionsPopup
-
-local espOptionsLayout = Instance.new("UIListLayout")
-espOptionsLayout.Padding = UDim.new(0, 8)
-espOptionsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-espOptionsLayout.Parent = ESPOptionsScroll
-espOptionsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-	ESPOptionsScroll.CanvasSize = UDim2.new(0, 0, 0, espOptionsLayout.AbsoluteContentSize.Y + 12)
-end)
-
--- Plain section divider (not a toggle) -- explicit LayoutOrder throughout this popup
+-- Plain section divider (not a toggle) -- explicit LayoutOrder throughout this section
 -- instead of CreateFeatureRow's own auto-incrementing counter, so the two headings land
 -- exactly where they belong relative to the toggle rows around them.
 local function CreateESPOptionsHeading(order, text)
@@ -746,35 +713,22 @@ local function CreateESPOptionsHeading(order, text)
 	heading.TextSize = 13
 	heading.TextColor3 = Color3.fromRGB(190, 190, 190)
 	heading.TextXAlignment = Enum.TextXAlignment.Left
-	heading.ZIndex = 41
-	heading.Parent = ESPOptionsScroll
+	heading.Parent = ESPOptionsContainer
 	return heading
 end
 
 CreateESPOptionsHeading(1, "NPC")
-local PatientOptRow, PatientOptToggle = CreateFeatureRow(2, "Patients", ESPOptionsScroll)
-local VisitorOptRow, VisitorOptToggle = CreateFeatureRow(3, "Visitors", ESPOptionsScroll)
-local AnomalyOptRow, AnomalyOptToggle = CreateFeatureRow(4, "Anomalies", ESPOptionsScroll)
-local UniqueOptRow, UniqueOptToggle = CreateFeatureRow(5, "Unique", ESPOptionsScroll)
-local DisguiseOptRow, DisguiseOptToggle = CreateFeatureRow(6, "Disguise", ESPOptionsScroll)
-local UnknownOptRow, UnknownOptToggle = CreateFeatureRow(7, "Unknown", ESPOptionsScroll)
-CreateESPOptionsHeading(8, "Events")
-local EventOptRow, EventOptToggle = CreateFeatureRow(9, "Events", ESPOptionsScroll)
+-- Anomalies and Disguised Threats share one "anomaly" category (see ClassifyInstance
+-- above) -- combined into a single toggle here to match, instead of a separate one for each.
+local PatientOptRow, PatientOptToggle = CreateFeatureRow(2, "Patients", ESPOptionsContainer)
+local VisitorOptRow, VisitorOptToggle = CreateFeatureRow(3, "Visitors", ESPOptionsContainer)
+local AnomalyOptRow, AnomalyOptToggle = CreateFeatureRow(4, "Anomalies", ESPOptionsContainer)
+local UniqueOptRow, UniqueOptToggle = CreateFeatureRow(5, "Unique", ESPOptionsContainer)
+local UnknownOptRow, UnknownOptToggle = CreateFeatureRow(6, "Unknown", ESPOptionsContainer)
+CreateESPOptionsHeading(7, "Events")
+local EventOptRow, EventOptToggle = CreateFeatureRow(8, "Events", ESPOptionsContainer)
 
--- CreateFeatureRow's Label/Toggle (and their UICorners) never get a ZIndex of their own,
--- so bumping only the row itself would leave them sitting under this ZIndex-41 popup --
--- invisible. Bump every descendant, not just the row.
-local function BumpZIndex(instance, zIndex)
-	instance.ZIndex = zIndex
-	for _, descendant in ipairs(instance:GetDescendants()) do
-		if descendant:IsA("GuiObject") then descendant.ZIndex = zIndex end
-	end
-end
-for _, row in ipairs({PatientOptRow, VisitorOptRow, AnomalyOptRow, UniqueOptRow, DisguiseOptRow, UnknownOptRow, EventOptRow}) do
-	BumpZIndex(row, 41)
-end
-
--- All seven categories default on -- CreateFeatureRow's own rows always start at "Off", so
+-- All six categories default on -- CreateFeatureRow's own rows always start at "Off", so
 -- flip these to "On" up front to match espShow's own defaults (this re-triggers each
 -- toggle's Refresh(true) tween into place, which is harmless at load).
 local function WireESPOptionToggle(toggle, key)
@@ -789,26 +743,11 @@ WireESPOptionToggle(PatientOptToggle, "patient")
 WireESPOptionToggle(VisitorOptToggle, "visitor")
 WireESPOptionToggle(AnomalyOptToggle, "anomaly")
 WireESPOptionToggle(UniqueOptToggle, "unique")
-WireESPOptionToggle(DisguiseOptToggle, "disguise")
 WireESPOptionToggle(UnknownOptToggle, "unknown")
 WireESPOptionToggle(EventOptToggle, "event")
 
--- Locked to the panel's position -- centered directly over it and follows it whenever the
--- panel itself gets dragged, instead of being independently movable.
-local function SyncESPOptionsPosition()
-	ESPOptionsPopup.Position = UDim2.new(
-		0.5, PanelFrame.Position.X.Offset + PanelFrame.Size.X.Offset / 2,
-		0.5, PanelFrame.Position.Y.Offset + PanelFrame.Size.Y.Offset / 2
-	)
-end
-SyncESPOptionsPosition()
-PanelFrame:GetPropertyChangedSignal("Position"):Connect(SyncESPOptionsPosition)
-
 ESPEditButton.MouseButton1Click:Connect(function()
-	ESPOptionsPopup.Visible = not ESPOptionsPopup.Visible
-end)
-ESPOptionsClose.MouseButton1Click:Connect(function()
-	ESPOptionsPopup.Visible = false
+	ESPOptionsContainer.Visible = not ESPOptionsContainer.Visible
 end)
 
 -- Minimize: shrinks to just the header, matching Serenity's own minimize behavior. Every
@@ -819,9 +758,9 @@ local function ToggleMinimize()
 	HeaderDivider.Visible = not minimized
 	ContentScroll.Visible = not minimized
 	PanelFrame.Size = UDim2.new(0, 280, 0, minimized and MINI_HEIGHT or FULL_HEIGHT)
-	-- The popup's docked position is derived from the panel's own height, so just close it
-	-- on minimize rather than leaving it mis-centered against the collapsed panel.
-	if minimized then ESPOptionsPopup.Visible = false end
+	-- Collapse the ESP Options section on minimize instead of leaving it expanded (and
+	-- wasting space) once the panel gets restored.
+	if minimized then ESPOptionsContainer.Visible = false end
 end
 MinimizeButton.MouseButton1Click:Connect(ToggleMinimize)
 
