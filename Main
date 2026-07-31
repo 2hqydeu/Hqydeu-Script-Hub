@@ -9,24 +9,24 @@ local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
 local ContextActionService = game:GetService("ContextActionService")
 
-local Player = Players.LocalPlayer
+Player = Players.LocalPlayer
 -- Darker than the (14,14,14) rows sitting on top of it, so there's plain flat-color
 -- contrast between window and row instead of relying on any transparency/gradient blend.
-local FrameColor = Color3.fromRGB(3, 3, 3)
-local AccentColor = Color3.fromRGB(255, 255, 255)
-local UIFont = Enum.Font.FredokaOne -- more playful/rounded than Ubuntu, per request
+FrameColor = Color3.fromRGB(3, 3, 3)
+AccentColor = Color3.fromRGB(255, 255, 255)
+UIFont = Enum.Font.FredokaOne -- more playful/rounded than Ubuntu, per request
 -- Shared "on" purple -- the toggle switches fill with this when On, and the selected tab
 -- pill uses the same color so the two visual languages match.
-local ToggleOffColor = Color3.fromRGB(24, 24, 24)
-local ToggleOnColor = Color3.fromRGB(178, 155, 235)
-local ToggleKnobColor = Color3.fromRGB(238, 233, 250)
+ToggleOffColor = Color3.fromRGB(24, 24, 24)
+ToggleOnColor = Color3.fromRGB(178, 155, 235)
+ToggleKnobColor = Color3.fromRGB(238, 233, 250)
 
 -- Feature keybinds (Speed/Jump/Fly only -- minimize stays hardcoded to Left Control)
 -- persist across executions via a small settings file; the toggle *state* does not, so
 -- every feature still starts Off each run and has to be turned on again.
-local KeybindStorageFile = "Serenity_Keybinds.json"
-local SavedKeybinds = {}
-local CanPersistKeybinds = type(isfile) == "function" and type(readfile) == "function" and type(writefile) == "function"
+KeybindStorageFile = "Serenity_Keybinds.json"
+SavedKeybinds = {}
+CanPersistKeybinds = type(isfile) == "function" and type(readfile) == "function" and type(writefile) == "function"
 function LoadSettingsFromGenv()
 	if type(getgenv) == "function" then
 		local globalSettings = getgenv().Serenity_Settings
@@ -108,32 +108,32 @@ end
 
 -- True while any keybind rebind capture is in progress, so the global toggle-listener
 -- below doesn't also react to whatever key gets pressed to set the bind.
-local bindingInProgress = false
+bindingInProgress = false
 
 -- Connections that aren't tied to a single feature (currently just the Teleport tab's
 -- waypoint hover/select loop) get dumped in here and disconnected as a batch in
 -- DestroyGui, instead of each needing its own named forward-declared local.
-local looseConnections = {}
+looseConnections = {}
 
 -- Fixed, fully opaque -- rows are their own flat dark color with no see-through blending;
 -- contrast against the window comes from the window's own background being darker still,
 -- not from transparency.
-local RowTransparencyValue = 0
+RowTransparencyValue = 0
 
 -- Main Container
-local ScreenGui = Instance.new("ScreenGui")
+ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "Serenity"
 ScreenGui.Parent = CoreGui
 ScreenGui.ResetOnSpawn = false
 
 -- Sound Effects
-local StartupSound = Instance.new("Sound")
+StartupSound = Instance.new("Sound")
 StartupSound.SoundId = "rbxassetid://138118203571469"
 StartupSound.Volume = 0.8
 StartupSound.Parent = ScreenGui
 StartupSound:Play()
 
-local ClickSound = Instance.new("Sound")
+ClickSound = Instance.new("Sound")
 ClickSound.SoundId = "rbxassetid://88442833509532"
 -- Turned way down (was 0.5) and pitched slightly lower -- PitchShiftSoundEffect changes
 -- pitch independent of playback speed (unlike Sound.PlaybackSpeed, which would also slow
@@ -141,21 +141,21 @@ ClickSound.SoundId = "rbxassetid://88442833509532"
 -- different asset every time this gets tuned.
 ClickSound.Volume = 0.2
 ClickSound.Parent = ScreenGui
-local clickSoundPitch = Instance.new("PitchShiftSoundEffect")
+clickSoundPitch = Instance.new("PitchShiftSoundEffect")
 clickSoundPitch.Octave = 0.85
 clickSoundPitch.Parent = ClickSound
 
 function PlayClick() ClickSound:Play() end
 
 -- Main Window
-local HEADER_HEIGHT = 58
-local FULL_SIZE = UDim2.new(0, 560, 0, 430)
+HEADER_HEIGHT = 58
+FULL_SIZE = UDim2.new(0, 560, 0, 430)
 -- Minimized is now a small circle with nothing in it but the clock -- square so a fully
 -- rounded UICorner (see MainCorner below) renders it as a perfect circle, not a pill.
-local MINI_SIZE = UDim2.new(0, 80, 0, 80)
-local FULL_CORNER = UDim.new(0, 14)
-local MINI_CORNER = UDim.new(1, 0)
-local WINDOW_POSITION = UDim2.new(0.5, -280, 0.5, -215)
+MINI_SIZE = UDim2.new(0, 80, 0, 80)
+FULL_CORNER = UDim.new(0, 14)
+MINI_CORNER = UDim.new(1, 0)
+WINDOW_POSITION = UDim2.new(0.5, -280, 0.5, -215)
 
 -- MainFrame gets built below, but the loading bar needs to run first -- before any of the
 -- (invisible-until-ready) tab/feature construction -- so it appears the instant the script
@@ -353,7 +353,7 @@ MainFrame.Active = true
 MainFrame.Visible = false
 MainFrame.Parent = ScreenGui
 
-local MainCorner = Instance.new("UICorner")
+MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = FULL_CORNER
 MainCorner.Parent = MainFrame
 
@@ -362,16 +362,16 @@ MainCorner.Parent = MainFrame
 -- shrinking from the center. Minimized is now just a small circle with the clock centered
 -- in it -- everything else (icon, minimize/destroy buttons) simply hides, handled in
 -- ToggleGUI() below. The Serenity title image is gone -- this icon sits where it used to.
-local NORMAL_TIME_GOAL = {Position = UDim2.new(0, 52, 0, 23), Size = UDim2.new(0, 160, 0, 12)}
+NORMAL_TIME_GOAL = {Position = UDim2.new(0, 52, 0, 23), Size = UDim2.new(0, 160, 0, 12)}
 -- Centered in the mini circle (AnchorPoint stays (0,0), so Position is offset by half of
 -- Size to land the label dead-center) -- shrunk and center-aligned so the full "11:59:59
 -- PM" string comfortably fits inside the circle without MainFrame's ClipsDescendants
 -- cutting off the edges.
-local MINI_TIME_GOAL = {Position = UDim2.new(0.5, -36, 0.5, -7), Size = UDim2.new(0, 72, 0, 14)}
+MINI_TIME_GOAL = {Position = UDim2.new(0.5, -36, 0.5, -7), Size = UDim2.new(0, 72, 0, 14)}
 
 -- Quick-access shortcut straight to the Settings tab -- just the icon, not a full tab
 -- button, sitting in the header's top-left corner where the old title logo used to be.
-local SettingsIconButton = Instance.new("ImageButton")
+SettingsIconButton = Instance.new("ImageButton")
 SettingsIconButton.Name = "SettingsIconButton"
 SettingsIconButton.AnchorPoint = Vector2.new(0, 0.5)
 SettingsIconButton.Size = UDim2.new(0, 28, 0, 28)
@@ -398,7 +398,7 @@ function FormatClockTime()
 	return text
 end
 
-local TimeLabel = Instance.new("TextLabel")
+TimeLabel = Instance.new("TextLabel")
 TimeLabel.Name = "TimeLabel"
 TimeLabel.AnchorPoint = Vector2.new(0, 0)
 TimeLabel.Size = NORMAL_TIME_GOAL.Size
@@ -423,7 +423,7 @@ end)
 -- content area entirely (nothing else underneath is clickable while it's up). ZIndex has
 -- to beat the overlay's own (20) or it'd render underneath that panel's opaque background
 -- and disappear, same as anything else sitting inside that Y range.
-local SettingsBackButton = Instance.new("TextButton")
+SettingsBackButton = Instance.new("TextButton")
 SettingsBackButton.Name = "SettingsBackButton"
 SettingsBackButton.Size = UDim2.new(0, 64, 0, 20)
 SettingsBackButton.Position = UDim2.new(0, 16, 0, HEADER_HEIGHT + 6)
@@ -446,7 +446,7 @@ AddPressBounce(SettingsBackButton)
 -- destroy (X), minimize sits directly to its left.
 -- Traffic-light style: tiny plain colored circles (yellow = minimize, red = close), no
 -- glyph inside either -- a thin darker ring gives them definition without needing text.
-local MiniButton = Instance.new("TextButton")
+MiniButton = Instance.new("TextButton")
 MiniButton.Name = "MiniButton"
 MiniButton.Size = UDim2.new(0, 12, 0, 12)
 MiniButton.Position = UDim2.new(1, -46, 0, HEADER_HEIGHT / 2 - 6)
@@ -456,7 +456,7 @@ MiniButton.Text = ""
 MiniButton.AutoButtonColor = false
 MiniButton.Parent = MainFrame
 Instance.new("UICorner", MiniButton).CornerRadius = UDim.new(1, 0)
-local miniButtonStroke = Instance.new("UIStroke")
+miniButtonStroke = Instance.new("UIStroke")
 miniButtonStroke.Color = Color3.fromRGB(196, 142, 20)
 miniButtonStroke.Thickness = 1
 miniButtonStroke.Parent = MiniButton
@@ -468,7 +468,7 @@ MiniButton.MouseLeave:Connect(function()
 end)
 AddPressBounce(MiniButton)
 
-local GuiDestroyButton = Instance.new("TextButton")
+GuiDestroyButton = Instance.new("TextButton")
 GuiDestroyButton.Name = "GuiDestroyButton"
 GuiDestroyButton.Size = UDim2.new(0, 12, 0, 12)
 GuiDestroyButton.Position = UDim2.new(1, -28, 0, HEADER_HEIGHT / 2 - 6)
@@ -478,7 +478,7 @@ GuiDestroyButton.Text = ""
 GuiDestroyButton.AutoButtonColor = false
 GuiDestroyButton.Parent = MainFrame
 Instance.new("UICorner", GuiDestroyButton).CornerRadius = UDim.new(1, 0)
-local guiDestroyButtonStroke = Instance.new("UIStroke")
+guiDestroyButtonStroke = Instance.new("UIStroke")
 guiDestroyButtonStroke.Color = Color3.fromRGB(196, 68, 62)
 guiDestroyButtonStroke.Thickness = 1
 guiDestroyButtonStroke.Parent = GuiDestroyButton
@@ -497,7 +497,7 @@ AddPressBounce(GuiDestroyButton)
 -- the old version had to recompute its position against MainFrame's AbsolutePosition each
 -- time it opened since it lived under ScreenGui instead. A higher ZIndex than the Settings
 -- overlay means it still draws on top even if triggered while Settings is open.
-local DestroyConfirmPopup = Instance.new("Frame")
+DestroyConfirmPopup = Instance.new("Frame")
 DestroyConfirmPopup.Name = "DestroyConfirmPopup"
 DestroyConfirmPopup.Size = UDim2.new(1, -32, 1, -(HEADER_HEIGHT + 8 + 16))
 DestroyConfirmPopup.Position = UDim2.new(0, 16, 0, HEADER_HEIGHT + 8)
@@ -508,7 +508,7 @@ DestroyConfirmPopup.Active = true
 DestroyConfirmPopup.ZIndex = 30
 DestroyConfirmPopup.Parent = MainFrame
 
-local DestroyConfirmLabel = Instance.new("TextLabel")
+DestroyConfirmLabel = Instance.new("TextLabel")
 DestroyConfirmLabel.AnchorPoint = Vector2.new(0.5, 0.5)
 DestroyConfirmLabel.Size = UDim2.new(1, -32, 0, 30)
 DestroyConfirmLabel.Position = UDim2.new(0.5, 0, 0.5, -30)
@@ -521,7 +521,7 @@ DestroyConfirmLabel.TextXAlignment = Enum.TextXAlignment.Center
 DestroyConfirmLabel.ZIndex = 31
 DestroyConfirmLabel.Parent = DestroyConfirmPopup
 
-local DestroyConfirmYes = Instance.new("TextButton")
+DestroyConfirmYes = Instance.new("TextButton")
 DestroyConfirmYes.AnchorPoint = Vector2.new(0.5, 0.5)
 DestroyConfirmYes.Size = UDim2.new(0, 110, 0, 36)
 DestroyConfirmYes.Position = UDim2.new(0.5, -62, 0.5, 30)
@@ -536,7 +536,7 @@ DestroyConfirmYes.Parent = DestroyConfirmPopup
 Instance.new("UICorner", DestroyConfirmYes).CornerRadius = UDim.new(1, 0)
 AddPressBounce(DestroyConfirmYes)
 
-local DestroyConfirmNo = Instance.new("TextButton")
+DestroyConfirmNo = Instance.new("TextButton")
 DestroyConfirmNo.AnchorPoint = Vector2.new(0.5, 0.5)
 DestroyConfirmNo.Size = UDim2.new(0, 110, 0, 36)
 DestroyConfirmNo.Position = UDim2.new(0.5, 62, 0.5, 30)
@@ -551,7 +551,7 @@ DestroyConfirmNo.Parent = DestroyConfirmPopup
 Instance.new("UICorner", DestroyConfirmNo).CornerRadius = UDim.new(1, 0)
 AddPressBounce(DestroyConfirmNo)
 
-local HeaderDivider = Instance.new("Frame")
+HeaderDivider = Instance.new("Frame")
 HeaderDivider.Name = "HeaderDivider"
 HeaderDivider.Size = UDim2.new(1, 0, 0, 1)
 HeaderDivider.Position = UDim2.new(0, 0, 0, HEADER_HEIGHT)
@@ -565,8 +565,8 @@ AddFadeDivider(HeaderDivider)
 -- just keep their full width and the row scrolls instead of squeezing.
 -- Taller than the 30px tab buttons themselves need -- more surrounding breathing room for
 -- the tab bar as its own section, not bigger buttons.
-local TAB_BAR_HEIGHT = 64
-local TabBar = Instance.new("ScrollingFrame")
+TAB_BAR_HEIGHT = 64
+TabBar = Instance.new("ScrollingFrame")
 TabBar.Name = "TabBar"
 TabBar.Size = UDim2.new(1, -32, 0, TAB_BAR_HEIGHT)
 TabBar.Position = UDim2.new(0, 16, 0, HEADER_HEIGHT + 8)
@@ -580,15 +580,15 @@ TabBar.CanvasSize = UDim2.new(0, 0, 0, 0)
 TabBar.AutomaticCanvasSize = Enum.AutomaticSize.X
 TabBar.Parent = MainFrame
 
-local TabBarLayout = Instance.new("UIListLayout")
+TabBarLayout = Instance.new("UIListLayout")
 TabBarLayout.FillDirection = Enum.FillDirection.Horizontal
 TabBarLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 TabBarLayout.Padding = UDim.new(0, 8)
 TabBarLayout.SortOrder = Enum.SortOrder.LayoutOrder
 TabBarLayout.Parent = TabBar
 
-local TAB_BAR_BOTTOM = HEADER_HEIGHT + 8 + TAB_BAR_HEIGHT
-local TabDivider = Instance.new("Frame")
+TAB_BAR_BOTTOM = HEADER_HEIGHT + 8 + TAB_BAR_HEIGHT
+TabDivider = Instance.new("Frame")
 TabDivider.Name = "TabDivider"
 TabDivider.Size = UDim2.new(1, 0, 0, 1)
 TabDivider.Position = UDim2.new(0, 0, 0, TAB_BAR_BOTTOM + 8)
@@ -598,8 +598,8 @@ TabDivider.BorderSizePixel = 0
 TabDivider.Parent = MainFrame
 AddFadeDivider(TabDivider)
 
-local CONTENT_TOP = TAB_BAR_BOTTOM + 8 + 1 + 8
-local ContentArea = Instance.new("Frame")
+CONTENT_TOP = TAB_BAR_BOTTOM + 8 + 1 + 8
+ContentArea = Instance.new("Frame")
 ContentArea.Name = "ContentArea"
 ContentArea.Size = UDim2.new(1, -32, 1, -(CONTENT_TOP + 16))
 ContentArea.Position = UDim2.new(0, 16, 0, CONTENT_TOP)
@@ -609,14 +609,14 @@ ContentArea.BackgroundTransparency = 1
 ContentArea.ClipsDescendants = true
 ContentArea.Parent = MainFrame
 
-local Tabs = {}
-local TabOrderByName = {} -- name -> its CreateTab order, so SelectTab can tell which way to slide
-local SelectedTabName = nil
-local tabSwitchToken = 0
+Tabs = {}
+TabOrderByName = {} -- name -> its CreateTab order, so SelectTab can tell which way to slide
+SelectedTabName = nil
+tabSwitchToken = 0
 -- Keyed by page instance -- lets a rapid re-switch cancel a page's still-playing slide
 -- tween instead of fighting it with a second one on the same property.
-local PageTweens = {}
-local function StopPageTween(page)
+PageTweens = {}
+function StopPageTween(page)
 	local tween = PageTweens[page]
 	if tween then
 		tween:Cancel()
@@ -941,7 +941,7 @@ do
 end
 
 -- Player tab (scrolling: three feature sections stack well past one screen's height)
-local PlayerPage = CreateTab("Player", 2, "84967055105923", true)
+PlayerPage = CreateTab("Player", 2, "84967055105923", true)
 task.wait()
 
 function CreateSectionHeading(parent, y, text)
@@ -1011,8 +1011,8 @@ end
 -- closes whichever is already open. Tracks the button it's anchored to so it stays
 -- attached if the window gets dragged, and CloseKeybindClearPrompt lets the minimize
 -- handler force it shut instead of leaving it stranded over a shrunk window.
-local ActiveKeybindClearPrompt = nil
-local ActiveKeybindClearButton = nil
+ActiveKeybindClearPrompt = nil
+ActiveKeybindClearButton = nil
 
 function CloseKeybindClearPrompt()
 	if ActiveKeybindClearPrompt then ActiveKeybindClearPrompt:Destroy() end
@@ -1106,7 +1106,7 @@ end
 -- once (its own tab, and a second copy in the centralized Keybind Editor) stays in sync --
 -- rebinding from either updates both buttons' displayed text, even though each button is
 -- its own separate instance with its own onKeybindChanged closure underneath.
-local KeybindButtonsByStorageKey = {}
+KeybindButtonsByStorageKey = {}
 
 function CreateKeybindButton(parent, storageKey, onKeybindChanged, defaultKeyCode)
 	local btn = Instance.new("TextButton")
@@ -1232,18 +1232,17 @@ end
 -- Either way, rows are MOVED there, not cloned -- same live toggle/keybind, zero
 -- state-sync needed, and invisible in practice since Favorites and a row's home tab are
 -- never on screen at the same time. Persisted the same way keybinds are.
-local FavoriteGroups = {} -- ordered {groupName, keys = {key, ...}}
-local FavoritesByKey = {} -- key -> {rows = {...}}
+FavoriteGroups = {} -- ordered {groupName, keys = {key, ...}}
+FavoritesByKey = {} -- key -> {rows = {...}}
 SavedKeybinds.Favorites = type(SavedKeybinds.Favorites) == "table" and SavedKeybinds.Favorites or {}
-local FavoritedKeys = SavedKeybinds.Favorites
+FavoritedKeys = SavedKeybinds.Favorites
 
 -- Right-click a row (built once, lazily, the first time any row is right-clicked) instead
 -- of a star -- asks to favorite/unfavorite whatever that row represents. The same popup
 -- instance is reused every time; only its text and the Yes button's action change per
 -- press, tracked via a swapped-out connection rather than one connection per feature.
-local FavoriteConfirmPopup, FavoriteConfirmLabel, FavoriteConfirmYes, FavoriteConfirmNo
-local favoriteConfirmYesConnection = nil
-local function EnsureFavoriteConfirmPopup()
+favoriteConfirmYesConnection = nil
+function EnsureFavoriteConfirmPopup()
 	if FavoriteConfirmPopup then return end
 	FavoriteConfirmPopup = Instance.new("Frame")
 	FavoriteConfirmPopup.Name = "FavoriteConfirmPopup"
@@ -1309,7 +1308,7 @@ local function EnsureFavoriteConfirmPopup()
 	end)
 end
 
-local function ShowFavoriteConfirm(key, displayName)
+function ShowFavoriteConfirm(key, displayName)
 	EnsureFavoriteConfirmPopup()
 	local alreadyFavorited = FavoritedKeys[key] == true
 	FavoriteConfirmLabel.Text = alreadyFavorited
@@ -1333,7 +1332,7 @@ end
 -- Frame/TextLabel don't have MouseButton2Click (that's GuiButton-only), but every
 -- GuiObject still fires InputBegan on a right-click regardless of type -- same trick
 -- already used elsewhere in this file for drag-detection on plain Frames.
-local function AddFavoriteRightClick(instance, key, displayName)
+function AddFavoriteRightClick(instance, key, displayName)
 	instance.InputBegan:Connect(function(input)
 		if input.UserInputType ~= Enum.UserInputType.MouseButton2 then return end
 		ShowFavoriteConfirm(key, displayName)
@@ -1343,7 +1342,7 @@ end
 -- Bookkeeping shared by both favorite flavors: remembers where each row actually lives
 -- (read back later to put it exactly where it came from) and slots the key into its
 -- group, creating the group the first time a key claims that name.
-local function RegisterFavoriteEntry(key, groupName, rows)
+function RegisterFavoriteEntry(key, groupName, rows)
 	local originals = {}
 	for _, row in ipairs(rows) do
 		originals[row] = {parent = row.Parent, position = row.Position}
@@ -1439,8 +1438,8 @@ function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, def
 	return toggle, keybindBtn, row
 end
 
-local DEFAULT_WALKSPEED = 16
-local SECTION_GAP = 16
+DEFAULT_WALKSPEED = 16
+SECTION_GAP = 16
 
 -- Speed/Jump/Fly/Noclip/Instant Prompt state and connections that DestroyGui and the
 -- keybind dispatcher (both far below) need to reach by name -- previously forward-declared
@@ -1725,7 +1724,7 @@ end
 -- Functionality tab: sits between Player and Visuals. No icon for now -- CreateTab already
 -- handles a nil iconId by just leaving the tab's icon slot blank. Instant Prompt lives here
 -- now instead of at the bottom of Player.
-local FunctionalityPage = CreateTab("Functions", 3, "129520582193954", true, 28, 1)
+FunctionalityPage = CreateTab("Functions", 3, "129520582193954", true, 28, 1)
 task.wait()
 do
 	-- Instant Prompt: drives every ProximityPrompt's HoldDuration to 0 (and drops its line-
@@ -1930,16 +1929,16 @@ end
 -- against the script's 200-local cap for the rest of the file.
 do
 
-local VisualsPage = CreateTab("Visuals", 4, "128664215189887", true, 34)
+VisualsPage = CreateTab("Visuals", 4, "128664215189887", true, 34)
 task.wait()
 
-local ESPDefaultColor = Color3.fromRGB(100, 255, 100)
-local ESPColor = LoadFeatureColor("ESPColor", ESPDefaultColor)
+ESPDefaultColor = Color3.fromRGB(100, 255, 100)
+ESPColor = LoadFeatureColor("ESPColor", ESPDefaultColor)
 
 -- Box/label adornments live under this folder instead of the character itself, so they
 -- keep rendering even if something else on the character (e.g. a local transparency
 -- effect) tries to hide its own children.
-local ESPAdornmentRoot = Instance.new("Folder")
+ESPAdornmentRoot = Instance.new("Folder")
 ESPAdornmentRoot.Name = "SerenityESPAdornments"
 ESPAdornmentRoot.Parent = ScreenGui
 
@@ -2002,7 +2001,7 @@ function AddOutlineHighlight(plr, character)
 end
 
 -- Body-part names covered by Body ESP, matching both R15 and R6 rigs.
-local BodyESPPartNames = {
+BodyESPPartNames = {
 	HumanoidRootPart = true, Head = true, Torso = true, UpperTorso = true, LowerTorso = true,
 	LeftUpperArm = true, LeftLowerArm = true, LeftHand = true,
 	RightUpperArm = true, RightLowerArm = true, RightHand = true,
@@ -2085,8 +2084,8 @@ end
 -- so ESP never lingers on a corpse or an empty slot -- the same maintenance-loop
 -- approach the old feature-rich hub used, since a one-time apply-on-toggle plus
 -- apply-on-respawn (below) has no way to notice a death in between.
-local ESPMaintenanceInterval = 0.15
-local lastESPMaintenance = 0
+ESPMaintenanceInterval = 0.15
+lastESPMaintenance = 0
 RunService.Heartbeat:Connect(function()
 	if not (OutlineESPEnabled or BoxESPEnabled or next(OutlineHighlights) or next(BoxAdornments)) then return end
 	local now = os.clock()
@@ -2107,8 +2106,8 @@ end)
 -- Name / health / distance billboard, throttled instead of updated every frame -- the
 -- text only needs to look live, not actually be per-frame. Already self-cleans on death
 -- (the else branch below) since it's parented straight to the character's own body part.
-local ESPLabelUpdateInterval = 0.15
-local lastESPLabelUpdate = 0
+ESPLabelUpdateInterval = 0.15
+lastESPLabelUpdate = 0
 RunService.Heartbeat:Connect(function()
 	if not ESPLabelsEnabled then return end
 	local now = os.clock()
@@ -2187,11 +2186,11 @@ end)
 
 CreateSectionHeading(VisualsPage, 8, "ESP")
 
-local OutlineESPToggle, _, OutlineESPRow = CreateToggleRow(VisualsPage, 38, "OutlineESPKeybind", function(k) OutlineESPKeybind = k end, "Outline ESP")
+OutlineESPToggle, _, OutlineESPRow = CreateToggleRow(VisualsPage, 38, "OutlineESPKeybind", function(k) OutlineESPKeybind = k end, "Outline ESP")
 RegisterItemFavorite(OutlineESPRow, "OutlineESPKeybind", "Outline ESP", "ESP")
-local BoxESPToggle, _, BoxESPRow = CreateToggleRow(VisualsPage, 98, "BoxESPKeybind", function(k) BoxESPKeybind = k end, "Box ESP")
+BoxESPToggle, _, BoxESPRow = CreateToggleRow(VisualsPage, 98, "BoxESPKeybind", function(k) BoxESPKeybind = k end, "Box ESP")
 RegisterItemFavorite(BoxESPRow, "BoxESPKeybind", "Box ESP", "ESP")
-local ESPLabelsToggle, _, ESPLabelsRow = CreateToggleRow(VisualsPage, 158, "ESPLabelsKeybind", function(k) ESPLabelsKeybind = k end, "ESP Labels")
+ESPLabelsToggle, _, ESPLabelsRow = CreateToggleRow(VisualsPage, 158, "ESPLabelsKeybind", function(k) ESPLabelsKeybind = k end, "ESP Labels")
 RegisterItemFavorite(ESPLabelsRow, "ESPLabelsKeybind", "ESP Labels", "ESP")
 
 function ToggleOutlineESP()
@@ -2217,7 +2216,7 @@ ESPLabelsToggle.MouseButton1Click:Connect(function() PlayClick() ToggleESPLabels
 
 -- ESP Color: one shared row/button below the three feature rows instead of a swatch on
 -- each row -- picking a color here updates Outline ESP, Body ESP, and ESP Labels together.
-local ESPColorRow = Instance.new("Frame")
+ESPColorRow = Instance.new("Frame")
 ESPColorRow.Name = "ESPColorRow"
 ESPColorRow.Size = UDim2.new(1, -10, 0, 52)
 ESPColorRow.Position = UDim2.new(0, 0, 0, 218)
@@ -2227,7 +2226,7 @@ ESPColorRow.BorderSizePixel = 0
 ESPColorRow.Parent = VisualsPage
 Instance.new("UICorner", ESPColorRow).CornerRadius = UDim.new(0, 8)
 
-local ESPColorRowLabel = Instance.new("TextLabel")
+ESPColorRowLabel = Instance.new("TextLabel")
 ESPColorRowLabel.Name = "RowLabel"
 ESPColorRowLabel.Size = UDim2.new(0, 200, 1, 0)
 ESPColorRowLabel.Position = UDim2.new(0, 16, 0, 0)
@@ -2240,7 +2239,7 @@ ESPColorRowLabel.TextXAlignment = Enum.TextXAlignment.Left
 ESPColorRowLabel.TextYAlignment = Enum.TextYAlignment.Center
 ESPColorRowLabel.Parent = ESPColorRow
 
-local ESPColorButton = Instance.new("TextButton")
+ESPColorButton = Instance.new("TextButton")
 ESPColorButton.Name = "ColorButton"
 ESPColorButton.Size = UDim2.new(0, 80, 0, 30)
 ESPColorButton.Position = UDim2.new(1, -88, 0.5, -15)
@@ -2251,7 +2250,7 @@ ESPColorButton.Text = ""
 ESPColorButton.Parent = ESPColorRow
 Instance.new("UICorner", ESPColorButton).CornerRadius = UDim.new(0, 6)
 AddPressBounce(ESPColorButton)
-local ESPColorButtonStroke = Instance.new("UIStroke")
+ESPColorButtonStroke = Instance.new("UIStroke")
 ESPColorButtonStroke.Color = Color3.fromRGB(0, 0, 0)
 ESPColorButtonStroke.Thickness = 1
 ESPColorButtonStroke.Parent = ESPColorButton
@@ -2285,13 +2284,13 @@ end
 -- rows instead of that hub's accent-heavy chrome. Docks to the left of MainFrame and
 -- tracks it while dragged. ESP is the only picker target here, so this skips all of the
 -- old hub's per-target (Accent/Frame/ESP) plumbing.
-local PickerH, PickerS, PickerV = Color3.toHSV(ESPColor)
-local DraggingSV = false
-local DraggingHue = false
+PickerH, PickerS, PickerV = Color3.toHSV(ESPColor)
+DraggingSV = false
+DraggingHue = false
 
-local ESP_COLOR_PICKER_WIDTH = 130
+ESP_COLOR_PICKER_WIDTH = 130
 
-local ESPColorPicker = Instance.new("Frame")
+ESPColorPicker = Instance.new("Frame")
 ESPColorPicker.Name = "ESPColorPicker"
 ESPColorPicker.Size = UDim2.new(0, ESP_COLOR_PICKER_WIDTH, 0, 196)
 ESPColorPicker.AnchorPoint = Vector2.new(0, 0)
@@ -2301,7 +2300,7 @@ ESPColorPicker.Visible = false
 ESPColorPicker.ZIndex = 50
 ESPColorPicker.Parent = ScreenGui
 Instance.new("UICorner", ESPColorPicker).CornerRadius = UDim.new(0, 10)
-local ESPColorPickerStroke = Instance.new("UIStroke")
+ESPColorPickerStroke = Instance.new("UIStroke")
 ESPColorPickerStroke.Color = Color3.fromRGB(0, 0, 0)
 ESPColorPickerStroke.Thickness = 1
 ESPColorPickerStroke.Parent = ESPColorPicker
@@ -2322,7 +2321,7 @@ MainFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(UpdateESPColorPic
 MainFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(UpdateESPColorPickerPosition)
 UpdateESPColorPickerPosition()
 
-local SVSquare = Instance.new("Frame")
+SVSquare = Instance.new("Frame")
 SVSquare.Name = "SVSquare"
 SVSquare.Size = UDim2.new(0, 84, 0, 84)
 SVSquare.Position = UDim2.new(0, 8, 0, 10)
@@ -2330,52 +2329,52 @@ SVSquare.BorderSizePixel = 0
 SVSquare.Parent = ESPColorPicker
 Instance.new("UICorner", SVSquare).CornerRadius = UDim.new(0, 6)
 
-local SVWhite = Instance.new("Frame")
+SVWhite = Instance.new("Frame")
 SVWhite.Size = UDim2.new(1, 0, 1, 0)
 SVWhite.BackgroundColor3 = Color3.new(1, 1, 1)
 SVWhite.BorderSizePixel = 0
 SVWhite.Parent = SVSquare
 Instance.new("UICorner", SVWhite).CornerRadius = UDim.new(0, 6)
-local SVWhiteGradient = Instance.new("UIGradient")
+SVWhiteGradient = Instance.new("UIGradient")
 SVWhiteGradient.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1)})
 SVWhiteGradient.Parent = SVWhite
 
-local SVBlack = Instance.new("Frame")
+SVBlack = Instance.new("Frame")
 SVBlack.Size = UDim2.new(1, 0, 1, 0)
 SVBlack.BackgroundColor3 = Color3.new(0, 0, 0)
 SVBlack.BorderSizePixel = 0
 SVBlack.Parent = SVSquare
 Instance.new("UICorner", SVBlack).CornerRadius = UDim.new(0, 6)
-local SVBlackGradient = Instance.new("UIGradient")
+SVBlackGradient = Instance.new("UIGradient")
 SVBlackGradient.Rotation = 90
 SVBlackGradient.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0)})
 SVBlackGradient.Parent = SVBlack
 
-local SVInput = Instance.new("TextButton")
+SVInput = Instance.new("TextButton")
 SVInput.Size = UDim2.new(1, 0, 1, 0)
 SVInput.BackgroundTransparency = 1
 SVInput.Text = ""
 SVInput.Parent = SVSquare
 
-local SVMarker = Instance.new("Frame")
+SVMarker = Instance.new("Frame")
 SVMarker.Size = UDim2.new(0, 8, 0, 8)
 SVMarker.AnchorPoint = Vector2.new(0.5, 0.5)
 SVMarker.BackgroundTransparency = 1
 SVMarker.Parent = SVInput
 Instance.new("UICorner", SVMarker).CornerRadius = UDim.new(1, 0)
-local SVMarkerStroke = Instance.new("UIStroke")
+SVMarkerStroke = Instance.new("UIStroke")
 SVMarkerStroke.Color = Color3.new(1, 1, 1)
 SVMarkerStroke.Thickness = 1.5
 SVMarkerStroke.Parent = SVMarker
 
-local HueBar = Instance.new("Frame")
+HueBar = Instance.new("Frame")
 HueBar.Size = UDim2.new(0, 18, 0, 84)
 HueBar.Position = UDim2.new(0, 104, 0, 10)
 HueBar.BackgroundColor3 = Color3.new(1, 1, 1)
 HueBar.BorderSizePixel = 0
 HueBar.Parent = ESPColorPicker
 Instance.new("UICorner", HueBar).CornerRadius = UDim.new(0, 4)
-local HueGradient = Instance.new("UIGradient")
+HueGradient = Instance.new("UIGradient")
 HueGradient.Rotation = 90
 HueGradient.Color = ColorSequence.new({
 	ColorSequenceKeypoint.new(0, Color3.fromHSV(0, 1, 1)),
@@ -2388,20 +2387,20 @@ HueGradient.Color = ColorSequence.new({
 })
 HueGradient.Parent = HueBar
 
-local HueInput = Instance.new("TextButton")
+HueInput = Instance.new("TextButton")
 HueInput.Size = UDim2.new(1, 0, 1, 0)
 HueInput.BackgroundTransparency = 1
 HueInput.Text = ""
 HueInput.Parent = HueBar
 
-local HueMarker = Instance.new("Frame")
+HueMarker = Instance.new("Frame")
 HueMarker.Size = UDim2.new(1, 4, 0, 2)
 HueMarker.Position = UDim2.new(0, -2, 0, 0)
 HueMarker.BackgroundColor3 = Color3.new(1, 1, 1)
 HueMarker.BorderSizePixel = 0
 HueMarker.Parent = HueInput
 
-local SaveColorButton = Instance.new("TextButton")
+SaveColorButton = Instance.new("TextButton")
 SaveColorButton.Name = "SaveColorButton"
 SaveColorButton.Size = UDim2.new(0, 114, 0, 24)
 SaveColorButton.Position = UDim2.new(0, 8, 0, 102)
@@ -2414,7 +2413,7 @@ SaveColorButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 SaveColorButton.Parent = ESPColorPicker
 Instance.new("UICorner", SaveColorButton).CornerRadius = UDim.new(0, 6)
 
-local SavedColorButtons = {}
+SavedColorButtons = {}
 for index = 1, 5 do
 	local swatch = Instance.new("TextButton")
 	swatch.Name = "SavedColorSlot" .. index
@@ -2546,29 +2545,29 @@ end)
 
 RefreshPickerMarkers()
 
-local ESP_SECTION_BOTTOM = 218 + 52
+ESP_SECTION_BOTTOM = 218 + 52
 
 -- Camera (ported from the old feature-rich hub): Free Cam detaches the camera from the
 -- character (right-click-drag to look, WASD/Q/E to move, Shift to go faster) and sinks
 -- the movement keys so the character doesn't also walk. Since you can't see your own
 -- screen-space body anymore, it highlights + labels your own character while active.
 -- FOV is unrelated to Free Cam -- just a direct camera.FieldOfView setter with a reset.
-local FreeCamEnabled = false
+FreeCamEnabled = false
 FreeCamKeybind = Enum.KeyCode.Unknown
-local FreeCamPosition = Vector3.new()
-local FreeCamPitch, FreeCamYaw = 0, 0
+FreeCamPosition = Vector3.new()
+FreeCamPitch, FreeCamYaw = 0, 0
 -- FreeCamOriginal*/FreeCamSelf* left un-declared (DisableFreeCam, already global, needs
 -- them) so they fall back to globals rather than costing more top-level local slots.
-local FreeCamSelfColor = Color3.fromRGB(34, 139, 34)
+FreeCamSelfColor = Color3.fromRGB(34, 139, 34)
 
-local CAMERA_TOP = ESP_SECTION_BOTTOM + SECTION_GAP
-local CameraHeading = CreateSectionHeading(VisualsPage, CAMERA_TOP, "Camera")
-local FreeCamToggle, _, FreeCamRow = CreateToggleRow(VisualsPage, CAMERA_TOP + 30, "FreeCamKeybind", function(k) FreeCamKeybind = k end, "Free Cam")
+CAMERA_TOP = ESP_SECTION_BOTTOM + SECTION_GAP
+CameraHeading = CreateSectionHeading(VisualsPage, CAMERA_TOP, "Camera")
+FreeCamToggle, _, FreeCamRow = CreateToggleRow(VisualsPage, CAMERA_TOP + 30, "FreeCamKeybind", function(k) FreeCamKeybind = k end, "Free Cam")
 
 DEFAULT_FOV = 70
-local FOVValue = (workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView) or DEFAULT_FOV
+FOVValue = (workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView) or DEFAULT_FOV
 
-local FOVRow = Instance.new("Frame")
+FOVRow = Instance.new("Frame")
 FOVRow.Name = "FOVRow"
 FOVRow.Size = UDim2.new(1, -10, 0, 52)
 FOVRow.Position = UDim2.new(0, 0, 0, CAMERA_TOP + 90)
@@ -2579,7 +2578,7 @@ FOVRow.Parent = VisualsPage
 Instance.new("UICorner", FOVRow).CornerRadius = UDim.new(0, 8)
 RegisterSectionFavorite(CameraHeading, "FreeCamKeybind", "Camera", {FreeCamRow, FOVRow})
 
-local FOVRowLabel = Instance.new("TextLabel")
+FOVRowLabel = Instance.new("TextLabel")
 FOVRowLabel.Name = "RowLabel"
 FOVRowLabel.Size = UDim2.new(0, 200, 1, 0)
 FOVRowLabel.Position = UDim2.new(0, 16, 0, 0)
@@ -2592,7 +2591,7 @@ FOVRowLabel.TextXAlignment = Enum.TextXAlignment.Left
 FOVRowLabel.TextYAlignment = Enum.TextYAlignment.Center
 FOVRowLabel.Parent = FOVRow
 
-local FOVInput = Instance.new("TextBox")
+FOVInput = Instance.new("TextBox")
 FOVInput.Name = "Input"
 FOVInput.Size = UDim2.new(0, 80, 0, 30)
 FOVInput.Position = UDim2.new(1, -96, 0.5, -15)
@@ -2607,7 +2606,7 @@ FOVInput.TextColor3 = Color3.fromRGB(255, 255, 255)
 FOVInput.Parent = FOVRow
 Instance.new("UICorner", FOVInput).CornerRadius = UDim.new(1, 0)
 
-local FOVResetButton = Instance.new("TextButton")
+FOVResetButton = Instance.new("TextButton")
 FOVResetButton.Name = "ResetButton"
 FOVResetButton.Size = UDim2.new(0, 80, 0, 30)
 FOVResetButton.Position = UDim2.new(1, -184, 0.5, -15)
@@ -2622,7 +2621,7 @@ FOVResetButton.Parent = FOVRow
 Instance.new("UICorner", FOVResetButton).CornerRadius = UDim.new(1, 0)
 AddPressBounce(FOVResetButton)
 
-local CAMERA_SECTION_BOTTOM = CAMERA_TOP + 90 + 52
+CAMERA_SECTION_BOTTOM = CAMERA_TOP + 90 + 52
 
 VisualsPage.CanvasSize = UDim2.new(0, 0, 0, CAMERA_SECTION_BOTTOM + 16)
 
@@ -2802,10 +2801,10 @@ end
 -- popup further down -- adding/renaming/deleting from either place has to stay in sync in
 -- the other, so both read/write this same table instead of keeping their own copies.
 SavedKeybinds.WaypointsByPlace = type(SavedKeybinds.WaypointsByPlace) == "table" and SavedKeybinds.WaypointsByPlace or {}
-local WaypointStorageKey = tostring(game.PlaceId)
-local Waypoints = type(SavedKeybinds.WaypointsByPlace[WaypointStorageKey]) == "table"
+WaypointStorageKey = tostring(game.PlaceId)
+Waypoints = type(SavedKeybinds.WaypointsByPlace[WaypointStorageKey]) == "table"
 	and SavedKeybinds.WaypointsByPlace[WaypointStorageKey] or {}
-local WaypointRefreshCallbacks = {}
+WaypointRefreshCallbacks = {}
 
 function GetWaypointSegments(instance)
 	local segments = {}
@@ -2865,7 +2864,7 @@ end
 -- PopupToggleButton/PopupKeybind left un-declared here (the popup section further down, in
 -- its own separate do block, needs to read/update them too) so they fall back to globals
 -- instead of costing more top-level local slots.
-local TeleportPage = CreateTab("Teleport", 8, "134833734515120", true, 30)
+TeleportPage = CreateTab("Teleport", 8, "134833734515120", true, 30)
 task.wait()
 do
 	local TAB_ROW_H = 30
@@ -3752,7 +3751,7 @@ end
 
 -- Scripts tab: launches the separate game modules (loadstring + HttpGet, same as the
 -- old hub). Each module only ever gets fetched once per execution.
-local ScriptsPage = CreateTab("Scripts", 6, "94167840974597", true, 30)
+ScriptsPage = CreateTab("Scripts", 6, "94167840974597", true, 30)
 task.wait()
 
 -- Each game is independent -- opening one doesn't affect any other. Once a game has been
@@ -3763,7 +3762,7 @@ task.wait()
 -- does nothing; once the panel's been closed (Live false again), clicking re-runs the
 -- cached source and opens it again -- each game module remembers its own last dragged
 -- panel position via getgenv() across that re-run, so it reopens where it was left.
-local ScriptRunner = {Sources = {}, EverOpened = {}, Live = {}, Busy = false}
+ScriptRunner = {Sources = {}, EverOpened = {}, Live = {}, Busy = false}
 function RunScriptOnce(key, url)
 	local source = ScriptRunner.Sources[key]
 	if not source then
@@ -3992,9 +3991,9 @@ ScriptsPage.CanvasSize = UDim2.new(0, 0, 0, 392)
 -- back down the way it came in. Each overlay gets its own token so a rapid re-toggle can't
 -- leave an older tween fighting a newer one, same guard already used for the tab-switch
 -- slide further up this file.
-local OVERLAY_REST_POSITION = UDim2.new(0, 16, 0, HEADER_HEIGHT + 8)
-local overlaySlideTokens = {}
-local function SlideOverlayOpen(overlay, restPosition, enterFromAbove)
+OVERLAY_REST_POSITION = UDim2.new(0, 16, 0, HEADER_HEIGHT + 8)
+overlaySlideTokens = {}
+function SlideOverlayOpen(overlay, restPosition, enterFromAbove)
 	if overlay.Visible then return end
 	overlaySlideTokens[overlay] = (overlaySlideTokens[overlay] or 0) + 1
 	local myToken = overlaySlideTokens[overlay]
@@ -4016,7 +4015,7 @@ end
 -- exitDownward picks which way this particular overlay exits -- Settings exits back up
 -- (the reverse of its own entrance), Favorites exits back down (the reverse of ITS
 -- entrance too, not up and out the top).
-local function SlideOverlayClose(overlay, restPosition, exitDownward)
+function SlideOverlayClose(overlay, restPosition, exitDownward)
 	if not overlay.Visible then return end
 	overlaySlideTokens[overlay] = (overlaySlideTokens[overlay] or 0) + 1
 	local myToken = overlaySlideTokens[overlay]
@@ -4260,7 +4259,7 @@ do
 	LocalCountLabel.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 208)
 	LocalCountLabel.BackgroundTransparency = 1
 	LocalCountLabel.BorderSizePixel = 0
-	LocalCountLabel.Text = "153 / 200"
+	LocalCountLabel.Text = "7 / 200"
 	LocalCountLabel.Font = UIFont
 	LocalCountLabel.TextSize = 7
 	LocalCountLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
@@ -4689,13 +4688,13 @@ SelectTab("Home")
 -- header (dividers, tabs, content) is explicitly hidden while minimized so nothing peeks
 -- past the clipped frame. Minimizing snaps the pill to the nearest screen edge, and
 -- restores to wherever the window was before minimizing.
-local minimized = false
-local preMinimizePosition = nil
+minimized = false
+preMinimizePosition = nil
 -- Remembers the last snapped-to-edge corner across a maximize/re-minimize cycle -- without
 -- this, re-minimizing recomputed the snap from the full-size window's current position
 -- (usually the center default), so the mini pill would "forget" whichever corner it was
 -- last dragged to the moment you maximized it.
-local lastMinimizedPosition = nil
+lastMinimizedPosition = nil
 
 function GetSnappedMinimizedPosition()
 	local camera = workspace.CurrentCamera
@@ -4715,7 +4714,7 @@ end
 -- MainFrame's live Position repeatedly, and while preMinimizePosition itself isn't touched
 -- by that, this clamp makes a restore impossible to get stuck off-screen no matter what
 -- position it's handed.
-local function ClampToViewport(position, size)
+function ClampToViewport(position, size)
 	local camera = workspace.CurrentCamera
 	local viewportSize = (camera and camera.ViewportSize) or Vector2.new(1920, 1080)
 	local width = size.X.Offset
@@ -4732,7 +4731,7 @@ end
 -- but never so far that literally none of it stays reachable, which is what would
 -- actually get it stuck. minVisible pixels of whichever edge it's nearest always stay on
 -- screen; everything else is free to hang off.
-local function ClampPartiallyOnScreen(position, size, minVisible)
+function ClampPartiallyOnScreen(position, size, minVisible)
 	local camera = workspace.CurrentCamera
 	local viewportSize = (camera and camera.ViewportSize) or Vector2.new(1920, 1080)
 	local width = size.X.Offset
@@ -4835,10 +4834,10 @@ MiniButton.MouseButton1Click:Connect(function() PlayClick() ToggleGUI() end)
 -- schedule/cancel bumps guiFadeToken, and the delayed fade only actually applies if its
 -- captured token still matches when it wakes up, so a rapid hover/unhover/re-minimize
 -- flurry can never leave a stale delayed fade firing after the fact.
-local GUI_FADE_DELAY = 1.5
-local GUI_FADE_TRANSPARENCY = 0.55
-local guiFadeToken = 0
-local isHoveringMini = false
+GUI_FADE_DELAY = 1.5
+GUI_FADE_TRANSPARENCY = 0.55
+guiFadeToken = 0
+isHoveringMini = false
 
 function CancelGuiFade()
 	guiFadeToken += 1
@@ -4872,11 +4871,47 @@ end)
 -- Silent unbind-able destroy key (Right Control) -- no button, no prompt, no sound.
 -- Reverses every active effect (Speed/Jump/Fly, whichever mode) before tearing down, so
 -- nothing lingers on the character no matter what was toggled on when this fires.
-local DestroyKeybind = Enum.KeyCode.RightControl
-local mainInputConnection
-local dragChangedConnection
+DestroyKeybind = Enum.KeyCode.RightControl
+
+-- Some games force first-person mouse-look (MouseBehavior = LockCenter) with no way to
+-- free the cursor from their own settings -- MB3 (scroll wheel click) toggles it. Not
+-- gated on `processed` since this needs to work as a global escape hatch regardless of
+-- what's under the cursor. Re-forced every RenderStepped while freed, not just set once --
+-- games that lock the mouse this way typically also keep re-locking it every frame
+-- themselves, which would otherwise immediately fight a one-time Default set. Declared
+-- ahead of DestroyGui (rather than in its previous spot further down) so DestroyGui can
+-- call SetMouseFreed(false) directly -- Lua locals aren't visible to code declared earlier
+-- in the file, even though DestroyGui itself only ever actually runs later at runtime.
+mouseFreed = false
+mouseFreeConnection = nil
+function SetMouseFreed(freed)
+	mouseFreed = freed
+	if freed then
+		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+		if not mouseFreeConnection then
+			mouseFreeConnection = RunService.RenderStepped:Connect(function()
+				UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+			end)
+		end
+	else
+		if mouseFreeConnection then
+			mouseFreeConnection:Disconnect()
+			mouseFreeConnection = nil
+		end
+		UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+	end
+end
+mouseFreeInputConnection = UserInputService.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton3 then
+		SetMouseFreed(not mouseFreed)
+	end
+end)
 
 function DestroyGui()
+	-- Lock the mouse back up if it was left free -- otherwise it'd stay unlocked with no
+	-- script left to toggle it back.
+	if mouseFreed then SetMouseFreed(false) end
+	if mouseFreeInputConnection then mouseFreeInputConnection:Disconnect() end
 	if mainInputConnection then mainInputConnection:Disconnect() end
 	if dragChangedConnection then dragChangedConnection:Disconnect() end
 	if characterAddedConnection then characterAddedConnection:Disconnect() end
@@ -4968,44 +5003,13 @@ mainInputConnection = UserInputService.InputBegan:Connect(function(input, proces
 	if SwitchFavoritesKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == SwitchFavoritesKeybind then SwitchToFavorites() end
 end)
 
--- Some games force first-person mouse-look (MouseBehavior = LockCenter) with no way to
--- free the cursor from their own settings -- MB3 (scroll wheel click) toggles it. Not
--- gated on `processed` since this needs to work as a global escape hatch regardless of
--- what's under the cursor. Re-forced every RenderStepped while freed, not just set once --
--- games that lock the mouse this way typically also keep re-locking it every frame
--- themselves, which would otherwise immediately fight a one-time Default set.
-local mouseFreed = false
-local mouseFreeConnection = nil
-local function SetMouseFreed(freed)
-	mouseFreed = freed
-	if freed then
-		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-		if not mouseFreeConnection then
-			mouseFreeConnection = RunService.RenderStepped:Connect(function()
-				UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-			end)
-		end
-	else
-		if mouseFreeConnection then
-			mouseFreeConnection:Disconnect()
-			mouseFreeConnection = nil
-		end
-		UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
-	end
-end
-UserInputService.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton3 then
-		SetMouseFreed(not mouseFreed)
-	end
-end)
-
 -- Dragging. Minimized has no visible button left to click to restore (it's just the
 -- clock in a circle) -- so a tap that barely moved the cursor is treated as "restore"
 -- instead of a drag, measured against the same input.Position this already tracks.
-local TAP_MAX_DISTANCE = 6
-local dragging = false
-local dragStart = nil
-local startPos = nil
+TAP_MAX_DISTANCE = 6
+dragging = false
+dragStart = nil
+startPos = nil
 MainFrame.InputBegan:Connect(function(input)
 	if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
 	dragging = true
