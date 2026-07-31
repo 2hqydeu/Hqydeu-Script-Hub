@@ -4013,14 +4013,17 @@ local function SlideOverlayOpen(overlay, restPosition, enterFromAbove)
 	end)
 end
 
-local function SlideOverlayCloseUp(overlay, restPosition)
+-- exitDownward picks which way this particular overlay exits -- Settings exits back up
+-- (the reverse of its own entrance), Favorites exits back down (the reverse of ITS
+-- entrance too, not up and out the top).
+local function SlideOverlayClose(overlay, restPosition, exitDownward)
 	if not overlay.Visible then return end
 	overlaySlideTokens[overlay] = (overlaySlideTokens[overlay] or 0) + 1
 	local myToken = overlaySlideTokens[overlay]
 	local travel = MainFrame.AbsoluteSize.Y
 	local exitPosition = UDim2.new(
 		restPosition.X.Scale, restPosition.X.Offset,
-		restPosition.Y.Scale, restPosition.Y.Offset - travel
+		restPosition.Y.Scale, restPosition.Y.Offset + (exitDownward and travel or -travel)
 	)
 	local tween = TweenService:Create(overlay, TweenInfo.new(0.24, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {Position = exitPosition})
 	tween:Play()
@@ -4066,7 +4069,7 @@ do
 		SettingsBackButton.Visible = true
 	end
 	function CloseSettingsOverlay()
-		SlideOverlayCloseUp(SettingsOverlay, OVERLAY_REST_POSITION)
+		SlideOverlayClose(SettingsOverlay, OVERLAY_REST_POSITION, false)
 		SettingsBackButton.Visible = false
 	end
 	SettingsBackButton.MouseButton1Click:Connect(function()
@@ -4425,8 +4428,8 @@ do
 		RefreshFavoritesView()
 	end
 	function CloseFavoritesOverlay()
-		-- Always exits upward (per explicit request), not back down the way it entered.
-		SlideOverlayCloseUp(FavoritesPage, OVERLAY_REST_POSITION)
+		-- Exits back down the way it entered.
+		SlideOverlayClose(FavoritesPage, OVERLAY_REST_POSITION, true)
 		SettingsBackButton.Visible = false
 		RestoreAllFavorites()
 	end
