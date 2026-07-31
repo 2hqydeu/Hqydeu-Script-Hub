@@ -3862,10 +3862,11 @@ function CreateGameRow(parent, y, gameTitle, url)
 	return row
 end
 
-CreateGameRow(ScriptsPage, 8, "Undead Expedition", "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/UE")
-CreateGameRow(ScriptsPage, 60, "Quiet or Die", "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/QOD")
-CreateGameRow(ScriptsPage, 112, "Murder Mystery 2", "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/MM2")
-CreateGameRow(ScriptsPage, 164, "Animal Hospital", "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/Animal_Hospital")
+-- Alphabetical, so the list order doesn't just reflect whatever order games got added in.
+CreateGameRow(ScriptsPage, 8, "Animal Hospital", "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/Animal_Hospital")
+CreateGameRow(ScriptsPage, 60, "Murder Mystery 2", "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/MM2")
+CreateGameRow(ScriptsPage, 112, "Quiet or Die", "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/QOD")
+CreateGameRow(ScriptsPage, 164, "Undead Expedition", "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/UE")
 
 -- Infinite Yield / Dex Explorer: standalone utility scripts (not per-game modules), so
 -- unlike CreateGameRow above they get their own row with a separate Destroy button --
@@ -3975,8 +3976,8 @@ function CreateUtilityRow(parent, y, title, url)
 	return row
 end
 
-CreateUtilityRow(ScriptsPage, 216, "Infinite Yield", "https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source")
-CreateUtilityRow(ScriptsPage, 268, "Dex Explorer", "https://github.com/AZYsGithub/DexPlusPlus/releases/latest/download/out.lua")
+CreateUtilityRow(ScriptsPage, 216, "Dex Explorer", "https://github.com/AZYsGithub/DexPlusPlus/releases/latest/download/out.lua")
+CreateUtilityRow(ScriptsPage, 268, "Infinite Yield", "https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source")
 
 -- Was 268 -- barely 1px taller than the 267px viewport, which left almost no real
 -- scroll range at all (the thumb sat at ~99.6% of the track, basically imperceptible as
@@ -4211,7 +4212,7 @@ do
 	LocalCountLabel.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 208)
 	LocalCountLabel.BackgroundTransparency = 1
 	LocalCountLabel.BorderSizePixel = 0
-	LocalCountLabel.Text = "146 / 200"
+	LocalCountLabel.Text = "149 / 200"
 	LocalCountLabel.Font = UIFont
 	LocalCountLabel.TextSize = 7
 	LocalCountLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
@@ -4913,6 +4914,37 @@ mainInputConnection = UserInputService.InputBegan:Connect(function(input, proces
 	if SwitchScriptsKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == SwitchScriptsKeybind then SwitchToTab("Scripts") end
 	if SwitchTeleportKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == SwitchTeleportKeybind then SwitchToTab("Teleport") end
 	if SwitchFavoritesKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == SwitchFavoritesKeybind then SwitchToFavorites() end
+end)
+
+-- Some games force first-person mouse-look (MouseBehavior = LockCenter) with no way to
+-- free the cursor from their own settings -- MB3 (scroll wheel click) toggles it. Not
+-- gated on `processed` since this needs to work as a global escape hatch regardless of
+-- what's under the cursor. Re-forced every RenderStepped while freed, not just set once --
+-- games that lock the mouse this way typically also keep re-locking it every frame
+-- themselves, which would otherwise immediately fight a one-time Default set.
+local mouseFreed = false
+local mouseFreeConnection = nil
+local function SetMouseFreed(freed)
+	mouseFreed = freed
+	if freed then
+		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+		if not mouseFreeConnection then
+			mouseFreeConnection = RunService.RenderStepped:Connect(function()
+				UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+			end)
+		end
+	else
+		if mouseFreeConnection then
+			mouseFreeConnection:Disconnect()
+			mouseFreeConnection = nil
+		end
+		UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+	end
+end
+UserInputService.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton3 then
+		SetMouseFreed(not mouseFreed)
+	end
 end)
 
 -- Dragging. Minimized has no visible button left to click to restore (it's just the
