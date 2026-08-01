@@ -889,8 +889,31 @@ local function HasCureInInventory(cureName)
 	return (character and character:FindFirstChild(cureName) ~= nil) or (backpack and backpack:FindFirstChild(cureName) ~= nil)
 end
 
--- Walks to the pickup spot and fires its prompt, waiting briefly for the Tool to actually
--- show up in the backpack (it doesn't appear the instant the prompt fires).
+-- Fires a prompt and retries a few times, checking checkSuccess() between attempts,
+-- instead of a single fire-and-hope -- teleporting right next to a prompt and firing it
+-- immediately was outrunning the engine actually registering the player as in range yet,
+-- so the very first attempt often did nothing.
+local function TryFirePrompt(prompt, checkSuccess, attempts)
+	attempts = attempts or 3
+	for _ = 1, attempts do
+		if type(fireproximityprompt) == "function" then
+			pcall(fireproximityprompt, prompt)
+		end
+		if not checkSuccess then
+			task.wait(0.5)
+			return true
+		end
+		local deadline = os.clock() + 0.6
+		while os.clock() < deadline do
+			if checkSuccess() then return true end
+			task.wait(0.1)
+		end
+	end
+	return checkSuccess and checkSuccess() or false
+end
+
+-- Walks to the pickup spot and fires its prompt (retrying/waiting as needed for the Tool
+-- to actually show up in the backpack).
 local function FetchCure(cureName)
 	if HasCureInInventory(cureName) then return true end
 	local root = GetPlayerRoot()
@@ -900,16 +923,8 @@ local function FetchCure(cureName)
 	local prompt = model:FindFirstChild("PP")
 	if not (prompt and prompt:IsA("ProximityPrompt")) then return false end
 	TeleportNear(model:GetPivot().Position)
-	task.wait(0.3)
-	if type(fireproximityprompt) == "function" then
-		pcall(fireproximityprompt, prompt)
-	end
-	local deadline = os.clock() + 3
-	while os.clock() < deadline do
-		if HasCureInInventory(cureName) then return true end
-		task.wait(0.2)
-	end
-	return HasCureInInventory(cureName)
+	task.wait(0.6)
+	return TryFirePrompt(prompt, function() return HasCureInInventory(cureName) end)
 end
 
 -- Equips the given cure (from Backpack or already-equipped) and fires the patient's own
@@ -928,86 +943,100 @@ local function ApplyCureToPatient(patient, cureName)
 	local prompt = patient:FindFirstChild("PP")
 	if not (prompt and prompt:IsA("ProximityPrompt")) then return false end
 	TeleportNear(patient:GetPivot().Position)
-	task.wait(0.3)
-	if type(fireproximityprompt) == "function" then
-		pcall(fireproximityprompt, prompt)
+	task.wait(0.6)
+	return TryFirePrompt(prompt, function() return not HasCureInInventory(cureName) end)
+end
+
+-- Inventory capacity: 3 slots for now (no reading of real capacity-upgrade state yet --
+-- flagged as a fixed assumption, not a confirmed value). Anything carried that ISN'T one
+-- of the cures currently needed is fair game to trash to make room.
+local MAX_CARRY_ITEMS = 3
+
+local function GetCarriedToolNames()
+	local names = {}
+	local backpack = GetBackpack()
+	if backpack then
+		for _, tool in ipairs(backpack:GetChildren()) do
+			if tool:IsA("Tool") then table.insert(names, tool.Name) end
+		end
 	end
-	task.wait(0.5)
-	return true
+	local character = Player.Character
+	local equipped = character and character:FindFirstChildOfClass("Tool")
+	if equipped then table.insert(names, equipped.Name) end
+	return names
 end
 
--- Reuses the exact same confirmation-popup look as the main hub's Favorite/Destroy
--- prompts elsewhere in this codebase -- one instance, text swapped per use.
-local AutoTreatPopup, AutoTreatLabel, AutoTreatYes, AutoTreatNo
-local autoTreatYesConnection = nil
-local function EnsureAutoTreatPopup()
-	if AutoTreatPopup then return end
-	AutoTreatPopup = Instance.new("Frame")
-	AutoTreatPopup.Name = "AutoTreatPopup"
-	AutoTreatPopup.AnchorPoint = Vector2.new(0.5, 0.5)
-	AutoTreatPopup.Position = UDim2.new(0.5, 0, 0.5, 0)
-	AutoTreatPopup.Size = UDim2.new(0, 260, 0, 130)
-	AutoTreatPopup.BackgroundColor3 = FrameColor
-	AutoTreatPopup.BorderSizePixel = 0
-	AutoTreatPopup.Visible = false
-	AutoTreatPopup.Active = true
-	AutoTreatPopup.ZIndex = 60
-	AutoTreatPopup.Parent = ScreenGui
-	Instance.new("UICorner", AutoTreatPopup).CornerRadius = UDim.new(0, 12)
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(0, 0, 0)
-	stroke.Thickness = 1
-	stroke.Parent = AutoTreatPopup
-
-	AutoTreatLabel = Instance.new("TextLabel")
-	AutoTreatLabel.AnchorPoint = Vector2.new(0.5, 0)
-	AutoTreatLabel.Size = UDim2.new(1, -20, 0, 64)
-	AutoTreatLabel.Position = UDim2.new(0.5, 0, 0, 14)
-	AutoTreatLabel.BackgroundTransparency = 1
-	AutoTreatLabel.Font = UIFont
-	AutoTreatLabel.TextSize = 14
-	AutoTreatLabel.TextWrapped = true
-	AutoTreatLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-	AutoTreatLabel.ZIndex = 61
-	AutoTreatLabel.Parent = AutoTreatPopup
-
-	AutoTreatYes = Instance.new("TextButton")
-	AutoTreatYes.AnchorPoint = Vector2.new(0.5, 0.5)
-	AutoTreatYes.Size = UDim2.new(0, 100, 0, 32)
-	AutoTreatYes.Position = UDim2.new(0.5, -57, 1, -30)
-	AutoTreatYes.BackgroundColor3 = Color3.fromRGB(178, 155, 235)
-	AutoTreatYes.BorderSizePixel = 0
-	AutoTreatYes.Text = "Yes"
-	AutoTreatYes.Font = UIFont
-	AutoTreatYes.TextSize = 15
-	AutoTreatYes.TextColor3 = Color3.fromRGB(255, 255, 255)
-	AutoTreatYes.ZIndex = 61
-	AutoTreatYes.Parent = AutoTreatPopup
-	Instance.new("UICorner", AutoTreatYes).CornerRadius = UDim.new(1, 0)
-	AddPressBounce(AutoTreatYes)
-
-	AutoTreatNo = Instance.new("TextButton")
-	AutoTreatNo.AnchorPoint = Vector2.new(0.5, 0.5)
-	AutoTreatNo.Size = UDim2.new(0, 100, 0, 32)
-	AutoTreatNo.Position = UDim2.new(0.5, 57, 1, -30)
-	AutoTreatNo.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
-	AutoTreatNo.BorderSizePixel = 0
-	AutoTreatNo.Text = "No"
-	AutoTreatNo.Font = UIFont
-	AutoTreatNo.TextSize = 15
-	AutoTreatNo.TextColor3 = Color3.fromRGB(255, 255, 255)
-	AutoTreatNo.ZIndex = 61
-	AutoTreatNo.Parent = AutoTreatPopup
-	Instance.new("UICorner", AutoTreatNo).CornerRadius = UDim.new(1, 0)
-	AddPressBounce(AutoTreatNo)
-	AutoTreatNo.MouseButton1Click:Connect(function()
-		AutoTreatPopup.Visible = false
-	end)
+local function CountCarriedItems()
+	return #GetCarriedToolNames()
 end
 
--- Runs the actual fetch-then-apply sequence once the popup's been confirmed.
+-- Same "no fixed path, search by name" approach as the cure pickups -- multiple trashcans
+-- (each a Model named "Trash" with its own "PP" prompt) are scattered around the map.
+local function FindClosestTrashCan(fromPosition)
+	local closest, closestDistance = nil, math.huge
+	for _, descendant in ipairs(workspace:GetDescendants()) do
+		if descendant:IsA("Model") and descendant.Name == "Trash" and descendant:FindFirstChild("PP") then
+			local pivot = descendant:GetPivot().Position
+			local distance = (pivot - fromPosition).Magnitude
+			if distance < closestDistance then
+				closestDistance = distance
+				closest = descendant
+			end
+		end
+	end
+	return closest
+end
+
+local function TrashTool(toolName)
+	local character = Player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return false end
+	local tool = character:FindFirstChild(toolName)
+	if not tool then
+		local backpack = GetBackpack()
+		tool = backpack and backpack:FindFirstChild(toolName)
+		if not tool then return false end
+		humanoid:EquipTool(tool)
+		task.wait(0.2)
+	end
+	local root = GetPlayerRoot()
+	if not root then return false end
+	local trashCan = FindClosestTrashCan(root.Position)
+	if not trashCan then return false end
+	local prompt = trashCan:FindFirstChild("PP")
+	if not (prompt and prompt:IsA("ProximityPrompt")) then return false end
+	TeleportNear(trashCan:GetPivot().Position)
+	task.wait(0.6)
+	return TryFirePrompt(prompt, function() return not HasCureInInventory(toolName) end)
+end
+
+-- Frees enough inventory space for whatever cures are still missing before fetching starts
+-- -- otherwise a fetch that would overflow the 3-slot cap either fails outright or silently
+-- doesn't pick anything up.
+local function MakeRoomForCures(cureNames)
+	local stillNeeded = 0
+	local keepSet = {}
+	for _, cureName in ipairs(cureNames) do
+		keepSet[cureName] = true
+		if not HasCureInInventory(cureName) then stillNeeded = stillNeeded + 1 end
+	end
+	local overflow = (CountCarriedItems() + stillNeeded) - MAX_CARRY_ITEMS
+	if overflow <= 0 then return end
+	for _, toolName in ipairs(GetCarriedToolNames()) do
+		if overflow <= 0 then break end
+		if not keepSet[toolName] then
+			if TrashTool(toolName) then
+				overflow = overflow - 1
+			end
+		end
+	end
+end
+
+-- Auto Treat being on already means "yes, treat" -- no separate confirmation, straight to
+-- fetching once a new diagnosis shows up.
 local function RunAutoTreat(patient, cureNames)
 	task.spawn(function()
+		MakeRoomForCures(cureNames)
 		for _, cureName in ipairs(cureNames) do
 			FetchCure(cureName)
 		end
@@ -1019,17 +1048,6 @@ local function RunAutoTreat(patient, cureNames)
 			end
 		end
 	end)
-end
-
-local function ShowAutoTreatPrompt(patient, cureNames)
-	EnsureAutoTreatPopup()
-	AutoTreatLabel.Text = "Treat " .. patient.Name .. "?\nNeeds: " .. table.concat(cureNames, ", ")
-	if autoTreatYesConnection then autoTreatYesConnection:Disconnect() end
-	autoTreatYesConnection = AutoTreatYes.MouseButton1Click:Connect(function()
-		AutoTreatPopup.Visible = false
-		RunAutoTreat(patient, cureNames)
-	end)
-	AutoTreatPopup.Visible = true
 end
 
 -- Parses "- Dried Eyes\n- Fever" style report text into a deduplicated list of the cure
@@ -1076,7 +1094,7 @@ local function WatchMedicalRoom(room)
 		if not patient then return end
 		local cures = ParseNeededCures(text)
 		if #cures == 0 then return end
-		ShowAutoTreatPrompt(patient, cures)
+		RunAutoTreat(patient, cures)
 	end)
 end
 
@@ -1099,7 +1117,6 @@ local function StopAutoTreat()
 		autoTreatRoomWatchConnection:Disconnect()
 		autoTreatRoomWatchConnection = nil
 	end
-	if AutoTreatPopup then AutoTreatPopup.Visible = false end
 end
 
 AutoTreatToggle.MouseButton1Click:Connect(function()
@@ -1120,7 +1137,6 @@ local function ToggleMinimize()
 	-- wasting space) once the panel gets restored.
 	if minimized then
 		ESPOptionsContainer.Visible = false
-		if AutoTreatPopup then AutoTreatPopup.Visible = false end
 	end
 end
 MinimizeButton.MouseButton1Click:Connect(ToggleMinimize)
