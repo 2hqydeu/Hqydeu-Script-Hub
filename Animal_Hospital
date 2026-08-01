@@ -480,7 +480,7 @@ local function ClassifyInstance(instance, skipDisguiseCheck)
 	if not skipDisguiseCheck and instance:IsA("Model") and IsDisguisedThreat(instance) then
 		-- Same "anomaly" category as everything else red -- combined per your request so
 		-- there's one Anomalies toggle covering both instead of a separate Disguise one.
-		return "Anomalies", ESP_ANOMALY_COLOR, "anomaly"
+		return "Anomaly", ESP_ANOMALY_COLOR, "anomaly"
 	end
 	if instance:GetAttribute("IsPatient") == true then
 		return "Patient", ESP_PATIENT_COLOR, "patient"
@@ -784,11 +784,9 @@ local AutoItemsRow, AutoItemsToggle = CreateFeatureRow(2, "Auto Items")
 local AutoTreatRow, AutoTreatToggle = CreateFeatureRow(3, "Auto Treat")
 
 -- Auto Items / Auto Treat ------------------------------------------------------------------
--- Auto Items just gathers whatever a diagnosis calls for and stops there -- useful on its
--- own if you'd rather treat patients by hand but want the fetching automated. Auto Treat
--- builds on the exact same detection/fetching, additionally applying the cures to the
--- patient -- the two run off one shared room-watching system (EnsureAutoRoomWatching further
--- down) and can be toggled independently or together.
+-- Auto Items watches for a diagnosis and gathers whatever it calls for -- nothing else.
+-- Auto Treat has no watcher or logic of its own; it's a pure modifier Auto Items checks
+-- (see RunAutoItems further down) -- on its own, with Auto Items off, it does nothing.
 -- Confirmed structure (from your live paths + a save instance): each Medical room has
 -- workspace.Rooms.Medical.<Room>.Minigame.Monitor -- pressing its "PP2" prompt ("Process
 -- Results") kicks off analysis; once it finishes, Screen.UI.Report.race and .illnesses
@@ -814,10 +812,8 @@ local ILLNESS_CURES = {
 }
 
 -- Same trick as Instant Prompt in the main hub -- HoldDuration/RequiresLineOfSight zeroed
--- on every prompt while either Auto Items or Auto Treat is on, restored once both are off.
--- Built in here rather than relying on Main's own copy since this module runs as a fully
--- separate script. Shared by both features (see EnsureAutoRoomWatching/
--- MaybeStopAutoRoomWatching further down) since they both rely on fast prompt interaction.
+-- on every prompt while Auto Items is on, restored on toggle-off. Built in here rather than
+-- relying on Main's own copy since this module runs as a fully separate script.
 local autoOriginalPromptValues = {}
 local function RememberPromptOriginal(prompt)
 	if not autoOriginalPromptValues[prompt] then
@@ -1030,142 +1026,40 @@ local function ApplyCureToPatient(patient, cureName)
 	return FirePromptNear(patient:GetPivot().Position, prompt, function() return not HasCureInInventory(cureName) end, 5, 1.5)
 end
 
--- Inventory capacity: 3 slots for now (no reading of real capacity-upgrade state yet --
--- flagged as a fixed assumption, not a confirmed value). Anything carried that ISN'T one
--- of the cures currently needed is fair game to trash to make room.
-local MAX_CARRY_ITEMS = 3
-
-local function GetCarriedToolNames()
-	local names = {}
-	local backpack = GetBackpack()
-	if backpack then
-		for _, tool in ipairs(backpack:GetChildren()) do
-			if tool:IsA("Tool") then table.insert(names, tool.Name) end
-		end
-	end
-	local character = Player.Character
-	local equipped = character and character:FindFirstChildOfClass("Tool")
-	if equipped then table.insert(names, equipped.Name) end
-	return names
-end
-
-local function CountCarriedItems()
-	return #GetCarriedToolNames()
-end
-
--- Same "no fixed path, search by name" approach as the cure pickups -- multiple trashcans
--- (each a Model named "Trash" with its own "PP" prompt) are scattered around the map.
-local function FindClosestTrashCan(fromPosition)
-	local closest, closestDistance = nil, math.huge
-	for _, descendant in ipairs(workspace:GetDescendants()) do
-		if descendant:IsA("Model") and descendant.Name == "Trash" and descendant:FindFirstChild("PP") then
-			local pivot = descendant:GetPivot().Position
-			local distance = (pivot - fromPosition).Magnitude
-			if distance < closestDistance then
-				closestDistance = distance
-				closest = descendant
-			end
-		end
-	end
-	return closest
-end
-
-local function TrashTool(toolName)
-	local character = Player.Character
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if not humanoid then return false end
-	local tool = character:FindFirstChild(toolName)
-	if not tool then
-		local backpack = GetBackpack()
-		tool = backpack and backpack:FindFirstChild(toolName)
-		if not tool then return false end
-		humanoid:EquipTool(tool)
-		task.wait(0.2)
-	end
-	local root = GetPlayerRoot()
-	if not root then return false end
-	local trashCan = FindClosestTrashCan(root.Position)
-	if not trashCan then return false end
-	local prompt = trashCan:FindFirstChild("PP")
-	if not (prompt and prompt:IsA("ProximityPrompt")) then return false end
-	return FirePromptNear(trashCan:GetPivot().Position, prompt, function() return not HasCureInInventory(toolName) end, 3, 1.5)
-end
-
--- Frees enough inventory space for whatever cures are still missing before fetching starts
--- -- otherwise a fetch that would overflow the 3-slot cap either fails outright or silently
--- doesn't pick anything up.
-local function MakeRoomForCures(cureNames)
-	local stillNeeded = 0
-	local keepSet = {}
-	for _, cureName in ipairs(cureNames) do
-		keepSet[cureName] = true
-		if not HasCureInInventory(cureName) then stillNeeded = stillNeeded + 1 end
-	end
-	local overflow = (CountCarriedItems() + stillNeeded) - MAX_CARRY_ITEMS
-	if overflow <= 0 then return end
-	for _, toolName in ipairs(GetCarriedToolNames()) do
-		if overflow <= 0 then break end
-		if not keepSet[toolName] then
-			if TrashTool(toolName) then
-				overflow = overflow - 1
-			end
-		end
-	end
-end
-
--- Auto Items/Auto Treat being on already means "yes, do it" -- no separate confirmation.
--- autoItemsGeneration/autoTreatGeneration bump every Start/Stop -- each background sequence
--- checks its own generation (and its own enabled flag) between every step, so turning
--- either feature off actually interrupts work already in progress instead of letting it
--- run to completion regardless, which is what it was doing before.
+-- Auto Items is the only thing that actually watches rooms and fetches -- gathers whatever
+-- a diagnosis calls for and stops there. Auto Treat has no logic of its own; it's a pure
+-- modifier checked here -- if it's on, each item gets applied to the patient right after
+-- being fetched, one at a time (never holding more than one un-applied cure at once, as a
+-- side effect of doing it this way -- no separate inventory-capacity handling needed). If
+-- Auto Treat is on but Auto Items isn't, nothing happens -- Auto Treat has no watcher of
+-- its own to react to a diagnosis with, on purpose.
 local autoItemsEnabled = false
-local autoItemsGeneration = 0
 local autoTreatEnabled = false
-local autoTreatGeneration = 0
+local autoItemsGeneration = 0
 
--- Fetch-only -- gathers whatever a diagnosis calls for and stops there.
-local function RunAutoItems(cureNames)
+-- roomInfo.startPrompt/startPosition (if present) is a Room8-style bed prompt that needs
+-- firing once to actually begin treatment before the patient's own prompt does anything --
+-- only fired when Auto Treat is actually on, since it's part of giving treatment, not
+-- fetching. See WatchMedicalRoom below for how it's detected.
+local function RunAutoItems(patient, cureNames, roomInfo)
 	local myGeneration = autoItemsGeneration
 	local function stillActive()
 		return autoItemsEnabled and autoItemsGeneration == myGeneration
 	end
 	task.spawn(function()
 		if not stillActive() then return end
-		MakeRoomForCures(cureNames)
-		for _, cureName in ipairs(cureNames) do
-			if not stillActive() then return end
-			FetchCure(cureName)
-		end
-	end)
-end
-
--- roomInfo.startPrompt/startPosition (if present) is a Room8-style bed prompt that needs
--- firing once to actually begin treatment before the patient's own prompt does anything --
--- see WatchMedicalRoom below for how that's detected.
-local function RunAutoTreat(patient, cureNames, roomInfo)
-	local myGeneration = autoTreatGeneration
-	local function stillActive()
-		return autoTreatEnabled and autoTreatGeneration == myGeneration
-	end
-	task.spawn(function()
-		if not stillActive() then return end
-		MakeRoomForCures(cureNames)
-		if not stillActive() then return end
-		if roomInfo and roomInfo.startPrompt then
+		if autoTreatEnabled and roomInfo and roomInfo.startPrompt then
 			FirePromptNear(roomInfo.startPosition, roomInfo.startPrompt, nil, 2, 1)
 			if not stillActive() then return end
 		end
 		for _, cureName in ipairs(cureNames) do
 			if not stillActive() then return end
-			FetchCure(cureName)
-		end
-		if not stillActive() then return end
-		if patient.Parent then
-			for _, cureName in ipairs(cureNames) do
-				if not stillActive() then return end
-				if HasCureInInventory(cureName) then
-					ApplyCureToPatient(patient, cureName)
-				end
+			if not HasCureInInventory(cureName) then
+				FetchCure(cureName)
+			end
+			if not stillActive() then return end
+			if autoTreatEnabled and patient and patient.Parent and HasCureInInventory(cureName) then
+				ApplyCureToPatient(patient, cureName)
 			end
 		end
 	end)
@@ -1230,14 +1124,12 @@ local function WaitForReportSettled(illnessesLabel, minigame)
 end
 
 -- One room, watched for its Report.illnesses text changing to a new non-empty diagnosis.
--- Works for both Medical and Emergency wings alike (see EnsureAutoRoomWatching) --
--- Emergency's Printer ("Print Badge") is a different first step than Medical's Monitor
--- ("Process Results"), but per your own testing the same Monitor/Report structure reveals
--- the diagnosis afterward either way, so this doesn't need to know or care which room type
--- it's watching. Drives both Auto Items and Auto Treat off this one detection -- if Auto
--- Treat is on it handles the full fetch-and-apply itself (it fetches the same way Auto
--- Items does), so Auto Items only actually dispatches when Auto Treat ISN'T also on,
--- avoiding two separate coroutines racing to fetch the same items.
+-- Works for both Medical and Emergency wings alike (see StartAutoItems) -- Emergency's
+-- Printer ("Print Badge") is a different first step than Medical's Monitor ("Process
+-- Results"), but per your own testing the same Monitor/Report structure reveals the
+-- diagnosis afterward either way, so this doesn't need to know or care which room type
+-- it's watching. Auto Items is the only thing this actually gates on -- Auto Treat is
+-- handled entirely inside RunAutoItems above.
 local roomLastIllnessText = {}
 local function WatchMedicalRoom(room)
 	local minigame = room:FindFirstChild("Minigame")
@@ -1249,10 +1141,10 @@ local function WatchMedicalRoom(room)
 	local raceLabel = report and report:FindFirstChild("race")
 	if not (illnessesLabel and raceLabel) then return end
 
-	-- Room8-style "waves" rooms additionally need their bed's PP2 fired once to actually
-	-- begin treatment (potentially needing up to ~10 items across the whole sequence) --
-	-- detected structurally (does this room's Bed.InBed have a PP2?) rather than by room
-	-- name, so this works for any room built the same way, not just Room8 specifically.
+	-- Room8-style "waves" rooms additionally have their bed's PP2 -- see RunAutoItems above
+	-- for when this actually gets fired. Detected structurally (does this room's Bed.InBed
+	-- have a PP2?) rather than by room name, so this works for any room built the same way,
+	-- not just Room8 specifically.
 	local bed = minigame:FindFirstChild("Bed")
 	local inBed = bed and bed:FindFirstChild("InBed")
 	local startPrompt = inBed and inBed:FindFirstChild("PP2")
@@ -1260,7 +1152,7 @@ local function WatchMedicalRoom(room)
 
 	local processing = false
 	illnessesLabel:GetPropertyChangedSignal("Text"):Connect(function()
-		if not (autoItemsEnabled or autoTreatEnabled) or processing then return end
+		if not autoItemsEnabled or processing then return end
 		local text = illnessesLabel.Text
 		if text == "" or text == roomLastIllnessText[room] then return end
 		processing = true
@@ -1270,33 +1162,22 @@ local function WatchMedicalRoom(room)
 			-- reacting to the first (incomplete) change.
 			local settledText = WaitForReportSettled(illnessesLabel, minigame)
 			processing = false
-			if not (autoItemsEnabled or autoTreatEnabled) then return end
+			if not autoItemsEnabled then return end
 			if settledText == "" or settledText == roomLastIllnessText[room] then return end
 			roomLastIllnessText[room] = settledText
 			local cures = ParseNeededCures(settledText)
 			if #cures == 0 then return end
-			if autoTreatEnabled then
-				local patientName = raceLabel.Text
-				local npcFolder = workspace:FindFirstChild("NPCs")
-				local patient = patientName ~= "" and npcFolder and npcFolder:FindFirstChild(patientName)
-				if patient then
-					local roomInfo = startPrompt and {startPrompt = startPrompt, startPosition = startPosition} or nil
-					RunAutoTreat(patient, cures, roomInfo)
-				end
-			elseif autoItemsEnabled then
-				RunAutoItems(cures)
-			end
+			local patientName = raceLabel.Text
+			local npcFolder = workspace:FindFirstChild("NPCs")
+			local patient = (patientName ~= "" and npcFolder and npcFolder:FindFirstChild(patientName)) or nil
+			local roomInfo = startPrompt and {startPrompt = startPrompt, startPosition = startPosition} or nil
+			RunAutoItems(patient, cures, roomInfo)
 		end)
 	end)
 end
 
--- Shared by both features -- whichever turns on first starts watching every Medical/
--- Emergency room and forcing instant prompts; watching only stops once BOTH are off.
-local autoWingWatchConnections = {}
-local autoRoomWatchingActive = false
-local function EnsureAutoRoomWatching()
-	if autoRoomWatchingActive then return end
-	autoRoomWatchingActive = true
+local autoItemsWingWatchConnections = {}
+local function StartAutoItems()
 	roomLastIllnessText = {}
 	SetInstantPrompts(true)
 	local roomsFolder = workspace:FindFirstChild("Rooms")
@@ -1307,32 +1188,31 @@ local function EnsureAutoRoomWatching()
 		for _, room in ipairs(wing:GetChildren()) do
 			WatchMedicalRoom(room)
 		end
-		table.insert(autoWingWatchConnections, wing.ChildAdded:Connect(WatchMedicalRoom))
+		table.insert(autoItemsWingWatchConnections, wing.ChildAdded:Connect(WatchMedicalRoom))
 	end
 	WatchWing("Medical")
 	WatchWing("Emergency")
 end
 
-local function MaybeStopAutoRoomWatching()
-	if autoItemsEnabled or autoTreatEnabled then return end
-	autoRoomWatchingActive = false
+local function StopAutoItems()
 	SetInstantPrompts(false)
-	for _, connection in ipairs(autoWingWatchConnections) do connection:Disconnect() end
-	autoWingWatchConnections = {}
+	for _, connection in ipairs(autoItemsWingWatchConnections) do connection:Disconnect() end
+	autoItemsWingWatchConnections = {}
 end
 
 AutoItemsToggle.MouseButton1Click:Connect(function()
 	autoItemsEnabled = not autoItemsEnabled
 	AutoItemsToggle.Text = autoItemsEnabled and "On" or "Off"
 	autoItemsGeneration = autoItemsGeneration + 1
-	if autoItemsEnabled then EnsureAutoRoomWatching() else MaybeStopAutoRoomWatching() end
+	if autoItemsEnabled then StartAutoItems() else StopAutoItems() end
 end)
 
+-- Pure modifier -- no watcher of its own, just checked inline by RunAutoItems above. Doing
+-- nothing here while Auto Items is off is intentional, not a bug -- there's nothing to add
+-- on to otherwise.
 AutoTreatToggle.MouseButton1Click:Connect(function()
 	autoTreatEnabled = not autoTreatEnabled
 	AutoTreatToggle.Text = autoTreatEnabled and "On" or "Off"
-	autoTreatGeneration = autoTreatGeneration + 1
-	if autoTreatEnabled then EnsureAutoRoomWatching() else MaybeStopAutoRoomWatching() end
 end)
 
 local AutoCoffeeRow, AutoCoffeeToggle = CreateFeatureRow(4, "Auto Coffee")
@@ -1432,7 +1312,7 @@ CloseButton.MouseButton1Click:Connect(function()
 	StopESP()
 	autoItemsEnabled = false
 	autoTreatEnabled = false
-	MaybeStopAutoRoomWatching()
+	StopAutoItems()
 	StopAutoCoffee()
 	local fadeOutInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 	TweenService:Create(PanelScale, fadeOutInfo, {Scale = 0.85}):Play()
