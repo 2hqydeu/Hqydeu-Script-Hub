@@ -26,6 +26,7 @@ local UserInputService = game:GetService("UserInputService")
 local CollectionService = game:GetService("CollectionService")
 local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 
 local Player = Players.LocalPlayer
 local FrameColor = Color3.fromRGB(3, 3, 3)
@@ -853,12 +854,8 @@ end
 -- for Auto Farm-style automation elsewhere in this hub -- not real pathfinding. Faces the
 -- character toward the target (in first person the camera follows head orientation, and a
 -- prompt sitting off-screen apparently can't be pressed at all) and fully zeroes both
--- linear AND angular velocity. Returns the character's original CFrame so the caller can
--- restore it with ReturnFromTeleport below -- staying parked at the destination the whole
--- time a prompt-fire was retried/waited on was what was launching the character into a
--- ragdoll, so callers only stay there for the length of one actual fire attempt, the same
--- "teleport there, act, teleport immediately back" pattern MM2's own Auto Gun already uses
--- for exactly this reason.
+-- linear AND angular velocity. Doesn't bother returning the character to where it was after
+-- -- confirmed as a non-issue, so this just parks it right at the target instead.
 local function TeleportFacing(targetPosition, standoffDistance)
 	local root = GetPlayerRoot()
 	if not root then return nil end
@@ -873,13 +870,22 @@ local function TeleportFacing(targetPosition, standoffDistance)
 	return originalCFrame
 end
 
-local function ReturnFromTeleport(originalCFrame)
-	if not originalCFrame then return end
-	local root = GetPlayerRoot()
-	if not root then return end
-	root.CFrame = originalCFrame
-	root.AssemblyLinearVelocity = Vector3.zero
-	root.AssemblyAngularVelocity = Vector3.zero
+-- fireproximityprompt alone turned out to not reliably register server-side (confirmed --
+-- pressing E manually in the exact same spot the script had already positioned/equipped
+-- worked every time) -- simulating the prompt's actual bound key (E by default, but read
+-- directly off the prompt in case it's rebound) goes through the same input pipeline a real
+-- press does, which a real press proved the server actually honors.
+local function GetPromptKeyCode(prompt)
+	local keyCode = prompt.KeyboardKeyCode
+	if keyCode and keyCode ~= Enum.KeyCode.Unknown then return keyCode end
+	return Enum.KeyCode.E
+end
+
+local function SimulatePromptKeyPress(prompt)
+	local keyCode = GetPromptKeyCode(prompt)
+	pcall(function() VirtualInputManager:SendKeyEvent(true, keyCode, false, game) end)
+	task.wait(0.1)
+	pcall(function() VirtualInputManager:SendKeyEvent(false, keyCode, false, game) end)
 end
 
 -- No fixed shelf path -- finds every Model in the workspace named after this cure (a
@@ -910,22 +916,19 @@ local function HasCureInInventory(cureName)
 	return (character and character:FindFirstChild(cureName) ~= nil) or (backpack and backpack:FindFirstChild(cureName) ~= nil)
 end
 
--- Teleports to face the target, fires the prompt, then teleports straight back --
--- checkSuccess is polled from wherever the character actually ends up (it doesn't need to
--- stay parked at the target to read Backpack contents), and each retry does its own fresh
--- teleport-there/fire/teleport-back cycle rather than sitting at the destination the whole
--- time waiting -- that's what was launching the character into a ragdoll.
+-- Teleports to face the target once, then retries firing in place -- both
+-- fireproximityprompt and a simulated real key press, since the latter is what's actually
+-- confirmed to register.
 local function FirePromptNear(targetPosition, prompt, checkSuccess, attempts, perAttemptWait)
 	attempts = attempts or 3
 	perAttemptWait = perAttemptWait or 1.5
+	TeleportFacing(targetPosition)
+	task.wait(0.4)
 	for _ = 1, attempts do
-		local originalCFrame = TeleportFacing(targetPosition)
-		task.wait(0.4)
 		if type(fireproximityprompt) == "function" then
 			pcall(fireproximityprompt, prompt)
 		end
-		task.wait(0.3)
-		ReturnFromTeleport(originalCFrame)
+		SimulatePromptKeyPress(prompt)
 		if not checkSuccess then return true end
 		local deadline = os.clock() + perAttemptWait
 		while os.clock() < deadline do
