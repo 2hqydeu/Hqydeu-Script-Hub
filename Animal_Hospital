@@ -944,7 +944,24 @@ local function ApplyCureToPatient(patient, cureName)
 	if not (prompt and prompt:IsA("ProximityPrompt")) then return false end
 	TeleportNear(patient:GetPivot().Position)
 	task.wait(0.6)
-	return TryFirePrompt(prompt, function() return not HasCureInInventory(cureName) end)
+	-- Applying treatment plays two sequential sound effects first, and per your testing
+	-- you can't actually treat them until the second one finishes -- firing again too soon
+	-- would just interrupt/restart that instead of helping, so this waits generously for
+	-- the cure to actually be consumed instead of retrying quickly like the other prompt
+	-- interactions do, and only retries once after a real timeout.
+	if type(fireproximityprompt) == "function" then
+		pcall(fireproximityprompt, prompt)
+	end
+	local deadline = os.clock() + 8
+	while os.clock() < deadline do
+		if not HasCureInInventory(cureName) then return true end
+		task.wait(0.25)
+	end
+	if type(fireproximityprompt) == "function" then
+		pcall(fireproximityprompt, prompt)
+	end
+	task.wait(3)
+	return not HasCureInInventory(cureName)
 end
 
 -- Inventory capacity: 3 slots for now (no reading of real capacity-upgrade state yet --
@@ -1125,6 +1142,82 @@ AutoTreatToggle.MouseButton1Click:Connect(function()
 	if autoTreatEnabled then StartAutoTreat() else StopAutoTreat() end
 end)
 
+local AutoCoffeeRow, AutoCoffeeToggle = CreateFeatureRow(3, "Auto Coffee")
+
+-- Auto Coffee ----------------------------------------------------------------------------
+-- Confirmed structure: workspace.Misc.CoffeeMachine.Coffee is the pickup point (a
+-- UnionOperation with its own "PP" prompt, ActionText "Coffee"). A BillboardGui on the
+-- machine's Attachment has a "status" TextLabel that reads
+-- "coffee: <font color='rgb(0, 200, 0)'>ready</font>" once it's done brewing (green
+-- "ready", confirmed directly from the live text) -- watched here instead of the prompt's
+-- own Enabled (which stays true the whole time regardless of brew state), so grabbing
+-- happens the instant the text actually changes rather than polling on a guessed interval.
+local autoCoffeeEnabled = false
+local autoCoffeeConnection = nil
+local autoCoffeePromptOriginal = nil
+
+local function FindCoffeeMachineParts()
+	local misc = workspace:FindFirstChild("Misc")
+	local machine = misc and misc:FindFirstChild("CoffeeMachine")
+	if not machine then return nil, nil, nil end
+	local coffee = machine:FindFirstChild("Coffee")
+	local prompt = coffee and coffee:FindFirstChild("PP")
+	local attachment = machine:FindFirstChildOfClass("Attachment")
+	local ui = attachment and attachment:FindFirstChild("UI")
+	local statusLabel = ui and ui:FindFirstChild("status")
+	return coffee, prompt, statusLabel
+end
+
+local function IsCoffeeReady(statusLabel)
+	return statusLabel ~= nil and statusLabel.Text:lower():find("ready", 1, true) ~= nil
+end
+
+local function GrabCoffee(coffee, prompt)
+	TeleportNear(coffee:GetPivot().Position)
+	task.wait(0.4)
+	if type(fireproximityprompt) == "function" then
+		pcall(fireproximityprompt, prompt)
+	end
+end
+
+local function StartAutoCoffee()
+	local coffee, prompt, statusLabel = FindCoffeeMachineParts()
+	if not (coffee and prompt and statusLabel) then return end
+	autoCoffeePromptOriginal = {HoldDuration = prompt.HoldDuration, RequiresLineOfSight = prompt.RequiresLineOfSight}
+	prompt.HoldDuration = 0
+	prompt.RequiresLineOfSight = false
+	-- Grab right away if it's already sitting ready when this gets turned on, instead of
+	-- waiting for the next brew cycle to notice it.
+	if IsCoffeeReady(statusLabel) then GrabCoffee(coffee, prompt) end
+	autoCoffeeConnection = statusLabel:GetPropertyChangedSignal("Text"):Connect(function()
+		if not autoCoffeeEnabled then return end
+		if IsCoffeeReady(statusLabel) then
+			GrabCoffee(coffee, prompt)
+		end
+	end)
+end
+
+local function StopAutoCoffee()
+	if autoCoffeeConnection then
+		autoCoffeeConnection:Disconnect()
+		autoCoffeeConnection = nil
+	end
+	if autoCoffeePromptOriginal then
+		local _, prompt = FindCoffeeMachineParts()
+		if prompt then
+			prompt.HoldDuration = autoCoffeePromptOriginal.HoldDuration
+			prompt.RequiresLineOfSight = autoCoffeePromptOriginal.RequiresLineOfSight
+		end
+		autoCoffeePromptOriginal = nil
+	end
+end
+
+AutoCoffeeToggle.MouseButton1Click:Connect(function()
+	autoCoffeeEnabled = not autoCoffeeEnabled
+	AutoCoffeeToggle.Text = autoCoffeeEnabled and "On" or "Off"
+	if autoCoffeeEnabled then StartAutoCoffee() else StopAutoCoffee() end
+end)
+
 -- Minimize: shrinks to just the header, matching Serenity's own minimize behavior. Every
 -- row lives inside ContentScroll now, so hiding that one frame is enough.
 local minimized = false
@@ -1149,6 +1242,7 @@ CloseButton.MouseButton1Click:Connect(function()
 	closingPanel = true
 	StopESP()
 	StopAutoTreat()
+	StopAutoCoffee()
 	local fadeOutInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 	TweenService:Create(PanelScale, fadeOutInfo, {Scale = 0.85}):Play()
 	local fadeOutTween = TweenService:Create(PanelFrame, fadeOutInfo, {BackgroundTransparency = 1})
