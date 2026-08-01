@@ -949,6 +949,29 @@ local function FetchCure(cureName)
 	return FirePromptNear(model:GetPivot().Position, prompt, function() return HasCureInInventory(cureName) end, 4, 1.5)
 end
 
+-- Equips the requested cure, confirming it actually landed (character:FindFirstChild
+-- returning it isn't guaranteed the instant after EquipTool -- polling for it, then giving
+-- it a bit more time to settle, instead of just assuming a fixed 0.2s was enough) --
+-- firing "Apply Treatment" while the server hasn't actually seen the equip yet would fail
+-- for the same reason on every single retry, no matter how many attempts FirePromptNear
+-- gets, since the real precondition was never actually satisfied.
+local function EquipCure(character, humanoid, cureName)
+	if character:FindFirstChild(cureName) then return true end
+	local backpack = GetBackpack()
+	local tool = backpack and backpack:FindFirstChild(cureName)
+	if not tool then return false end
+	humanoid:EquipTool(tool)
+	local deadline = os.clock() + 2
+	while os.clock() < deadline do
+		if character:FindFirstChild(cureName) then
+			task.wait(0.4)
+			return true
+		end
+		task.wait(0.1)
+	end
+	return character:FindFirstChild(cureName) ~= nil
+end
+
 -- Equips the given cure (from Backpack or already-equipped) and fires the patient's own
 -- "Apply Treatment" prompt -- a plain prompt press same as picking the items up in the
 -- first place, per your own testing, so this uses the same multiple-quick-attempts pattern
@@ -959,13 +982,7 @@ local function ApplyCureToPatient(patient, cureName)
 	local character = Player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if not humanoid then return false end
-	if not (character:FindFirstChild(cureName)) then
-		local backpack = GetBackpack()
-		local tool = backpack and backpack:FindFirstChild(cureName)
-		if not tool then return false end
-		humanoid:EquipTool(tool)
-		task.wait(0.2)
-	end
+	if not EquipCure(character, humanoid, cureName) then return false end
 	local prompt = patient:FindFirstChild("PP")
 	if not (prompt and prompt:IsA("ProximityPrompt")) then return false end
 	return FirePromptNear(patient:GetPivot().Position, prompt, function() return not HasCureInInventory(cureName) end, 5, 1.5)
