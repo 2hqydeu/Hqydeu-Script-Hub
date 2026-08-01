@@ -860,6 +860,9 @@ end
 -- prompt sitting off-screen apparently can't be pressed at all) and fully zeroes both
 -- linear AND angular velocity. Doesn't bother returning the character to where it was after
 -- -- confirmed as a non-issue, so this just parks it right at the target instead.
+-- standoffDistance defaults small (practically standing on the target) -- per your
+-- feedback, a clear line of sight on the prompt matters more than personal space, and a
+-- few studs of gap was apparently enough to leave the prompt out of view/off-screen.
 local function TeleportFacing(targetPosition, standoffDistance)
 	local root = GetPlayerRoot()
 	if not root then return nil end
@@ -867,7 +870,7 @@ local function TeleportFacing(targetPosition, standoffDistance)
 	local flatOffset = originalCFrame.Position - targetPosition
 	flatOffset = Vector3.new(flatOffset.X, 0, flatOffset.Z)
 	if flatOffset.Magnitude < 0.5 then flatOffset = Vector3.new(0, 0, 1) end
-	local standPosition = targetPosition + flatOffset.Unit * (standoffDistance or 4)
+	local standPosition = targetPosition + flatOffset.Unit * (standoffDistance or 1)
 	root.CFrame = CFrame.new(standPosition, Vector3.new(targetPosition.X, standPosition.Y, targetPosition.Z))
 	root.AssemblyLinearVelocity = Vector3.zero
 	root.AssemblyAngularVelocity = Vector3.zero
@@ -953,7 +956,7 @@ local function FirePromptNear(targetPosition, prompt, checkSuccess, attempts, pe
 	attempts = attempts or 3
 	perAttemptWait = perAttemptWait or 1.5
 	TeleportFacing(targetPosition)
-	task.wait(0.4)
+	task.wait(0.15)
 	local disabledPrompts = DisableOtherPrompts(prompt, targetPosition, 15)
 	local function finish(result)
 		RestorePrompts(disabledPrompts)
@@ -968,7 +971,7 @@ local function FirePromptNear(targetPosition, prompt, checkSuccess, attempts, pe
 		local deadline = os.clock() + perAttemptWait
 		while os.clock() < deadline do
 			if checkSuccess() then return finish(true) end
-			task.wait(0.15)
+			task.wait(0.1)
 		end
 	end
 	return finish(checkSuccess and checkSuccess() or false)
@@ -1002,7 +1005,7 @@ local function EquipCure(character, humanoid, cureName)
 	local deadline = os.clock() + 2
 	while os.clock() < deadline do
 		if character:FindFirstChild(cureName) then
-			task.wait(0.4)
+			task.wait(0.25)
 			return true
 		end
 		task.wait(0.1)
@@ -1052,14 +1055,17 @@ local function RunAutoItems(patient, cureNames, roomInfo)
 			FirePromptNear(roomInfo.startPosition, roomInfo.startPrompt, nil, 2, 1)
 			if not stillActive() then return end
 		end
+		-- pcall'd so one cure erroring out doesn't silently kill the rest of the loop --
+		-- multiple requirements need every single one gathered (and treated, if Auto Treat
+		-- is on), not just the first.
 		for _, cureName in ipairs(cureNames) do
 			if not stillActive() then return end
 			if not HasCureInInventory(cureName) then
-				FetchCure(cureName)
+				pcall(FetchCure, cureName)
 			end
 			if not stillActive() then return end
 			if autoTreatEnabled and patient and patient.Parent and HasCureInInventory(cureName) then
-				ApplyCureToPatient(patient, cureName)
+				pcall(ApplyCureToPatient, patient, cureName)
 			end
 		end
 	end)
@@ -1112,10 +1118,10 @@ local function WaitForReportSettled(illnessesLabel, minigame)
 		lastChangeAt = os.clock()
 	end))
 
-	local deadline = os.clock() + 12
+	local deadline = os.clock() + 7
 	while os.clock() < deadline do
 		if soundPlays >= 2 then break end
-		if os.clock() - lastChangeAt >= 1.5 then break end
+		if os.clock() - lastChangeAt >= 0.6 then break end
 		task.wait(0.1)
 	end
 
