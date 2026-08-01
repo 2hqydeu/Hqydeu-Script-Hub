@@ -780,9 +780,15 @@ ESPEditButton.MouseButton1Click:Connect(function()
 	ESPOptionsContainer.Visible = not ESPOptionsContainer.Visible
 end)
 
-local AutoTreatRow, AutoTreatToggle = CreateFeatureRow(2, "Auto Treat")
+local AutoItemsRow, AutoItemsToggle = CreateFeatureRow(2, "Auto Items")
+local AutoTreatRow, AutoTreatToggle = CreateFeatureRow(3, "Auto Treat")
 
--- Auto Treat -----------------------------------------------------------------------------
+-- Auto Items / Auto Treat ------------------------------------------------------------------
+-- Auto Items just gathers whatever a diagnosis calls for and stops there -- useful on its
+-- own if you'd rather treat patients by hand but want the fetching automated. Auto Treat
+-- builds on the exact same detection/fetching, additionally applying the cures to the
+-- patient -- the two run off one shared room-watching system (EnsureAutoRoomWatching further
+-- down) and can be toggled independently or together.
 -- Confirmed structure (from your live paths + a save instance): each Medical room has
 -- workspace.Rooms.Medical.<Room>.Minigame.Monitor -- pressing its "PP2" prompt ("Process
 -- Results") kicks off analysis; once it finishes, Screen.UI.Report.race and .illnesses
@@ -808,12 +814,14 @@ local ILLNESS_CURES = {
 }
 
 -- Same trick as Instant Prompt in the main hub -- HoldDuration/RequiresLineOfSight zeroed
--- on every prompt while Auto Treat is on, restored on toggle-off. Built in here rather
--- than relying on Main's own copy since this module runs as a fully separate script.
-local autoTreatOriginalPromptValues = {}
+-- on every prompt while either Auto Items or Auto Treat is on, restored once both are off.
+-- Built in here rather than relying on Main's own copy since this module runs as a fully
+-- separate script. Shared by both features (see EnsureAutoRoomWatching/
+-- MaybeStopAutoRoomWatching further down) since they both rely on fast prompt interaction.
+local autoOriginalPromptValues = {}
 local function RememberPromptOriginal(prompt)
-	if not autoTreatOriginalPromptValues[prompt] then
-		autoTreatOriginalPromptValues[prompt] = {HoldDuration = prompt.HoldDuration, RequiresLineOfSight = prompt.RequiresLineOfSight}
+	if not autoOriginalPromptValues[prompt] then
+		autoOriginalPromptValues[prompt] = {HoldDuration = prompt.HoldDuration, RequiresLineOfSight = prompt.RequiresLineOfSight}
 	end
 end
 local function InstantifyPrompt(prompt)
@@ -821,27 +829,27 @@ local function InstantifyPrompt(prompt)
 	prompt.HoldDuration = 0
 	prompt.RequiresLineOfSight = false
 end
-local autoTreatPromptAddedConnection = nil
-local function SetAutoTreatInstantPrompts(enabled)
+local autoPromptAddedConnection = nil
+local function SetInstantPrompts(enabled)
 	if enabled then
 		for _, object in ipairs(workspace:GetDescendants()) do
 			if object:IsA("ProximityPrompt") then InstantifyPrompt(object) end
 		end
-		autoTreatPromptAddedConnection = workspace.DescendantAdded:Connect(function(object)
+		autoPromptAddedConnection = workspace.DescendantAdded:Connect(function(object)
 			if object:IsA("ProximityPrompt") then InstantifyPrompt(object) end
 		end)
 	else
-		if autoTreatPromptAddedConnection then
-			autoTreatPromptAddedConnection:Disconnect()
-			autoTreatPromptAddedConnection = nil
+		if autoPromptAddedConnection then
+			autoPromptAddedConnection:Disconnect()
+			autoPromptAddedConnection = nil
 		end
-		for prompt, original in pairs(autoTreatOriginalPromptValues) do
+		for prompt, original in pairs(autoOriginalPromptValues) do
 			if prompt.Parent then
 				prompt.HoldDuration = original.HoldDuration
 				prompt.RequiresLineOfSight = original.RequiresLineOfSight
 			end
 		end
-		autoTreatOriginalPromptValues = {}
+		autoOriginalPromptValues = {}
 	end
 end
 
@@ -916,6 +924,32 @@ local function HasCureInInventory(cureName)
 	return (character and character:FindFirstChild(cureName) ~= nil) or (backpack and backpack:FindFirstChild(cureName) ~= nil)
 end
 
+-- Disables every OTHER enabled ProximityPrompt within radius so the simulated key press
+-- can only ever land on the one prompt actually intended -- picking up "Eye Drops" also
+-- grabbing an unwanted "IV Drops" happened because a real key press isn't targeted at a
+-- specific prompt the way fireproximityprompt is; it just activates whatever's currently
+-- in range, which apparently included a neighboring shelf's prompt too.
+local function DisableOtherPrompts(exceptPrompt, position, radius)
+	local disabled = {}
+	for _, descendant in ipairs(workspace:GetDescendants()) do
+		if descendant:IsA("ProximityPrompt") and descendant ~= exceptPrompt and descendant.Enabled then
+			local part = descendant.Parent
+			local partPosition = part and (part:IsA("BasePart") and part.Position or (part:IsA("Model") and part:GetPivot().Position))
+			if partPosition and (partPosition - position).Magnitude <= radius then
+				disabled[descendant] = true
+				descendant.Enabled = false
+			end
+		end
+	end
+	return disabled
+end
+
+local function RestorePrompts(disabled)
+	for prompt in pairs(disabled) do
+		if prompt.Parent then prompt.Enabled = true end
+	end
+end
+
 -- Teleports to face the target once, then retries firing in place -- both
 -- fireproximityprompt and a simulated real key press, since the latter is what's actually
 -- confirmed to register.
@@ -924,19 +958,24 @@ local function FirePromptNear(targetPosition, prompt, checkSuccess, attempts, pe
 	perAttemptWait = perAttemptWait or 1.5
 	TeleportFacing(targetPosition)
 	task.wait(0.4)
+	local disabledPrompts = DisableOtherPrompts(prompt, targetPosition, 15)
+	local function finish(result)
+		RestorePrompts(disabledPrompts)
+		return result
+	end
 	for _ = 1, attempts do
 		if type(fireproximityprompt) == "function" then
 			pcall(fireproximityprompt, prompt)
 		end
 		SimulatePromptKeyPress(prompt)
-		if not checkSuccess then return true end
+		if not checkSuccess then return finish(true) end
 		local deadline = os.clock() + perAttemptWait
 		while os.clock() < deadline do
-			if checkSuccess() then return true end
+			if checkSuccess() then return finish(true) end
 			task.wait(0.15)
 		end
 	end
-	return checkSuccess and checkSuccess() or false
+	return finish(checkSuccess and checkSuccess() or false)
 end
 
 -- Walks to the pickup spot and fires its prompt (retrying/waiting as needed for the Tool
@@ -1074,14 +1113,31 @@ local function MakeRoomForCures(cureNames)
 	end
 end
 
--- Auto Treat being on already means "yes, treat" -- no separate confirmation, straight to
--- fetching once a new diagnosis shows up.
--- autoTreatGeneration bumps every Start/Stop -- RunAutoTreat's background sequence checks
--- it (and autoTreatEnabled) between every step, so turning the feature off actually
--- interrupts a treatment already in progress instead of letting it run to completion
--- regardless, which is what it was doing before.
+-- Auto Items/Auto Treat being on already means "yes, do it" -- no separate confirmation.
+-- autoItemsGeneration/autoTreatGeneration bump every Start/Stop -- each background sequence
+-- checks its own generation (and its own enabled flag) between every step, so turning
+-- either feature off actually interrupts work already in progress instead of letting it
+-- run to completion regardless, which is what it was doing before.
+local autoItemsEnabled = false
+local autoItemsGeneration = 0
 local autoTreatEnabled = false
 local autoTreatGeneration = 0
+
+-- Fetch-only -- gathers whatever a diagnosis calls for and stops there.
+local function RunAutoItems(cureNames)
+	local myGeneration = autoItemsGeneration
+	local function stillActive()
+		return autoItemsEnabled and autoItemsGeneration == myGeneration
+	end
+	task.spawn(function()
+		if not stillActive() then return end
+		MakeRoomForCures(cureNames)
+		for _, cureName in ipairs(cureNames) do
+			if not stillActive() then return end
+			FetchCure(cureName)
+		end
+	end)
+end
 
 -- roomInfo.startPrompt/startPosition (if present) is a Room8-style bed prompt that needs
 -- firing once to actually begin treatment before the patient's own prompt does anything --
@@ -1174,11 +1230,14 @@ local function WaitForReportSettled(illnessesLabel, minigame)
 end
 
 -- One room, watched for its Report.illnesses text changing to a new non-empty diagnosis.
--- Works for both Medical and Emergency wings alike (see StartAutoTreat) -- Emergency's
--- Printer ("Print Badge") is a different first step than Medical's Monitor ("Process
--- Results"), but per your own testing the same Monitor/Report structure reveals the
--- diagnosis afterward either way, so this doesn't need to know or care which room type
--- it's watching.
+-- Works for both Medical and Emergency wings alike (see EnsureAutoRoomWatching) --
+-- Emergency's Printer ("Print Badge") is a different first step than Medical's Monitor
+-- ("Process Results"), but per your own testing the same Monitor/Report structure reveals
+-- the diagnosis afterward either way, so this doesn't need to know or care which room type
+-- it's watching. Drives both Auto Items and Auto Treat off this one detection -- if Auto
+-- Treat is on it handles the full fetch-and-apply itself (it fetches the same way Auto
+-- Items does), so Auto Items only actually dispatches when Auto Treat ISN'T also on,
+-- avoiding two separate coroutines racing to fetch the same items.
 local roomLastIllnessText = {}
 local function WatchMedicalRoom(room)
 	local minigame = room:FindFirstChild("Minigame")
@@ -1201,7 +1260,7 @@ local function WatchMedicalRoom(room)
 
 	local processing = false
 	illnessesLabel:GetPropertyChangedSignal("Text"):Connect(function()
-		if not autoTreatEnabled or processing then return end
+		if not (autoItemsEnabled or autoTreatEnabled) or processing then return end
 		local text = illnessesLabel.Text
 		if text == "" or text == roomLastIllnessText[room] then return end
 		processing = true
@@ -1211,27 +1270,35 @@ local function WatchMedicalRoom(room)
 			-- reacting to the first (incomplete) change.
 			local settledText = WaitForReportSettled(illnessesLabel, minigame)
 			processing = false
-			if not autoTreatEnabled then return end
+			if not (autoItemsEnabled or autoTreatEnabled) then return end
 			if settledText == "" or settledText == roomLastIllnessText[room] then return end
 			roomLastIllnessText[room] = settledText
-			local patientName = raceLabel.Text
-			if not patientName or patientName == "" then return end
-			local npcFolder = workspace:FindFirstChild("NPCs")
-			local patient = npcFolder and npcFolder:FindFirstChild(patientName)
-			if not patient then return end
 			local cures = ParseNeededCures(settledText)
 			if #cures == 0 then return end
-			local roomInfo = startPrompt and {startPrompt = startPrompt, startPosition = startPosition} or nil
-			RunAutoTreat(patient, cures, roomInfo)
+			if autoTreatEnabled then
+				local patientName = raceLabel.Text
+				local npcFolder = workspace:FindFirstChild("NPCs")
+				local patient = patientName ~= "" and npcFolder and npcFolder:FindFirstChild(patientName)
+				if patient then
+					local roomInfo = startPrompt and {startPrompt = startPrompt, startPosition = startPosition} or nil
+					RunAutoTreat(patient, cures, roomInfo)
+				end
+			elseif autoItemsEnabled then
+				RunAutoItems(cures)
+			end
 		end)
 	end)
 end
 
-local autoTreatWingWatchConnections = {}
-local function StartAutoTreat()
+-- Shared by both features -- whichever turns on first starts watching every Medical/
+-- Emergency room and forcing instant prompts; watching only stops once BOTH are off.
+local autoWingWatchConnections = {}
+local autoRoomWatchingActive = false
+local function EnsureAutoRoomWatching()
+	if autoRoomWatchingActive then return end
+	autoRoomWatchingActive = true
 	roomLastIllnessText = {}
-	autoTreatGeneration = autoTreatGeneration + 1
-	SetAutoTreatInstantPrompts(true)
+	SetInstantPrompts(true)
 	local roomsFolder = workspace:FindFirstChild("Rooms")
 	if not roomsFolder then return end
 	local function WatchWing(wingName)
@@ -1240,26 +1307,35 @@ local function StartAutoTreat()
 		for _, room in ipairs(wing:GetChildren()) do
 			WatchMedicalRoom(room)
 		end
-		table.insert(autoTreatWingWatchConnections, wing.ChildAdded:Connect(WatchMedicalRoom))
+		table.insert(autoWingWatchConnections, wing.ChildAdded:Connect(WatchMedicalRoom))
 	end
 	WatchWing("Medical")
 	WatchWing("Emergency")
 end
 
-local function StopAutoTreat()
-	autoTreatGeneration = autoTreatGeneration + 1
-	SetAutoTreatInstantPrompts(false)
-	for _, connection in ipairs(autoTreatWingWatchConnections) do connection:Disconnect() end
-	autoTreatWingWatchConnections = {}
+local function MaybeStopAutoRoomWatching()
+	if autoItemsEnabled or autoTreatEnabled then return end
+	autoRoomWatchingActive = false
+	SetInstantPrompts(false)
+	for _, connection in ipairs(autoWingWatchConnections) do connection:Disconnect() end
+	autoWingWatchConnections = {}
 end
+
+AutoItemsToggle.MouseButton1Click:Connect(function()
+	autoItemsEnabled = not autoItemsEnabled
+	AutoItemsToggle.Text = autoItemsEnabled and "On" or "Off"
+	autoItemsGeneration = autoItemsGeneration + 1
+	if autoItemsEnabled then EnsureAutoRoomWatching() else MaybeStopAutoRoomWatching() end
+end)
 
 AutoTreatToggle.MouseButton1Click:Connect(function()
 	autoTreatEnabled = not autoTreatEnabled
 	AutoTreatToggle.Text = autoTreatEnabled and "On" or "Off"
-	if autoTreatEnabled then StartAutoTreat() else StopAutoTreat() end
+	autoTreatGeneration = autoTreatGeneration + 1
+	if autoTreatEnabled then EnsureAutoRoomWatching() else MaybeStopAutoRoomWatching() end
 end)
 
-local AutoCoffeeRow, AutoCoffeeToggle = CreateFeatureRow(3, "Auto Coffee")
+local AutoCoffeeRow, AutoCoffeeToggle = CreateFeatureRow(4, "Auto Coffee")
 
 -- Auto Coffee ----------------------------------------------------------------------------
 -- Confirmed structure: workspace.Misc.CoffeeMachine.Coffee is the pickup point (a
@@ -1354,7 +1430,9 @@ CloseButton.MouseButton1Click:Connect(function()
 	if closingPanel then return end
 	closingPanel = true
 	StopESP()
-	StopAutoTreat()
+	autoItemsEnabled = false
+	autoTreatEnabled = false
+	MaybeStopAutoRoomWatching()
 	StopAutoCoffee()
 	local fadeOutInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 	TweenService:Create(PanelScale, fadeOutInfo, {Scale = 0.85}):Play()
