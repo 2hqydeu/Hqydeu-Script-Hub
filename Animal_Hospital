@@ -425,14 +425,13 @@ local ANOMALY_SIGNALS = {
 -- Anomaly templates that are room-placed hazards/props instead -- never touch
 -- workspace.NPCs, watched workspace-wide by name below. Slime (workspace.Misc.Slime)
 -- included even though it lives outside workspace.Misc specifically rather than NPCs --
--- the workspace-wide name scan below doesn't care which folder it's actually in.
+-- the workspace-wide name scan below doesn't care which folder it's actually in. Shadow
+-- dropped entirely per your feedback -- just a pointless room part, not worth ESPing.
 local EVENT_ANOMALY_NAMES = {
-	Shadow = true, EyeMass = true, Candles = true, Hider = true,
+	EyeMass = true, Candles = true, Hider = true,
 	MonsterBed = true, MonsterBedLarge = true, Slime = true,
 }
-local EVENT_ANOMALY_SIGNALS = {
-	{label = "Shadow", tag = "AnomalyShadow"},
-}
+local EVENT_ANOMALY_SIGNALS = {}
 
 -- Named lobby extras from ReplicatedStorage.NPCs.UniqueVisitors -- checked by name as a
 -- backup to the "Unique" tag in case that tag isn't reliably applied to all of them.
@@ -443,13 +442,21 @@ local UNIQUE_VISITOR_NAMES = {
 }
 
 -- Returns label, color, and a category key (used by the ESP Options popup's per-category
--- toggles further down). Confirmed name/tag matches are checked BEFORE the Disguised Threat
+-- toggles further down). Confirmed name/tag matches are checked BEFORE the Anomalies
 -- heuristic now, not after -- Hider (an Event, identified purely by name) was flickering
--- between "Hider" and "Disguised Threat" because its own rig apparently trips one of the
--- disguise heuristics on its own sometimes. A confident name/tag match should always win
--- over a heuristic guess; the heuristic is really only meant to catch things that AREN'T
--- already identifiable another way (a patient secretly being the real threat).
-local function ClassifyInstance(instance)
+-- between "Hider" and the heuristic because its own rig apparently trips one of the
+-- disguise checks on its own sometimes. A confident name/tag match should always win over a
+-- heuristic guess; the heuristic is really only meant to catch things that AREN'T already
+-- identifiable another way (a patient secretly being the real threat).
+--
+-- skipDisguiseCheck is true for the first ESP_DISGUISE_GRACE_PERIOD seconds after an
+-- instance is first tracked (see RefreshESPClassifications) -- ambulance-arrival patients
+-- (confirmed by name: Leo Takeda and others) were showing up as false Anomalies even though
+-- treating them proved they were completely normal patients. They skip the usual check-in
+-- flow, so their parts/attributes most likely just need a moment longer to settle into
+-- their normal hidden state than a regular walk-in patient's do -- this grace window keeps
+-- brand new arrivals from being judged before that settling has had a chance to finish.
+local function ClassifyInstance(instance, skipDisguiseCheck)
 	if NPC_ANOMALY_NAMES[instance.Name] then
 		return instance.Name, ESP_ANOMALY_COLOR, "anomaly"
 	end
@@ -469,10 +476,10 @@ local function ClassifyInstance(instance)
 			return signal.label, ESP_EVENT_COLOR, "event"
 		end
 	end
-	if instance:IsA("Model") and IsDisguisedThreat(instance) then
+	if not skipDisguiseCheck and instance:IsA("Model") and IsDisguisedThreat(instance) then
 		-- Same "anomaly" category as everything else red -- combined per your request so
 		-- there's one Anomalies toggle covering both instead of a separate Disguise one.
-		return "Disguised Threat", ESP_ANOMALY_COLOR, "anomaly"
+		return "Anomalies", ESP_ANOMALY_COLOR, "anomaly"
 	end
 	if instance:GetAttribute("IsPatient") == true then
 		return "Patient", ESP_PATIENT_COLOR, "patient"
@@ -480,16 +487,18 @@ local function ClassifyInstance(instance)
 	if instance:GetAttribute("IsVisitor") == true then
 		return "Visitor", ESP_VISITOR_COLOR, "visitor"
 	end
+	-- Unique and Unknown share one toggle (both still shown with their own label/color) --
+	-- combined per your request.
 	if instance:HasTag("Unique") or UNIQUE_VISITOR_NAMES[instance.Name] then
 		return "Unique", ESP_UNIQUE_COLOR, "unique"
 	end
-	return "Unknown", ESP_UNKNOWN_COLOR, "unknown"
+	return "Unknown", ESP_UNKNOWN_COLOR, "unique"
 end
 
 -- Per-category show/hide, wired up by the ESP Options popup further down -- declared this
 -- early (before anything that reads it as an upvalue) since Lua locals only apply to code
 -- after their own declaration in the same block.
-local espShow = {patient = true, visitor = true, anomaly = true, event = true, unique = true, unknown = true}
+local espShow = {patient = true, visitor = true, anomaly = true, event = true, unique = true}
 
 local espEnabled = false
 local espTracked = {} -- instance -> {Highlight, Billboard, Label, Category, AncestryConn}
@@ -557,7 +566,7 @@ local function CreateESPFor(instance)
 		label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 		label.Parent = billboard
 
-		local entry = {Highlight = highlight, Billboard = billboard, Label = label, Category = "unknown"}
+		local entry = {Highlight = highlight, Billboard = billboard, Label = label, Category = "unknown", CreatedAt = os.clock()}
 		espTracked[instance] = entry
 
 		entry.AncestryConn = instance.AncestryChanged:Connect(function(_, parent)
@@ -579,6 +588,9 @@ end
 -- everything tracked on a light throttle instead of wiring per-attribute signals for each
 -- one -- simpler, and cheap at the handful of NPCs/props this game has active at once.
 local lastClassifyPass = 0
+-- How long a freshly-tracked instance is exempt from the Anomalies heuristic -- see the
+-- comment above ClassifyInstance for why (ambulance arrivals like Leo Takeda).
+local ESP_DISGUISE_GRACE_PERIOD = 3
 local function RefreshESPClassifications()
 	local now = os.clock()
 	if now - lastClassifyPass < 0.25 then return end
@@ -603,7 +615,8 @@ local function RefreshESPClassifications()
 			end
 			-- pcall'd so one bad instance erroring can't silently kill classification for
 			-- everything else tracked -- exactly what the MeshPart/BasePart bug above did.
-			local ok, classification, color, category = pcall(ClassifyInstance, instance)
+			local skipDisguiseCheck = (now - (entry.CreatedAt or 0)) < ESP_DISGUISE_GRACE_PERIOD
+			local ok, classification, color, category = pcall(ClassifyInstance, instance, skipDisguiseCheck)
 			if ok then
 				if entry.Label.Text ~= classification then
 					entry.Label.Text = classification
@@ -734,17 +747,18 @@ local function CreateESPOptionsHeading(order, text)
 end
 
 CreateESPOptionsHeading(1, "NPC")
--- Anomalies and Disguised Threats share one "anomaly" category (see ClassifyInstance
--- above) -- combined into a single toggle here to match, instead of a separate one for each.
+-- Anomalies and the old Disguised Threat heuristic share one "anomaly" category (see
+-- ClassifyInstance above), and Unique/Unknown share one "unique" category too (both still
+-- shown with their own label/color, just one shared toggle) -- combined per your request
+-- instead of a separate row for each.
 local PatientOptRow, PatientOptToggle = CreateFeatureRow(2, "Patients", ESPOptionsContainer)
 local VisitorOptRow, VisitorOptToggle = CreateFeatureRow(3, "Visitors", ESPOptionsContainer)
 local AnomalyOptRow, AnomalyOptToggle = CreateFeatureRow(4, "Anomalies", ESPOptionsContainer)
 local UniqueOptRow, UniqueOptToggle = CreateFeatureRow(5, "Unique", ESPOptionsContainer)
-local UnknownOptRow, UnknownOptToggle = CreateFeatureRow(6, "Unknown", ESPOptionsContainer)
-CreateESPOptionsHeading(7, "Events")
-local EventOptRow, EventOptToggle = CreateFeatureRow(8, "Events", ESPOptionsContainer)
+CreateESPOptionsHeading(6, "Events")
+local EventOptRow, EventOptToggle = CreateFeatureRow(7, "Events", ESPOptionsContainer)
 
--- All six categories default on -- CreateFeatureRow's own rows always start at "Off", so
+-- All four categories default on -- CreateFeatureRow's own rows always start at "Off", so
 -- flip these to "On" up front to match espShow's own defaults (this re-triggers each
 -- toggle's Refresh(true) tween into place, which is harmless at load).
 local function WireESPOptionToggle(toggle, key)
@@ -759,7 +773,6 @@ WireESPOptionToggle(PatientOptToggle, "patient")
 WireESPOptionToggle(VisitorOptToggle, "visitor")
 WireESPOptionToggle(AnomalyOptToggle, "anomaly")
 WireESPOptionToggle(UniqueOptToggle, "unique")
-WireESPOptionToggle(UnknownOptToggle, "unknown")
 WireESPOptionToggle(EventOptToggle, "event")
 
 ESPEditButton.MouseButton1Click:Connect(function()
