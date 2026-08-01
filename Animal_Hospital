@@ -950,10 +950,11 @@ local function FetchCure(cureName)
 end
 
 -- Equips the given cure (from Backpack or already-equipped) and fires the patient's own
--- "Apply Treatment" prompt. Longer per-attempt wait than the other interactions -- treating
--- plays two sequential sound effects first (see WaitForReportSettled further down, which
--- gates on the same sound for the report reveal), and per your testing you can't actually
--- treat until that's finished, so a short wait-then-retry would just interrupt it.
+-- "Apply Treatment" prompt -- a plain prompt press same as picking the items up in the
+-- first place, per your own testing, so this uses the same multiple-quick-attempts pattern
+-- as FetchCure instead of the long single wait it had before (that was based on a
+-- misread -- the two-sound gate turned out to be about the report actually finishing its
+-- reveal, handled by WaitForReportSettled above, not about this prompt specifically).
 local function ApplyCureToPatient(patient, cureName)
 	local character = Player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -967,7 +968,7 @@ local function ApplyCureToPatient(patient, cureName)
 	end
 	local prompt = patient:FindFirstChild("PP")
 	if not (prompt and prompt:IsA("ProximityPrompt")) then return false end
-	return FirePromptNear(patient:GetPivot().Position, prompt, function() return not HasCureInInventory(cureName) end, 4, 5)
+	return FirePromptNear(patient:GetPivot().Position, prompt, function() return not HasCureInInventory(cureName) end, 5, 1.5)
 end
 
 -- Inventory capacity: 3 slots for now (no reading of real capacity-upgrade state yet --
