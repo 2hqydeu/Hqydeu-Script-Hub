@@ -849,16 +849,37 @@ local function GetPlayerRoot()
 	return character and character:FindFirstChild("HumanoidRootPart")
 end
 
--- Same upright-teleport approach already used for the Base TP button on this panel and for
--- Auto Farm-style automation elsewhere in this hub -- a straight reposition, not real
--- pathfinding, same simplification already established for this kind of automation.
-local function TeleportNear(position)
+-- Same straight-reposition approach already used for the Base TP button on this panel and
+-- for Auto Farm-style automation elsewhere in this hub -- not real pathfinding. Faces the
+-- character toward the target (in first person the camera follows head orientation, and a
+-- prompt sitting off-screen apparently can't be pressed at all) and fully zeroes both
+-- linear AND angular velocity. Returns the character's original CFrame so the caller can
+-- restore it with ReturnFromTeleport below -- staying parked at the destination the whole
+-- time a prompt-fire was retried/waited on was what was launching the character into a
+-- ragdoll, so callers only stay there for the length of one actual fire attempt, the same
+-- "teleport there, act, teleport immediately back" pattern MM2's own Auto Gun already uses
+-- for exactly this reason.
+local function TeleportFacing(targetPosition, standoffDistance)
 	local root = GetPlayerRoot()
-	if not root then return false end
-	local _, yRotation = root.CFrame:ToOrientation()
-	root.CFrame = CFrame.new(position) * CFrame.Angles(0, yRotation, 0)
+	if not root then return nil end
+	local originalCFrame = root.CFrame
+	local flatOffset = originalCFrame.Position - targetPosition
+	flatOffset = Vector3.new(flatOffset.X, 0, flatOffset.Z)
+	if flatOffset.Magnitude < 0.5 then flatOffset = Vector3.new(0, 0, 1) end
+	local standPosition = targetPosition + flatOffset.Unit * (standoffDistance or 4)
+	root.CFrame = CFrame.new(standPosition, Vector3.new(targetPosition.X, standPosition.Y, targetPosition.Z))
 	root.AssemblyLinearVelocity = Vector3.zero
-	return true
+	root.AssemblyAngularVelocity = Vector3.zero
+	return originalCFrame
+end
+
+local function ReturnFromTeleport(originalCFrame)
+	if not originalCFrame then return end
+	local root = GetPlayerRoot()
+	if not root then return end
+	root.CFrame = originalCFrame
+	root.AssemblyLinearVelocity = Vector3.zero
+	root.AssemblyAngularVelocity = Vector3.zero
 end
 
 -- No fixed shelf path -- finds every Model in the workspace named after this cure (a
@@ -889,24 +910,27 @@ local function HasCureInInventory(cureName)
 	return (character and character:FindFirstChild(cureName) ~= nil) or (backpack and backpack:FindFirstChild(cureName) ~= nil)
 end
 
--- Fires a prompt and retries a few times, checking checkSuccess() between attempts,
--- instead of a single fire-and-hope -- teleporting right next to a prompt and firing it
--- immediately was outrunning the engine actually registering the player as in range yet,
--- so the very first attempt often did nothing.
-local function TryFirePrompt(prompt, checkSuccess, attempts)
+-- Teleports to face the target, fires the prompt, then teleports straight back --
+-- checkSuccess is polled from wherever the character actually ends up (it doesn't need to
+-- stay parked at the target to read Backpack contents), and each retry does its own fresh
+-- teleport-there/fire/teleport-back cycle rather than sitting at the destination the whole
+-- time waiting -- that's what was launching the character into a ragdoll.
+local function FirePromptNear(targetPosition, prompt, checkSuccess, attempts, perAttemptWait)
 	attempts = attempts or 3
+	perAttemptWait = perAttemptWait or 1.5
 	for _ = 1, attempts do
+		local originalCFrame = TeleportFacing(targetPosition)
+		task.wait(0.4)
 		if type(fireproximityprompt) == "function" then
 			pcall(fireproximityprompt, prompt)
 		end
-		if not checkSuccess then
-			task.wait(0.5)
-			return true
-		end
-		local deadline = os.clock() + 0.6
+		task.wait(0.3)
+		ReturnFromTeleport(originalCFrame)
+		if not checkSuccess then return true end
+		local deadline = os.clock() + perAttemptWait
 		while os.clock() < deadline do
 			if checkSuccess() then return true end
-			task.wait(0.1)
+			task.wait(0.15)
 		end
 	end
 	return checkSuccess and checkSuccess() or false
@@ -922,13 +946,14 @@ local function FetchCure(cureName)
 	if not model then return false end
 	local prompt = model:FindFirstChild("PP")
 	if not (prompt and prompt:IsA("ProximityPrompt")) then return false end
-	TeleportNear(model:GetPivot().Position)
-	task.wait(0.6)
-	return TryFirePrompt(prompt, function() return HasCureInInventory(cureName) end)
+	return FirePromptNear(model:GetPivot().Position, prompt, function() return HasCureInInventory(cureName) end, 4, 1.5)
 end
 
 -- Equips the given cure (from Backpack or already-equipped) and fires the patient's own
--- "Apply Treatment" prompt.
+-- "Apply Treatment" prompt. Longer per-attempt wait than the other interactions -- treating
+-- plays two sequential sound effects first (see WaitForReportSettled further down, which
+-- gates on the same sound for the report reveal), and per your testing you can't actually
+-- treat until that's finished, so a short wait-then-retry would just interrupt it.
 local function ApplyCureToPatient(patient, cureName)
 	local character = Player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -942,26 +967,7 @@ local function ApplyCureToPatient(patient, cureName)
 	end
 	local prompt = patient:FindFirstChild("PP")
 	if not (prompt and prompt:IsA("ProximityPrompt")) then return false end
-	TeleportNear(patient:GetPivot().Position)
-	task.wait(0.6)
-	-- Applying treatment plays two sequential sound effects first, and per your testing
-	-- you can't actually treat them until the second one finishes -- firing again too soon
-	-- would just interrupt/restart that instead of helping, so this waits generously for
-	-- the cure to actually be consumed instead of retrying quickly like the other prompt
-	-- interactions do, and only retries once after a real timeout.
-	if type(fireproximityprompt) == "function" then
-		pcall(fireproximityprompt, prompt)
-	end
-	local deadline = os.clock() + 8
-	while os.clock() < deadline do
-		if not HasCureInInventory(cureName) then return true end
-		task.wait(0.25)
-	end
-	if type(fireproximityprompt) == "function" then
-		pcall(fireproximityprompt, prompt)
-	end
-	task.wait(3)
-	return not HasCureInInventory(cureName)
+	return FirePromptNear(patient:GetPivot().Position, prompt, function() return not HasCureInInventory(cureName) end, 4, 5)
 end
 
 -- Inventory capacity: 3 slots for now (no reading of real capacity-upgrade state yet --
@@ -1022,9 +1028,7 @@ local function TrashTool(toolName)
 	if not trashCan then return false end
 	local prompt = trashCan:FindFirstChild("PP")
 	if not (prompt and prompt:IsA("ProximityPrompt")) then return false end
-	TeleportNear(trashCan:GetPivot().Position)
-	task.wait(0.6)
-	return TryFirePrompt(prompt, function() return not HasCureInInventory(toolName) end)
+	return FirePromptNear(trashCan:GetPivot().Position, prompt, function() return not HasCureInInventory(toolName) end, 3, 1.5)
 end
 
 -- Frees enough inventory space for whatever cures are still missing before fetching starts
@@ -1051,14 +1055,37 @@ end
 
 -- Auto Treat being on already means "yes, treat" -- no separate confirmation, straight to
 -- fetching once a new diagnosis shows up.
-local function RunAutoTreat(patient, cureNames)
+-- autoTreatGeneration bumps every Start/Stop -- RunAutoTreat's background sequence checks
+-- it (and autoTreatEnabled) between every step, so turning the feature off actually
+-- interrupts a treatment already in progress instead of letting it run to completion
+-- regardless, which is what it was doing before.
+local autoTreatEnabled = false
+local autoTreatGeneration = 0
+
+-- roomInfo.startPrompt/startPosition (if present) is a Room8-style bed prompt that needs
+-- firing once to actually begin treatment before the patient's own prompt does anything --
+-- see WatchMedicalRoom below for how that's detected.
+local function RunAutoTreat(patient, cureNames, roomInfo)
+	local myGeneration = autoTreatGeneration
+	local function stillActive()
+		return autoTreatEnabled and autoTreatGeneration == myGeneration
+	end
 	task.spawn(function()
+		if not stillActive() then return end
 		MakeRoomForCures(cureNames)
+		if not stillActive() then return end
+		if roomInfo and roomInfo.startPrompt then
+			FirePromptNear(roomInfo.startPosition, roomInfo.startPrompt, nil, 2, 1)
+			if not stillActive() then return end
+		end
 		for _, cureName in ipairs(cureNames) do
+			if not stillActive() then return end
 			FetchCure(cureName)
 		end
+		if not stillActive() then return end
 		if patient.Parent then
 			for _, cureName in ipairs(cureNames) do
+				if not stillActive() then return end
 				if HasCureInInventory(cureName) then
 					ApplyCureToPatient(patient, cureName)
 				end
@@ -1084,10 +1111,53 @@ local function ParseNeededCures(illnessesText)
 	return cures
 end
 
--- One room, watched for its Report.illnesses text changing to a new non-empty diagnosis --
--- that's the "results finished processing" signal (there's a short "Finalizing..." delay
--- after pressing PP2 before this actually populates, per your own testing).
-local autoTreatEnabled = false
+-- Confirmed sound (found directly by you) that plays twice as part of the report actually
+-- revealing -- once before the items start showing, again once the reveal finishes, and
+-- only after that second play are you actually able to treat. Watched here instead of
+-- guessing a fixed duration. Layered with a plain "text stopped changing" debounce as a
+-- fallback in case the sound doesn't show up where expected, capped by an overall timeout
+-- so this can never hang forever either way.
+local TREAT_READY_SOUND_ID = "rbxassetid://18466265279"
+local function WaitForReportSettled(illnessesLabel, minigame)
+	local lastChangeAt = os.clock()
+	local soundPlays = 0
+	local connections = {}
+
+	local function watchSound(sound)
+		if sound.SoundId ~= TREAT_READY_SOUND_ID then return end
+		table.insert(connections, sound.Ended:Connect(function()
+			soundPlays = soundPlays + 1
+		end))
+	end
+	if minigame then
+		for _, descendant in ipairs(minigame:GetDescendants()) do
+			if descendant:IsA("Sound") then watchSound(descendant) end
+		end
+		table.insert(connections, minigame.DescendantAdded:Connect(function(descendant)
+			if descendant:IsA("Sound") then watchSound(descendant) end
+		end))
+	end
+	table.insert(connections, illnessesLabel:GetPropertyChangedSignal("Text"):Connect(function()
+		lastChangeAt = os.clock()
+	end))
+
+	local deadline = os.clock() + 12
+	while os.clock() < deadline do
+		if soundPlays >= 2 then break end
+		if os.clock() - lastChangeAt >= 1.5 then break end
+		task.wait(0.1)
+	end
+
+	for _, connection in ipairs(connections) do connection:Disconnect() end
+	return illnessesLabel.Text
+end
+
+-- One room, watched for its Report.illnesses text changing to a new non-empty diagnosis.
+-- Works for both Medical and Emergency wings alike (see StartAutoTreat) -- Emergency's
+-- Printer ("Print Badge") is a different first step than Medical's Monitor ("Process
+-- Results"), but per your own testing the same Monitor/Report structure reveals the
+-- diagnosis afterward either way, so this doesn't need to know or care which room type
+-- it's watching.
 local roomLastIllnessText = {}
 local function WatchMedicalRoom(room)
 	local minigame = room:FindFirstChild("Minigame")
@@ -1099,41 +1169,67 @@ local function WatchMedicalRoom(room)
 	local raceLabel = report and report:FindFirstChild("race")
 	if not (illnessesLabel and raceLabel) then return end
 
+	-- Room8-style "waves" rooms additionally need their bed's PP2 fired once to actually
+	-- begin treatment (potentially needing up to ~10 items across the whole sequence) --
+	-- detected structurally (does this room's Bed.InBed have a PP2?) rather than by room
+	-- name, so this works for any room built the same way, not just Room8 specifically.
+	local bed = minigame:FindFirstChild("Bed")
+	local inBed = bed and bed:FindFirstChild("InBed")
+	local startPrompt = inBed and inBed:FindFirstChild("PP2")
+	local startPosition = startPrompt and inBed:GetPivot().Position
+
+	local processing = false
 	illnessesLabel:GetPropertyChangedSignal("Text"):Connect(function()
-		if not autoTreatEnabled then return end
+		if not autoTreatEnabled or processing then return end
 		local text = illnessesLabel.Text
 		if text == "" or text == roomLastIllnessText[room] then return end
-		roomLastIllnessText[room] = text
-		local patientName = raceLabel.Text
-		if not patientName or patientName == "" then return end
-		local npcFolder = workspace:FindFirstChild("NPCs")
-		local patient = npcFolder and npcFolder:FindFirstChild(patientName)
-		if not patient then return end
-		local cures = ParseNeededCures(text)
-		if #cures == 0 then return end
-		RunAutoTreat(patient, cures)
+		processing = true
+		task.spawn(function()
+			-- The report fills in gradually rather than appearing all at once -- this waits
+			-- for it to actually finish before reading it as the real diagnosis, instead of
+			-- reacting to the first (incomplete) change.
+			local settledText = WaitForReportSettled(illnessesLabel, minigame)
+			processing = false
+			if not autoTreatEnabled then return end
+			if settledText == "" or settledText == roomLastIllnessText[room] then return end
+			roomLastIllnessText[room] = settledText
+			local patientName = raceLabel.Text
+			if not patientName or patientName == "" then return end
+			local npcFolder = workspace:FindFirstChild("NPCs")
+			local patient = npcFolder and npcFolder:FindFirstChild(patientName)
+			if not patient then return end
+			local cures = ParseNeededCures(settledText)
+			if #cures == 0 then return end
+			local roomInfo = startPrompt and {startPrompt = startPrompt, startPosition = startPosition} or nil
+			RunAutoTreat(patient, cures, roomInfo)
+		end)
 	end)
 end
 
-local autoTreatRoomWatchConnection = nil
+local autoTreatWingWatchConnections = {}
 local function StartAutoTreat()
 	roomLastIllnessText = {}
+	autoTreatGeneration = autoTreatGeneration + 1
 	SetAutoTreatInstantPrompts(true)
 	local roomsFolder = workspace:FindFirstChild("Rooms")
-	local medicalFolder = roomsFolder and roomsFolder:FindFirstChild("Medical")
-	if not medicalFolder then return end
-	for _, room in ipairs(medicalFolder:GetChildren()) do
-		WatchMedicalRoom(room)
+	if not roomsFolder then return end
+	local function WatchWing(wingName)
+		local wing = roomsFolder:FindFirstChild(wingName)
+		if not wing then return end
+		for _, room in ipairs(wing:GetChildren()) do
+			WatchMedicalRoom(room)
+		end
+		table.insert(autoTreatWingWatchConnections, wing.ChildAdded:Connect(WatchMedicalRoom))
 	end
-	autoTreatRoomWatchConnection = medicalFolder.ChildAdded:Connect(WatchMedicalRoom)
+	WatchWing("Medical")
+	WatchWing("Emergency")
 end
 
 local function StopAutoTreat()
+	autoTreatGeneration = autoTreatGeneration + 1
 	SetAutoTreatInstantPrompts(false)
-	if autoTreatRoomWatchConnection then
-		autoTreatRoomWatchConnection:Disconnect()
-		autoTreatRoomWatchConnection = nil
-	end
+	for _, connection in ipairs(autoTreatWingWatchConnections) do connection:Disconnect() end
+	autoTreatWingWatchConnections = {}
 end
 
 AutoTreatToggle.MouseButton1Click:Connect(function()
@@ -1173,11 +1269,7 @@ local function IsCoffeeReady(statusLabel)
 end
 
 local function GrabCoffee(coffee, prompt)
-	TeleportNear(coffee:GetPivot().Position)
-	task.wait(0.4)
-	if type(fireproximityprompt) == "function" then
-		pcall(fireproximityprompt, prompt)
-	end
+	FirePromptNear(coffee:GetPivot().Position, prompt, nil, 1)
 end
 
 local function StartAutoCoffee()
