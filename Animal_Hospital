@@ -779,6 +779,335 @@ ESPEditButton.MouseButton1Click:Connect(function()
 	ESPOptionsContainer.Visible = not ESPOptionsContainer.Visible
 end)
 
+local AutoTreatRow, AutoTreatToggle = CreateFeatureRow(2, "Auto Treat")
+
+-- Auto Treat -----------------------------------------------------------------------------
+-- Confirmed structure (from your live paths + a save instance): each Medical room has
+-- workspace.Rooms.Medical.<Room>.Minigame.Monitor -- pressing its "PP2" prompt ("Process
+-- Results") kicks off analysis; once it finishes, Screen.UI.Report.race and .illnesses
+-- (TextLabels) show the patient's name and diagnosed illness list, one per line, dash-
+-- prefixed ("- Dried Eyes"). The patient's own model carries a "PP" ProximityPrompt
+-- ("Apply Treatment") for giving a cure once the right one is equipped. Cure items are
+-- picked up from Model instances scattered around the map (each named after the cure,
+-- each with its own "PP" prompt) -- there's no single fixed shelf, so these are found by a
+-- workspace-wide name search instead of any hardcoded path. The illness->cure mapping
+-- below is copied directly from the game's own IllnessesAndCures module.
+local ILLNESS_CURES = {
+	["Dehydration"] = "IV Drops",
+	["Stomach Ache"] = "Herbs",
+	["Head Ache"] = "Medicine",
+	["Bleeding"] = "Bandages",
+	["Fever"] = "Thermo",
+	["Low Sugar"] = "Maple Syrup",
+	["Canadian"] = "Maple Syrup",
+	["Flu"] = "Cough Syrup",
+	["Rash"] = "Ointment",
+	["Dried Eyes"] = "Eye Drops",
+	["Bruises"] = "Medkit",
+}
+
+-- Same trick as Instant Prompt in the main hub -- HoldDuration/RequiresLineOfSight zeroed
+-- on every prompt while Auto Treat is on, restored on toggle-off. Built in here rather
+-- than relying on Main's own copy since this module runs as a fully separate script.
+local autoTreatOriginalPromptValues = {}
+local function RememberPromptOriginal(prompt)
+	if not autoTreatOriginalPromptValues[prompt] then
+		autoTreatOriginalPromptValues[prompt] = {HoldDuration = prompt.HoldDuration, RequiresLineOfSight = prompt.RequiresLineOfSight}
+	end
+end
+local function InstantifyPrompt(prompt)
+	RememberPromptOriginal(prompt)
+	prompt.HoldDuration = 0
+	prompt.RequiresLineOfSight = false
+end
+local autoTreatPromptAddedConnection = nil
+local function SetAutoTreatInstantPrompts(enabled)
+	if enabled then
+		for _, object in ipairs(workspace:GetDescendants()) do
+			if object:IsA("ProximityPrompt") then InstantifyPrompt(object) end
+		end
+		autoTreatPromptAddedConnection = workspace.DescendantAdded:Connect(function(object)
+			if object:IsA("ProximityPrompt") then InstantifyPrompt(object) end
+		end)
+	else
+		if autoTreatPromptAddedConnection then
+			autoTreatPromptAddedConnection:Disconnect()
+			autoTreatPromptAddedConnection = nil
+		end
+		for prompt, original in pairs(autoTreatOriginalPromptValues) do
+			if prompt.Parent then
+				prompt.HoldDuration = original.HoldDuration
+				prompt.RequiresLineOfSight = original.RequiresLineOfSight
+			end
+		end
+		autoTreatOriginalPromptValues = {}
+	end
+end
+
+local function GetPlayerRoot()
+	local character = Player.Character
+	return character and character:FindFirstChild("HumanoidRootPart")
+end
+
+-- Same upright-teleport approach already used for the Base TP button on this panel and for
+-- Auto Farm-style automation elsewhere in this hub -- a straight reposition, not real
+-- pathfinding, same simplification already established for this kind of automation.
+local function TeleportNear(position)
+	local root = GetPlayerRoot()
+	if not root then return false end
+	local _, yRotation = root.CFrame:ToOrientation()
+	root.CFrame = CFrame.new(position) * CFrame.Angles(0, yRotation, 0)
+	root.AssemblyLinearVelocity = Vector3.zero
+	return true
+end
+
+-- No fixed shelf path -- finds every Model in the workspace named after this cure (a
+-- pickup spot always carries its own "PP" prompt) and returns the closest one to the
+-- player, wherever it actually is.
+local function FindClosestCureModel(cureName, fromPosition)
+	local closest, closestDistance = nil, math.huge
+	for _, descendant in ipairs(workspace:GetDescendants()) do
+		if descendant:IsA("Model") and descendant.Name == cureName and descendant:FindFirstChild("PP") then
+			local pivot = descendant:GetPivot().Position
+			local distance = (pivot - fromPosition).Magnitude
+			if distance < closestDistance then
+				closestDistance = distance
+				closest = descendant
+			end
+		end
+	end
+	return closest
+end
+
+local function GetBackpack()
+	return Player:FindFirstChildOfClass("Backpack")
+end
+
+local function HasCureInInventory(cureName)
+	local character = Player.Character
+	local backpack = GetBackpack()
+	return (character and character:FindFirstChild(cureName) ~= nil) or (backpack and backpack:FindFirstChild(cureName) ~= nil)
+end
+
+-- Walks to the pickup spot and fires its prompt, waiting briefly for the Tool to actually
+-- show up in the backpack (it doesn't appear the instant the prompt fires).
+local function FetchCure(cureName)
+	if HasCureInInventory(cureName) then return true end
+	local root = GetPlayerRoot()
+	if not root then return false end
+	local model = FindClosestCureModel(cureName, root.Position)
+	if not model then return false end
+	local prompt = model:FindFirstChild("PP")
+	if not (prompt and prompt:IsA("ProximityPrompt")) then return false end
+	TeleportNear(model:GetPivot().Position)
+	task.wait(0.3)
+	if type(fireproximityprompt) == "function" then
+		pcall(fireproximityprompt, prompt)
+	end
+	local deadline = os.clock() + 3
+	while os.clock() < deadline do
+		if HasCureInInventory(cureName) then return true end
+		task.wait(0.2)
+	end
+	return HasCureInInventory(cureName)
+end
+
+-- Equips the given cure (from Backpack or already-equipped) and fires the patient's own
+-- "Apply Treatment" prompt.
+local function ApplyCureToPatient(patient, cureName)
+	local character = Player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return false end
+	if not (character:FindFirstChild(cureName)) then
+		local backpack = GetBackpack()
+		local tool = backpack and backpack:FindFirstChild(cureName)
+		if not tool then return false end
+		humanoid:EquipTool(tool)
+		task.wait(0.2)
+	end
+	local prompt = patient:FindFirstChild("PP")
+	if not (prompt and prompt:IsA("ProximityPrompt")) then return false end
+	TeleportNear(patient:GetPivot().Position)
+	task.wait(0.3)
+	if type(fireproximityprompt) == "function" then
+		pcall(fireproximityprompt, prompt)
+	end
+	task.wait(0.5)
+	return true
+end
+
+-- Reuses the exact same confirmation-popup look as the main hub's Favorite/Destroy
+-- prompts elsewhere in this codebase -- one instance, text swapped per use.
+local AutoTreatPopup, AutoTreatLabel, AutoTreatYes, AutoTreatNo
+local autoTreatYesConnection = nil
+local function EnsureAutoTreatPopup()
+	if AutoTreatPopup then return end
+	AutoTreatPopup = Instance.new("Frame")
+	AutoTreatPopup.Name = "AutoTreatPopup"
+	AutoTreatPopup.AnchorPoint = Vector2.new(0.5, 0.5)
+	AutoTreatPopup.Position = UDim2.new(0.5, 0, 0.5, 0)
+	AutoTreatPopup.Size = UDim2.new(0, 260, 0, 130)
+	AutoTreatPopup.BackgroundColor3 = FrameColor
+	AutoTreatPopup.BorderSizePixel = 0
+	AutoTreatPopup.Visible = false
+	AutoTreatPopup.Active = true
+	AutoTreatPopup.ZIndex = 60
+	AutoTreatPopup.Parent = ScreenGui
+	Instance.new("UICorner", AutoTreatPopup).CornerRadius = UDim.new(0, 12)
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(0, 0, 0)
+	stroke.Thickness = 1
+	stroke.Parent = AutoTreatPopup
+
+	AutoTreatLabel = Instance.new("TextLabel")
+	AutoTreatLabel.AnchorPoint = Vector2.new(0.5, 0)
+	AutoTreatLabel.Size = UDim2.new(1, -20, 0, 64)
+	AutoTreatLabel.Position = UDim2.new(0.5, 0, 0, 14)
+	AutoTreatLabel.BackgroundTransparency = 1
+	AutoTreatLabel.Font = UIFont
+	AutoTreatLabel.TextSize = 14
+	AutoTreatLabel.TextWrapped = true
+	AutoTreatLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	AutoTreatLabel.ZIndex = 61
+	AutoTreatLabel.Parent = AutoTreatPopup
+
+	AutoTreatYes = Instance.new("TextButton")
+	AutoTreatYes.AnchorPoint = Vector2.new(0.5, 0.5)
+	AutoTreatYes.Size = UDim2.new(0, 100, 0, 32)
+	AutoTreatYes.Position = UDim2.new(0.5, -57, 1, -30)
+	AutoTreatYes.BackgroundColor3 = Color3.fromRGB(178, 155, 235)
+	AutoTreatYes.BorderSizePixel = 0
+	AutoTreatYes.Text = "Yes"
+	AutoTreatYes.Font = UIFont
+	AutoTreatYes.TextSize = 15
+	AutoTreatYes.TextColor3 = Color3.fromRGB(255, 255, 255)
+	AutoTreatYes.ZIndex = 61
+	AutoTreatYes.Parent = AutoTreatPopup
+	Instance.new("UICorner", AutoTreatYes).CornerRadius = UDim.new(1, 0)
+	AddPressBounce(AutoTreatYes)
+
+	AutoTreatNo = Instance.new("TextButton")
+	AutoTreatNo.AnchorPoint = Vector2.new(0.5, 0.5)
+	AutoTreatNo.Size = UDim2.new(0, 100, 0, 32)
+	AutoTreatNo.Position = UDim2.new(0.5, 57, 1, -30)
+	AutoTreatNo.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+	AutoTreatNo.BorderSizePixel = 0
+	AutoTreatNo.Text = "No"
+	AutoTreatNo.Font = UIFont
+	AutoTreatNo.TextSize = 15
+	AutoTreatNo.TextColor3 = Color3.fromRGB(255, 255, 255)
+	AutoTreatNo.ZIndex = 61
+	AutoTreatNo.Parent = AutoTreatPopup
+	Instance.new("UICorner", AutoTreatNo).CornerRadius = UDim.new(1, 0)
+	AddPressBounce(AutoTreatNo)
+	AutoTreatNo.MouseButton1Click:Connect(function()
+		AutoTreatPopup.Visible = false
+	end)
+end
+
+-- Runs the actual fetch-then-apply sequence once the popup's been confirmed.
+local function RunAutoTreat(patient, cureNames)
+	task.spawn(function()
+		for _, cureName in ipairs(cureNames) do
+			FetchCure(cureName)
+		end
+		if patient.Parent then
+			for _, cureName in ipairs(cureNames) do
+				if HasCureInInventory(cureName) then
+					ApplyCureToPatient(patient, cureName)
+				end
+			end
+		end
+	end)
+end
+
+local function ShowAutoTreatPrompt(patient, cureNames)
+	EnsureAutoTreatPopup()
+	AutoTreatLabel.Text = "Treat " .. patient.Name .. "?\nNeeds: " .. table.concat(cureNames, ", ")
+	if autoTreatYesConnection then autoTreatYesConnection:Disconnect() end
+	autoTreatYesConnection = AutoTreatYes.MouseButton1Click:Connect(function()
+		AutoTreatPopup.Visible = false
+		RunAutoTreat(patient, cureNames)
+	end)
+	AutoTreatPopup.Visible = true
+end
+
+-- Parses "- Dried Eyes\n- Fever" style report text into a deduplicated list of the cure
+-- items needed, skipping any illness this hub doesn't have a mapping for rather than
+-- guessing.
+local function ParseNeededCures(illnessesText)
+	local seen = {}
+	local cures = {}
+	for line in illnessesText:gmatch("[^\r\n]+") do
+		local illnessName = line:gsub("^%s*-%s*", ""):gsub("^%s+", ""):gsub("%s+$", "")
+		local cureName = ILLNESS_CURES[illnessName]
+		if cureName and not seen[cureName] then
+			seen[cureName] = true
+			table.insert(cures, cureName)
+		end
+	end
+	return cures
+end
+
+-- One room, watched for its Report.illnesses text changing to a new non-empty diagnosis --
+-- that's the "results finished processing" signal (there's a short "Finalizing..." delay
+-- after pressing PP2 before this actually populates, per your own testing).
+local autoTreatEnabled = false
+local roomLastIllnessText = {}
+local function WatchMedicalRoom(room)
+	local minigame = room:FindFirstChild("Minigame")
+	local monitor = minigame and minigame:FindFirstChild("Monitor")
+	local screen = monitor and monitor:FindFirstChild("Screen")
+	local ui = screen and screen:FindFirstChild("UI")
+	local report = ui and ui:FindFirstChild("Report")
+	local illnessesLabel = report and report:FindFirstChild("illnesses")
+	local raceLabel = report and report:FindFirstChild("race")
+	if not (illnessesLabel and raceLabel) then return end
+
+	illnessesLabel:GetPropertyChangedSignal("Text"):Connect(function()
+		if not autoTreatEnabled then return end
+		local text = illnessesLabel.Text
+		if text == "" or text == roomLastIllnessText[room] then return end
+		roomLastIllnessText[room] = text
+		local patientName = raceLabel.Text
+		if not patientName or patientName == "" then return end
+		local npcFolder = workspace:FindFirstChild("NPCs")
+		local patient = npcFolder and npcFolder:FindFirstChild(patientName)
+		if not patient then return end
+		local cures = ParseNeededCures(text)
+		if #cures == 0 then return end
+		ShowAutoTreatPrompt(patient, cures)
+	end)
+end
+
+local autoTreatRoomWatchConnection = nil
+local function StartAutoTreat()
+	roomLastIllnessText = {}
+	SetAutoTreatInstantPrompts(true)
+	local roomsFolder = workspace:FindFirstChild("Rooms")
+	local medicalFolder = roomsFolder and roomsFolder:FindFirstChild("Medical")
+	if not medicalFolder then return end
+	for _, room in ipairs(medicalFolder:GetChildren()) do
+		WatchMedicalRoom(room)
+	end
+	autoTreatRoomWatchConnection = medicalFolder.ChildAdded:Connect(WatchMedicalRoom)
+end
+
+local function StopAutoTreat()
+	SetAutoTreatInstantPrompts(false)
+	if autoTreatRoomWatchConnection then
+		autoTreatRoomWatchConnection:Disconnect()
+		autoTreatRoomWatchConnection = nil
+	end
+	if AutoTreatPopup then AutoTreatPopup.Visible = false end
+end
+
+AutoTreatToggle.MouseButton1Click:Connect(function()
+	autoTreatEnabled = not autoTreatEnabled
+	AutoTreatToggle.Text = autoTreatEnabled and "On" or "Off"
+	if autoTreatEnabled then StartAutoTreat() else StopAutoTreat() end
+end)
+
 -- Minimize: shrinks to just the header, matching Serenity's own minimize behavior. Every
 -- row lives inside ContentScroll now, so hiding that one frame is enough.
 local minimized = false
@@ -789,7 +1118,10 @@ local function ToggleMinimize()
 	PanelFrame.Size = UDim2.new(0, 280, 0, minimized and MINI_HEIGHT or FULL_HEIGHT)
 	-- Collapse the ESP Options section on minimize instead of leaving it expanded (and
 	-- wasting space) once the panel gets restored.
-	if minimized then ESPOptionsContainer.Visible = false end
+	if minimized then
+		ESPOptionsContainer.Visible = false
+		if AutoTreatPopup then AutoTreatPopup.Visible = false end
+	end
 end
 MinimizeButton.MouseButton1Click:Connect(ToggleMinimize)
 
@@ -800,6 +1132,7 @@ CloseButton.MouseButton1Click:Connect(function()
 	if closingPanel then return end
 	closingPanel = true
 	StopESP()
+	StopAutoTreat()
 	local fadeOutInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 	TweenService:Create(PanelScale, fadeOutInfo, {Scale = 0.85}):Play()
 	local fadeOutTween = TweenService:Create(PanelFrame, fadeOutInfo, {BackgroundTransparency = 1})
