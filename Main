@@ -1003,10 +1003,9 @@ end
 function CreateStrengthRow(parent, y, rowLabelText, defaultValue)
 	local row = Instance.new("Frame")
 	row.Name = rowLabelText .. "Row"
-	-- Narrowed from the full 100% width -- otherwise the row's own right edge sits exactly
-	-- where the scrollbar renders, covering the last few pixels (including the rounded
-	-- corner) instead of leaving it visible.
-	row.Size = UDim2.new(1, -10, 0, 52)
+	-- Back to full width -- the -10 used to leave room for the visible scrollbar; now that
+	-- scrollbars are invisible hub-wide, that reserved gap isn't needed anymore.
+	row.Size = UDim2.new(1, 0, 0, 52)
 	row.Position = UDim2.new(0, 0, 0, y)
 	row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 	row.BackgroundTransparency = RowTransparencyValue / 100
@@ -1425,10 +1424,9 @@ end
 function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, defaultKeyCode)
 	local row = Instance.new("Frame")
 	row.Name = "ToggleRow"
-	-- Narrowed from the full 100% width -- otherwise the row's own right edge sits exactly
-	-- where the scrollbar renders, covering the last few pixels (including the rounded
-	-- corner) instead of leaving it visible.
-	row.Size = UDim2.new(1, -10, 0, 52)
+	-- Back to full width -- the -10 used to leave room for the visible scrollbar; now that
+	-- scrollbars are invisible hub-wide, that reserved gap isn't needed anymore.
+	row.Size = UDim2.new(1, 0, 0, 52)
 	row.Position = UDim2.new(0, 0, 0, y)
 	row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 	row.BackgroundTransparency = RowTransparencyValue / 100
@@ -2258,7 +2256,7 @@ ESPLabelsToggle.MouseButton1Click:Connect(function() PlayClick() ToggleESPLabels
 -- each row -- picking a color here updates Outline ESP, Body ESP, and ESP Labels together.
 ESPColorRow = Instance.new("Frame")
 ESPColorRow.Name = "ESPColorRow"
-ESPColorRow.Size = UDim2.new(1, -10, 0, 52)
+ESPColorRow.Size = UDim2.new(1, 0, 0, 52)
 ESPColorRow.Position = UDim2.new(0, 0, 0, 218)
 ESPColorRow.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 ESPColorRow.BackgroundTransparency = RowTransparencyValue / 100
@@ -2609,7 +2607,7 @@ FOVValue = (workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView) or 
 
 FOVRow = Instance.new("Frame")
 FOVRow.Name = "FOVRow"
-FOVRow.Size = UDim2.new(1, -10, 0, 52)
+FOVRow.Size = UDim2.new(1, 0, 0, 52)
 FOVRow.Position = UDim2.new(0, 0, 0, CAMERA_TOP + 90)
 FOVRow.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 FOVRow.BackgroundTransparency = RowTransparencyValue / 100
@@ -2957,7 +2955,7 @@ do
 	-- Players sub-tab
 	local PlayerSearch = Instance.new("TextBox")
 	PlayerSearch.Name = "PlayerSearch"
-	PlayerSearch.Size = UDim2.new(1, -10, 0, ROW_H)
+	PlayerSearch.Size = UDim2.new(1, 0, 0, ROW_H)
 	PlayerSearch.Position = UDim2.new(0, 0, 0, HEADER_H + TAB_ROW_H + ROW_GAP)
 	PlayerSearch.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	PlayerSearch.BackgroundTransparency = 0.5
@@ -3025,7 +3023,7 @@ do
 
 	local WaypointSearch = Instance.new("TextBox")
 	WaypointSearch.Name = "WaypointSearch"
-	WaypointSearch.Size = UDim2.new(1, -10, 0, ROW_H)
+	WaypointSearch.Size = UDim2.new(1, 0, 0, ROW_H)
 	WaypointSearch.Position = UDim2.new(0, 0, 0, HEADER_H + TAB_ROW_H + ROW_GAP + ROW_H + ROW_GAP)
 	WaypointSearch.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	WaypointSearch.BackgroundTransparency = 0.5
@@ -3091,9 +3089,9 @@ do
 			local targetPlayer = candidate.Player
 			local row = Instance.new("Frame")
 			row.Name = "PlayerRow"
-			-- Narrowed so the row's right edge (including the name text) clears this
-			-- list's own scrollbar instead of running underneath it.
-			row.Size = UDim2.new(1, -10, 0, 36)
+			-- Back to full width -- scrollbars are invisible hub-wide now, so the row no
+			-- longer needs to leave room to clear one.
+			row.Size = UDim2.new(1, 0, 0, 36)
 			row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 			row.BackgroundTransparency = 0.5
 			row.BorderSizePixel = 0
@@ -3151,9 +3149,9 @@ do
 			if filter == "" or waypointName:lower():find(filter, 1, true) then
 				local row = Instance.new("Frame")
 				row.Name = "WaypointRow"
-				-- Narrowed so the row's right edge clears this list's own scrollbar
-				-- instead of running underneath it.
-				row.Size = UDim2.new(1, -10, 0, 36)
+				-- Back to full width -- scrollbars are invisible hub-wide now, so the row
+				-- no longer needs to leave room to clear one.
+				row.Size = UDim2.new(1, 0, 0, 36)
 				row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 				row.BackgroundTransparency = 0.5
 				row.BorderSizePixel = 0
@@ -3548,9 +3546,9 @@ do
 		for _, candidate in ipairs(candidates) do
 			local targetPlayer = candidate.Player
 			local row = Instance.new("Frame")
-			-- Narrowed so the row's right edge clears this list's own scrollbar instead
-			-- of running underneath it.
-			row.Size = UDim2.new(1, -10, 0, 30)
+			-- Back to full width -- scrollbars are invisible hub-wide now, so the row no
+			-- longer needs to leave room to clear one.
+			row.Size = UDim2.new(1, 0, 0, 30)
 			row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 			row.BackgroundTransparency = 0.5
 			row.BorderSizePixel = 0
@@ -3610,9 +3608,9 @@ do
 			local waypointName = waypoint.Name or "Waypoint"
 			if filter == "" or waypointName:lower():find(filter, 1, true) then
 				local row = Instance.new("Frame")
-				-- Narrowed so the row's right edge clears this list's own scrollbar
-				-- instead of running underneath it.
-				row.Size = UDim2.new(1, -10, 0, 30)
+				-- Back to full width -- scrollbars are invisible hub-wide now, so the row
+				-- no longer needs to leave room to clear one.
+				row.Size = UDim2.new(1, 0, 0, 30)
 				row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 				row.BackgroundTransparency = 0.5
 				row.BorderSizePixel = 0
