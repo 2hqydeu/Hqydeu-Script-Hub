@@ -5193,22 +5193,38 @@ function SetGuiScale(newScale)
 	SavePersistentSettings()
 end
 
--- Green traffic-light button -- toggles straight to the largest size Adjust Gui Size
--- supports (same MIN/MAX_GUI_SCALE clamp the resize handles already respect, so "full
--- screen" here still means "as big as this system was actually designed/tested to go", not
--- a true edge-to-edge OS fullscreen), remembering whatever scale it was at so a second
--- click restores it exactly instead of just snapping back to the 1x default.
+-- Green traffic-light button -- true fullscreen, deliberately bypassing MIN/MAX_GUI_SCALE
+-- (this is the one place that clamp doesn't apply) and going straight to whatever scale
+-- makes the window cover the actual screen. Uniform scale is still kept (same single
+-- guiScale drives both axes, just like every other resize path) rather than stretching X/Y
+-- independently to match the screen's exact aspect ratio -- picking the LARGER of the two
+-- fill ratios means the window is guaranteed to cover every edge with no gaps, at the cost
+-- of a slight overflow past the shorter axis, which centering below hides evenly on both
+-- sides rather than spilling off only the bottom/right. Never saved to SavedKeybinds --
+-- this is a temporary one-off state, not a persisted scale preference, and saving a value
+-- this far outside the normal clamp would leave a future load starting fullscreen with no
+-- clamp ever having run on it.
 preMaximizeScale = nil
+preMaximizePosition = nil
 function ToggleMaximizeGui()
 	if minimized then return end
-	if preMaximizeScale and guiScale >= MAX_GUI_SCALE - 0.001 then
-		SetGuiScale(preMaximizeScale)
-		preMaximizeScale = nil
+	if guiScale > MAX_GUI_SCALE then
+		guiScale = preMaximizeScale or 1
+		ApplyGuiScale()
+		MainFrame.Position = preMaximizePosition or ClampToViewport(MainFrame.Position, MainFrame.Size)
+		SavedKeybinds.GuiScale = guiScale
+		SavePersistentSettings()
 	else
 		preMaximizeScale = guiScale
-		SetGuiScale(MAX_GUI_SCALE)
+		preMaximizePosition = MainFrame.Position
+		local camera = workspace.CurrentCamera
+		local viewportSize = (camera and camera.ViewportSize) or Vector2.new(1920, 1080)
+		guiScale = math.max(viewportSize.X / BASE_WIDTH, viewportSize.Y / BASE_HEIGHT)
+		ApplyGuiScale()
+		local centeredX = (viewportSize.X - MainFrame.AbsoluteSize.X) / 2
+		local centeredY = (viewportSize.Y - MainFrame.AbsoluteSize.Y) / 2
+		MainFrame.Position = UDim2.new(0, centeredX, 0, centeredY)
 	end
-	MainFrame.Position = ClampToViewport(MainFrame.Position, MainFrame.Size)
 end
 
 -- Three resize grab zones -- right edge (width), bottom edge (height), and the bottom-right
