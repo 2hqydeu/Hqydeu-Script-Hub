@@ -417,6 +417,7 @@ ContentScroll.BackgroundTransparency = 1
 ContentScroll.BorderSizePixel = 0
 ContentScroll.ScrollBarThickness = 3
 ContentScroll.ScrollBarImageColor3 = AccentColor
+ContentScroll.ScrollBarImageTransparency = 1
 ContentScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 ContentScroll.ElasticBehavior = Enum.ElasticBehavior.Never
 ContentScroll.Parent = PanelFrame
@@ -661,6 +662,7 @@ local function CreatePopupDock(title, width, height)
 	scroll.BorderSizePixel = 0
 	scroll.ScrollBarThickness = 3
 	scroll.ScrollBarImageColor3 = AccentColor
+	scroll.ScrollBarImageTransparency = 1
 	scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 	scroll.ZIndex = 41
 	scroll.Parent = dock
