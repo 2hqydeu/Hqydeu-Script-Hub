@@ -149,13 +149,16 @@ function PlayClick() ClickSound:Play() end
 
 -- Main Window
 HEADER_HEIGHT = 58
-FULL_SIZE = UDim2.new(0, 560, 0, 430)
+-- Widened from the old 560x430 -- a vertical sidebar (rough draft, see TabBar below) eats
+-- into the width a fixed-width horizontal tab bar never touched, so the window grew to
+-- give the content area back roughly the width it used to have.
+FULL_SIZE = UDim2.new(0, 720, 0, 460)
 -- Minimized is now a small circle with nothing in it but the clock -- square so a fully
 -- rounded UICorner (see MainCorner below) renders it as a perfect circle, not a pill.
 MINI_SIZE = UDim2.new(0, 80, 0, 80)
 FULL_CORNER = UDim.new(0, 14)
 MINI_CORNER = UDim.new(1, 0)
-WINDOW_POSITION = UDim2.new(0.5, -280, 0.5, -215)
+WINDOW_POSITION = UDim2.new(0.5, -360, 0.5, -230)
 
 -- MainFrame gets built below, but the loading bar needs to run first -- before any of the
 -- (invisible-until-ready) tab/feature construction -- so it appears the instant the script
@@ -237,7 +240,7 @@ task.spawn(function()
 		-- Slides down from off the top of the screen into its normal centered spot instead
 		-- of just instantly appearing there.
 		local restPosition = MainFrame.Position
-		local travel = (MainFrame.AbsoluteSize.Y > 0 and MainFrame.AbsoluteSize.Y or 430) + 80
+		local travel = (MainFrame.AbsoluteSize.Y > 0 and MainFrame.AbsoluteSize.Y or 460) + 80
 		MainFrame.Position = UDim2.new(restPosition.X.Scale, restPosition.X.Offset, restPosition.Y.Scale, restPosition.Y.Offset - travel)
 		MainFrame.Visible = true
 		-- Matches the minimize/restore slide's pace (same duration + easing as slideInInfo
@@ -334,8 +337,12 @@ function AddHoverStroke(trigger, target)
 end
 
 
-function AddFadeDivider(divider)
+-- rotation defaults to 0 (fades left/right, for a wide-short horizontal divider) --
+-- the new vertical TabDivider passes 90 instead, so it fades top/bottom along its own long
+-- edge rather than invisibly across its own 1px width.
+function AddFadeDivider(divider, rotation)
 	local gradient = Instance.new("UIGradient")
+	gradient.Rotation = rotation or 0
 	gradient.Transparency = NumberSequence.new({
 		NumberSequenceKeypoint.new(0, 1),
 		NumberSequenceKeypoint.new(0.5, 0),
@@ -602,49 +609,51 @@ HeaderDivider.BorderSizePixel = 0
 HeaderDivider.Parent = MainFrame
 AddFadeDivider(HeaderDivider)
 
--- Tabs -- horizontally scrolling so adding more tabs later never crowds the bar; they
--- just keep their full width and the row scrolls instead of squeezing.
--- Taller than the 30px tab buttons themselves need -- more surrounding breathing room for
--- the tab bar as its own section, not bigger buttons.
-TAB_BAR_HEIGHT = 64
+-- Tabs -- ROUGH DRAFT: moved from a horizontally-scrolling row under the header to a
+-- vertically-scrolling column down the left side (for faster navigation -- every tab
+-- visible/reachable at a glance instead of scrolling a horizontal strip). Still a
+-- ScrollingFrame/AutomaticCanvasSize (now along Y) in case the tab list ever outgrows the
+-- sidebar's height. ContentArea (further below) now sits to the right of this column
+-- instead of underneath it.
+SIDEBAR_WIDTH = 140
 TabBar = Instance.new("ScrollingFrame")
 TabBar.Name = "TabBar"
-TabBar.Size = UDim2.new(1, -32, 0, TAB_BAR_HEIGHT)
+TabBar.Size = UDim2.new(0, SIDEBAR_WIDTH, 1, -(HEADER_HEIGHT + 8 + 16))
 TabBar.Position = UDim2.new(0, 16, 0, HEADER_HEIGHT + 8)
 TabBar.BackgroundTransparency = 1
 TabBar.BorderSizePixel = 0
 TabBar.ScrollBarThickness = 3
 TabBar.ScrollBarImageColor3 = AccentColor
 TabBar.ScrollBarImageTransparency = 1
-TabBar.ScrollingDirection = Enum.ScrollingDirection.X
+TabBar.ScrollingDirection = Enum.ScrollingDirection.Y
 TabBar.ElasticBehavior = Enum.ElasticBehavior.Never
 TabBar.CanvasSize = UDim2.new(0, 0, 0, 0)
-TabBar.AutomaticCanvasSize = Enum.AutomaticSize.X
+TabBar.AutomaticCanvasSize = Enum.AutomaticSize.Y
 TabBar.Parent = MainFrame
 
 TabBarLayout = Instance.new("UIListLayout")
-TabBarLayout.FillDirection = Enum.FillDirection.Horizontal
-TabBarLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+TabBarLayout.FillDirection = Enum.FillDirection.Vertical
+TabBarLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 TabBarLayout.Padding = UDim.new(0, 8)
 TabBarLayout.SortOrder = Enum.SortOrder.LayoutOrder
 TabBarLayout.Parent = TabBar
 
-TAB_BAR_BOTTOM = HEADER_HEIGHT + 8 + TAB_BAR_HEIGHT
+SIDEBAR_RIGHT = 16 + SIDEBAR_WIDTH
 TabDivider = Instance.new("Frame")
 TabDivider.Name = "TabDivider"
-TabDivider.Size = UDim2.new(1, 0, 0, 1)
-TabDivider.Position = UDim2.new(0, 0, 0, TAB_BAR_BOTTOM + 8)
+TabDivider.Size = UDim2.new(0, 1, 1, -(HEADER_HEIGHT + 8 + 16))
+TabDivider.Position = UDim2.new(0, SIDEBAR_RIGHT + 8, 0, HEADER_HEIGHT + 8)
 TabDivider.BackgroundColor3 = AccentColor
 TabDivider.BackgroundTransparency = 0.85
 TabDivider.BorderSizePixel = 0
 TabDivider.Parent = MainFrame
-AddFadeDivider(TabDivider)
+AddFadeDivider(TabDivider, 90)
 
-CONTENT_TOP = TAB_BAR_BOTTOM + 8 + 1 + 8
+CONTENT_LEFT = SIDEBAR_RIGHT + 8 + 1 + 8
 ContentArea = Instance.new("Frame")
 ContentArea.Name = "ContentArea"
-ContentArea.Size = UDim2.new(1, -32, 1, -(CONTENT_TOP + 16))
-ContentArea.Position = UDim2.new(0, 16, 0, CONTENT_TOP)
+ContentArea.Size = UDim2.new(1, -(CONTENT_LEFT + 16), 1, -(HEADER_HEIGHT + 8 + 16))
+ContentArea.Position = UDim2.new(0, CONTENT_LEFT, 0, HEADER_HEIGHT + 8)
 ContentArea.BackgroundTransparency = 1
 -- Pages slide fully outside the content box mid-transition -- clip so that only shows as a
 -- clean slide within this box, not spilling into the tab bar or the window's own padding.
@@ -767,7 +776,9 @@ function CreateTab(name, order, iconId, scrolling, iconSize, iconYOffset)
 	local button = Instance.new("TextButton")
 	button.Name = name .. "Tab"
 	button.LayoutOrder = order
-	button.Size = UDim2.new(0, 125, 0, 30)
+	-- Full sidebar width now (was a fixed 125px pill sized for a horizontal row) -- height
+	-- unchanged from the old button height.
+	button.Size = UDim2.new(1, 0, 0, 30)
 	button.BackgroundColor3 = ToggleOnColor
 	button.BackgroundTransparency = 1
 	button.BorderSizePixel = 0
@@ -5648,7 +5659,8 @@ end)
 -- ".Parent = MainFrame" line above. MainCorner (and any other UICorner) stays a direct
 -- child of MainFrame itself -- reparenting it into the transparent wrapper would round the
 -- wrapper's own (invisible) corners instead of MainFrame's.
-local BASE_WIDTH, BASE_HEIGHT = 560, 430
+-- Matches FULL_SIZE's base footprint above (720x460, widened for the sidebar tab bar).
+local BASE_WIDTH, BASE_HEIGHT = 720, 460
 AdjustGuiSizeEnabled = false
 local guiScale = type(SavedKeybinds.GuiScale) == "number" and SavedKeybinds.GuiScale or 1
 
