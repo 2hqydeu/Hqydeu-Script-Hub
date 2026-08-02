@@ -441,10 +441,13 @@ end)
 -- content area entirely (nothing else underneath is clickable while it's up). ZIndex has
 -- to beat the overlay's own (20) or it'd render underneath that panel's opaque background
 -- and disappear, same as anything else sitting inside that Y range.
+-- Named so SlideOverlayOpen (further below) can animate this button in alongside whichever
+-- overlay is opening, using this as its own rest position.
+SETTINGS_BACK_BUTTON_REST = UDim2.new(0, 16, 0, HEADER_HEIGHT + 6)
 SettingsBackButton = Instance.new("TextButton")
 SettingsBackButton.Name = "SettingsBackButton"
 SettingsBackButton.Size = UDim2.new(0, 64, 0, 20)
-SettingsBackButton.Position = UDim2.new(0, 16, 0, HEADER_HEIGHT + 6)
+SettingsBackButton.Position = SETTINGS_BACK_BUTTON_REST
 -- Small oval-ish background now -- plain text with nothing behind it was blending into
 -- whatever the overlay's own content happened to sit near, hard to make out at a glance.
 SettingsBackButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
@@ -700,7 +703,7 @@ function SelectTab(name)
 
 	tabSwitchToken = tabSwitchToken + 1
 	local myToken = tabSwitchToken
-	local width = ContentArea.AbsoluteSize.X
+	local height = ContentArea.AbsoluteSize.Y
 
 	-- Any page that isn't part of THIS transition snaps back to a clean rest state right
 	-- away -- guards against a page left mid-slide (or off-screen) by a rapid earlier
@@ -720,20 +723,22 @@ function SelectTab(name)
 		return
 	end
 
-	-- Moving to a tab further right in the tab order slides the old page out to the left
-	-- and brings the new one in from the right, and vice versa -- symmetric for every pair.
+	-- Moving to a tab further down the (now vertical) sidebar slides the old page out the
+	-- top and brings the new one in from the bottom, and vice versa -- symmetric for every
+	-- pair. Was left/right (matching the old horizontal tab row); now up/down to match the
+	-- sidebar's own orientation.
 	local movingForward = (TabOrderByName[name] or 0) > (TabOrderByName[oldName] or 0)
-	local exitOffset = movingForward and -width or width
-	local enterOffset = movingForward and width or -width
+	local exitOffset = movingForward and -height or height
+	local enterOffset = movingForward and height or -height
 
 	StopPageTween(oldEntry.Page)
 	StopPageTween(newEntry.Page)
 
-	newEntry.Page.Position = UDim2.new(0, enterOffset, 0, 0)
+	newEntry.Page.Position = UDim2.new(0, 0, 0, enterOffset)
 	newEntry.Page.Visible = true
 
 	local slideInfo = TweenInfo.new(0.45, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
-	local outTween = TweenService:Create(oldEntry.Page, slideInfo, {Position = UDim2.new(0, exitOffset, 0, 0)})
+	local outTween = TweenService:Create(oldEntry.Page, slideInfo, {Position = UDim2.new(0, 0, 0, exitOffset)})
 	local inTween = TweenService:Create(newEntry.Page, slideInfo, {Position = UDim2.new(0, 0, 0, 0)})
 	PageTweens[oldEntry.Page] = outTween
 	PageTweens[newEntry.Page] = inTween
@@ -1919,6 +1924,95 @@ do
 end
 
 do
+	-- Anti Fling: protects the local player from griefer fling exploits two ways -- watches
+	-- every OTHER player's HumanoidRootPart for the extreme angular/linear velocity a fling
+	-- produces and neutralizes it (zeroes velocity, drops collision and mass/friction)
+	-- before it can slam into you, and separately watches your OWN root for the same
+	-- signature in case you get flung directly, snapping back to your last known-good
+	-- position and zeroing velocity instead of riding it off into the void. Ported from a
+	-- standalone script's enableAntiFling.
+	AntiFlingEnabled = false
+	AntiFlingKeybind = Enum.KeyCode.Unknown
+	local antiFlingLastPosition = nil
+
+	-- INSTANT_PROMPT_SECTION_BOTTOM lives in the do block above and doesn't escape it --
+	-- 106 is that same value (INSTANT_PROMPT_TOP 8 + 30 + row height 52 + 16 gap) written
+	-- out instead.
+	local ANTI_FLING_TOP = 106
+	local AntiFlingHeading = CreateSectionHeading(FunctionalityPage, ANTI_FLING_TOP, "Anti Fling")
+	local AntiFlingToggle, _, AntiFlingRow = CreateToggleRow(FunctionalityPage, ANTI_FLING_TOP + 30, "AntiFlingKeybind", function(k) AntiFlingKeybind = k end)
+	RegisterSectionFavorite(AntiFlingHeading, "AntiFlingKeybind", "Anti Fling", {AntiFlingRow})
+
+	-- Listener list rather than a single callback -- the floating Fling popup (built
+	-- further below) embeds a second, smaller toggle for this exact same state, and both
+	-- controls need to stay in sync no matter which one (or the keybind) actually changed
+	-- it. SetAntiFlingEnabled is the one place that flag ever gets written, so every
+	-- surface just calls this instead of touching AntiFlingEnabled directly.
+	AntiFlingToggleListeners = {}
+	function SetAntiFlingEnabled(enabled)
+		AntiFlingEnabled = enabled
+		AntiFlingToggle.Text = AntiFlingEnabled and "On" or "Off"
+		antiFlingLastPosition = nil
+		for _, listener in ipairs(AntiFlingToggleListeners) do
+			listener(AntiFlingEnabled)
+		end
+	end
+	ToggleAntiFling = function()
+		SetAntiFlingEnabled(not AntiFlingEnabled)
+	end
+	AntiFlingToggle.MouseButton1Click:Connect(function() PlayClick() ToggleAntiFling() end)
+
+	local function NeutralizeFlinger(targetPlayer)
+		local character = targetPlayer.Character
+		if not character then return end
+		for _, part in ipairs(character:GetDescendants()) do
+			if part:IsA("BasePart") then
+				part.CanCollide = false
+				part.AssemblyAngularVelocity = Vector3.zero
+				part.AssemblyLinearVelocity = Vector3.zero
+				part.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0)
+			end
+		end
+	end
+
+	table.insert(looseConnections, RunService.Heartbeat:Connect(function()
+		if not AntiFlingEnabled then return end
+		for _, targetPlayer in ipairs(Players:GetPlayers()) do
+			if targetPlayer ~= Player then
+				local character = targetPlayer.Character
+				local root = character and character.PrimaryPart
+				if character and character:IsDescendantOf(workspace) and root then
+					local highAngular = root.AssemblyAngularVelocity.Magnitude > 50
+					local highLinear = root.AssemblyLinearVelocity.Magnitude > 100
+					if highAngular or highLinear then
+						NeutralizeFlinger(targetPlayer)
+					end
+				end
+			end
+		end
+	end))
+
+	table.insert(looseConnections, RunService.Heartbeat:Connect(function()
+		if not AntiFlingEnabled then return end
+		local root = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
+		if not root then return end
+		local highLinear = root.AssemblyLinearVelocity.Magnitude > 250
+		local highAngular = root.AssemblyAngularVelocity.Magnitude > 250
+		if highLinear or highAngular then
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.AssemblyAngularVelocity = Vector3.zero
+			if antiFlingLastPosition then
+				root.CFrame = CFrame.new(antiFlingLastPosition)
+			end
+		else
+			antiFlingLastPosition = root.Position
+		end
+	end))
+
+	FunctionalityPage.CanvasSize = UDim2.new(0, 0, 0, ANTI_FLING_TOP + 30 + 52 + 16)
+end
+
+do
 	-- Auto Lock: moved here from its own now-removed Combat tab -- while held, Right Mouse
 	-- Button snaps the camera to face whichever player's head is currently closest to the
 	-- mouse cursor on screen. Ported straight from the old hub's Auto Lock (Main Features
@@ -1929,10 +2023,9 @@ do
 	AutoLockKeybind = Enum.KeyCode.Unknown
 	local AutoLockEnabled = false
 
-	-- INSTANT_PROMPT_SECTION_BOTTOM lives in the do block above and doesn't escape it --
-	-- 106 is that same value (INSTANT_PROMPT_TOP 8 + 30 + row height 52 + 16 gap) written
-	-- out instead.
-	local AUTO_LOCK_TOP = 106
+	-- ANTI_FLING_TOP (106) + its own heading/row/gap (30 + 52 + 16) lives in the do block
+	-- above and doesn't escape it -- 204 is that same total written out instead.
+	local AUTO_LOCK_TOP = 204
 	local AutoLockHeading = CreateSectionHeading(FunctionalityPage, AUTO_LOCK_TOP, "Auto Lock")
 	local AutoLockToggle, _, AutoLockRow = CreateToggleRow(FunctionalityPage, AUTO_LOCK_TOP + 30, "AutoLockKeybind", function(k) AutoLockKeybind = k end)
 	RegisterSectionFavorite(AutoLockHeading, "AutoLockKeybind", "Auto Lock", {AutoLockRow})
@@ -2002,9 +2095,9 @@ do
 	AntiAFKKeybind = Enum.KeyCode.Unknown
 	local antiAfkConnection = nil
 
-	-- AUTO_LOCK_TOP (106) + its own heading/row/gap (30 + 52 + 16) lives in the do block
-	-- above and doesn't escape it -- 204 is that same total written out instead.
-	local ANTI_AFK_TOP = 204
+	-- AUTO_LOCK_TOP (204) + its own heading/row/gap (30 + 52 + 16) lives in the do block
+	-- above and doesn't escape it -- 302 is that same total written out instead.
+	local ANTI_AFK_TOP = 302
 	local AntiAFKHeading = CreateSectionHeading(FunctionalityPage, ANTI_AFK_TOP, "Anti-AFK")
 	local AntiAFKToggle, _, AntiAFKRow = CreateToggleRow(FunctionalityPage, ANTI_AFK_TOP + 30, "AntiAFKKeybind", function(k) AntiAFKKeybind = k end)
 	RegisterSectionFavorite(AntiAFKHeading, "AntiAFKKeybind", "Anti-AFK", {AntiAFKRow})
@@ -3993,9 +4086,9 @@ do
 end
 
 do
-	-- Ctrl+Click Teleport: hold Ctrl and left-click anywhere the camera can see (raycast
-	-- from the click point) to teleport straight there. Ported from a standalone script's
-	-- enableCtrlClickTeleport.
+	-- Click Teleport: left-click anywhere the camera can see (raycast from the click point)
+	-- to teleport straight there -- no modifier held, just a plain click. Ported from a
+	-- standalone script's enableCtrlClickTeleport, minus the Ctrl requirement (per request).
 	ClickTeleportEnabled = false
 	ClickTeleportKeybind = Enum.KeyCode.Unknown
 
@@ -4015,7 +4108,6 @@ do
 	table.insert(looseConnections, UserInputService.InputBegan:Connect(function(input, processed)
 		if not ClickTeleportEnabled or processed then return end
 		if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
-		if not (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then return end
 		local character = Player.Character
 		local root = character and character:FindFirstChild("HumanoidRootPart")
 		if not root then return end
@@ -4031,94 +4123,8 @@ do
 			root.CFrame = CFrame.new(result.Position + Vector3.new(0, 3, 0))
 		end
 	end))
-end
 
-do
-	-- Anti Fling: protects the local player from griefer fling exploits two ways -- watches
-	-- every OTHER player's HumanoidRootPart for the extreme angular/linear velocity a fling
-	-- produces and neutralizes it (zeroes velocity, drops collision and mass/friction)
-	-- before it can slam into you, and separately watches your OWN root for the same
-	-- signature in case you get flung directly, snapping back to your last known-good
-	-- position and zeroing velocity instead of riding it off into the void. Ported from a
-	-- standalone script's enableAntiFling.
-	AntiFlingEnabled = false
-	AntiFlingKeybind = Enum.KeyCode.Unknown
-	local antiFlingLastPosition = nil
-
-	-- CLICK_TELEPORT_TOP (106) + its own heading/row/gap (30 + 52 + 16) lives in the do
-	-- block above and doesn't escape it -- 204 is that same total written out instead.
-	local ANTI_FLING_TOP = 204
-	local AntiFlingHeading = CreateSectionHeading(TrollPage, ANTI_FLING_TOP, "Anti Fling")
-	local AntiFlingToggle, _, AntiFlingRow = CreateToggleRow(TrollPage, ANTI_FLING_TOP + 30, "AntiFlingKeybind", function(k) AntiFlingKeybind = k end)
-	RegisterSectionFavorite(AntiFlingHeading, "AntiFlingKeybind", "Anti Fling", {AntiFlingRow})
-
-	-- Listener list rather than a single callback -- the floating Fling popup (built
-	-- further below) embeds a second, smaller toggle for this exact same state, and both
-	-- controls need to stay in sync no matter which one (or the keybind) actually changed
-	-- it. SetAntiFlingEnabled is the one place that flag ever gets written, so every
-	-- surface just calls this instead of touching AntiFlingEnabled directly.
-	AntiFlingToggleListeners = {}
-	function SetAntiFlingEnabled(enabled)
-		AntiFlingEnabled = enabled
-		AntiFlingToggle.Text = AntiFlingEnabled and "On" or "Off"
-		antiFlingLastPosition = nil
-		for _, listener in ipairs(AntiFlingToggleListeners) do
-			listener(AntiFlingEnabled)
-		end
-	end
-	ToggleAntiFling = function()
-		SetAntiFlingEnabled(not AntiFlingEnabled)
-	end
-	AntiFlingToggle.MouseButton1Click:Connect(function() PlayClick() ToggleAntiFling() end)
-
-	local function NeutralizeFlinger(targetPlayer)
-		local character = targetPlayer.Character
-		if not character then return end
-		for _, part in ipairs(character:GetDescendants()) do
-			if part:IsA("BasePart") then
-				part.CanCollide = false
-				part.AssemblyAngularVelocity = Vector3.zero
-				part.AssemblyLinearVelocity = Vector3.zero
-				part.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0)
-			end
-		end
-	end
-
-	table.insert(looseConnections, RunService.Heartbeat:Connect(function()
-		if not AntiFlingEnabled then return end
-		for _, targetPlayer in ipairs(Players:GetPlayers()) do
-			if targetPlayer ~= Player then
-				local character = targetPlayer.Character
-				local root = character and character.PrimaryPart
-				if character and character:IsDescendantOf(workspace) and root then
-					local highAngular = root.AssemblyAngularVelocity.Magnitude > 50
-					local highLinear = root.AssemblyLinearVelocity.Magnitude > 100
-					if highAngular or highLinear then
-						NeutralizeFlinger(targetPlayer)
-					end
-				end
-			end
-		end
-	end))
-
-	table.insert(looseConnections, RunService.Heartbeat:Connect(function()
-		if not AntiFlingEnabled then return end
-		local root = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
-		if not root then return end
-		local highLinear = root.AssemblyLinearVelocity.Magnitude > 250
-		local highAngular = root.AssemblyAngularVelocity.Magnitude > 250
-		if highLinear or highAngular then
-			root.AssemblyLinearVelocity = Vector3.zero
-			root.AssemblyAngularVelocity = Vector3.zero
-			if antiFlingLastPosition then
-				root.CFrame = CFrame.new(antiFlingLastPosition)
-			end
-		else
-			antiFlingLastPosition = root.Position
-		end
-	end))
-
-	TrollPage.CanvasSize = UDim2.new(0, 0, 0, ANTI_FLING_TOP + 30 + 52 + 16)
+	TrollPage.CanvasSize = UDim2.new(0, 0, 0, CLICK_TELEPORT_TOP + 30 + 52 + 16)
 end
 
 -- Floating Fling menu popup: same "small popup toggled by a keybind, opens over whatever
@@ -4282,7 +4288,7 @@ do
 	end
 
 	-- UI: mirrors the TP Menu Popup's frame/header/close/search/list shell above, plus one
-	-- extra row (below the header) mirroring the Anti Fling toggle from the Troll tab --
+	-- extra row (below the header) mirroring the Anti Fling toggle from the Functions tab --
 	-- same state, same SetAntiFlingEnabled/AntiFlingToggleListeners wiring, just a second
 	-- physical switch so it's reachable without leaving this popup.
 	local FlingPopupFrame = Instance.new("Frame")
@@ -4775,23 +4781,40 @@ ScriptsPage.CanvasSize = UDim2.new(0, 0, 0, 392)
 -- slide further up this file.
 OVERLAY_REST_POSITION = UDim2.new(0, 16, 0, HEADER_HEIGHT + 8)
 overlaySlideTokens = {}
-function SlideOverlayOpen(overlay, restPosition, enterFromAbove)
+function SlideOverlayOpen(overlay, restPosition, enterFromAbove, companion, companionRestPosition)
 	if overlay.Visible then return end
 	overlaySlideTokens[overlay] = (overlaySlideTokens[overlay] or 0) + 1
 	local myToken = overlaySlideTokens[overlay]
 	local travel = MainFrame.AbsoluteSize.Y
-	local startPosition = UDim2.new(
-		restPosition.X.Scale, restPosition.X.Offset,
-		restPosition.Y.Scale, restPosition.Y.Offset + (enterFromAbove and -travel or travel)
-	)
-	overlay.Position = startPosition
+	local function OffsetPosition(rest)
+		return UDim2.new(rest.X.Scale, rest.X.Offset, rest.Y.Scale, rest.Y.Offset + (enterFromAbove and -travel or travel))
+	end
+
+	overlay.Position = OffsetPosition(restPosition)
 	overlay.Visible = true
-	local tween = TweenService:Create(overlay, TweenInfo.new(0.45, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Position = restPosition})
+	local tweenInfo = TweenInfo.new(0.45, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+	local tween = TweenService:Create(overlay, tweenInfo, {Position = restPosition})
 	tween:Play()
 	tween.Completed:Connect(function(state)
 		if state ~= Enum.PlaybackState.Completed or overlaySlideTokens[overlay] ~= myToken then return end
 		overlay.Position = restPosition
 	end)
+
+	-- Companion (the shared Settings/Favorites Back button) rides the exact same entrance
+	-- slide instead of just Visible-toggling in place -- it stays a separate MainFrame-
+	-- level object rather than an actual child of the overlay (a ScrollingFrame; a real
+	-- child would scroll out of view along with the content instead of staying put), but
+	-- tweening it in alongside the same start offset/duration reads as if it's part of the
+	-- page sliding in. Entrance only -- closing (SlideOverlayClose below) still snaps it
+	-- away immediately rather than animating the exit too, since one overlay closing is
+	-- routinely followed right away by another opening (same shared button), and an
+	-- in-flight exit tween finishing after that next open had already shown it again would
+	-- incorrectly hide it out from under that open.
+	if companion then
+		companion.Position = OffsetPosition(companionRestPosition)
+		companion.Visible = true
+		TweenService:Create(companion, tweenInfo, {Position = companionRestPosition}):Play()
+	end
 end
 
 -- exitDownward picks which way this particular overlay exits -- Settings exits back up
@@ -4847,8 +4870,7 @@ do
 	function OpenSettingsOverlay()
 		if CloseFavoritesOverlay then CloseFavoritesOverlay() end
 		if CloseKeybindEditorOverlay then CloseKeybindEditorOverlay() end
-		SlideOverlayOpen(SettingsOverlay, OVERLAY_REST_POSITION, true)
-		SettingsBackButton.Visible = true
+		SlideOverlayOpen(SettingsOverlay, OVERLAY_REST_POSITION, true, SettingsBackButton, SETTINGS_BACK_BUTTON_REST)
 	end
 	function CloseSettingsOverlay()
 		SlideOverlayClose(SettingsOverlay, OVERLAY_REST_POSITION, false)
@@ -5217,8 +5239,7 @@ do
 		if CloseSettingsOverlay then CloseSettingsOverlay() end
 		if CloseKeybindEditorOverlay then CloseKeybindEditorOverlay() end
 		-- Enters from below, unlike Settings/Keybind Editor which enter from above.
-		SlideOverlayOpen(FavoritesPage, OVERLAY_REST_POSITION, false)
-		SettingsBackButton.Visible = true
+		SlideOverlayOpen(FavoritesPage, OVERLAY_REST_POSITION, false, SettingsBackButton, SETTINGS_BACK_BUTTON_REST)
 		RefreshFavoritesView()
 	end
 	function CloseFavoritesOverlay()
@@ -5436,6 +5457,7 @@ do
 	SwitchFunctionsKeybind = Enum.KeyCode.Unknown
 	CreateKeybindEditRow(functionsRows, "Switch to Functions", "SwitchFunctionsKeybind", function(k) SwitchFunctionsKeybind = k end)
 	CreateKeybindEditRow(functionsRows, "Instant Prompt", "InstantPromptKeybind", function(k) InstantPromptKeybind = k end)
+	CreateKeybindEditRow(functionsRows, "Anti Fling", "AntiFlingKeybind", function(k) AntiFlingKeybind = k end)
 	CreateKeybindEditRow(functionsRows, "Auto Lock", "AutoLockKeybind", function(k) AutoLockKeybind = k end)
 	CreateKeybindEditRow(functionsRows, "Anti-AFK", "AntiAFKKeybind", function(k) AntiAFKKeybind = k end)
 
@@ -5461,7 +5483,6 @@ do
 	CreateKeybindEditRow(trollRows, "Switch to Troll", "SwitchTrollKeybind", function(k) SwitchTrollKeybind = k end)
 	CreateKeybindEditRow(trollRows, "Fling Menu", "FlingMenuKeybind", function(k) FlingMenuKeybind = k end)
 	CreateKeybindEditRow(trollRows, "Click Teleport", "ClickTeleportKeybind", function(k) ClickTeleportKeybind = k end)
-	CreateKeybindEditRow(trollRows, "Anti Fling", "AntiFlingKeybind", function(k) AntiFlingKeybind = k end)
 
 	for _, descendant in ipairs(KeybindEditorPage:GetDescendants()) do
 		if descendant:IsA("GuiObject") then descendant.ZIndex = 20 end
