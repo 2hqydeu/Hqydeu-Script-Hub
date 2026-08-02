@@ -1879,6 +1879,26 @@ do
 end
 
 do
+	-- Fling Menu: opens a floating popup (built in its own separate do block further below,
+	-- next to the Teleport tab's TP Menu Popup) listing every other player with a Fling
+	-- button next to each one -- generic, not tied to any single game's roles the way MM2's
+	-- own Fling Murderer/Fling Sheriff buttons are. FlingMenuKeybind/FlingPopupToggleButton
+	-- left un-declared (the popup section further down needs to read/update them too) so
+	-- they fall back to globals instead of costing more top-level local slots.
+	-- INSTANT_PROMPT_SECTION_BOTTOM lives in the do block above and doesn't escape it -- 106
+	-- is that same value (INSTANT_PROMPT_TOP 8 + 30 + row height 52 + 16 gap) written out
+	-- instead.
+	local FLING_TOP = 106
+	local FlingHeading = CreateSectionHeading(FunctionalityPage, FLING_TOP, "Fling")
+	FlingMenuKeybind = Enum.KeyCode.Unknown
+	FlingPopupToggleButton, _, FlingRow = CreateToggleRow(FunctionalityPage, FLING_TOP + 30, "FlingMenuKeybind", function(k) FlingMenuKeybind = k end, "Fling Menu Popup")
+	FlingPopupToggleButton.Text = "Closed"
+	RegisterSectionFavorite(FlingHeading, "FlingMenuKeybind", "Fling", {FlingRow})
+
+	FunctionalityPage.CanvasSize = UDim2.new(0, 0, 0, FLING_TOP + 30 + 52 + 16)
+end
+
+do
 	-- Auto Lock: moved here from its own now-removed Combat tab -- while held, Right Mouse
 	-- Button snaps the camera to face whichever player's head is currently closest to the
 	-- mouse cursor on screen. Ported straight from the old hub's Auto Lock (Main Features
@@ -1889,10 +1909,9 @@ do
 	AutoLockKeybind = Enum.KeyCode.Unknown
 	local AutoLockEnabled = false
 
-	-- INSTANT_PROMPT_SECTION_BOTTOM lives in the do block above and doesn't escape it --
-	-- 106 is that same value (INSTANT_PROMPT_TOP 8 + 30 + row height 52 + 16 gap) written
-	-- out instead.
-	local AUTO_LOCK_TOP = 106
+	-- FLING_TOP (106) + its own heading/row/gap (30 + 52 + 16) lives in the do block above
+	-- and doesn't escape it -- 204 is that same total written out instead.
+	local AUTO_LOCK_TOP = 204
 	local AutoLockHeading = CreateSectionHeading(FunctionalityPage, AUTO_LOCK_TOP, "Auto Lock")
 	local AutoLockToggle, _, AutoLockRow = CreateToggleRow(FunctionalityPage, AUTO_LOCK_TOP + 30, "AutoLockKeybind", function(k) AutoLockKeybind = k end)
 	RegisterSectionFavorite(AutoLockHeading, "AutoLockKeybind", "Auto Lock", {AutoLockRow})
@@ -1953,9 +1972,9 @@ do
 	AntiAFKEnabled = false
 	AntiAFKKeybind = Enum.KeyCode.Unknown
 
-	-- AUTO_LOCK_TOP (106) + its own heading/row/gap (30 + 52 + 16) lives in the do block
-	-- above and doesn't escape it -- 204 is that same total written out instead.
-	local ANTI_AFK_TOP = 204
+	-- AUTO_LOCK_TOP (204) + its own heading/row/gap (30 + 52 + 16) lives in the do block
+	-- above and doesn't escape it -- 302 is that same total written out instead.
+	local ANTI_AFK_TOP = 302
 	local AntiAFKHeading = CreateSectionHeading(FunctionalityPage, ANTI_AFK_TOP, "Anti-AFK")
 	local AntiAFKToggle, _, AntiAFKRow = CreateToggleRow(FunctionalityPage, ANTI_AFK_TOP + 30, "AntiAFKKeybind", function(k) AntiAFKKeybind = k end)
 	RegisterSectionFavorite(AntiAFKHeading, "AntiAFKKeybind", "Anti-AFK", {AntiAFKRow})
@@ -3895,6 +3914,371 @@ do
 	end))
 end
 
+-- Floating Fling menu popup: same "small popup toggled by a keybind, opens over whatever
+-- you're doing" shell as the TP Menu Popup right above (frame/header/close/search/list),
+-- but every row gets its own Fling button instead of the row itself being the click target
+-- -- teleporting (TP Menu's whole point) and flinging (a one-shot action against someone
+-- else's character) shouldn't share a "click anywhere on the row" gesture, since a stray
+-- click here launches another player instead of just moving you. Toggled by the keybind
+-- row set up in the Functions tab above (FlingMenuKeybind/FlingPopupToggleButton).
+do
+	local ROW_H = 30
+
+	-- Generic fling -- not tied to any single game's roles the way MM2's own Fling
+	-- Murderer/Fling Sheriff buttons are. Teleport-spams the target's own body part while a
+	-- BodyVelocity rides along, launching them off into the distance -- same technique (and
+	-- same AssemblyLinearVelocity/AssemblyAngularVelocity, accessory-safe framing) as MM2's
+	-- own PerformFling.
+	local flingBusy = false
+	local function PerformFling(targetPlayer)
+		if flingBusy or not targetPlayer or targetPlayer == Player then return end
+
+		local localCharacter = Player.Character
+		local localHumanoid = localCharacter and localCharacter:FindFirstChildOfClass("Humanoid")
+		local localRoot = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
+		local targetCharacter = targetPlayer.Character
+		if not (localCharacter and localHumanoid and localRoot and targetCharacter) then return end
+
+		local targetHumanoid = targetCharacter:FindFirstChildOfClass("Humanoid")
+		local targetRoot = targetCharacter:FindFirstChild("HumanoidRootPart")
+		local targetHead = targetCharacter:FindFirstChild("Head")
+		local targetAccessory = targetCharacter:FindFirstChildOfClass("Accessory")
+		local targetAccessoryHandle = targetAccessory and targetAccessory:FindFirstChild("Handle")
+		if not (targetHumanoid and (targetRoot or targetHead or targetAccessoryHandle)) then return end
+
+		flingBusy = true
+		if not localCharacter.PrimaryPart then
+			localCharacter.PrimaryPart = localRoot
+		end
+
+		local returnCFrame = localRoot.AssemblyLinearVelocity.Magnitude < 50 and localRoot.CFrame or nil
+		local oldFallenPartsDestroyHeight = workspace.FallenPartsDestroyHeight
+
+		if targetHead then
+			workspace.CurrentCamera.CameraSubject = targetHead
+		elseif targetAccessoryHandle then
+			workspace.CurrentCamera.CameraSubject = targetAccessoryHandle
+		else
+			workspace.CurrentCamera.CameraSubject = targetHumanoid
+		end
+
+		local function moveToTargetPart(part, offset, rotation)
+			local flingCFrame = CFrame.new(part.Position) * offset * rotation
+			localRoot.CFrame = flingCFrame
+			localCharacter:SetPrimaryPartCFrame(flingCFrame)
+			localRoot.AssemblyLinearVelocity = Vector3.new(9e7, 9e8, 9e7)
+			localRoot.AssemblyAngularVelocity = Vector3.new(9e8, 9e8, 9e8)
+		end
+
+		local function flingPart(part)
+			local timeoutSeconds = 2
+			local startedAt = tick()
+			local rotationAmount = 0
+			repeat
+				if not (ScreenGui.Parent and localRoot.Parent and targetHumanoid) then break end
+				if part.AssemblyLinearVelocity.Magnitude < 50 then
+					rotationAmount += 100
+					moveToTargetPart(part, CFrame.new(0, 1.5, 0) + targetHumanoid.MoveDirection * part.AssemblyLinearVelocity.Magnitude / 1.25, CFrame.Angles(math.rad(rotationAmount), 0, 0))
+					task.wait()
+					moveToTargetPart(part, CFrame.new(0, -1.5, 0) + targetHumanoid.MoveDirection * part.AssemblyLinearVelocity.Magnitude / 1.25, CFrame.Angles(math.rad(rotationAmount), 0, 0))
+					task.wait()
+					moveToTargetPart(part, CFrame.new(2.25, 1.5, -2.25) + targetHumanoid.MoveDirection * part.AssemblyLinearVelocity.Magnitude / 1.25, CFrame.Angles(math.rad(rotationAmount), 0, 0))
+					task.wait()
+					moveToTargetPart(part, CFrame.new(-2.25, -1.5, 2.25) + targetHumanoid.MoveDirection * part.AssemblyLinearVelocity.Magnitude / 1.25, CFrame.Angles(math.rad(rotationAmount), 0, 0))
+					task.wait()
+					moveToTargetPart(part, CFrame.new(0, 1.5, 0) + targetHumanoid.MoveDirection, CFrame.Angles(math.rad(rotationAmount), 0, 0))
+					task.wait()
+					moveToTargetPart(part, CFrame.new(0, -1.5, 0) + targetHumanoid.MoveDirection, CFrame.Angles(math.rad(rotationAmount), 0, 0))
+					task.wait()
+				else
+					local rootVelocity = targetRoot and targetRoot.AssemblyLinearVelocity.Magnitude or part.AssemblyLinearVelocity.Magnitude
+					moveToTargetPart(part, CFrame.new(0, 1.5, targetHumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+					task.wait()
+					moveToTargetPart(part, CFrame.new(0, -1.5, -targetHumanoid.WalkSpeed), CFrame.Angles(0, 0, 0))
+					task.wait()
+					moveToTargetPart(part, CFrame.new(0, 1.5, targetHumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+					task.wait()
+					moveToTargetPart(part, CFrame.new(0, 1.5, rootVelocity / 1.25), CFrame.Angles(math.rad(90), 0, 0))
+					task.wait()
+					moveToTargetPart(part, CFrame.new(0, -1.5, -rootVelocity / 1.25), CFrame.Angles(0, 0, 0))
+					task.wait()
+					moveToTargetPart(part, CFrame.new(0, 1.5, rootVelocity / 1.25), CFrame.Angles(math.rad(90), 0, 0))
+					task.wait()
+					moveToTargetPart(part, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
+					task.wait()
+					moveToTargetPart(part, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
+					task.wait()
+					moveToTargetPart(part, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(-90), 0, 0))
+					task.wait()
+					moveToTargetPart(part, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
+					task.wait()
+				end
+			until part.AssemblyLinearVelocity.Magnitude > 500
+				or part.Parent ~= targetCharacter
+				or targetPlayer.Parent ~= Players
+				or targetPlayer.Character ~= targetCharacter
+				or targetHumanoid.Sit
+				or localHumanoid.Health <= 0
+				or tick() > startedAt + timeoutSeconds
+		end
+
+		workspace.FallenPartsDestroyHeight = 0 / 0
+
+		local bodyVelocity = Instance.new("BodyVelocity")
+		bodyVelocity.Name = "SerenityFlingVelocity"
+		bodyVelocity.Parent = localRoot
+		bodyVelocity.Velocity = Vector3.new(9e8, 9e8, 9e8)
+		bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+
+		localHumanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
+
+		if targetRoot and targetHead then
+			if (targetRoot.Position - targetHead.Position).Magnitude > 5 then
+				flingPart(targetHead)
+			else
+				flingPart(targetRoot)
+			end
+		elseif targetRoot then
+			flingPart(targetRoot)
+		elseif targetHead then
+			flingPart(targetHead)
+		elseif targetAccessoryHandle then
+			flingPart(targetAccessoryHandle)
+		end
+
+		bodyVelocity:Destroy()
+		if localHumanoid.Parent then
+			localHumanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
+		end
+		if ScreenGui.Parent then
+			workspace.CurrentCamera.CameraSubject = localHumanoid
+		end
+
+		if returnCFrame then
+			repeat
+				if not localRoot.Parent then break end
+				localRoot.CFrame = returnCFrame * CFrame.new(0, 0.5, 0)
+				localCharacter:SetPrimaryPartCFrame(returnCFrame * CFrame.new(0, 0.5, 0))
+				localHumanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+				for _, part in ipairs(localCharacter:GetChildren()) do
+					if part:IsA("BasePart") then
+						part.AssemblyLinearVelocity = Vector3.zero
+						part.AssemblyAngularVelocity = Vector3.zero
+					end
+				end
+				task.wait()
+			until (localRoot.Position - returnCFrame.Position).Magnitude < 25
+		end
+
+		workspace.FallenPartsDestroyHeight = oldFallenPartsDestroyHeight
+		flingBusy = false
+	end
+
+	-- UI: mirrors the TP Menu Popup's frame/header/close/search/list shell above.
+	local FlingPopupFrame = Instance.new("Frame")
+	FlingPopupFrame.Name = "FlingMenuPopup"
+	FlingPopupFrame.Size = UDim2.new(0, 230, 0, 260)
+	FlingPopupFrame.Position = UDim2.new(0.5, -115, 0.5, -130)
+	FlingPopupFrame.BackgroundColor3 = FrameColor
+	FlingPopupFrame.BackgroundTransparency = 0
+	FlingPopupFrame.BorderSizePixel = 0
+	FlingPopupFrame.Visible = false
+	FlingPopupFrame.Active = true
+	FlingPopupFrame.ZIndex = 30
+	FlingPopupFrame.Parent = ScreenGui
+	Instance.new("UICorner", FlingPopupFrame).CornerRadius = UDim.new(0, 12)
+	local flingPopupStroke = Instance.new("UIStroke")
+	flingPopupStroke.Color = AccentColor
+	flingPopupStroke.Thickness = 1
+	flingPopupStroke.Transparency = 0.6
+	flingPopupStroke.Parent = FlingPopupFrame
+
+	local FlingPopupHeader = Instance.new("TextLabel")
+	FlingPopupHeader.Size = UDim2.new(1, -36, 0, 26)
+	FlingPopupHeader.Position = UDim2.new(0, 12, 0, 6)
+	FlingPopupHeader.BackgroundTransparency = 1
+	FlingPopupHeader.Text = "Fling"
+	FlingPopupHeader.Font = UIFont
+	FlingPopupHeader.TextSize = 15
+	FlingPopupHeader.TextColor3 = Color3.fromRGB(255, 255, 255)
+	FlingPopupHeader.TextXAlignment = Enum.TextXAlignment.Left
+	FlingPopupHeader.ZIndex = 31
+	FlingPopupHeader.Parent = FlingPopupFrame
+
+	local FlingPopupClose = Instance.new("TextButton")
+	FlingPopupClose.Size = UDim2.new(0, 22, 0, 22)
+	FlingPopupClose.Position = UDim2.new(1, -30, 0, 8)
+	FlingPopupClose.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	FlingPopupClose.BackgroundTransparency = 0.4
+	FlingPopupClose.BorderSizePixel = 0
+	FlingPopupClose.Text = "×"
+	FlingPopupClose.Font = UIFont
+	FlingPopupClose.TextSize = 15
+	FlingPopupClose.TextColor3 = Color3.fromRGB(255, 255, 255)
+	FlingPopupClose.ZIndex = 31
+	FlingPopupClose.Parent = FlingPopupFrame
+	Instance.new("UICorner", FlingPopupClose).CornerRadius = UDim.new(0, 6)
+
+	local FlingPopupSearch = Instance.new("TextBox")
+	FlingPopupSearch.Size = UDim2.new(1, -24, 0, ROW_H - 4)
+	FlingPopupSearch.Position = UDim2.new(0, 12, 0, 36)
+	FlingPopupSearch.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	FlingPopupSearch.BackgroundTransparency = 0.5
+	FlingPopupSearch.BorderSizePixel = 0
+	FlingPopupSearch.ClearTextOnFocus = false
+	FlingPopupSearch.PlaceholderText = "Search players..."
+	FlingPopupSearch.Text = ""
+	FlingPopupSearch.Font = UIFont
+	FlingPopupSearch.TextSize = 12
+	FlingPopupSearch.TextColor3 = Color3.fromRGB(255, 255, 255)
+	FlingPopupSearch.PlaceholderColor3 = Color3.fromRGB(160, 160, 160)
+	FlingPopupSearch.ZIndex = 31
+	FlingPopupSearch.Parent = FlingPopupFrame
+	Instance.new("UICorner", FlingPopupSearch).CornerRadius = UDim.new(1, 0)
+
+	local FlingPopupList = Instance.new("ScrollingFrame")
+	FlingPopupList.Size = UDim2.new(1, -24, 1, -74)
+	FlingPopupList.Position = UDim2.new(0, 12, 0, 68)
+	FlingPopupList.BackgroundTransparency = 1
+	FlingPopupList.BorderSizePixel = 0
+	FlingPopupList.ScrollBarThickness = 3
+	FlingPopupList.ScrollBarImageColor3 = AccentColor
+	FlingPopupList.ScrollBarImageTransparency = 1
+	FlingPopupList.ElasticBehavior = Enum.ElasticBehavior.Never
+	FlingPopupList.CanvasSize = UDim2.new(0, 0, 0, 0)
+	SmoothScroll(FlingPopupList)
+	FlingPopupList.ZIndex = 31
+	FlingPopupList.Parent = FlingPopupFrame
+
+	local FlingPopupListLayout = Instance.new("UIListLayout")
+	FlingPopupListLayout.Padding = UDim.new(0, 3)
+	FlingPopupListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	FlingPopupListLayout.Parent = FlingPopupList
+
+	local function RefreshFlingPopupList()
+		for _, child in ipairs(FlingPopupList:GetChildren()) do
+			if child:IsA("Frame") then child:Destroy() end
+		end
+		local filter = FlingPopupSearch.Text:lower()
+		local candidates = {}
+		for _, targetPlayer in ipairs(Players:GetPlayers()) do
+			if targetPlayer ~= Player then
+				local displayText = targetPlayer.DisplayName or targetPlayer.Name
+				if filter == "" or displayText:lower():find(filter, 1, true) or targetPlayer.Name:lower():find(filter, 1, true) then
+					local isFriend = false
+					pcall(function() isFriend = Player:IsFriendsWith(targetPlayer.UserId) end)
+					table.insert(candidates, {Player = targetPlayer, DisplayText = displayText, IsFriend = isFriend})
+				end
+			end
+		end
+		table.sort(candidates, function(a, b)
+			if a.IsFriend ~= b.IsFriend then return a.IsFriend end
+			return false
+		end)
+		for _, candidate in ipairs(candidates) do
+			local targetPlayer = candidate.Player
+			local row = Instance.new("Frame")
+			row.Size = UDim2.new(1, 0, 0, 30)
+			row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
+			row.BackgroundTransparency = 0.5
+			row.BorderSizePixel = 0
+			row.ZIndex = 31
+			row.Parent = FlingPopupList
+			Instance.new("UICorner", row).CornerRadius = UDim.new(0, 5)
+
+			local nameLabel = Instance.new("TextLabel")
+			nameLabel.Size = UDim2.new(1, -76, 0, 16)
+			nameLabel.Position = UDim2.new(0, 8, 0, 1)
+			nameLabel.BackgroundTransparency = 1
+			nameLabel.Text = candidate.IsFriend and ("\226\152\133 " .. candidate.DisplayText) or candidate.DisplayText
+			nameLabel.Font = UIFont
+			nameLabel.TextSize = 11
+			nameLabel.TextColor3 = candidate.IsFriend and Color3.fromRGB(255, 210, 90) or Color3.fromRGB(255, 255, 255)
+			nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+			nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+			nameLabel.ZIndex = 32
+			nameLabel.Parent = row
+
+			local userLabel = Instance.new("TextLabel")
+			userLabel.Size = UDim2.new(1, -76, 0, 12)
+			userLabel.Position = UDim2.new(0, 8, 0, 16)
+			userLabel.BackgroundTransparency = 1
+			userLabel.Text = "@" .. targetPlayer.Name
+			userLabel.Font = UIFont
+			userLabel.TextSize = 8
+			userLabel.TextColor3 = Color3.fromRGB(170, 170, 170)
+			userLabel.TextXAlignment = Enum.TextXAlignment.Left
+			userLabel.ZIndex = 32
+			userLabel.Parent = row
+
+			local flingButton = Instance.new("TextButton")
+			flingButton.Size = UDim2.new(0, 58, 0, 22)
+			flingButton.Position = UDim2.new(1, -64, 0.5, -11)
+			flingButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+			flingButton.BorderSizePixel = 0
+			flingButton.Text = "Fling"
+			flingButton.Font = UIFont
+			flingButton.TextSize = 11
+			flingButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+			flingButton.ZIndex = 32
+			flingButton.Parent = row
+			Instance.new("UICorner", flingButton).CornerRadius = UDim.new(0, 5)
+			AddButtonHover(flingButton, Color3.fromRGB(230, 80, 80), Color3.fromRGB(200, 60, 60))
+			AddPressBounce(flingButton)
+
+			flingButton.MouseButton1Click:Connect(function()
+				PlayClick()
+				PerformFling(targetPlayer)
+			end)
+		end
+		FlingPopupList.CanvasSize = UDim2.new(0, 0, 0, FlingPopupListLayout.AbsoluteContentSize.Y + 4)
+	end
+
+	local function SetFlingPopupVisible(visible)
+		FlingPopupFrame.Visible = visible
+		FlingPopupToggleButton.Text = visible and "Open" or "Closed"
+		if visible then RefreshFlingPopupList() end
+	end
+	local function ToggleFlingPopup()
+		SetFlingPopupVisible(not FlingPopupFrame.Visible)
+	end
+	FlingPopupToggleButton.MouseButton1Click:Connect(function()
+		PlayClick()
+		ToggleFlingPopup()
+	end)
+	FlingPopupClose.MouseButton1Click:Connect(function() PlayClick() SetFlingPopupVisible(false) end)
+	FlingPopupSearch:GetPropertyChangedSignal("Text"):Connect(RefreshFlingPopupList)
+	table.insert(looseConnections, Players.PlayerAdded:Connect(function()
+		if FlingPopupFrame.Visible then RefreshFlingPopupList() end
+	end))
+	table.insert(looseConnections, Players.PlayerRemoving:Connect(function()
+		if FlingPopupFrame.Visible then RefreshFlingPopupList() end
+	end))
+	table.insert(looseConnections, UserInputService.InputBegan:Connect(function(input, processed)
+		if processed or UserInputService:GetFocusedTextBox() or bindingInProgress then return end
+		if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+		if FlingMenuKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == FlingMenuKeybind then ToggleFlingPopup() end
+	end))
+
+	-- Dragging, same pattern as MainFrame/PopupFrame.
+	local dragging = false
+	local dragStart, startPos
+	FlingPopupHeader.InputBegan:Connect(function(input)
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+		dragging = true
+		dragStart = input.Position
+		startPos = FlingPopupFrame.Position
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then dragging = false end
+		end)
+	end)
+	table.insert(looseConnections, UserInputService.InputChanged:Connect(function(input)
+		if not dragging or (input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch) then return end
+		local delta = input.Position - dragStart
+		FlingPopupFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	end))
+end
+
 -- Scripts tab: launches the separate game modules (loadstring + HttpGet, same as the
 -- old hub). Each module only ever gets fetched once per execution.
 ScriptsPage = CreateTab("Scripts", 6, "94167840974597", true, 30)
@@ -4800,6 +5184,7 @@ do
 	SwitchFunctionsKeybind = Enum.KeyCode.Unknown
 	CreateKeybindEditRow(functionsRows, "Switch to Functions", "SwitchFunctionsKeybind", function(k) SwitchFunctionsKeybind = k end)
 	CreateKeybindEditRow(functionsRows, "Instant Prompt", "InstantPromptKeybind", function(k) InstantPromptKeybind = k end)
+	CreateKeybindEditRow(functionsRows, "Fling Menu", "FlingMenuKeybind", function(k) FlingMenuKeybind = k end)
 	CreateKeybindEditRow(functionsRows, "Auto Lock", "AutoLockKeybind", function(k) AutoLockKeybind = k end)
 	CreateKeybindEditRow(functionsRows, "Anti-AFK", "AntiAFKKeybind", function(k) AntiAFKKeybind = k end)
 
