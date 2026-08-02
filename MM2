@@ -880,8 +880,15 @@ local function SetUnderground(enabled)
 		-- HumanoidRootPart is non-collidable by design in a normal character rig -- forcing
 		-- it to collide (which restoring "true" on every part indiscriminately used to do)
 		-- fights the Humanoid's own physics state and is what was ragdolling the character
-		-- on close.
-		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+		-- on close. Accessory/Tool handles are excluded for the same reason -- hats, hair,
+		-- and held tools are rigidly welded (Motor6D) to the rig and are non-collidable by
+		-- design too, so forcing them collidable on restore made the weld fight the newly
+		-- solid handle the instant it touched anything, flinging/launching the character --
+		-- the "stuck flying, only a Reset fixes it" bug, and it fired on every close (not
+		-- just after Coin Farm) since this restore call runs unconditionally there.
+		local parent = part.Parent
+		local isRigAccessory = parent and (parent:IsA("Accessory") or parent:IsA("Tool"))
+		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" and not isRigAccessory then
 			part.CanCollide = not enabled
 		end
 	end
