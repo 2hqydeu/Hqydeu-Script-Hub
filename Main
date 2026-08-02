@@ -1985,13 +1985,22 @@ do
 	-- Player.Idled firing once no real input (mouse/keyboard/gamepad) has been seen for a
 	-- while. Simulating a keypress through UserInputService or a mouse-click function
 	-- doesn't reset that timer at all -- it's tracked at the engine's own input-device
-	-- level, not from script-visible events, which is most likely why past attempts at
-	-- this never actually worked. VirtualUser is Roblox's own sanctioned way to inject
-	-- input at that level (built for automated testing), so it's the only thing that
-	-- reliably resets Idled.
+	-- level, not from script-visible events. VirtualUser is Roblox's own sanctioned way to
+	-- inject input at that level (built for automated testing), so it's what actually
+	-- resets Idled. Ported from a standalone anti-afk script -- the one addition over the
+	-- old version here is clearing out whatever's ALREADY connected to Player.Idled the
+	-- moment this turns on: some games hook their own Idled handler to do something
+	-- unwanted the instant it fires (a warning popup, a forced-AFK state), and
+	-- getconnections lets this beat them to it so only this hub's own handler responds.
+	-- getconnections is executor-only (not part of the real Roblox API) -- guarded, so this
+	-- still works (minus that extra clearing step) on an executor that doesn't expose it.
+	-- Connect/disconnect per toggle now (instead of one permanent connection gated by a
+	-- flag) specifically so a later re-enable's getconnections sweep never catches and
+	-- disables this hub's OWN handler along with everything else.
 	local VirtualUser = game:GetService("VirtualUser")
 	AntiAFKEnabled = false
 	AntiAFKKeybind = Enum.KeyCode.Unknown
+	local antiAfkConnection = nil
 
 	-- AUTO_LOCK_TOP (106) + its own heading/row/gap (30 + 52 + 16) lives in the do block
 	-- above and doesn't escape it -- 204 is that same total written out instead.
@@ -2000,17 +2009,47 @@ do
 	local AntiAFKToggle, _, AntiAFKRow = CreateToggleRow(FunctionalityPage, ANTI_AFK_TOP + 30, "AntiAFKKeybind", function(k) AntiAFKKeybind = k end)
 	RegisterSectionFavorite(AntiAFKHeading, "AntiAFKKeybind", "Anti-AFK", {AntiAFKRow})
 
+	-- DestroyGui (far below) calls this directly so a still-on Anti-AFK doesn't leave its
+	-- Idled connection dangling past the hub's own teardown.
+	DisableAntiAFK = function()
+		AntiAFKEnabled = false
+		AntiAFKToggle.Text = "Off"
+		if antiAfkConnection then
+			antiAfkConnection:Disconnect()
+			antiAfkConnection = nil
+		end
+	end
+
+	local function EnableAntiAFK()
+		if AntiAFKEnabled then return end
+		AntiAFKEnabled = true
+		AntiAFKToggle.Text = "On"
+
+		if type(getconnections) == "function" then
+			local success, connections = pcall(getconnections, Player.Idled)
+			if success then
+				for _, connection in ipairs(connections) do
+					pcall(function()
+						if connection.Disable then
+							connection:Disable()
+						elseif connection.Disconnect then
+							connection:Disconnect()
+						end
+					end)
+				end
+			end
+		end
+
+		antiAfkConnection = Player.Idled:Connect(function()
+			VirtualUser:CaptureController()
+			VirtualUser:ClickButton2(Vector2.new())
+		end)
+	end
+
 	ToggleAntiAFK = function()
-		AntiAFKEnabled = not AntiAFKEnabled
-		AntiAFKToggle.Text = AntiAFKEnabled and "On" or "Off"
+		if AntiAFKEnabled then DisableAntiAFK() else EnableAntiAFK() end
 	end
 	AntiAFKToggle.MouseButton1Click:Connect(function() PlayClick() ToggleAntiAFK() end)
-
-	table.insert(looseConnections, Player.Idled:Connect(function()
-		if not AntiAFKEnabled then return end
-		VirtualUser:CaptureController()
-		VirtualUser:ClickButton2(Vector2.new(0, 0))
-	end))
 
 	FunctionalityPage.CanvasSize = UDim2.new(0, 0, 0, ANTI_AFK_TOP + 30 + 52 + 16)
 end
@@ -2029,7 +2068,7 @@ end
 -- against the script's 200-local cap for the rest of the file.
 do
 
-VisualsPage = CreateTab("Visuals", 4, "71863899279280", true)
+VisualsPage = CreateTab("Visuals", 5, "71863899279280", true)
 task.wait()
 
 ESPDefaultColor = Color3.fromRGB(100, 255, 100)
@@ -3935,11 +3974,12 @@ do
 	end))
 end
 
--- Troll tab: our own dumping ground for stuff that doesn't fit the "serious" tabs. Just
--- Fling for now (the toggle row that opens the floating Fling popup built right below --
--- that popup reads FlingMenuKeybind/FlingPopupToggleButton as globals, so this has to run
--- before it, same as every other tab's own toggle row already does relative to its popup).
-TrollPage = CreateTab("Troll", 9, "115015056625522", true)
+-- Troll tab: our own dumping ground for stuff that doesn't fit the "serious" tabs -- Fling
+-- (the toggle row that opens the floating Fling popup built further below -- that popup
+-- reads FlingMenuKeybind/FlingPopupToggleButton as globals, so this has to run before it,
+-- same as every other tab's own toggle row already does relative to its popup), Click
+-- Teleport, and Anti Fling.
+TrollPage = CreateTab("Troll", 4, "115015056625522", true)
 task.wait()
 do
 	local FLING_TOP = 8
@@ -3950,6 +3990,135 @@ do
 	RegisterSectionFavorite(FlingHeading, "FlingMenuKeybind", "Fling", {FlingRow})
 
 	TrollPage.CanvasSize = UDim2.new(0, 0, 0, FLING_TOP + 30 + 52 + 16)
+end
+
+do
+	-- Ctrl+Click Teleport: hold Ctrl and left-click anywhere the camera can see (raycast
+	-- from the click point) to teleport straight there. Ported from a standalone script's
+	-- enableCtrlClickTeleport.
+	ClickTeleportEnabled = false
+	ClickTeleportKeybind = Enum.KeyCode.Unknown
+
+	-- FLING_TOP (8) + its own heading/row/gap (30 + 52 + 16) lives in the do block above
+	-- and doesn't escape it -- 106 is that same total written out instead.
+	local CLICK_TELEPORT_TOP = 106
+	local ClickTeleportHeading = CreateSectionHeading(TrollPage, CLICK_TELEPORT_TOP, "Click Teleport")
+	local ClickTeleportToggle, _, ClickTeleportRow = CreateToggleRow(TrollPage, CLICK_TELEPORT_TOP + 30, "ClickTeleportKeybind", function(k) ClickTeleportKeybind = k end)
+	RegisterSectionFavorite(ClickTeleportHeading, "ClickTeleportKeybind", "Click Teleport", {ClickTeleportRow})
+
+	ToggleClickTeleport = function()
+		ClickTeleportEnabled = not ClickTeleportEnabled
+		ClickTeleportToggle.Text = ClickTeleportEnabled and "On" or "Off"
+	end
+	ClickTeleportToggle.MouseButton1Click:Connect(function() PlayClick() ToggleClickTeleport() end)
+
+	table.insert(looseConnections, UserInputService.InputBegan:Connect(function(input, processed)
+		if not ClickTeleportEnabled or processed then return end
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+		if not (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then return end
+		local character = Player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if not root then return end
+		local camera = workspace.CurrentCamera
+		local mouse = Player:GetMouse()
+		if not (camera and mouse) then return end
+		local unitRay = camera:ScreenPointToRay(mouse.X, mouse.Y)
+		local raycastParams = RaycastParams.new()
+		raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+		raycastParams.FilterDescendantsInstances = {character}
+		local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * 1000, raycastParams)
+		if result then
+			root.CFrame = CFrame.new(result.Position + Vector3.new(0, 3, 0))
+		end
+	end))
+end
+
+do
+	-- Anti Fling: protects the local player from griefer fling exploits two ways -- watches
+	-- every OTHER player's HumanoidRootPart for the extreme angular/linear velocity a fling
+	-- produces and neutralizes it (zeroes velocity, drops collision and mass/friction)
+	-- before it can slam into you, and separately watches your OWN root for the same
+	-- signature in case you get flung directly, snapping back to your last known-good
+	-- position and zeroing velocity instead of riding it off into the void. Ported from a
+	-- standalone script's enableAntiFling.
+	AntiFlingEnabled = false
+	AntiFlingKeybind = Enum.KeyCode.Unknown
+	local antiFlingLastPosition = nil
+
+	-- CLICK_TELEPORT_TOP (106) + its own heading/row/gap (30 + 52 + 16) lives in the do
+	-- block above and doesn't escape it -- 204 is that same total written out instead.
+	local ANTI_FLING_TOP = 204
+	local AntiFlingHeading = CreateSectionHeading(TrollPage, ANTI_FLING_TOP, "Anti Fling")
+	local AntiFlingToggle, _, AntiFlingRow = CreateToggleRow(TrollPage, ANTI_FLING_TOP + 30, "AntiFlingKeybind", function(k) AntiFlingKeybind = k end)
+	RegisterSectionFavorite(AntiFlingHeading, "AntiFlingKeybind", "Anti Fling", {AntiFlingRow})
+
+	-- Listener list rather than a single callback -- the floating Fling popup (built
+	-- further below) embeds a second, smaller toggle for this exact same state, and both
+	-- controls need to stay in sync no matter which one (or the keybind) actually changed
+	-- it. SetAntiFlingEnabled is the one place that flag ever gets written, so every
+	-- surface just calls this instead of touching AntiFlingEnabled directly.
+	AntiFlingToggleListeners = {}
+	function SetAntiFlingEnabled(enabled)
+		AntiFlingEnabled = enabled
+		AntiFlingToggle.Text = AntiFlingEnabled and "On" or "Off"
+		antiFlingLastPosition = nil
+		for _, listener in ipairs(AntiFlingToggleListeners) do
+			listener(AntiFlingEnabled)
+		end
+	end
+	ToggleAntiFling = function()
+		SetAntiFlingEnabled(not AntiFlingEnabled)
+	end
+	AntiFlingToggle.MouseButton1Click:Connect(function() PlayClick() ToggleAntiFling() end)
+
+	local function NeutralizeFlinger(targetPlayer)
+		local character = targetPlayer.Character
+		if not character then return end
+		for _, part in ipairs(character:GetDescendants()) do
+			if part:IsA("BasePart") then
+				part.CanCollide = false
+				part.AssemblyAngularVelocity = Vector3.zero
+				part.AssemblyLinearVelocity = Vector3.zero
+				part.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0)
+			end
+		end
+	end
+
+	table.insert(looseConnections, RunService.Heartbeat:Connect(function()
+		if not AntiFlingEnabled then return end
+		for _, targetPlayer in ipairs(Players:GetPlayers()) do
+			if targetPlayer ~= Player then
+				local character = targetPlayer.Character
+				local root = character and character.PrimaryPart
+				if character and character:IsDescendantOf(workspace) and root then
+					local highAngular = root.AssemblyAngularVelocity.Magnitude > 50
+					local highLinear = root.AssemblyLinearVelocity.Magnitude > 100
+					if highAngular or highLinear then
+						NeutralizeFlinger(targetPlayer)
+					end
+				end
+			end
+		end
+	end))
+
+	table.insert(looseConnections, RunService.Heartbeat:Connect(function()
+		if not AntiFlingEnabled then return end
+		local root = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
+		if not root then return end
+		local highLinear = root.AssemblyLinearVelocity.Magnitude > 250
+		local highAngular = root.AssemblyAngularVelocity.Magnitude > 250
+		if highLinear or highAngular then
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.AssemblyAngularVelocity = Vector3.zero
+			if antiFlingLastPosition then
+				root.CFrame = CFrame.new(antiFlingLastPosition)
+			end
+		else
+			antiFlingLastPosition = root.Position
+		end
+	end))
+
+	TrollPage.CanvasSize = UDim2.new(0, 0, 0, ANTI_FLING_TOP + 30 + 52 + 16)
 end
 
 -- Floating Fling menu popup: same "small popup toggled by a keybind, opens over whatever
@@ -4112,10 +4281,13 @@ do
 		flingBusy = false
 	end
 
-	-- UI: mirrors the TP Menu Popup's frame/header/close/search/list shell above.
+	-- UI: mirrors the TP Menu Popup's frame/header/close/search/list shell above, plus one
+	-- extra row (below the header) mirroring the Anti Fling toggle from the Troll tab --
+	-- same state, same SetAntiFlingEnabled/AntiFlingToggleListeners wiring, just a second
+	-- physical switch so it's reachable without leaving this popup.
 	local FlingPopupFrame = Instance.new("Frame")
 	FlingPopupFrame.Name = "FlingMenuPopup"
-	FlingPopupFrame.Size = UDim2.new(0, 230, 0, 260)
+	FlingPopupFrame.Size = UDim2.new(0, 230, 0, 294)
 	FlingPopupFrame.Position = UDim2.new(0.5, -115, 0.5, -130)
 	FlingPopupFrame.BackgroundColor3 = FrameColor
 	FlingPopupFrame.BackgroundTransparency = 0
@@ -4157,9 +4329,51 @@ do
 	FlingPopupClose.Parent = FlingPopupFrame
 	Instance.new("UICorner", FlingPopupClose).CornerRadius = UDim.new(0, 6)
 
+	local FlingPopupAntiFlingRow = Instance.new("Frame")
+	FlingPopupAntiFlingRow.Size = UDim2.new(1, -24, 0, 28)
+	FlingPopupAntiFlingRow.Position = UDim2.new(0, 12, 0, 34)
+	FlingPopupAntiFlingRow.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
+	FlingPopupAntiFlingRow.BackgroundTransparency = 0.5
+	FlingPopupAntiFlingRow.BorderSizePixel = 0
+	FlingPopupAntiFlingRow.ZIndex = 31
+	FlingPopupAntiFlingRow.Parent = FlingPopupFrame
+	Instance.new("UICorner", FlingPopupAntiFlingRow).CornerRadius = UDim.new(0, 6)
+
+	local FlingPopupAntiFlingLabel = Instance.new("TextLabel")
+	FlingPopupAntiFlingLabel.Size = UDim2.new(1, -70, 1, 0)
+	FlingPopupAntiFlingLabel.Position = UDim2.new(0, 10, 0, 0)
+	FlingPopupAntiFlingLabel.BackgroundTransparency = 1
+	FlingPopupAntiFlingLabel.Text = "Anti Fling"
+	FlingPopupAntiFlingLabel.Font = UIFont
+	FlingPopupAntiFlingLabel.TextSize = 12
+	FlingPopupAntiFlingLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	FlingPopupAntiFlingLabel.TextXAlignment = Enum.TextXAlignment.Left
+	FlingPopupAntiFlingLabel.ZIndex = 32
+	FlingPopupAntiFlingLabel.Parent = FlingPopupAntiFlingRow
+
+	local FlingPopupAntiFlingToggle = Instance.new("TextButton")
+	FlingPopupAntiFlingToggle.Size = UDim2.new(0, 48, 0, 22)
+	FlingPopupAntiFlingToggle.Position = UDim2.new(1, -56, 0.5, -11)
+	FlingPopupAntiFlingToggle.BorderSizePixel = 0
+	FlingPopupAntiFlingToggle.Text = AntiFlingEnabled and "On" or "Off"
+	FlingPopupAntiFlingToggle.Font = UIFont
+	FlingPopupAntiFlingToggle.TextSize = 12
+	FlingPopupAntiFlingToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+	FlingPopupAntiFlingToggle.ZIndex = 32
+	FlingPopupAntiFlingToggle.Parent = FlingPopupAntiFlingRow
+	StyleAsToggleSwitch(FlingPopupAntiFlingToggle)
+	AddPressBounce(FlingPopupAntiFlingToggle)
+	FlingPopupAntiFlingToggle.MouseButton1Click:Connect(function()
+		PlayClick()
+		ToggleAntiFling()
+	end)
+	table.insert(AntiFlingToggleListeners, function(enabled)
+		FlingPopupAntiFlingToggle.Text = enabled and "On" or "Off"
+	end)
+
 	local FlingPopupSearch = Instance.new("TextBox")
 	FlingPopupSearch.Size = UDim2.new(1, -24, 0, ROW_H - 4)
-	FlingPopupSearch.Position = UDim2.new(0, 12, 0, 36)
+	FlingPopupSearch.Position = UDim2.new(0, 12, 0, 70)
 	FlingPopupSearch.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	FlingPopupSearch.BackgroundTransparency = 0.5
 	FlingPopupSearch.BorderSizePixel = 0
@@ -4175,8 +4389,8 @@ do
 	Instance.new("UICorner", FlingPopupSearch).CornerRadius = UDim.new(1, 0)
 
 	local FlingPopupList = Instance.new("ScrollingFrame")
-	FlingPopupList.Size = UDim2.new(1, -24, 1, -74)
-	FlingPopupList.Position = UDim2.new(0, 12, 0, 68)
+	FlingPopupList.Size = UDim2.new(1, -24, 1, -108)
+	FlingPopupList.Position = UDim2.new(0, 12, 0, 102)
 	FlingPopupList.BackgroundTransparency = 1
 	FlingPopupList.BorderSizePixel = 0
 	FlingPopupList.ScrollBarThickness = 3
@@ -5246,6 +5460,8 @@ do
 	SwitchTrollKeybind = Enum.KeyCode.Unknown
 	CreateKeybindEditRow(trollRows, "Switch to Troll", "SwitchTrollKeybind", function(k) SwitchTrollKeybind = k end)
 	CreateKeybindEditRow(trollRows, "Fling Menu", "FlingMenuKeybind", function(k) FlingMenuKeybind = k end)
+	CreateKeybindEditRow(trollRows, "Click Teleport", "ClickTeleportKeybind", function(k) ClickTeleportKeybind = k end)
+	CreateKeybindEditRow(trollRows, "Anti Fling", "AntiFlingKeybind", function(k) AntiFlingKeybind = k end)
 
 	for _, descendant in ipairs(KeybindEditorPage:GetDescendants()) do
 		if descendant:IsA("GuiObject") then descendant.ZIndex = 20 end
@@ -5543,10 +5759,13 @@ function DestroyGui()
 	JumpEnabled = false
 	FlyEnabled = false
 	NoclipEnabled = false
+	ClickTeleportEnabled = false
+	AntiFlingEnabled = false
 	if type(ReClipCharacter) == "function" then ReClipCharacter() end
 	if FlyBodyVelocity then FlyBodyVelocity:Destroy() FlyBodyVelocity = nil end
 	if FlyBodyGyro then FlyBodyGyro:Destroy() FlyBodyGyro = nil end
 	if DisableInstantPrompt then DisableInstantPrompt() end
+	if type(DisableAntiAFK) == "function" then DisableAntiAFK() end
 	DisableFreeCam()
 	if workspace.CurrentCamera then workspace.CurrentCamera.FieldOfView = DEFAULT_FOV end
 	OutlineESPEnabled = false
@@ -5611,6 +5830,8 @@ mainInputConnection = UserInputService.InputBegan:Connect(function(input, proces
 	if AutoLockKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == AutoLockKeybind then ToggleAutoLock() end
 	if InstantPromptKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == InstantPromptKeybind then ToggleInstantPrompt() end
 	if AntiAFKKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == AntiAFKKeybind then ToggleAntiAFK() end
+	if ClickTeleportKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == ClickTeleportKeybind then ToggleClickTeleport() end
+	if AntiFlingKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == AntiFlingKeybind then ToggleAntiFling() end
 	if SwitchHomeKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == SwitchHomeKeybind then SwitchToTab("Home") end
 	if SwitchPlayerKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == SwitchPlayerKeybind then SwitchToTab("Player") end
 	if SwitchFunctionsKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == SwitchFunctionsKeybind then SwitchToTab("Functions") end
