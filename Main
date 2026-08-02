@@ -240,7 +240,10 @@ task.spawn(function()
 		local travel = (MainFrame.AbsoluteSize.Y > 0 and MainFrame.AbsoluteSize.Y or 430) + 80
 		MainFrame.Position = UDim2.new(restPosition.X.Scale, restPosition.X.Offset, restPosition.Y.Scale, restPosition.Y.Offset - travel)
 		MainFrame.Visible = true
-		TweenService:Create(MainFrame, TweenInfo.new(0.4, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = restPosition}):Play()
+		-- Matches the minimize/restore slide's pace (same duration + easing as slideInInfo
+		-- below) instead of Quint's sharper snap, which read as noticeably faster/snappier
+		-- than the minimize animation despite the same 0.4s duration.
+		TweenService:Create(MainFrame, TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = restPosition}):Play()
 	end
 end)
 
