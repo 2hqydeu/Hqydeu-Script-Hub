@@ -612,7 +612,6 @@ TabBar.BackgroundTransparency = 1
 TabBar.BorderSizePixel = 0
 TabBar.ScrollBarThickness = 3
 TabBar.ScrollBarImageColor3 = AccentColor
-TabBar.ScrollBarImageTransparency = 1
 TabBar.ScrollingDirection = Enum.ScrollingDirection.X
 TabBar.ElasticBehavior = Enum.ElasticBehavior.Never
 TabBar.CanvasSize = UDim2.new(0, 0, 0, 0)
@@ -670,7 +669,7 @@ function SelectTab(name)
 	-- close it the same way minimizing already does. Guarded since CloseESPColorPicker is
 	-- defined much further down (in the Visuals tab's own do block).
 	if CloseESPColorPicker then CloseESPColorPicker() end
-	local tabTweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+	local tabTweenInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 	for tabName, entry in pairs(Tabs) do
 		-- Button.BackgroundColor3 is already the same purple the toggle switches fill with
 		-- when On -- it just read as a faint tint at 0.85 transparency. Dropping
@@ -720,7 +719,7 @@ function SelectTab(name)
 	newEntry.Page.Position = UDim2.new(0, enterOffset, 0, 0)
 	newEntry.Page.Visible = true
 
-	local slideInfo = TweenInfo.new(0.45, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+	local slideInfo = TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 	local outTween = TweenService:Create(oldEntry.Page, slideInfo, {Position = UDim2.new(0, exitOffset, 0, 0)})
 	local inTween = TweenService:Create(newEntry.Page, slideInfo, {Position = UDim2.new(0, 0, 0, 0)})
 	PageTweens[oldEntry.Page] = outTween
@@ -839,7 +838,6 @@ function CreateTab(name, order, iconId, scrolling, iconSize, iconYOffset)
 		page = Instance.new("ScrollingFrame")
 		page.ScrollBarThickness = 3
 		page.ScrollBarImageColor3 = AccentColor
-		page.ScrollBarImageTransparency = 1
 		page.CanvasSize = UDim2.new(0, 0, 0, 0)
 		page.ElasticBehavior = Enum.ElasticBehavior.Never
 		SmoothScroll(page)
@@ -1003,9 +1001,10 @@ end
 function CreateStrengthRow(parent, y, rowLabelText, defaultValue)
 	local row = Instance.new("Frame")
 	row.Name = rowLabelText .. "Row"
-	-- Back to full width -- the -10 used to leave room for the visible scrollbar; now that
-	-- scrollbars are invisible hub-wide, that reserved gap isn't needed anymore.
-	row.Size = UDim2.new(1, 0, 0, 52)
+	-- Narrowed from the full 100% width -- otherwise the row's own right edge sits exactly
+	-- where the scrollbar renders, covering the last few pixels (including the rounded
+	-- corner) instead of leaving it visible.
+	row.Size = UDim2.new(1, -10, 0, 52)
 	row.Position = UDim2.new(0, 0, 0, y)
 	row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 	row.BackgroundTransparency = RowTransparencyValue / 100
@@ -1424,9 +1423,10 @@ end
 function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, defaultKeyCode)
 	local row = Instance.new("Frame")
 	row.Name = "ToggleRow"
-	-- Back to full width -- the -10 used to leave room for the visible scrollbar; now that
-	-- scrollbars are invisible hub-wide, that reserved gap isn't needed anymore.
-	row.Size = UDim2.new(1, 0, 0, 52)
+	-- Narrowed from the full 100% width -- otherwise the row's own right edge sits exactly
+	-- where the scrollbar renders, covering the last few pixels (including the rounded
+	-- corner) instead of leaving it visible.
+	row.Size = UDim2.new(1, -10, 0, 52)
 	row.Position = UDim2.new(0, 0, 0, y)
 	row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 	row.BackgroundTransparency = RowTransparencyValue / 100
@@ -2256,7 +2256,7 @@ ESPLabelsToggle.MouseButton1Click:Connect(function() PlayClick() ToggleESPLabels
 -- each row -- picking a color here updates Outline ESP, Body ESP, and ESP Labels together.
 ESPColorRow = Instance.new("Frame")
 ESPColorRow.Name = "ESPColorRow"
-ESPColorRow.Size = UDim2.new(1, 0, 0, 52)
+ESPColorRow.Size = UDim2.new(1, -10, 0, 52)
 ESPColorRow.Position = UDim2.new(0, 0, 0, 218)
 ESPColorRow.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 ESPColorRow.BackgroundTransparency = RowTransparencyValue / 100
@@ -2607,7 +2607,7 @@ FOVValue = (workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView) or 
 
 FOVRow = Instance.new("Frame")
 FOVRow.Name = "FOVRow"
-FOVRow.Size = UDim2.new(1, 0, 0, 52)
+FOVRow.Size = UDim2.new(1, -10, 0, 52)
 FOVRow.Position = UDim2.new(0, 0, 0, CAMERA_TOP + 90)
 FOVRow.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 FOVRow.BackgroundTransparency = RowTransparencyValue / 100
@@ -2955,7 +2955,7 @@ do
 	-- Players sub-tab
 	local PlayerSearch = Instance.new("TextBox")
 	PlayerSearch.Name = "PlayerSearch"
-	PlayerSearch.Size = UDim2.new(1, 0, 0, ROW_H)
+	PlayerSearch.Size = UDim2.new(1, -10, 0, ROW_H)
 	PlayerSearch.Position = UDim2.new(0, 0, 0, HEADER_H + TAB_ROW_H + ROW_GAP)
 	PlayerSearch.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	PlayerSearch.BackgroundTransparency = 0.5
@@ -2979,7 +2979,6 @@ do
 	PlayerList.BorderSizePixel = 0
 	PlayerList.ScrollBarThickness = 3
 	PlayerList.ScrollBarImageColor3 = AccentColor
-	PlayerList.ScrollBarImageTransparency = 1
 	PlayerList.ElasticBehavior = Enum.ElasticBehavior.Never
 	PlayerList.CanvasSize = UDim2.new(0, 0, 0, 0)
 	SmoothScroll(PlayerList)
@@ -3023,7 +3022,7 @@ do
 
 	local WaypointSearch = Instance.new("TextBox")
 	WaypointSearch.Name = "WaypointSearch"
-	WaypointSearch.Size = UDim2.new(1, 0, 0, ROW_H)
+	WaypointSearch.Size = UDim2.new(1, -10, 0, ROW_H)
 	WaypointSearch.Position = UDim2.new(0, 0, 0, HEADER_H + TAB_ROW_H + ROW_GAP + ROW_H + ROW_GAP)
 	WaypointSearch.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	WaypointSearch.BackgroundTransparency = 0.5
@@ -3048,7 +3047,6 @@ do
 	WaypointList.BorderSizePixel = 0
 	WaypointList.ScrollBarThickness = 3
 	WaypointList.ScrollBarImageColor3 = AccentColor
-	WaypointList.ScrollBarImageTransparency = 1
 	WaypointList.ElasticBehavior = Enum.ElasticBehavior.Never
 	WaypointList.CanvasSize = UDim2.new(0, 0, 0, 0)
 	SmoothScroll(WaypointList)
@@ -3089,9 +3087,9 @@ do
 			local targetPlayer = candidate.Player
 			local row = Instance.new("Frame")
 			row.Name = "PlayerRow"
-			-- Back to full width -- scrollbars are invisible hub-wide now, so the row no
-			-- longer needs to leave room to clear one.
-			row.Size = UDim2.new(1, 0, 0, 36)
+			-- Narrowed so the row's right edge (including the name text) clears this
+			-- list's own scrollbar instead of running underneath it.
+			row.Size = UDim2.new(1, -10, 0, 36)
 			row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 			row.BackgroundTransparency = 0.5
 			row.BorderSizePixel = 0
@@ -3149,9 +3147,9 @@ do
 			if filter == "" or waypointName:lower():find(filter, 1, true) then
 				local row = Instance.new("Frame")
 				row.Name = "WaypointRow"
-				-- Back to full width -- scrollbars are invisible hub-wide now, so the row
-				-- no longer needs to leave room to clear one.
-				row.Size = UDim2.new(1, 0, 0, 36)
+				-- Narrowed so the row's right edge clears this list's own scrollbar
+				-- instead of running underneath it.
+				row.Size = UDim2.new(1, -10, 0, 36)
 				row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 				row.BackgroundTransparency = 0.5
 				row.BorderSizePixel = 0
@@ -3473,7 +3471,6 @@ do
 	PopupPlayerList.BorderSizePixel = 0
 	PopupPlayerList.ScrollBarThickness = 3
 	PopupPlayerList.ScrollBarImageColor3 = AccentColor
-	PopupPlayerList.ScrollBarImageTransparency = 1
 	PopupPlayerList.ElasticBehavior = Enum.ElasticBehavior.Never
 	PopupPlayerList.CanvasSize = UDim2.new(0, 0, 0, 0)
 	SmoothScroll(PopupPlayerList)
@@ -3510,7 +3507,6 @@ do
 	PopupWaypointList.BorderSizePixel = 0
 	PopupWaypointList.ScrollBarThickness = 3
 	PopupWaypointList.ScrollBarImageColor3 = AccentColor
-	PopupWaypointList.ScrollBarImageTransparency = 1
 	PopupWaypointList.ElasticBehavior = Enum.ElasticBehavior.Never
 	PopupWaypointList.CanvasSize = UDim2.new(0, 0, 0, 0)
 	SmoothScroll(PopupWaypointList)
@@ -3546,9 +3542,9 @@ do
 		for _, candidate in ipairs(candidates) do
 			local targetPlayer = candidate.Player
 			local row = Instance.new("Frame")
-			-- Back to full width -- scrollbars are invisible hub-wide now, so the row no
-			-- longer needs to leave room to clear one.
-			row.Size = UDim2.new(1, 0, 0, 30)
+			-- Narrowed so the row's right edge clears this list's own scrollbar instead
+			-- of running underneath it.
+			row.Size = UDim2.new(1, -10, 0, 30)
 			row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 			row.BackgroundTransparency = 0.5
 			row.BorderSizePixel = 0
@@ -3608,9 +3604,9 @@ do
 			local waypointName = waypoint.Name or "Waypoint"
 			if filter == "" or waypointName:lower():find(filter, 1, true) then
 				local row = Instance.new("Frame")
-				-- Back to full width -- scrollbars are invisible hub-wide now, so the row
-				-- no longer needs to leave room to clear one.
-				row.Size = UDim2.new(1, 0, 0, 30)
+				-- Narrowed so the row's right edge clears this list's own scrollbar
+				-- instead of running underneath it.
+				row.Size = UDim2.new(1, -10, 0, 30)
 				row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 				row.BackgroundTransparency = 0.5
 				row.BorderSizePixel = 0
@@ -3822,10 +3818,10 @@ end
 function CreateGameRow(parent, y, gameTitle, url)
 	local row = Instance.new("Frame")
 	row.Name = gameTitle:gsub("%s+", "") .. "Row"
-	-- Back to full width -- the -10 used to leave room for the visible scrollbar on the
-	-- right, which made the row sit closer to the left edge than the right (asymmetric).
-	-- Now that the scrollbar itself is invisible, that reserved gap isn't needed anymore.
-	row.Size = UDim2.new(1, 0, 0, 44)
+	-- Narrowed from the full 100% width -- otherwise the row's own right edge sits exactly
+	-- where the scrollbar renders, covering the last few pixels (including the rounded
+	-- corner) instead of leaving it visible.
+	row.Size = UDim2.new(1, -10, 0, 44)
 	row.Position = UDim2.new(0, 0, 0, y)
 	row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 	row.BackgroundTransparency = RowTransparencyValue / 100
@@ -3918,10 +3914,10 @@ CreateGameRow(ScriptsPage, 164, "Undead Expedition", "https://raw.githubusercont
 function CreateUtilityRow(parent, y, title, url)
 	local row = Instance.new("Frame")
 	row.Name = title:gsub("%s+", "") .. "Row"
-	-- Back to full width -- the -10 used to leave room for the visible scrollbar on the
-	-- right, which made the row sit closer to the left edge than the right (asymmetric).
-	-- Now that the scrollbar itself is invisible, that reserved gap isn't needed anymore.
-	row.Size = UDim2.new(1, 0, 0, 44)
+	-- Narrowed from the full 100% width -- otherwise the row's own right edge sits exactly
+	-- where the scrollbar renders, covering the last few pixels (including the rounded
+	-- corner) instead of leaving it visible.
+	row.Size = UDim2.new(1, -10, 0, 44)
 	row.Position = UDim2.new(0, 0, 0, y)
 	row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 	row.BackgroundTransparency = RowTransparencyValue / 100
@@ -4046,7 +4042,7 @@ function SlideOverlayOpen(overlay, restPosition, enterFromAbove)
 	)
 	overlay.Position = startPosition
 	overlay.Visible = true
-	local tween = TweenService:Create(overlay, TweenInfo.new(0.45, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Position = restPosition})
+	local tween = TweenService:Create(overlay, TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = restPosition})
 	tween:Play()
 	tween.Completed:Connect(function(state)
 		if state ~= Enum.PlaybackState.Completed or overlaySlideTokens[overlay] ~= myToken then return end
@@ -4066,7 +4062,7 @@ function SlideOverlayClose(overlay, restPosition, exitDownward)
 		restPosition.X.Scale, restPosition.X.Offset,
 		restPosition.Y.Scale, restPosition.Y.Offset + (exitDownward and travel or -travel)
 	)
-	local tween = TweenService:Create(overlay, TweenInfo.new(0.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Position = exitPosition})
+	local tween = TweenService:Create(overlay, TweenInfo.new(0.24, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {Position = exitPosition})
 	tween:Play()
 	tween.Completed:Connect(function(state)
 		if state ~= Enum.PlaybackState.Completed or overlaySlideTokens[overlay] ~= myToken then return end
@@ -4092,7 +4088,6 @@ do
 	SettingsPage.BorderSizePixel = 0
 	SettingsPage.ScrollBarThickness = 3
 	SettingsPage.ScrollBarImageColor3 = AccentColor
-	SettingsPage.ScrollBarImageTransparency = 1
 	SettingsPage.Active = true
 	SettingsPage.Visible = false
 	SettingsPage.ZIndex = 20
@@ -4314,7 +4309,7 @@ do
 	LocalCountLabel.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 276)
 	LocalCountLabel.BackgroundTransparency = 1
 	LocalCountLabel.BorderSizePixel = 0
-	LocalCountLabel.Text = "19 / 200"
+	LocalCountLabel.Text = "20 / 200"
 	LocalCountLabel.Font = UIFont
 	LocalCountLabel.TextSize = 7
 	LocalCountLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
@@ -4350,7 +4345,6 @@ do
 	FavoritesPage.BorderSizePixel = 0
 	FavoritesPage.ScrollBarThickness = 3
 	FavoritesPage.ScrollBarImageColor3 = AccentColor
-	FavoritesPage.ScrollBarImageTransparency = 1
 	FavoritesPage.Active = true
 	FavoritesPage.Visible = false
 	FavoritesPage.ZIndex = 20
@@ -4531,7 +4525,6 @@ do
 	KeybindEditorPage.BorderSizePixel = 0
 	KeybindEditorPage.ScrollBarThickness = 3
 	KeybindEditorPage.ScrollBarImageColor3 = AccentColor
-	KeybindEditorPage.ScrollBarImageTransparency = 1
 	KeybindEditorPage.CanvasSize = UDim2.new(0, 0, 0, 0)
 	KeybindEditorPage.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	KeybindEditorPage.Active = true
@@ -4804,14 +4797,12 @@ function ToggleGUI()
 	if minimized then
 		preMinimizePosition = MainFrame.Position
 		-- Both popups anchor to controls that are about to shrink/disappear -- rather
-		-- than have them awkwardly follow a minimizing window, just close them. Favorites
-		-- is deliberately left alone here (per request) -- it stays open across a
-		-- minimize/restore cycle instead of getting force-closed and needing to be
-		-- reopened by hand afterward.
+		-- than have them awkwardly follow a minimizing window, just close them.
 		CloseKeybindClearPrompt()
 		CloseESPColorPicker()
 		DestroyConfirmPopup.Visible = false
 		CloseSettingsOverlay()
+		if CloseFavoritesOverlay then CloseFavoritesOverlay() end
 		if CloseKeybindEditorOverlay then CloseKeybindEditorOverlay() end
 	end
 	local targetPosition
@@ -4832,8 +4823,8 @@ function ToggleGUI()
 	-- overlapping anything on screen.
 	local camera = workspace.CurrentCamera
 	local viewportSize = (camera and camera.ViewportSize) or Vector2.new(1920, 1080)
-	local slideOutInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-	local slideInInfo = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local slideOutInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	local slideInInfo = TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
 	-- Same closest-edge logic GetSnappedMinimizedPosition already uses for the mini pill --
 	-- left half of the screen exits/enters from the left, right half from the right.
@@ -4864,15 +4855,6 @@ function ToggleGUI()
 	MaximizeButton.Visible = not minimized
 	MiniButton.Visible = not minimized
 	GuiDestroyButton.Visible = not minimized
-	-- Hiding the whole ScaleRoot subtree while minimized (rather than relying on the
-	-- individual Visible=false flags already set on most of what's inside it) is the actual
-	-- fix for the dragging choppiness -- Roblox still recomputes layout for an invisible
-	-- GuiObject's descendants when an ancestor like MainFrame moves, and ScaleRoot is a big
-	-- subtree (every page, every row, all of it). Collapsing the whole branch at the root
-	-- skips that recompute entirely while the minimized pill is being dragged around, instead
-	-- of the engine quietly redoing it every frame for content nobody can even see. TimeLabel
-	-- lives outside ScaleRoot already (see its own comment further down) so it's unaffected.
-	if ScaleRoot then ScaleRoot.Visible = not minimized end
 	-- The minimized pill is a fixed size no matter what Adjust Gui Size is currently set
 	-- to -- ApplyGuiScale (called below) forces ScaleRootScale back to 1 while minimized
 	-- for exactly this reason, so it only ever needs MINI_SIZE set directly here; the
@@ -5168,7 +5150,7 @@ local guiScale = type(SavedKeybinds.GuiScale) == "number" and SavedKeybinds.GuiS
 -- plus this frame tracking 100% of that already-grown size) and fight itself instead of
 -- compounding cleanly. Locking this to the original fixed-pixel design size and letting
 -- ScaleRootScale alone stretch it to match is the only way the two stay in sync.
-ScaleRoot = Instance.new("Frame")
+local ScaleRoot = Instance.new("Frame")
 ScaleRoot.Name = "ScaleRoot"
 ScaleRoot.Size = UDim2.new(0, BASE_WIDTH, 0, BASE_HEIGHT)
 ScaleRoot.BackgroundTransparency = 1
@@ -5178,18 +5160,8 @@ ScaleRoot.Parent = MainFrame
 local ScaleRootScale = Instance.new("UIScale")
 ScaleRootScale.Parent = ScaleRoot
 
--- TimeLabel is exempt -- it has two totally different positions depending on minimized
--- (MINI_TIME_GOAL, a percentage centered in the tiny circle) vs full-size (NORMAL_TIME_GOAL,
--- a fixed header offset), and MINI_TIME_GOAL's percentage was designed against MainFrame's
--- own real (80x80 while minimized) size. ScaleRoot's own size is now fixed at the BASE
--- footprint regardless of MainFrame's actual current size, so a percentage-based position
--- inside it resolves against the wrong (much bigger) box while minimized -- pushing the
--- clock label off past the tiny clipped circle entirely instead of centering it. Keeping
--- TimeLabel a direct MainFrame child instead sidesteps that mismatch completely: its
--- position always resolves against MainFrame's real current size, exactly like before
--- Adjust Gui Size existed.
 for _, child in ipairs(MainFrame:GetChildren()) do
-	if child ~= ScaleRoot and child ~= TimeLabel and not child:IsA("UICorner") then
+	if child ~= ScaleRoot and not child:IsA("UICorner") then
 		child.Parent = ScaleRoot
 	end
 end
