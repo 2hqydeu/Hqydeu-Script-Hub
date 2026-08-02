@@ -1003,10 +1003,13 @@ end
 function CreateStrengthRow(parent, y, rowLabelText, defaultValue)
 	local row = Instance.new("Frame")
 	row.Name = rowLabelText .. "Row"
-	-- Back to full width -- the -10 used to leave room for the visible scrollbar; now that
-	-- scrollbars are invisible hub-wide, that reserved gap isn't needed anymore.
-	row.Size = UDim2.new(1, 0, 0, 52)
-	row.Position = UDim2.new(0, 0, 0, y)
+	-- The scrollbar being invisible doesn't mean the ScrollingFrame stops clipping at that
+	-- same inset -- it still reserves that space and clips there regardless of the bar's own
+	-- visual transparency, which is why a true full-width row was getting its right corner
+	-- cut off. 5px margin on BOTH sides instead (rather than 0 left / 10 right) keeps the
+	-- same total width as before but symmetric.
+	row.Size = UDim2.new(1, -10, 0, 52)
+	row.Position = UDim2.new(0, 5, 0, y)
 	row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 	row.BackgroundTransparency = RowTransparencyValue / 100
 	row.BorderSizePixel = 0
@@ -1424,10 +1427,10 @@ end
 function CreateToggleRow(parent, y, storageKey, onKeybindChanged, labelText, defaultKeyCode)
 	local row = Instance.new("Frame")
 	row.Name = "ToggleRow"
-	-- Back to full width -- the -10 used to leave room for the visible scrollbar; now that
-	-- scrollbars are invisible hub-wide, that reserved gap isn't needed anymore.
-	row.Size = UDim2.new(1, 0, 0, 52)
-	row.Position = UDim2.new(0, 0, 0, y)
+	-- Symmetric 5px margin on both sides -- see CreateStrengthRow's comment above for why a
+	-- true full-width row doesn't work even with the scrollbar itself invisible.
+	row.Size = UDim2.new(1, -10, 0, 52)
+	row.Position = UDim2.new(0, 5, 0, y)
 	row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 	row.BackgroundTransparency = RowTransparencyValue / 100
 	row.BorderSizePixel = 0
@@ -2256,8 +2259,8 @@ ESPLabelsToggle.MouseButton1Click:Connect(function() PlayClick() ToggleESPLabels
 -- each row -- picking a color here updates Outline ESP, Body ESP, and ESP Labels together.
 ESPColorRow = Instance.new("Frame")
 ESPColorRow.Name = "ESPColorRow"
-ESPColorRow.Size = UDim2.new(1, 0, 0, 52)
-ESPColorRow.Position = UDim2.new(0, 0, 0, 218)
+ESPColorRow.Size = UDim2.new(1, -10, 0, 52)
+ESPColorRow.Position = UDim2.new(0, 5, 0, 218)
 ESPColorRow.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 ESPColorRow.BackgroundTransparency = RowTransparencyValue / 100
 ESPColorRow.BorderSizePixel = 0
@@ -2607,8 +2610,8 @@ FOVValue = (workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView) or 
 
 FOVRow = Instance.new("Frame")
 FOVRow.Name = "FOVRow"
-FOVRow.Size = UDim2.new(1, 0, 0, 52)
-FOVRow.Position = UDim2.new(0, 0, 0, CAMERA_TOP + 90)
+FOVRow.Size = UDim2.new(1, -10, 0, 52)
+FOVRow.Position = UDim2.new(0, 5, 0, CAMERA_TOP + 90)
 FOVRow.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 FOVRow.BackgroundTransparency = RowTransparencyValue / 100
 FOVRow.BorderSizePixel = 0
@@ -2955,8 +2958,8 @@ do
 	-- Players sub-tab
 	local PlayerSearch = Instance.new("TextBox")
 	PlayerSearch.Name = "PlayerSearch"
-	PlayerSearch.Size = UDim2.new(1, 0, 0, ROW_H)
-	PlayerSearch.Position = UDim2.new(0, 0, 0, HEADER_H + TAB_ROW_H + ROW_GAP)
+	PlayerSearch.Size = UDim2.new(1, -10, 0, ROW_H)
+	PlayerSearch.Position = UDim2.new(0, 5, 0, HEADER_H + TAB_ROW_H + ROW_GAP)
 	PlayerSearch.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	PlayerSearch.BackgroundTransparency = 0.5
 	PlayerSearch.BorderSizePixel = 0
@@ -2989,6 +2992,12 @@ do
 	PlayerListLayout.Padding = UDim.new(0, 4)
 	PlayerListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	PlayerListLayout.Parent = PlayerList
+	-- Rows here are full-width (no per-row Size/Position trim like the manually-positioned
+	-- rows elsewhere), so the symmetric inset has to come from the list container itself.
+	local PlayerListPadding = Instance.new("UIPadding")
+	PlayerListPadding.PaddingLeft = UDim.new(0, 5)
+	PlayerListPadding.PaddingRight = UDim.new(0, 5)
+	PlayerListPadding.Parent = PlayerList
 
 	-- Waypoints sub-tab
 	local AddWaypointButton = Instance.new("TextButton")
@@ -3023,8 +3032,8 @@ do
 
 	local WaypointSearch = Instance.new("TextBox")
 	WaypointSearch.Name = "WaypointSearch"
-	WaypointSearch.Size = UDim2.new(1, 0, 0, ROW_H)
-	WaypointSearch.Position = UDim2.new(0, 0, 0, HEADER_H + TAB_ROW_H + ROW_GAP + ROW_H + ROW_GAP)
+	WaypointSearch.Size = UDim2.new(1, -10, 0, ROW_H)
+	WaypointSearch.Position = UDim2.new(0, 5, 0, HEADER_H + TAB_ROW_H + ROW_GAP + ROW_H + ROW_GAP)
 	WaypointSearch.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	WaypointSearch.BackgroundTransparency = 0.5
 	WaypointSearch.BorderSizePixel = 0
@@ -3059,6 +3068,10 @@ do
 	WaypointListLayout.Padding = UDim.new(0, 4)
 	WaypointListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	WaypointListLayout.Parent = WaypointList
+	local WaypointListPadding = Instance.new("UIPadding")
+	WaypointListPadding.PaddingLeft = UDim.new(0, 5)
+	WaypointListPadding.PaddingRight = UDim.new(0, 5)
+	WaypointListPadding.Parent = WaypointList
 
 	TeleportPage.CanvasSize = UDim2.new(0, 0, 0, CONTENT_HEIGHT)
 
