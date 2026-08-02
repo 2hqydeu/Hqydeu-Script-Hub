@@ -4279,7 +4279,7 @@ do
 	LocalCountLabel.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 276)
 	LocalCountLabel.BackgroundTransparency = 1
 	LocalCountLabel.BorderSizePixel = 0
-	LocalCountLabel.Text = "22 / 200"
+	LocalCountLabel.Text = "21 / 200"
 	LocalCountLabel.Font = UIFont
 	LocalCountLabel.TextSize = 7
 	LocalCountLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
@@ -4887,10 +4887,10 @@ MainFrame.MouseLeave:Connect(function()
 	ScheduleGuiFade()
 end)
 
--- Silent unbind-able destroy key (Right Control) -- no button, no prompt, no sound.
--- Reverses every active effect (Speed/Jump/Fly, whichever mode) before tearing down, so
--- nothing lingers on the character no matter what was toggled on when this fires.
-DestroyKeybind = Enum.KeyCode.RightControl
+-- Right Control is wired as a silent emergency reset for Adjust Gui Size -- snaps the
+-- window straight back to its default scale with no button or prompt, in case resizing
+-- ever leaves it stuck too small/large.
+ResetGuiSizeKeybind = Enum.KeyCode.RightControl
 
 -- Some games force first-person mouse-look (MouseBehavior = LockCenter) with no way to
 -- free the cursor from their own settings -- MB3 (scroll wheel click) toggles it. Not
@@ -5006,9 +5006,8 @@ end)
 mainInputConnection = UserInputService.InputBegan:Connect(function(input, processed)
 	if processed or UserInputService:GetFocusedTextBox() or bindingInProgress then return end
 	if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
-	if input.KeyCode == DestroyKeybind then
-		DestroyGui()
-		return
+	if input.KeyCode == ResetGuiSizeKeybind then
+		if type(SetGuiScale) == "function" then SetGuiScale(1) end
 	end
 	if input.KeyCode == MinimizeKeybind then ToggleGUI() return end
 	-- Independent ifs, not elseif -- multiple features can share the same keybind, and
@@ -5136,7 +5135,7 @@ local function ApplyGuiScale()
 end
 ApplyGuiScale()
 
-local function SetGuiScale(newScale)
+function SetGuiScale(newScale)
 	guiScale = math.clamp(newScale, MIN_GUI_SCALE, MAX_GUI_SCALE)
 	ApplyGuiScale()
 	SavedKeybinds.GuiScale = guiScale
