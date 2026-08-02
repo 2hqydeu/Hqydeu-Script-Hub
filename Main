@@ -612,6 +612,7 @@ TabBar.BackgroundTransparency = 1
 TabBar.BorderSizePixel = 0
 TabBar.ScrollBarThickness = 3
 TabBar.ScrollBarImageColor3 = AccentColor
+TabBar.ScrollBarImageTransparency = 1
 TabBar.ScrollingDirection = Enum.ScrollingDirection.X
 TabBar.ElasticBehavior = Enum.ElasticBehavior.Never
 TabBar.CanvasSize = UDim2.new(0, 0, 0, 0)
@@ -838,6 +839,7 @@ function CreateTab(name, order, iconId, scrolling, iconSize, iconYOffset)
 		page = Instance.new("ScrollingFrame")
 		page.ScrollBarThickness = 3
 		page.ScrollBarImageColor3 = AccentColor
+		page.ScrollBarImageTransparency = 1
 		page.CanvasSize = UDim2.new(0, 0, 0, 0)
 		page.ElasticBehavior = Enum.ElasticBehavior.Never
 		SmoothScroll(page)
@@ -2979,6 +2981,7 @@ do
 	PlayerList.BorderSizePixel = 0
 	PlayerList.ScrollBarThickness = 3
 	PlayerList.ScrollBarImageColor3 = AccentColor
+	PlayerList.ScrollBarImageTransparency = 1
 	PlayerList.ElasticBehavior = Enum.ElasticBehavior.Never
 	PlayerList.CanvasSize = UDim2.new(0, 0, 0, 0)
 	SmoothScroll(PlayerList)
@@ -3047,6 +3050,7 @@ do
 	WaypointList.BorderSizePixel = 0
 	WaypointList.ScrollBarThickness = 3
 	WaypointList.ScrollBarImageColor3 = AccentColor
+	WaypointList.ScrollBarImageTransparency = 1
 	WaypointList.ElasticBehavior = Enum.ElasticBehavior.Never
 	WaypointList.CanvasSize = UDim2.new(0, 0, 0, 0)
 	SmoothScroll(WaypointList)
@@ -3471,6 +3475,7 @@ do
 	PopupPlayerList.BorderSizePixel = 0
 	PopupPlayerList.ScrollBarThickness = 3
 	PopupPlayerList.ScrollBarImageColor3 = AccentColor
+	PopupPlayerList.ScrollBarImageTransparency = 1
 	PopupPlayerList.ElasticBehavior = Enum.ElasticBehavior.Never
 	PopupPlayerList.CanvasSize = UDim2.new(0, 0, 0, 0)
 	SmoothScroll(PopupPlayerList)
@@ -3507,6 +3512,7 @@ do
 	PopupWaypointList.BorderSizePixel = 0
 	PopupWaypointList.ScrollBarThickness = 3
 	PopupWaypointList.ScrollBarImageColor3 = AccentColor
+	PopupWaypointList.ScrollBarImageTransparency = 1
 	PopupWaypointList.ElasticBehavior = Enum.ElasticBehavior.Never
 	PopupWaypointList.CanvasSize = UDim2.new(0, 0, 0, 0)
 	SmoothScroll(PopupWaypointList)
@@ -4088,6 +4094,7 @@ do
 	SettingsPage.BorderSizePixel = 0
 	SettingsPage.ScrollBarThickness = 3
 	SettingsPage.ScrollBarImageColor3 = AccentColor
+	SettingsPage.ScrollBarImageTransparency = 1
 	SettingsPage.Active = true
 	SettingsPage.Visible = false
 	SettingsPage.ZIndex = 20
@@ -4345,6 +4352,7 @@ do
 	FavoritesPage.BorderSizePixel = 0
 	FavoritesPage.ScrollBarThickness = 3
 	FavoritesPage.ScrollBarImageColor3 = AccentColor
+	FavoritesPage.ScrollBarImageTransparency = 1
 	FavoritesPage.Active = true
 	FavoritesPage.Visible = false
 	FavoritesPage.ZIndex = 20
@@ -4525,6 +4533,7 @@ do
 	KeybindEditorPage.BorderSizePixel = 0
 	KeybindEditorPage.ScrollBarThickness = 3
 	KeybindEditorPage.ScrollBarImageColor3 = AccentColor
+	KeybindEditorPage.ScrollBarImageTransparency = 1
 	KeybindEditorPage.CanvasSize = UDim2.new(0, 0, 0, 0)
 	KeybindEditorPage.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	KeybindEditorPage.Active = true
@@ -4825,8 +4834,8 @@ function ToggleGUI()
 	-- overlapping anything on screen.
 	local camera = workspace.CurrentCamera
 	local viewportSize = (camera and camera.ViewportSize) or Vector2.new(1920, 1080)
-	local slideOutInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-	local slideInInfo = TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local slideOutInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	local slideInInfo = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
 	-- Same closest-edge logic GetSnappedMinimizedPosition already uses for the mini pill --
 	-- left half of the screen exits/enters from the left, right half from the right.
