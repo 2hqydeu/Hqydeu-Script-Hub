@@ -217,10 +217,12 @@ ContentScroll.Size = UDim2.new(1, 0, 1, -MINI_HEIGHT - 8)
 ContentScroll.Position = UDim2.new(0, 0, 0, MINI_HEIGHT + 8)
 ContentScroll.BackgroundTransparency = 1
 ContentScroll.BorderSizePixel = 0
--- Thicker than the hub-wide default 3px -- a bigger, easier-to-grab bar, per request
--- (staying visible here, unlike Main's scrollbars below, which go invisible instead).
-ContentScroll.ScrollBarThickness = 8
+-- Matches Main's hub-wide scrollbar now (3px, invisible) instead of the thicker/visible bar
+-- this used to have -- was a deliberate one-off before, now brought back in line with
+-- everything else across the hub, including the other game panels.
+ContentScroll.ScrollBarThickness = 3
 ContentScroll.ScrollBarImageColor3 = AccentColor
+ContentScroll.ScrollBarImageTransparency = 1
 ContentScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 ContentScroll.ElasticBehavior = Enum.ElasticBehavior.Never
 ContentScroll.Parent = PanelFrame
@@ -229,9 +231,12 @@ local ContentLayout = Instance.new("UIListLayout")
 ContentLayout.Padding = UDim.new(0, 12)
 ContentLayout.SortOrder = Enum.SortOrder.LayoutOrder
 ContentLayout.Parent = ContentScroll
--- Manual canvas sizing (not AutomaticCanvasSize -- untested against this executor).
+-- Manual canvas sizing (not AutomaticCanvasSize -- untested against this executor). Extra
+-- 200px of scroll room past the content's own end (not just a small end-cap pad like the
+-- +16 this used to be) -- panel size itself is unchanged, this only stretches how far the
+-- canvas can be scrolled.
 ContentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-	ContentScroll.CanvasSize = UDim2.new(0, 0, 0, ContentLayout.AbsoluteContentSize.Y + 16)
+	ContentScroll.CanvasSize = UDim2.new(0, 0, 0, ContentLayout.AbsoluteContentSize.Y + 200)
 end)
 
 local ContentPadding = Instance.new("UIPadding")
