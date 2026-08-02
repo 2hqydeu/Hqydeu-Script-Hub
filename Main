@@ -4279,7 +4279,7 @@ do
 	LocalCountLabel.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 276)
 	LocalCountLabel.BackgroundTransparency = 1
 	LocalCountLabel.BorderSizePixel = 0
-	LocalCountLabel.Text = "23 / 200"
+	LocalCountLabel.Text = "22 / 200"
 	LocalCountLabel.Font = UIFont
 	LocalCountLabel.TextSize = 7
 	LocalCountLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
@@ -5042,6 +5042,11 @@ dragStart = nil
 startPos = nil
 MainFrame.InputBegan:Connect(function(input)
 	if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+	-- Don't start moving the whole window on a click that's actually grabbing a resize
+	-- handle -- IsOverResizeHandle is defined much further down (with the handles
+	-- themselves), but as a global it's safely callable here since this callback only ever
+	-- actually runs later, well after the rest of the script has finished loading.
+	if type(IsOverResizeHandle) == "function" and IsOverResizeHandle(input.Position) then return end
 	dragging = true
 	dragStart = input.Position
 	startPos = MainFrame.Position
@@ -5161,7 +5166,26 @@ local RightHandle = CreateResizeHandle("ResizeRight", UDim2.new(1, -4, 0, 8), UD
 local BottomHandle = CreateResizeHandle("ResizeBottom", UDim2.new(0, 8, 1, -4), UDim2.new(1, -16, 0, 8))
 local CornerHandle = CreateResizeHandle("ResizeCorner", UDim2.new(1, -14, 1, -14), UDim2.new(0, 14, 0, 14))
 Instance.new("UICorner", CornerHandle).CornerRadius = UDim.new(1, 0)
-local resizeHandles = {RightHandle, BottomHandle, CornerHandle}
+-- Global (not local) -- MainFrame's own drag-to-move handler, defined earlier in the file,
+-- needs to check this to avoid starting a move-drag on the exact same click that's
+-- starting a resize-drag. Both InputBegan on MainFrame AND InputBegan on an overlapping
+-- child fire for the same click, so without this check the window would move AND resize
+-- at once, fighting each other -- which is exactly what made resizing feel broken and
+-- left content visually out of sync with its actual (still-moving) position.
+resizeHandles = {RightHandle, BottomHandle, CornerHandle}
+
+function IsOverResizeHandle(screenPosition)
+	if not AdjustGuiSizeEnabled then return false end
+	for _, handle in ipairs(resizeHandles) do
+		local topLeft = handle.AbsolutePosition
+		local size = handle.AbsoluteSize
+		if screenPosition.X >= topLeft.X and screenPosition.X <= topLeft.X + size.X
+			and screenPosition.Y >= topLeft.Y and screenPosition.Y <= topLeft.Y + size.Y then
+			return true
+		end
+	end
+	return false
+end
 
 -- Faint at rest while enabled (so it's actually findable), brighter on hover, fully
 -- invisible whenever the feature's off.
