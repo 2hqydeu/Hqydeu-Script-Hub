@@ -1998,25 +1998,74 @@ ESPLabelsEnabled = false
 ESPLabelsKeybind = Enum.KeyCode.Unknown
 
 -- Cross-game role detection: UE has nothing like this, but QOD's killer and MM2's
--- murderer/sheriff are both exposed through getgenv() (see the bottom of each of those
--- files) so Player ESP can pick up on them directly instead of each game needing its own
--- separate ESP feature. isMM2Role distinguishes the two roles that already get their own
--- dedicated Highlight over in MM2 (MM2MurdererHighlight/MM2SheriffHighlight) -- Outline/Box
--- ESP skip those players entirely so the two don't visually fight over the same character,
--- where QOD's killer has no such highlight to protect and gets ESP applied normally.
-function GetCrossGameRole(plr)
-	if type(getgenv) ~= "function" then return nil end
-	local env = getgenv()
-	if type(env.Serenity_MM2_IsMurderer) == "function" and env.Serenity_MM2_IsMurderer(plr) then
-		return "Murderer", Color3.fromRGB(255, 70, 70), true
+-- murderer/sheriff are both roles Player ESP can pick up on directly instead of each game
+-- needing its own separate ESP feature. Two layers: MM2/QOD's own panels (if open) expose
+-- their already-tracked role through getgenv() -- cheap, and MM2's also covers its
+-- remote-based fallback for the gap before the Knife/Gun physically drops -- checked first
+-- when available. Below that, DetectBuiltInRole runs the same underlying checks those
+-- panels use (Knife/Gun holder for MM2, KillerFolder/attributes/Team for QOD) directly, so
+-- roles still show up even if that game's panel was never opened this session.
+local function PlayerHasToolNamed(targetPlayer, toolNameLower)
+	local function containerHasTool(container)
+		if not container then return false end
+		for _, item in ipairs(container:GetChildren()) do
+			if item.Name:lower() == toolNameLower then return true end
+		end
+		return false
 	end
-	if type(env.Serenity_MM2_IsSheriff) == "function" and env.Serenity_MM2_IsSheriff(plr) then
-		return "Sheriff", Color3.fromRGB(70, 130, 255), true
+	return containerHasTool(targetPlayer.Character) or containerHasTool(targetPlayer:FindFirstChild("Backpack"))
+end
+
+local function ContainerSaysKiller(container)
+	if not container then return false end
+	for _, attributeName in ipairs({"Role", "CurrentRole", "RoundRole"}) do
+		local value = container:GetAttribute(attributeName)
+		if type(value) == "string" and value:lower():find("killer", 1, true) then return true end
 	end
-	if type(env.Serenity_QOD_IsKiller) == "function" and env.Serenity_QOD_IsKiller(plr) then
-		return "Killer", Color3.fromRGB(255, 70, 70), false
+	for _, attributeName in ipairs({"IsKiller", "Killer"}) do
+		if container:GetAttribute(attributeName) == true then return true end
+	end
+	for _, valueName in ipairs({"Role", "CurrentRole", "RoundRole"}) do
+		local valueObject = container:FindFirstChild(valueName)
+		if valueObject and valueObject:IsA("StringValue") and valueObject.Value:lower():find("killer", 1, true) then return true end
+	end
+	for _, valueName in ipairs({"IsKiller", "Killer"}) do
+		local valueObject = container:FindFirstChild(valueName)
+		if valueObject and valueObject:IsA("BoolValue") and valueObject.Value then return true end
+	end
+	return false
+end
+
+function DetectBuiltInRole(plr)
+	if PlayerHasToolNamed(plr, "knife") then return "Murderer", Color3.fromRGB(255, 70, 70) end
+	if PlayerHasToolNamed(plr, "gun") then return "Sheriff", Color3.fromRGB(70, 130, 255) end
+	local killerFolder = workspace:FindFirstChild("KillerFolder")
+	if killerFolder and killerFolder:FindFirstChild(plr.Name) then
+		return "Killer", Color3.fromRGB(255, 70, 70)
+	end
+	if ContainerSaysKiller(plr) or ContainerSaysKiller(plr.Character) then
+		return "Killer", Color3.fromRGB(255, 70, 70)
+	end
+	if plr.Team and plr.Team.Name:lower():find("killer", 1, true) then
+		return "Killer", Color3.fromRGB(255, 70, 70)
 	end
 	return nil
+end
+
+function GetCrossGameRole(plr)
+	if type(getgenv) == "function" then
+		local env = getgenv()
+		if type(env.Serenity_MM2_IsMurderer) == "function" and env.Serenity_MM2_IsMurderer(plr) then
+			return "Murderer", Color3.fromRGB(255, 70, 70)
+		end
+		if type(env.Serenity_MM2_IsSheriff) == "function" and env.Serenity_MM2_IsSheriff(plr) then
+			return "Sheriff", Color3.fromRGB(70, 130, 255)
+		end
+		if type(env.Serenity_QOD_IsKiller) == "function" and env.Serenity_QOD_IsKiller(plr) then
+			return "Killer", Color3.fromRGB(255, 70, 70)
+		end
+	end
+	return DetectBuiltInRole(plr)
 end
 
 -- Keyed by Player rather than Character: a Player persists across deaths/respawns, so
@@ -2029,19 +2078,27 @@ function RemoveOutlineHighlight(plr)
 	OutlineHighlights[plr] = nil
 end
 
+-- Recolors on every call (not just at creation) so a player who becomes murderer/sheriff/
+-- killer mid-round picks up that color immediately instead of keeping whatever plain
+-- ESPColor they were given before the round assigned roles -- that stale mismatch (a
+-- generic-colored outline/box left over from before the round, never revisited once a
+-- role highlight showed up) was what made the two look like they were fighting over the
+-- same player.
 function AddOutlineHighlight(plr, character)
-	if OutlineHighlights[plr] then return end
-	local _, _, isMM2Role = GetCrossGameRole(plr)
-	if isMM2Role then return end
-	local highlight = Instance.new("Highlight")
-	highlight.Name = "SerenityOutlineESP"
-	highlight.FillColor = ESPColor
-	highlight.FillTransparency = 0.72
-	highlight.OutlineColor = ESPColor
-	highlight.OutlineTransparency = 0
-	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-	highlight.Parent = character
-	OutlineHighlights[plr] = highlight
+	local _, roleColor = GetCrossGameRole(plr)
+	local color = roleColor or ESPColor
+	local highlight = OutlineHighlights[plr]
+	if not highlight then
+		highlight = Instance.new("Highlight")
+		highlight.Name = "SerenityOutlineESP"
+		highlight.FillTransparency = 0.72
+		highlight.OutlineTransparency = 0
+		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		highlight.Parent = character
+		OutlineHighlights[plr] = highlight
+	end
+	highlight.FillColor = color
+	highlight.OutlineColor = color
 end
 
 -- Body-part names covered by Body ESP, matching both R15 and R6 rigs.
@@ -2071,25 +2128,28 @@ end
 -- Adornee's position/size automatically, so this only needs to run once per character
 -- instead of every frame.
 function AddBoxAdornments(plr, character)
-	local _, _, isMM2Role = GetCrossGameRole(plr)
-	if isMM2Role then return end
+	local _, roleColor = GetCrossGameRole(plr)
+	local color = roleColor or ESPColor
 	local adornments = BoxAdornments[plr]
 	if not adornments then
 		adornments = {}
 		BoxAdornments[plr] = adornments
 	end
 	for _, part in ipairs(character:GetChildren()) do
-		if IsBodyESPPart(part, character) and not adornments[part] then
-			local adornment = Instance.new("BoxHandleAdornment")
-			adornment.Name = "SerenityBoxESP"
-			adornment.Adornee = part
-			adornment.Size = part.Size
-			adornment.Color3 = ESPColor
-			adornment.Transparency = 0.5
-			adornment.AlwaysOnTop = true
-			adornment.ZIndex = 10
-			adornment.Parent = ESPAdornmentRoot
-			adornments[part] = adornment
+		if IsBodyESPPart(part, character) then
+			local adornment = adornments[part]
+			if not adornment then
+				adornment = Instance.new("BoxHandleAdornment")
+				adornment.Name = "SerenityBoxESP"
+				adornment.Adornee = part
+				adornment.Size = part.Size
+				adornment.Transparency = 0.5
+				adornment.AlwaysOnTop = true
+				adornment.ZIndex = 10
+				adornment.Parent = ESPAdornmentRoot
+				adornments[part] = adornment
+			end
+			adornment.Color3 = color
 		end
 	end
 end
@@ -2124,10 +2184,12 @@ function RefreshESPLabels()
 	end
 end
 
--- Continuously clears Outline/Body ESP for anyone who's died or lost their character,
--- so ESP never lingers on a corpse or an empty slot -- the same maintenance-loop
--- approach the old feature-rich hub used, since a one-time apply-on-toggle plus
--- apply-on-respawn (below) has no way to notice a death in between.
+-- Continuously clears Outline/Body ESP for anyone who's died or lost their character, so
+-- ESP never lingers on a corpse or an empty slot -- the same maintenance-loop approach the
+-- old feature-rich hub used, since a one-time apply-on-toggle plus apply-on-respawn (below)
+-- has no way to notice a death in between. Also re-applies Add*/color for everyone still
+-- alive on the same tick, which is what keeps a role's box/outline color current as roles
+-- get assigned mid-round instead of only ever being set once at the moment ESP was toggled.
 ESPMaintenanceInterval = 0.15
 lastESPMaintenance = 0
 RunService.Heartbeat:Connect(function()
@@ -2142,6 +2204,9 @@ RunService.Heartbeat:Connect(function()
 			if not character or not humanoid or humanoid.Health <= 0 then
 				RemoveOutlineHighlight(plr)
 				RemoveBoxAdornments(plr)
+			else
+				if OutlineESPEnabled then AddOutlineHighlight(plr, character) end
+				if BoxESPEnabled then AddBoxAdornments(plr, character) end
 			end
 		end
 	end
@@ -2302,19 +2367,26 @@ RegisterItemFavorite(ESPColorRow, "ESPColorFavorite", "ESP Color", "ESP")
 
 function ApplyESPColor()
 	ESPColorButton.BackgroundColor3 = ESPColor
-	for _, highlight in pairs(OutlineHighlights) do
+	-- Role players (murderer/sheriff/killer) keep their role color here too, same as
+	-- Add*'s own recolor -- otherwise picking a new ESP color would immediately overwrite
+	-- their red/blue back to the plain ESP color until the next maintenance tick.
+	for plr, highlight in pairs(OutlineHighlights) do
 		if highlight then
-			highlight.FillColor = ESPColor
-			highlight.OutlineColor = ESPColor
+			local _, roleColor = GetCrossGameRole(plr)
+			local color = roleColor or ESPColor
+			highlight.FillColor = color
+			highlight.OutlineColor = color
 		end
 	end
-	for _, adornments in pairs(BoxAdornments) do
+	for plr, adornments in pairs(BoxAdornments) do
+		local _, roleColor = GetCrossGameRole(plr)
+		local color = roleColor or ESPColor
 		for _, adornment in pairs(adornments) do
-			if adornment then adornment.Color3 = ESPColor end
+			if adornment then adornment.Color3 = color end
 		end
 	end
-	-- ESP Labels reads ESPColor directly on its own throttled refresh, so it doesn't
-	-- need updating here.
+	-- ESP Labels reads ESPColor/GetCrossGameRole directly on its own throttled refresh, so
+	-- it doesn't need updating here.
 end
 
 function SetESPColor(color)
