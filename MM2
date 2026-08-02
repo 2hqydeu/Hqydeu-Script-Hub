@@ -560,11 +560,167 @@ FlingMurdererButton.Text = "Fling"
 local FlingSheriffRow, FlingSheriffButton = CreateFeatureRow(2, "Fling Sheriff", true, FlingsContainer)
 FlingSheriffButton.Text = "Fling"
 
--- Skeleton only, per request -- all fling logic (confirm popup, the actual CFrame-spin,
--- ownership-nudge) has been stripped out. Both buttons exist and are clickable but
--- intentionally do nothing.
-FlingMurdererButton.MouseButton1Click:Connect(function() end)
-FlingSheriffButton.MouseButton1Click:Connect(function() end)
+-- One-shot fling: teleport-spam the target's own body part while a BodyVelocity rides
+-- along, launching them off into the distance. Ported from a standalone fling script --
+-- its own service locals, findMurderer/findSheriff, and PlayerDataChanged polling are all
+-- dropped in favor of this panel's own Player/Players locals and the CurrentMurderer/
+-- CurrentSheriff role tracking (RefreshRolesFromTools/RefreshRolesFromRemote) that's
+-- already running continuously above. .Velocity/.RotVelocity (deprecated aliases) are
+-- swapped for AssemblyLinearVelocity/AssemblyAngularVelocity to match the rest of this
+-- file. flingBusy is shared by both buttons so a click can't stack a second fling (and
+-- fight the first over the same localRoot/BodyVelocity) while one is still running.
+local flingBusy = false
+
+local function PerformFling(targetPlayer)
+	if flingBusy or not targetPlayer or targetPlayer == Player then return end
+
+	local localCharacter = Player.Character
+	local localHumanoid = localCharacter and localCharacter:FindFirstChildOfClass("Humanoid")
+	local localRoot = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
+	local targetCharacter = targetPlayer.Character
+	if not (localCharacter and localHumanoid and localRoot and targetCharacter) then return end
+
+	local targetHumanoid = targetCharacter:FindFirstChildOfClass("Humanoid")
+	local targetRoot = targetCharacter:FindFirstChild("HumanoidRootPart")
+	local targetHead = targetCharacter:FindFirstChild("Head")
+	local targetAccessory = targetCharacter:FindFirstChildOfClass("Accessory")
+	local targetAccessoryHandle = targetAccessory and targetAccessory:FindFirstChild("Handle")
+	if not (targetHumanoid and (targetRoot or targetHead or targetAccessoryHandle)) then return end
+
+	flingBusy = true
+	if not localCharacter.PrimaryPart then
+		localCharacter.PrimaryPart = localRoot
+	end
+
+	local returnCFrame = localRoot.AssemblyLinearVelocity.Magnitude < 50 and localRoot.CFrame or nil
+	local oldFallenPartsDestroyHeight = workspace.FallenPartsDestroyHeight
+
+	if targetHead then
+		workspace.CurrentCamera.CameraSubject = targetHead
+	elseif targetAccessoryHandle then
+		workspace.CurrentCamera.CameraSubject = targetAccessoryHandle
+	else
+		workspace.CurrentCamera.CameraSubject = targetHumanoid
+	end
+
+	local function moveToTargetPart(part, offset, rotation)
+		local flingCFrame = CFrame.new(part.Position) * offset * rotation
+		localRoot.CFrame = flingCFrame
+		localCharacter:SetPrimaryPartCFrame(flingCFrame)
+		localRoot.AssemblyLinearVelocity = Vector3.new(9e7, 9e8, 9e7)
+		localRoot.AssemblyAngularVelocity = Vector3.new(9e8, 9e8, 9e8)
+	end
+
+	local function flingPart(part)
+		local timeoutSeconds = 2
+		local startedAt = tick()
+		local rotationAmount = 0
+		repeat
+			if not (ScreenGui.Parent and localRoot.Parent and targetHumanoid) then break end
+			if part.AssemblyLinearVelocity.Magnitude < 50 then
+				rotationAmount += 100
+				moveToTargetPart(part, CFrame.new(0, 1.5, 0) + targetHumanoid.MoveDirection * part.AssemblyLinearVelocity.Magnitude / 1.25, CFrame.Angles(math.rad(rotationAmount), 0, 0))
+				task.wait()
+				moveToTargetPart(part, CFrame.new(0, -1.5, 0) + targetHumanoid.MoveDirection * part.AssemblyLinearVelocity.Magnitude / 1.25, CFrame.Angles(math.rad(rotationAmount), 0, 0))
+				task.wait()
+				moveToTargetPart(part, CFrame.new(2.25, 1.5, -2.25) + targetHumanoid.MoveDirection * part.AssemblyLinearVelocity.Magnitude / 1.25, CFrame.Angles(math.rad(rotationAmount), 0, 0))
+				task.wait()
+				moveToTargetPart(part, CFrame.new(-2.25, -1.5, 2.25) + targetHumanoid.MoveDirection * part.AssemblyLinearVelocity.Magnitude / 1.25, CFrame.Angles(math.rad(rotationAmount), 0, 0))
+				task.wait()
+				moveToTargetPart(part, CFrame.new(0, 1.5, 0) + targetHumanoid.MoveDirection, CFrame.Angles(math.rad(rotationAmount), 0, 0))
+				task.wait()
+				moveToTargetPart(part, CFrame.new(0, -1.5, 0) + targetHumanoid.MoveDirection, CFrame.Angles(math.rad(rotationAmount), 0, 0))
+				task.wait()
+			else
+				local rootVelocity = targetRoot and targetRoot.AssemblyLinearVelocity.Magnitude or part.AssemblyLinearVelocity.Magnitude
+				moveToTargetPart(part, CFrame.new(0, 1.5, targetHumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+				task.wait()
+				moveToTargetPart(part, CFrame.new(0, -1.5, -targetHumanoid.WalkSpeed), CFrame.Angles(0, 0, 0))
+				task.wait()
+				moveToTargetPart(part, CFrame.new(0, 1.5, targetHumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+				task.wait()
+				moveToTargetPart(part, CFrame.new(0, 1.5, rootVelocity / 1.25), CFrame.Angles(math.rad(90), 0, 0))
+				task.wait()
+				moveToTargetPart(part, CFrame.new(0, -1.5, -rootVelocity / 1.25), CFrame.Angles(0, 0, 0))
+				task.wait()
+				moveToTargetPart(part, CFrame.new(0, 1.5, rootVelocity / 1.25), CFrame.Angles(math.rad(90), 0, 0))
+				task.wait()
+				moveToTargetPart(part, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
+				task.wait()
+				moveToTargetPart(part, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
+				task.wait()
+				moveToTargetPart(part, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(-90), 0, 0))
+				task.wait()
+				moveToTargetPart(part, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
+				task.wait()
+			end
+		until part.AssemblyLinearVelocity.Magnitude > 500
+			or part.Parent ~= targetCharacter
+			or targetPlayer.Parent ~= Players
+			or targetPlayer.Character ~= targetCharacter
+			or targetHumanoid.Sit
+			or localHumanoid.Health <= 0
+			or tick() > startedAt + timeoutSeconds
+	end
+
+	workspace.FallenPartsDestroyHeight = 0 / 0
+
+	local bodyVelocity = Instance.new("BodyVelocity")
+	bodyVelocity.Name = "SerenityFlingVelocity"
+	bodyVelocity.Parent = localRoot
+	bodyVelocity.Velocity = Vector3.new(9e8, 9e8, 9e8)
+	bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+
+	localHumanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
+
+	if targetRoot and targetHead then
+		if (targetRoot.Position - targetHead.Position).Magnitude > 5 then
+			flingPart(targetHead)
+		else
+			flingPart(targetRoot)
+		end
+	elseif targetRoot then
+		flingPart(targetRoot)
+	elseif targetHead then
+		flingPart(targetHead)
+	elseif targetAccessoryHandle then
+		flingPart(targetAccessoryHandle)
+	end
+
+	bodyVelocity:Destroy()
+	if localHumanoid.Parent then
+		localHumanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
+	end
+	if ScreenGui.Parent then
+		workspace.CurrentCamera.CameraSubject = localHumanoid
+	end
+
+	if returnCFrame then
+		repeat
+			if not localRoot.Parent then break end
+			localRoot.CFrame = returnCFrame * CFrame.new(0, 0.5, 0)
+			localCharacter:SetPrimaryPartCFrame(returnCFrame * CFrame.new(0, 0.5, 0))
+			localHumanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+			for _, part in ipairs(localCharacter:GetChildren()) do
+				if part:IsA("BasePart") then
+					part.AssemblyLinearVelocity = Vector3.zero
+					part.AssemblyAngularVelocity = Vector3.zero
+				end
+			end
+			task.wait()
+		until (localRoot.Position - returnCFrame.Position).Magnitude < 25
+	end
+
+	workspace.FallenPartsDestroyHeight = oldFallenPartsDestroyHeight
+	flingBusy = false
+end
+
+FlingMurdererButton.MouseButton1Click:Connect(function()
+	PerformFling(CurrentMurderer)
+end)
+FlingSheriffButton.MouseButton1Click:Connect(function()
+	PerformFling(CurrentSheriff)
+end)
 
 local function PlayerHasTool(targetPlayer, toolName)
 	local wantedName = toolName:lower()
