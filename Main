@@ -776,9 +776,9 @@ function CreateTab(name, order, iconId, scrolling, iconSize, iconYOffset)
 	local button = Instance.new("TextButton")
 	button.Name = name .. "Tab"
 	button.LayoutOrder = order
-	-- Full sidebar width now (was a fixed 125px pill sized for a horizontal row) -- height
-	-- unchanged from the old button height.
-	button.Size = UDim2.new(1, 0, 0, 30)
+	-- Full sidebar width (was a fixed 125px pill sized for a horizontal row). Taller than
+	-- the old 30px too -- more room for the icon/label to actually fill, per request.
+	button.Size = UDim2.new(1, 0, 0, 38)
 	button.BackgroundColor3 = ToggleOnColor
 	button.BackgroundTransparency = 1
 	button.BorderSizePixel = 0
@@ -799,6 +799,15 @@ function CreateTab(name, order, iconId, scrolling, iconSize, iconYOffset)
 	content.Position = UDim2.new(0.5, 0, 0.5, 0)
 	content.BackgroundTransparency = 1
 	content.Parent = button
+	-- Consistent left inset instead of centering the icon+label group as a block -- in a
+	-- stacked vertical list, each row's group is a different total width (varying label
+	-- length/icon size), so centering each one independently left every row's icon sitting
+	-- at a different X down the column, which is what read as uneven/unsymmetrical. Left-
+	-- aligning at a fixed inset lines every icon (and every label start) up in its own
+	-- column instead.
+	local contentPadding = Instance.new("UIPadding")
+	contentPadding.PaddingLeft = UDim.new(0, 14)
+	contentPadding.Parent = content
 	-- Bounces "content" (icon + label), not "button" -- button is the direct child the
 	-- TabBar's UIListLayout tracks, so scaling it directly would nudge every tab after it
 	-- sideways each time this one gets pressed. Skipped entirely for a tab that's already
@@ -808,9 +817,9 @@ function CreateTab(name, order, iconId, scrolling, iconSize, iconYOffset)
 
 	local contentLayout = Instance.new("UIListLayout")
 	contentLayout.FillDirection = Enum.FillDirection.Horizontal
-	contentLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	contentLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
 	contentLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-	contentLayout.Padding = UDim.new(0, 6)
+	contentLayout.Padding = UDim.new(0, 10)
 	contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	contentLayout.Parent = content
 
@@ -819,11 +828,14 @@ function CreateTab(name, order, iconId, scrolling, iconSize, iconYOffset)
 	-- iconHolder is the thing the tab's UIListLayout actually centers (fixed box, no
 	-- offset); the real icon image sits inside it and can be freely nudged via
 	-- iconYOffset without fighting the parent layout's own vertical centering (which
-	-- would otherwise just re-center a plain Position change every layout pass).
+	-- would otherwise just re-center a plain Position change every layout pass). Default
+	-- bumped from 24 to 28 (and every call site normalized onto it, dropping their old
+	-- one-off overrides) so icons read as more consistently sized down the column too --
+	-- part of the same unevenness fix as the left-align above.
 	local iconHolder = Instance.new("Frame")
 	iconHolder.Name = "IconHolder"
 	iconHolder.LayoutOrder = 1
-	iconHolder.Size = UDim2.new(0, iconSize or 24, 0, iconSize or 24)
+	iconHolder.Size = UDim2.new(0, iconSize or 28, 0, iconSize or 28)
 	iconHolder.BackgroundTransparency = 1
 	iconHolder.Parent = content
 
@@ -844,7 +856,7 @@ function CreateTab(name, order, iconId, scrolling, iconSize, iconYOffset)
 	label.BackgroundTransparency = 1
 	label.Text = name
 	label.Font = UIFont
-	label.TextSize = 13
+	label.TextSize = 16
 	label.TextColor3 = Color3.fromRGB(255, 255, 255)
 	label.Parent = content
 
@@ -890,7 +902,7 @@ end
 -- compiler free a section's locals once it ends instead of holding them all open for the
 -- rest of the script; nothing here is referenced outside this block.
 do
-	local HomePage = CreateTab("Home", 1, "94154918683502", nil, 30, 5)
+	local HomePage = CreateTab("Home", 1, "94154918683502", nil, nil, 5)
 	-- Yields once per tab section while the rest of this (very long) script keeps building
 	-- everything else -- without this, hundreds of Instance.new calls across every tab run
 	-- back-to-back with no yield at all, which starves the renderer of any chance to
@@ -899,9 +911,26 @@ do
 	-- building before the engine ever got a turn to draw the loading bar's progress.
 	task.wait()
 
+	-- Wraps the avatar/welcome/favorites group so the whole thing can be vertically centered
+	-- in the page as a unit (AnchorPoint/Position 0.5,0.5) regardless of how tall HomePage
+	-- actually is -- these elements used to be positioned directly against HomePage with
+	-- fixed top-anchored offsets, which read fine back when the content area was shorter,
+	-- but left the group sitting near the top with a lot of dead space below once the
+	-- sidebar layout freed up extra content height. Sized to the group's own natural height
+	-- (184 = the old button-bottom-at-206 minus the old ring-top-at-22), so every child
+	-- below keeps the exact same relative offsets it always had -- just measured from this
+	-- container's top instead of HomePage's.
+	local HomeCenterBlock = Instance.new("Frame")
+	HomeCenterBlock.Name = "HomeCenterBlock"
+	HomeCenterBlock.AnchorPoint = Vector2.new(0.5, 0.5)
+	HomeCenterBlock.Size = UDim2.new(1, 0, 0, 184)
+	HomeCenterBlock.Position = UDim2.new(0.5, 0, 0.5, 0)
+	HomeCenterBlock.BackgroundTransparency = 1
+	HomeCenterBlock.Parent = HomePage
+
 	-- Avatar glow, take four: dropped the soft pulsing backdrop ring entirely -- just the
 	-- flowing rim now, which was the part that actually looked good.
-	local avatarCenter = UDim2.new(0.5, 0, 0, 72)
+	local avatarCenter = UDim2.new(0.5, 0, 0, 50)
 
 	-- The flowing ring itself -- a UIStroke traced around a circle the same size as the
 	-- avatar, with a UIGradient painting the stroke instead of a flat color. Light/dark/
@@ -913,7 +942,7 @@ do
 	avatarRing.Size = UDim2.new(0, 100, 0, 100)
 	avatarRing.Position = avatarCenter
 	avatarRing.BackgroundTransparency = 1
-	avatarRing.Parent = HomePage
+	avatarRing.Parent = HomeCenterBlock
 	Instance.new("UICorner", avatarRing).CornerRadius = UDim.new(1, 0)
 	local avatarRingStroke = Instance.new("UIStroke")
 	avatarRingStroke.Thickness = 2
@@ -945,7 +974,7 @@ do
 	AvatarImage.Position = avatarCenter
 	AvatarImage.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 	AvatarImage.BorderSizePixel = 0
-	AvatarImage.Parent = HomePage
+	AvatarImage.Parent = HomeCenterBlock
 	Instance.new("UICorner", AvatarImage).CornerRadius = UDim.new(1, 0)
 	task.spawn(function()
 		local success, content = pcall(function()
@@ -957,7 +986,7 @@ do
 	local WelcomeLabel = Instance.new("TextLabel")
 	WelcomeLabel.Name = "WelcomeLabel"
 	WelcomeLabel.Size = UDim2.new(1, 0, 0, 40)
-	WelcomeLabel.Position = UDim2.new(0, 0, 0, 136)
+	WelcomeLabel.Position = UDim2.new(0, 0, 0, 114)
 	WelcomeLabel.BackgroundTransparency = 1
 	WelcomeLabel.RichText = true
 	-- Just the name in that same lavender used everywhere (toggle switches, tab pill,
@@ -969,7 +998,7 @@ do
 	WelcomeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 	WelcomeLabel.TextXAlignment = Enum.TextXAlignment.Center
 	WelcomeLabel.TextYAlignment = Enum.TextYAlignment.Center
-	WelcomeLabel.Parent = HomePage
+	WelcomeLabel.Parent = HomeCenterBlock
 
 	-- Opens the Favorites overlay -- built later in the file (once every favoritable
 	-- row across every tab actually exists), referenced here only inside a click closure
@@ -977,7 +1006,7 @@ do
 	local FavoritesButton = Instance.new("TextButton")
 	FavoritesButton.Name = "FavoritesButton"
 	FavoritesButton.AnchorPoint = Vector2.new(0.5, 0)
-	FavoritesButton.Position = UDim2.new(0.5, 0, 0, 182)
+	FavoritesButton.Position = UDim2.new(0.5, 0, 0, 160)
 	FavoritesButton.Size = UDim2.new(0, 130, 0, 24)
 	FavoritesButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 	FavoritesButton.BorderSizePixel = 0
@@ -985,7 +1014,7 @@ do
 	FavoritesButton.Font = UIFont
 	FavoritesButton.TextSize = 13
 	FavoritesButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-	FavoritesButton.Parent = HomePage
+	FavoritesButton.Parent = HomeCenterBlock
 	Instance.new("UICorner", FavoritesButton).CornerRadius = UDim.new(1, 0)
 	AddPressBounce(FavoritesButton)
 	FavoritesButton.MouseButton1Click:Connect(function()
@@ -1795,7 +1824,7 @@ end
 -- Functionality tab: sits between Player and Visuals. No icon for now -- CreateTab already
 -- handles a nil iconId by just leaving the tab's icon slot blank. Instant Prompt lives here
 -- now instead of at the bottom of Player.
-FunctionalityPage = CreateTab("Functions", 3, "129520582193954", true, 28, 1)
+FunctionalityPage = CreateTab("Functions", 3, "129520582193954", true, nil, 1)
 task.wait()
 do
 	-- Instant Prompt: drives every ProximityPrompt's HoldDuration to 0 (and drops its line-
@@ -1890,26 +1919,6 @@ do
 end
 
 do
-	-- Fling Menu: opens a floating popup (built in its own separate do block further below,
-	-- next to the Teleport tab's TP Menu Popup) listing every other player with a Fling
-	-- button next to each one -- generic, not tied to any single game's roles the way MM2's
-	-- own Fling Murderer/Fling Sheriff buttons are. FlingMenuKeybind/FlingPopupToggleButton
-	-- left un-declared (the popup section further down needs to read/update them too) so
-	-- they fall back to globals instead of costing more top-level local slots.
-	-- INSTANT_PROMPT_SECTION_BOTTOM lives in the do block above and doesn't escape it -- 106
-	-- is that same value (INSTANT_PROMPT_TOP 8 + 30 + row height 52 + 16 gap) written out
-	-- instead.
-	local FLING_TOP = 106
-	local FlingHeading = CreateSectionHeading(FunctionalityPage, FLING_TOP, "Fling")
-	FlingMenuKeybind = Enum.KeyCode.Unknown
-	FlingPopupToggleButton, _, FlingRow = CreateToggleRow(FunctionalityPage, FLING_TOP + 30, "FlingMenuKeybind", function(k) FlingMenuKeybind = k end, "Fling Menu Popup")
-	FlingPopupToggleButton.Text = "Closed"
-	RegisterSectionFavorite(FlingHeading, "FlingMenuKeybind", "Fling", {FlingRow})
-
-	FunctionalityPage.CanvasSize = UDim2.new(0, 0, 0, FLING_TOP + 30 + 52 + 16)
-end
-
-do
 	-- Auto Lock: moved here from its own now-removed Combat tab -- while held, Right Mouse
 	-- Button snaps the camera to face whichever player's head is currently closest to the
 	-- mouse cursor on screen. Ported straight from the old hub's Auto Lock (Main Features
@@ -1920,9 +1929,10 @@ do
 	AutoLockKeybind = Enum.KeyCode.Unknown
 	local AutoLockEnabled = false
 
-	-- FLING_TOP (106) + its own heading/row/gap (30 + 52 + 16) lives in the do block above
-	-- and doesn't escape it -- 204 is that same total written out instead.
-	local AUTO_LOCK_TOP = 204
+	-- INSTANT_PROMPT_SECTION_BOTTOM lives in the do block above and doesn't escape it --
+	-- 106 is that same value (INSTANT_PROMPT_TOP 8 + 30 + row height 52 + 16 gap) written
+	-- out instead.
+	local AUTO_LOCK_TOP = 106
 	local AutoLockHeading = CreateSectionHeading(FunctionalityPage, AUTO_LOCK_TOP, "Auto Lock")
 	local AutoLockToggle, _, AutoLockRow = CreateToggleRow(FunctionalityPage, AUTO_LOCK_TOP + 30, "AutoLockKeybind", function(k) AutoLockKeybind = k end)
 	RegisterSectionFavorite(AutoLockHeading, "AutoLockKeybind", "Auto Lock", {AutoLockRow})
@@ -1983,9 +1993,9 @@ do
 	AntiAFKEnabled = false
 	AntiAFKKeybind = Enum.KeyCode.Unknown
 
-	-- AUTO_LOCK_TOP (204) + its own heading/row/gap (30 + 52 + 16) lives in the do block
-	-- above and doesn't escape it -- 302 is that same total written out instead.
-	local ANTI_AFK_TOP = 302
+	-- AUTO_LOCK_TOP (106) + its own heading/row/gap (30 + 52 + 16) lives in the do block
+	-- above and doesn't escape it -- 204 is that same total written out instead.
+	local ANTI_AFK_TOP = 204
 	local AntiAFKHeading = CreateSectionHeading(FunctionalityPage, ANTI_AFK_TOP, "Anti-AFK")
 	local AntiAFKToggle, _, AntiAFKRow = CreateToggleRow(FunctionalityPage, ANTI_AFK_TOP + 30, "AntiAFKKeybind", function(k) AntiAFKKeybind = k end)
 	RegisterSectionFavorite(AntiAFKHeading, "AntiAFKKeybind", "Anti-AFK", {AntiAFKRow})
@@ -2019,7 +2029,7 @@ end
 -- against the script's 200-local cap for the rest of the file.
 do
 
-VisualsPage = CreateTab("Visuals", 4, "128664215189887", true, 34)
+VisualsPage = CreateTab("Visuals", 4, "71863899279280", true)
 task.wait()
 
 ESPDefaultColor = Color3.fromRGB(100, 255, 100)
@@ -3925,13 +3935,30 @@ do
 	end))
 end
 
+-- Troll tab: our own dumping ground for stuff that doesn't fit the "serious" tabs. Just
+-- Fling for now (the toggle row that opens the floating Fling popup built right below --
+-- that popup reads FlingMenuKeybind/FlingPopupToggleButton as globals, so this has to run
+-- before it, same as every other tab's own toggle row already does relative to its popup).
+TrollPage = CreateTab("Troll", 9, "115015056625522", true)
+task.wait()
+do
+	local FLING_TOP = 8
+	local FlingHeading = CreateSectionHeading(TrollPage, FLING_TOP, "Fling")
+	FlingMenuKeybind = Enum.KeyCode.Unknown
+	FlingPopupToggleButton, _, FlingRow = CreateToggleRow(TrollPage, FLING_TOP + 30, "FlingMenuKeybind", function(k) FlingMenuKeybind = k end, "Fling Menu Popup")
+	FlingPopupToggleButton.Text = "Closed"
+	RegisterSectionFavorite(FlingHeading, "FlingMenuKeybind", "Fling", {FlingRow})
+
+	TrollPage.CanvasSize = UDim2.new(0, 0, 0, FLING_TOP + 30 + 52 + 16)
+end
+
 -- Floating Fling menu popup: same "small popup toggled by a keybind, opens over whatever
 -- you're doing" shell as the TP Menu Popup right above (frame/header/close/search/list),
 -- but every row gets its own Fling button instead of the row itself being the click target
 -- -- teleporting (TP Menu's whole point) and flinging (a one-shot action against someone
 -- else's character) shouldn't share a "click anywhere on the row" gesture, since a stray
 -- click here launches another player instead of just moving you. Toggled by the keybind
--- row set up in the Functions tab above (FlingMenuKeybind/FlingPopupToggleButton).
+-- row set up in the Troll tab above (FlingMenuKeybind/FlingPopupToggleButton).
 do
 	local ROW_H = 30
 
@@ -4292,7 +4319,7 @@ end
 
 -- Scripts tab: launches the separate game modules (loadstring + HttpGet, same as the
 -- old hub). Each module only ever gets fetched once per execution.
-ScriptsPage = CreateTab("Scripts", 6, "94167840974597", true, 30)
+ScriptsPage = CreateTab("Scripts", 6, "94167840974597", true)
 task.wait()
 
 -- Each game is independent -- opening one doesn't affect any other. Once a game has been
@@ -5195,7 +5222,6 @@ do
 	SwitchFunctionsKeybind = Enum.KeyCode.Unknown
 	CreateKeybindEditRow(functionsRows, "Switch to Functions", "SwitchFunctionsKeybind", function(k) SwitchFunctionsKeybind = k end)
 	CreateKeybindEditRow(functionsRows, "Instant Prompt", "InstantPromptKeybind", function(k) InstantPromptKeybind = k end)
-	CreateKeybindEditRow(functionsRows, "Fling Menu", "FlingMenuKeybind", function(k) FlingMenuKeybind = k end)
 	CreateKeybindEditRow(functionsRows, "Auto Lock", "AutoLockKeybind", function(k) AutoLockKeybind = k end)
 	CreateKeybindEditRow(functionsRows, "Anti-AFK", "AntiAFKKeybind", function(k) AntiAFKKeybind = k end)
 
@@ -5215,6 +5241,11 @@ do
 	SwitchTeleportKeybind = Enum.KeyCode.Unknown
 	CreateKeybindEditRow(teleportRows, "Switch to Teleport", "SwitchTeleportKeybind", function(k) SwitchTeleportKeybind = k end)
 	CreateKeybindEditRow(teleportRows, "TP Menu Popup", "TPMenuKeybind", function(k) PopupKeybind = k end, Enum.KeyCode.LeftAlt)
+
+	local trollRows = CreateSection("Troll")
+	SwitchTrollKeybind = Enum.KeyCode.Unknown
+	CreateKeybindEditRow(trollRows, "Switch to Troll", "SwitchTrollKeybind", function(k) SwitchTrollKeybind = k end)
+	CreateKeybindEditRow(trollRows, "Fling Menu", "FlingMenuKeybind", function(k) FlingMenuKeybind = k end)
 
 	for _, descendant in ipairs(KeybindEditorPage:GetDescendants()) do
 		if descendant:IsA("GuiObject") then descendant.ZIndex = 20 end
@@ -5586,6 +5617,7 @@ mainInputConnection = UserInputService.InputBegan:Connect(function(input, proces
 	if SwitchVisualsKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == SwitchVisualsKeybind then SwitchToTab("Visuals") end
 	if SwitchScriptsKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == SwitchScriptsKeybind then SwitchToTab("Scripts") end
 	if SwitchTeleportKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == SwitchTeleportKeybind then SwitchToTab("Teleport") end
+	if SwitchTrollKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == SwitchTrollKeybind then SwitchToTab("Troll") end
 	if SwitchFavoritesKeybind ~= Enum.KeyCode.Unknown and input.KeyCode == SwitchFavoritesKeybind then SwitchToFavorites() end
 end)
 
