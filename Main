@@ -5160,8 +5160,18 @@ ScaleRoot.Parent = MainFrame
 local ScaleRootScale = Instance.new("UIScale")
 ScaleRootScale.Parent = ScaleRoot
 
+-- TimeLabel is exempt -- it has two totally different positions depending on minimized
+-- (MINI_TIME_GOAL, a percentage centered in the tiny circle) vs full-size (NORMAL_TIME_GOAL,
+-- a fixed header offset), and MINI_TIME_GOAL's percentage was designed against MainFrame's
+-- own real (80x80 while minimized) size. ScaleRoot's own size is now fixed at the BASE
+-- footprint regardless of MainFrame's actual current size, so a percentage-based position
+-- inside it resolves against the wrong (much bigger) box while minimized -- pushing the
+-- clock label off past the tiny clipped circle entirely instead of centering it. Keeping
+-- TimeLabel a direct MainFrame child instead sidesteps that mismatch completely: its
+-- position always resolves against MainFrame's real current size, exactly like before
+-- Adjust Gui Size existed.
 for _, child in ipairs(MainFrame:GetChildren()) do
-	if child ~= ScaleRoot and not child:IsA("UICorner") then
+	if child ~= ScaleRoot and child ~= TimeLabel and not child:IsA("UICorner") then
 		child.Parent = ScaleRoot
 	end
 end
