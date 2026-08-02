@@ -44,9 +44,12 @@ ScreenGui.Name = "SerenityMM2"
 ScreenGui.Parent = CoreGui
 ScreenGui.ResetOnSpawn = false
 
--- Standardized to the same 280x400 size as UE/QOD's panels, so one background image size
--- covers all three game windows.
-local FULL_HEIGHT = 400
+-- Taller than UE/QOD/AH's shared 280x400 -- MM2 has more rows (Coin Farm/Auto Gun/Auto
+-- Stab/Auto Shoot/Role Reveal/Flings, plus two more when the Flings accordion is open) than
+-- fit comfortably in that shared height, which was making the scrollbar's own draggable
+-- thumb tiny and most of the panel a scroll-fest. Only this panel's height changed -- the
+-- other three still share their own matching 400.
+local FULL_HEIGHT = 520
 local MINI_HEIGHT = 44
 
 local PanelFrame = Instance.new("Frame")
@@ -218,6 +221,10 @@ ContentScroll.BackgroundTransparency = 1
 ContentScroll.BorderSizePixel = 0
 ContentScroll.ScrollBarThickness = 3
 ContentScroll.ScrollBarImageColor3 = AccentColor
+-- Fully transparent -- the draggable strip itself still works exactly the same (native
+-- scrollbar hit-testing isn't tied to its own visual opacity), it just doesn't paint that
+-- light-gray bar down the side anymore. Wheel/touch scrolling is untouched either way.
+ContentScroll.ScrollBarImageTransparency = 1
 ContentScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 ContentScroll.ElasticBehavior = Enum.ElasticBehavior.Never
 ContentScroll.Parent = PanelFrame
@@ -549,6 +556,7 @@ FlingsLayout.Parent = FlingsContainer
 
 FlingsButton.MouseButton1Click:Connect(function()
 	FlingsContainer.Visible = not FlingsContainer.Visible
+	FlingsButton.Text = FlingsContainer.Visible and "Close" or "Open"
 end)
 
 local FlingMurdererRow, FlingMurdererButton = CreateFeatureRow(1, "Fling Murderer", true, FlingsContainer)
@@ -633,26 +641,31 @@ end
 FlingConfirmYes.MouseButton1Click:Connect(function() FlingConfirmEvent:Fire(true) end)
 FlingConfirmNo.MouseButton1Click:Connect(function() FlingConfirmEvent:Fire(false) end)
 
--- Standard exploit fling: a short, very strong BodyVelocity burst (mostly upward, a little
--- sideways scatter so it doesn't look like a perfectly straight launch) then removed,
--- letting normal physics take back over. FLING_ALREADY_FLUNG_SPEED is just "is this root
--- already moving way faster than anything in-game would cause on its own" -- comfortably
--- above normal run/jump speed, comfortably below what the burst itself produces.
+-- The first version used a single BodyVelocity burst -- that relies on the physics engine
+-- actually simulating a force against the target's root part, which generally only happens
+-- if you have real ownership/authority over it, and a client normally doesn't for another
+-- player's character. That's almost certainly why it did nothing at all: the BodyVelocity
+-- got created and destroyed with no simulation ever picking it up. Directly overwriting the
+-- root part's CFrame doesn't have that requirement -- it's a plain property write, not a
+-- simulated force -- so this repeatedly whips the target's CFrame through a wide spin very
+-- fast for a short burst instead, which is the far more reliable version of this trick.
 local FLING_ALREADY_FLUNG_SPEED = 300
-local FLING_BURST_DURATION = 0.15
+local FLING_DURATION = 1
+local FLING_RADIUS = 25
 
 local function IsAlreadyFlung(targetRoot)
 	return targetRoot.AssemblyLinearVelocity.Magnitude > FLING_ALREADY_FLUNG_SPEED
 end
 
 local function DoFling(targetRoot)
-	local flingForce = Instance.new("BodyVelocity")
-	flingForce.Name = "SerenityFling"
-	flingForce.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-	flingForce.Velocity = Vector3.new(math.random(-400, 400), 900, math.random(-400, 400))
-	flingForce.Parent = targetRoot
-	task.wait(FLING_BURST_DURATION)
-	if flingForce.Parent then flingForce:Destroy() end
+	local startTime = os.clock()
+	local spin = 0
+	while os.clock() - startTime < FLING_DURATION and targetRoot.Parent do
+		spin = spin + 35
+		local heightOffset = (math.floor(spin / 90) % 2 == 0) and FLING_RADIUS or -FLING_RADIUS
+		targetRoot.CFrame = targetRoot.CFrame * CFrame.new(0, heightOffset, 0) * CFrame.Angles(math.rad(spin), 0, 0)
+		task.wait()
+	end
 end
 
 local function FlingPlayer(targetPlayer)
