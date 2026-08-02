@@ -233,7 +233,15 @@ task.spawn(function()
 	fillFadeOut.Completed:Wait()
 	LoadingLabel:Destroy()
 	LoadingTrack:Destroy()
-	if MainFrame then MainFrame.Visible = true end
+	if MainFrame then
+		-- Slides down from off the top of the screen into its normal centered spot instead
+		-- of just instantly appearing there.
+		local restPosition = MainFrame.Position
+		local travel = (MainFrame.AbsoluteSize.Y > 0 and MainFrame.AbsoluteSize.Y or 430) + 80
+		MainFrame.Position = UDim2.new(restPosition.X.Scale, restPosition.X.Offset, restPosition.Y.Scale, restPosition.Y.Offset - travel)
+		MainFrame.Visible = true
+		TweenService:Create(MainFrame, TweenInfo.new(0.4, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = restPosition}):Play()
+	end
 end)
 
 -- Small shared polish helpers -- hover brighten, a tactile press-down "squish", a faint
@@ -4165,13 +4173,25 @@ do
 	end
 	MuteMusicToggle.MouseButton1Click:Connect(function() PlayClick() ToggleMusicMute() end)
 
+	-- Adjust Gui Size: shows/enables the resize handles on the main window's edges/corner
+	-- while on -- off by default so the edges behave like normal draggable window body,
+	-- not accidental resize zones, during everyday use.
+	AdjustGuiSizeKeybind = Enum.KeyCode.Unknown
+	local AdjustGuiSizeToggle = CreateToggleRow(SettingsPage, SETTINGS_TOP + 136, "AdjustGuiSizeKeybind", function(k) AdjustGuiSizeKeybind = k end, "Adjust Gui Size")
+	ToggleAdjustGuiSize = function()
+		AdjustGuiSizeEnabled = not AdjustGuiSizeEnabled
+		AdjustGuiSizeToggle.Text = AdjustGuiSizeEnabled and "On" or "Off"
+		if SetResizeHandlesActive then SetResizeHandlesActive(AdjustGuiSizeEnabled) end
+	end
+	AdjustGuiSizeToggle.MouseButton1Click:Connect(function() PlayClick() ToggleAdjustGuiSize() end)
+
 	-- 2x2 grid: Edit Keybinds + Rejoin on top, Reset Character + Destroy Gui below -- all
 	-- four the same half-width/28px size instead of Edit Keybinds and Rejoin being their
 	-- own full-width rows.
 	local EditKeybindsButton = Instance.new("TextButton")
 	EditKeybindsButton.Name = "EditKeybindsButton"
 	EditKeybindsButton.Size = UDim2.new(0.5, -7, 0, 28)
-	EditKeybindsButton.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 136)
+	EditKeybindsButton.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 204)
 	EditKeybindsButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 	EditKeybindsButton.BorderSizePixel = 0
 	EditKeybindsButton.Text = "Edit Keybinds"
@@ -4192,7 +4212,7 @@ do
 	local RejoinButton = Instance.new("TextButton")
 	RejoinButton.Name = "RejoinButton"
 	RejoinButton.Size = UDim2.new(0.5, -7, 0, 28)
-	RejoinButton.Position = UDim2.new(0.5, 3, 0, SETTINGS_TOP + 136)
+	RejoinButton.Position = UDim2.new(0.5, 3, 0, SETTINGS_TOP + 204)
 	RejoinButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 	RejoinButton.BorderSizePixel = 0
 	RejoinButton.Text = "Rejoin Server"
@@ -4216,7 +4236,7 @@ do
 	local ResetCharacterButton = Instance.new("TextButton")
 	ResetCharacterButton.Name = "ResetCharacterButton"
 	ResetCharacterButton.Size = UDim2.new(0.5, -7, 0, 28)
-	ResetCharacterButton.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 172)
+	ResetCharacterButton.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 240)
 	ResetCharacterButton.BackgroundColor3 = Color3.fromRGB(255, 230, 0)
 	ResetCharacterButton.BorderSizePixel = 0
 	ResetCharacterButton.Text = "Reset Character"
@@ -4236,7 +4256,7 @@ do
 	DestroyGuiButton = Instance.new("TextButton")
 	DestroyGuiButton.Name = "DestroyGuiButton"
 	DestroyGuiButton.Size = UDim2.new(0.5, -7, 0, 28)
-	DestroyGuiButton.Position = UDim2.new(0.5, 3, 0, SETTINGS_TOP + 172)
+	DestroyGuiButton.Position = UDim2.new(0.5, 3, 0, SETTINGS_TOP + 240)
 	DestroyGuiButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
 	DestroyGuiButton.BorderSizePixel = 0
 	DestroyGuiButton.Text = "Destroy Gui"
@@ -4256,19 +4276,18 @@ do
 	local LocalCountLabel = Instance.new("TextLabel")
 	LocalCountLabel.Name = "LocalCountLabel"
 	LocalCountLabel.Size = UDim2.new(1, 0, 0, 10)
-	LocalCountLabel.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 208)
+	LocalCountLabel.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 276)
 	LocalCountLabel.BackgroundTransparency = 1
 	LocalCountLabel.BorderSizePixel = 0
-	LocalCountLabel.Text = "7 / 200"
+	LocalCountLabel.Text = "23 / 200"
 	LocalCountLabel.Font = UIFont
 	LocalCountLabel.TextSize = 7
 	LocalCountLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
 	LocalCountLabel.TextXAlignment = Enum.TextXAlignment.Center
 	LocalCountLabel.Parent = SettingsPage
 
-	-- Matches the overlay's own visible viewport height (348px) exactly -- content is now
-	-- bottom-aligned to fill it, no separate scrolling needed.
-	SettingsPage.CanvasSize = UDim2.new(0, 0, 0, 348)
+	-- Was 348 -- bumped by 68 (one toggle row) for the new Adjust Gui Size row.
+	SettingsPage.CanvasSize = UDim2.new(0, 0, 0, 416)
 
 	-- SettingsPage sits at ZIndex 20 (above the tab bar/content it covers), but every row
 	-- and button built above it (CreateToggleRow's rows, the Reset/Destroy buttons, the
@@ -4899,6 +4918,17 @@ function SetMouseFreed(freed)
 			mouseFreeConnection = nil
 		end
 		UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+		-- Held for a short window afterward, not just set once -- a single set was
+		-- apparently losing a race against something (likely the game's own first-person
+		-- camera script reasserting itself) resetting it back to Default right after,
+		-- which is exactly why the mouse wasn't actually returning to locked on Destroy.
+		task.spawn(function()
+			local deadline = os.clock() + 1
+			while os.clock() < deadline do
+				UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+				task.wait()
+			end
+		end)
 	end
 end
 mouseFreeInputConnection = UserInputService.InputBegan:Connect(function(input)
@@ -5056,4 +5086,132 @@ dragChangedConnection = UserInputService.InputChanged:Connect(function(input)
 	else
 		MainFrame.Position = ClampPartiallyOnScreen(rawPosition, FULL_SIZE, 48)
 	end
+end)
+
+-- Adjust Gui Size ---------------------------------------------------------------------
+-- Wraps everything already built as a child of MainFrame into one scaled container, so
+-- dragging a resize handle can grow/shrink the whole window by scaling this one wrapper --
+-- rather than needing every row/button throughout this file to be individually
+-- Scale-based, which is what actually keeps buttons/text sized and positioned relative to
+-- each other correctly at any size. Done as a single bulk reparent here, once everything's
+-- already built, rather than threading a different parent through every single
+-- ".Parent = MainFrame" line above. MainCorner (and any other UICorner) stays a direct
+-- child of MainFrame itself -- reparenting it into the transparent wrapper would round the
+-- wrapper's own (invisible) corners instead of MainFrame's.
+local BASE_WIDTH, BASE_HEIGHT = 560, 430
+AdjustGuiSizeEnabled = false
+local guiScale = type(SavedKeybinds.GuiScale) == "number" and SavedKeybinds.GuiScale or 1
+
+local ScaleRoot = Instance.new("Frame")
+ScaleRoot.Name = "ScaleRoot"
+ScaleRoot.Size = UDim2.new(1, 0, 1, 0)
+ScaleRoot.BackgroundTransparency = 1
+ScaleRoot.BorderSizePixel = 0
+ScaleRoot.Parent = MainFrame
+
+local ScaleRootScale = Instance.new("UIScale")
+ScaleRootScale.Parent = ScaleRoot
+
+for _, child in ipairs(MainFrame:GetChildren()) do
+	if child ~= ScaleRoot and not child:IsA("UICorner") then
+		child.Parent = ScaleRoot
+	end
+end
+
+-- Clamped well short of "too small to grab a handle or read a button" on the low end, and
+-- short of overflowing a typical viewport on the high end.
+local MIN_GUI_SCALE, MAX_GUI_SCALE = 0.65, 1.6
+
+local function ApplyGuiScale()
+	FULL_SIZE = UDim2.new(0, math.floor(BASE_WIDTH * guiScale), 0, math.floor(BASE_HEIGHT * guiScale))
+	ScaleRootScale.Scale = guiScale
+	if not minimized then
+		MainFrame.Size = FULL_SIZE
+	end
+end
+ApplyGuiScale()
+
+local function SetGuiScale(newScale)
+	guiScale = math.clamp(newScale, MIN_GUI_SCALE, MAX_GUI_SCALE)
+	ApplyGuiScale()
+	SavedKeybinds.GuiScale = guiScale
+	SavePersistentSettings()
+end
+
+-- Three resize grab zones -- right edge (width), bottom edge (height), and the bottom-right
+-- corner (both at once) -- all driving the same uniform guiScale so buttons/text never get
+-- stretched out of proportion, just scaled up or down together as one unit. Inactive (and
+-- invisible at rest) until Adjust Gui Size is switched on in Settings, so they never
+-- interfere with normally dragging the window around by its body.
+local function CreateResizeHandle(name, position, size)
+	local handle = Instance.new("Frame")
+	handle.Name = name
+	handle.Position = position
+	handle.Size = size
+	handle.BackgroundColor3 = AccentColor
+	handle.BackgroundTransparency = 1
+	handle.BorderSizePixel = 0
+	handle.Active = false
+	handle.ZIndex = 90
+	handle.Parent = MainFrame
+	return handle
+end
+
+local RightHandle = CreateResizeHandle("ResizeRight", UDim2.new(1, -4, 0, 8), UDim2.new(0, 8, 1, -16))
+local BottomHandle = CreateResizeHandle("ResizeBottom", UDim2.new(0, 8, 1, -4), UDim2.new(1, -16, 0, 8))
+local CornerHandle = CreateResizeHandle("ResizeCorner", UDim2.new(1, -14, 1, -14), UDim2.new(0, 14, 0, 14))
+Instance.new("UICorner", CornerHandle).CornerRadius = UDim.new(1, 0)
+local resizeHandles = {RightHandle, BottomHandle, CornerHandle}
+
+-- Faint at rest while enabled (so it's actually findable), brighter on hover, fully
+-- invisible whenever the feature's off.
+local function RefreshHandleAppearance(handle, hovering)
+	local transparency = 1
+	if AdjustGuiSizeEnabled then
+		transparency = hovering and 0.35 or 0.8
+	end
+	TweenService:Create(handle, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = transparency}):Play()
+end
+for _, handle in ipairs(resizeHandles) do
+	handle.MouseEnter:Connect(function() RefreshHandleAppearance(handle, true) end)
+	handle.MouseLeave:Connect(function() RefreshHandleAppearance(handle, false) end)
+end
+
+function SetResizeHandlesActive(enabled)
+	for _, handle in ipairs(resizeHandles) do
+		handle.Active = enabled
+		RefreshHandleAppearance(handle, false)
+	end
+end
+
+local resizingHandle = nil
+local resizeStartInput = nil
+local resizeStartScale = 1
+for _, handle in ipairs(resizeHandles) do
+	handle.InputBegan:Connect(function(input)
+		if not AdjustGuiSizeEnabled then return end
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+		resizingHandle = handle
+		resizeStartInput = input.Position
+		resizeStartScale = guiScale
+	end)
+end
+UserInputService.InputChanged:Connect(function(input)
+	if not resizingHandle then return end
+	if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then return end
+	local delta = input.Position - resizeStartInput
+	local scaleDelta
+	if resizingHandle == RightHandle then
+		scaleDelta = delta.X / BASE_WIDTH
+	elseif resizingHandle == BottomHandle then
+		scaleDelta = delta.Y / BASE_HEIGHT
+	else
+		scaleDelta = ((delta.X / BASE_WIDTH) + (delta.Y / BASE_HEIGHT)) / 2
+	end
+	SetGuiScale(resizeStartScale + scaleDelta)
+end)
+UserInputService.InputEnded:Connect(function(input)
+	if not resizingHandle then return end
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+	resizingHandle = nil
 end)
