@@ -44,12 +44,10 @@ ScreenGui.Name = "SerenityMM2"
 ScreenGui.Parent = CoreGui
 ScreenGui.ResetOnSpawn = false
 
--- Taller than UE/QOD/AH's shared 280x400 -- MM2 has more rows (Coin Farm/Auto Gun/Auto
--- Stab/Auto Shoot/Role Reveal/Flings, plus two more when the Flings accordion is open) than
--- fit comfortably in that shared height, which was making the scrollbar's own draggable
--- thumb tiny and most of the panel a scroll-fest. Only this panel's height changed -- the
--- other three still share their own matching 400.
-local FULL_HEIGHT = 520
+-- Standardized to the same 280x400 size as UE/QOD's panels, so one background image size
+-- covers all three game windows. (Reverted back to 400 -- the scrollbar thumb being short
+-- gets fixed by making the bar itself bigger below instead of growing the whole panel.)
+local FULL_HEIGHT = 400
 local MINI_HEIGHT = 44
 
 local PanelFrame = Instance.new("Frame")
@@ -219,12 +217,10 @@ ContentScroll.Size = UDim2.new(1, 0, 1, -MINI_HEIGHT - 8)
 ContentScroll.Position = UDim2.new(0, 0, 0, MINI_HEIGHT + 8)
 ContentScroll.BackgroundTransparency = 1
 ContentScroll.BorderSizePixel = 0
-ContentScroll.ScrollBarThickness = 3
+-- Thicker than the hub-wide default 3px -- a bigger, easier-to-grab bar, per request
+-- (staying visible here, unlike Main's scrollbars below, which go invisible instead).
+ContentScroll.ScrollBarThickness = 8
 ContentScroll.ScrollBarImageColor3 = AccentColor
--- Fully transparent -- the draggable strip itself still works exactly the same (native
--- scrollbar hit-testing isn't tied to its own visual opacity), it just doesn't paint that
--- light-gray bar down the side anymore. Wheel/touch scrolling is untouched either way.
-ContentScroll.ScrollBarImageTransparency = 1
 ContentScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 ContentScroll.ElasticBehavior = Enum.ElasticBehavior.Never
 ContentScroll.Parent = PanelFrame
@@ -657,7 +653,25 @@ local function IsAlreadyFlung(targetRoot)
 	return targetRoot.AssemblyLinearVelocity.Magnitude > FLING_ALREADY_FLUNG_SPEED
 end
 
+-- "Only happening on my screen" confirms the real problem: a client can only move a part in
+-- a way that actually replicates to everyone else if it owns that part's physics, and
+-- Roblox doesn't hand a client ownership of ANOTHER player's character by default. Roblox
+-- does auto-assign ownership of an unanchored part to whichever client is currently closest
+-- to it, though, so this now moves your own character right up against the target first and
+-- gives that a moment to take effect before spinning them -- which gives the fling a real
+-- shot at actually landing instead of only ever rendering on your own screen. This isn't a
+-- guaranteed fix: the handoff is decided by the server, not something a script can force on
+-- demand, and some games explicitly lock character ownership specifically to prevent this.
+-- If it's still only visible locally after this, that's this game not budging on ownership,
+-- not a bug in the approach.
 local function DoFling(targetRoot)
+	local character = Player.Character
+	local localRoot = character and character:FindFirstChild("HumanoidRootPart")
+	if localRoot then
+		localRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 2)
+		task.wait(0.3)
+	end
+
 	local startTime = os.clock()
 	local spin = 0
 	while os.clock() - startTime < FLING_DURATION and targetRoot.Parent do
