@@ -3824,10 +3824,10 @@ end
 function CreateGameRow(parent, y, gameTitle, url)
 	local row = Instance.new("Frame")
 	row.Name = gameTitle:gsub("%s+", "") .. "Row"
-	-- Narrowed from the full 100% width -- otherwise the row's own right edge sits exactly
-	-- where the scrollbar renders, covering the last few pixels (including the rounded
-	-- corner) instead of leaving it visible.
-	row.Size = UDim2.new(1, -10, 0, 44)
+	-- Back to full width -- the -10 used to leave room for the visible scrollbar on the
+	-- right, which made the row sit closer to the left edge than the right (asymmetric).
+	-- Now that the scrollbar itself is invisible, that reserved gap isn't needed anymore.
+	row.Size = UDim2.new(1, 0, 0, 44)
 	row.Position = UDim2.new(0, 0, 0, y)
 	row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 	row.BackgroundTransparency = RowTransparencyValue / 100
@@ -3920,10 +3920,10 @@ CreateGameRow(ScriptsPage, 164, "Undead Expedition", "https://raw.githubusercont
 function CreateUtilityRow(parent, y, title, url)
 	local row = Instance.new("Frame")
 	row.Name = title:gsub("%s+", "") .. "Row"
-	-- Narrowed from the full 100% width -- otherwise the row's own right edge sits exactly
-	-- where the scrollbar renders, covering the last few pixels (including the rounded
-	-- corner) instead of leaving it visible.
-	row.Size = UDim2.new(1, -10, 0, 44)
+	-- Back to full width -- the -10 used to leave room for the visible scrollbar on the
+	-- right, which made the row sit closer to the left edge than the right (asymmetric).
+	-- Now that the scrollbar itself is invisible, that reserved gap isn't needed anymore.
+	row.Size = UDim2.new(1, 0, 0, 44)
 	row.Position = UDim2.new(0, 0, 0, y)
 	row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 	row.BackgroundTransparency = RowTransparencyValue / 100
@@ -4316,7 +4316,7 @@ do
 	LocalCountLabel.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 276)
 	LocalCountLabel.BackgroundTransparency = 1
 	LocalCountLabel.BorderSizePixel = 0
-	LocalCountLabel.Text = "20 / 200"
+	LocalCountLabel.Text = "19 / 200"
 	LocalCountLabel.Font = UIFont
 	LocalCountLabel.TextSize = 7
 	LocalCountLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
@@ -4866,6 +4866,15 @@ function ToggleGUI()
 	MaximizeButton.Visible = not minimized
 	MiniButton.Visible = not minimized
 	GuiDestroyButton.Visible = not minimized
+	-- Hiding the whole ScaleRoot subtree while minimized (rather than relying on the
+	-- individual Visible=false flags already set on most of what's inside it) is the actual
+	-- fix for the dragging choppiness -- Roblox still recomputes layout for an invisible
+	-- GuiObject's descendants when an ancestor like MainFrame moves, and ScaleRoot is a big
+	-- subtree (every page, every row, all of it). Collapsing the whole branch at the root
+	-- skips that recompute entirely while the minimized pill is being dragged around, instead
+	-- of the engine quietly redoing it every frame for content nobody can even see. TimeLabel
+	-- lives outside ScaleRoot already (see its own comment further down) so it's unaffected.
+	if ScaleRoot then ScaleRoot.Visible = not minimized end
 	-- The minimized pill is a fixed size no matter what Adjust Gui Size is currently set
 	-- to -- ApplyGuiScale (called below) forces ScaleRootScale back to 1 while minimized
 	-- for exactly this reason, so it only ever needs MINI_SIZE set directly here; the
@@ -5161,7 +5170,7 @@ local guiScale = type(SavedKeybinds.GuiScale) == "number" and SavedKeybinds.GuiS
 -- plus this frame tracking 100% of that already-grown size) and fight itself instead of
 -- compounding cleanly. Locking this to the original fixed-pixel design size and letting
 -- ScaleRootScale alone stretch it to match is the only way the two stay in sync.
-local ScaleRoot = Instance.new("Frame")
+ScaleRoot = Instance.new("Frame")
 ScaleRoot.Name = "ScaleRoot"
 ScaleRoot.Size = UDim2.new(0, BASE_WIDTH, 0, BASE_HEIGHT)
 ScaleRoot.BackgroundTransparency = 1
