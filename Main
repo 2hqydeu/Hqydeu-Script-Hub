@@ -5106,9 +5106,15 @@ local BASE_WIDTH, BASE_HEIGHT = 560, 430
 AdjustGuiSizeEnabled = false
 local guiScale = type(SavedKeybinds.GuiScale) == "number" and SavedKeybinds.GuiScale or 1
 
+-- Fixed at the BASE (unscaled) footprint, NOT 1,0,1,0 relative to MainFrame -- MainFrame's
+-- own Size is ALSO being driven straight to BASE*guiScale below, so a Scale-relative size
+-- here would have the resize applied through two paths at once (MainFrame's own growth,
+-- plus this frame tracking 100% of that already-grown size) and fight itself instead of
+-- compounding cleanly. Locking this to the original fixed-pixel design size and letting
+-- ScaleRootScale alone stretch it to match is the only way the two stay in sync.
 local ScaleRoot = Instance.new("Frame")
 ScaleRoot.Name = "ScaleRoot"
-ScaleRoot.Size = UDim2.new(1, 0, 1, 0)
+ScaleRoot.Size = UDim2.new(0, BASE_WIDTH, 0, BASE_HEIGHT)
 ScaleRoot.BackgroundTransparency = 1
 ScaleRoot.BorderSizePixel = 0
 ScaleRoot.Parent = MainFrame
