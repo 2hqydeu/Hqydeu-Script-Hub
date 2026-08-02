@@ -4042,7 +4042,7 @@ function SlideOverlayOpen(overlay, restPosition, enterFromAbove)
 	)
 	overlay.Position = startPosition
 	overlay.Visible = true
-	local tween = TweenService:Create(overlay, TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = restPosition})
+	local tween = TweenService:Create(overlay, TweenInfo.new(0.45, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Position = restPosition})
 	tween:Play()
 	tween.Completed:Connect(function(state)
 		if state ~= Enum.PlaybackState.Completed or overlaySlideTokens[overlay] ~= myToken then return end
@@ -4062,7 +4062,7 @@ function SlideOverlayClose(overlay, restPosition, exitDownward)
 		restPosition.X.Scale, restPosition.X.Offset,
 		restPosition.Y.Scale, restPosition.Y.Offset + (exitDownward and travel or -travel)
 	)
-	local tween = TweenService:Create(overlay, TweenInfo.new(0.24, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {Position = exitPosition})
+	local tween = TweenService:Create(overlay, TweenInfo.new(0.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Position = exitPosition})
 	tween:Play()
 	tween.Completed:Connect(function(state)
 		if state ~= Enum.PlaybackState.Completed or overlaySlideTokens[overlay] ~= myToken then return end
@@ -4797,12 +4797,14 @@ function ToggleGUI()
 	if minimized then
 		preMinimizePosition = MainFrame.Position
 		-- Both popups anchor to controls that are about to shrink/disappear -- rather
-		-- than have them awkwardly follow a minimizing window, just close them.
+		-- than have them awkwardly follow a minimizing window, just close them. Favorites
+		-- is deliberately left alone here (per request) -- it stays open across a
+		-- minimize/restore cycle instead of getting force-closed and needing to be
+		-- reopened by hand afterward.
 		CloseKeybindClearPrompt()
 		CloseESPColorPicker()
 		DestroyConfirmPopup.Visible = false
 		CloseSettingsOverlay()
-		if CloseFavoritesOverlay then CloseFavoritesOverlay() end
 		if CloseKeybindEditorOverlay then CloseKeybindEditorOverlay() end
 	end
 	local targetPosition
