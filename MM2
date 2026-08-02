@@ -295,7 +295,7 @@ local function StyleAsToggleSwitch(toggle)
 	Refresh(false)
 end
 
-local function CreateFeatureRow(order, labelText, isNavButton)
+local function CreateFeatureRow(order, labelText, isNavButton, parent)
 	local row = Instance.new("Frame")
 	row.Name = labelText:gsub("%s+", "") .. "Row"
 	row.LayoutOrder = order or nextRowOrder
@@ -304,7 +304,7 @@ local function CreateFeatureRow(order, labelText, isNavButton)
 	row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 	row.BackgroundTransparency = GameRowTransparency
 	row.BorderSizePixel = 0
-	row.Parent = ContentScroll
+	row.Parent = parent or ContentScroll
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
 
 	local label = Instance.new("TextLabel")
@@ -356,6 +356,13 @@ local AutoStabRow, AutoStabToggle = CreateFeatureRow(3, "Auto Stab")
 local AutoShootRow, AutoShootToggle = CreateFeatureRow(4, "Auto Shoot")
 local RoleRevealRow, RoleRevealButton = CreateFeatureRow(5, "Role Reveal", true)
 RoleRevealButton.Text = "Open"
+
+-- Flings row placeholder -- LayoutOrder puts it right after Role Reveal in the list, but the
+-- actual accordion contents/logic are built further down (after CurrentMurderer/CurrentSheriff
+-- are declared, since the fling buttons need to close over those same locals rather than a
+-- same-named global that'd never actually get updated).
+local FlingsRow, FlingsButton = CreateFeatureRow(6, "Flings", true)
+FlingsButton.Text = "Open"
 
 -- Role Reveal popup: Murderer/Sheriff avatar + name, each its own full-width row instead of
 -- the old side-by-side columns, so there's room to breathe.
@@ -517,6 +524,155 @@ end)
 -- and combat features always have current info.
 local CurrentMurderer, CurrentSheriff = nil, nil
 local lastMurdererAvatarId, lastSheriffAvatarId = 0, 0
+
+-- Flings: a small inline accordion (same collapse-in-place trick as AH/QOD's ESP Options --
+-- an AutomaticSize container with Visible toggled, so the ContentScroll's own UIListLayout
+-- treats it as zero-height while closed and reflows automatically) holding two one-shot
+-- fling buttons instead of a separate popup, since there's only ever two things in it. Built
+-- here (rather than back with FlingsRow/FlingsButton up in the row-list, which only needed
+-- CreateFeatureRow) because the click handlers below need to close over CurrentMurderer/
+-- CurrentSheriff, and those are locals -- referencing them from code declared before this
+-- point would silently resolve to an unrelated global instead of these actual tracked roles.
+local FlingsContainer = Instance.new("Frame")
+FlingsContainer.Name = "FlingsContainer"
+FlingsContainer.LayoutOrder = 7
+FlingsContainer.Size = UDim2.new(1, 0, 0, 0)
+FlingsContainer.AutomaticSize = Enum.AutomaticSize.Y
+FlingsContainer.BackgroundTransparency = 1
+FlingsContainer.Visible = false
+FlingsContainer.Parent = ContentScroll
+
+local FlingsLayout = Instance.new("UIListLayout")
+FlingsLayout.Padding = UDim.new(0, 8)
+FlingsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+FlingsLayout.Parent = FlingsContainer
+
+FlingsButton.MouseButton1Click:Connect(function()
+	FlingsContainer.Visible = not FlingsContainer.Visible
+end)
+
+local FlingMurdererRow, FlingMurdererButton = CreateFeatureRow(1, "Fling Murderer", true, FlingsContainer)
+FlingMurdererButton.Text = "Fling"
+local FlingSheriffRow, FlingSheriffButton = CreateFeatureRow(2, "Fling Sheriff", true, FlingsContainer)
+FlingSheriffButton.Text = "Fling"
+
+-- "Already flung?" confirmation -- small centered card (own copy rather than reusing Role
+-- Reveal's popup shell, which is sized/laid out for a name+avatar list, not two lines of
+-- text and two buttons). Blocks the calling code via a BindableEvent:Wait() rather than a
+-- callback, so FlingPlayer below can just read a plain true/false and carry on inline.
+local FlingConfirmPopup = Instance.new("Frame")
+FlingConfirmPopup.Name = "FlingConfirmPopup"
+FlingConfirmPopup.AnchorPoint = Vector2.new(0.5, 0.5)
+FlingConfirmPopup.Size = UDim2.new(0, 220, 0, 112)
+FlingConfirmPopup.Position = UDim2.new(0.5, 0, 0.5, 0)
+FlingConfirmPopup.BackgroundColor3 = FrameColor
+FlingConfirmPopup.BorderSizePixel = 0
+FlingConfirmPopup.Visible = false
+FlingConfirmPopup.ZIndex = 50
+FlingConfirmPopup.Parent = ScreenGui
+Instance.new("UICorner", FlingConfirmPopup).CornerRadius = UDim.new(0, 10)
+local flingConfirmStroke = Instance.new("UIStroke")
+flingConfirmStroke.Color = AccentColor
+flingConfirmStroke.Transparency = 0.75
+flingConfirmStroke.Parent = FlingConfirmPopup
+
+local FlingConfirmLabel = Instance.new("TextLabel")
+FlingConfirmLabel.Name = "Label"
+FlingConfirmLabel.Size = UDim2.new(1, -20, 0, 52)
+FlingConfirmLabel.Position = UDim2.new(0, 10, 0, 10)
+FlingConfirmLabel.BackgroundTransparency = 1
+FlingConfirmLabel.Text = "Player is already flung. Fling again?"
+FlingConfirmLabel.Font = UIFont
+FlingConfirmLabel.TextSize = 14
+FlingConfirmLabel.TextWrapped = true
+FlingConfirmLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+FlingConfirmLabel.ZIndex = 51
+FlingConfirmLabel.Parent = FlingConfirmPopup
+
+local FlingConfirmYes = Instance.new("TextButton")
+FlingConfirmYes.Name = "Yes"
+FlingConfirmYes.Size = UDim2.new(0, 96, 0, 32)
+FlingConfirmYes.Position = UDim2.new(0, 10, 1, -42)
+FlingConfirmYes.BackgroundColor3 = ToggleOnColor
+FlingConfirmYes.BorderSizePixel = 0
+FlingConfirmYes.Text = "Fling Again"
+FlingConfirmYes.Font = UIFont
+FlingConfirmYes.TextSize = 13
+FlingConfirmYes.TextColor3 = Color3.fromRGB(20, 20, 20)
+FlingConfirmYes.ZIndex = 51
+FlingConfirmYes.Parent = FlingConfirmPopup
+Instance.new("UICorner", FlingConfirmYes).CornerRadius = UDim.new(0, 8)
+AddPressBounce(FlingConfirmYes)
+
+local FlingConfirmNo = Instance.new("TextButton")
+FlingConfirmNo.Name = "No"
+FlingConfirmNo.Size = UDim2.new(0, 96, 0, 32)
+FlingConfirmNo.Position = UDim2.new(1, -106, 1, -42)
+FlingConfirmNo.BackgroundColor3 = ToggleOffColor
+FlingConfirmNo.BorderSizePixel = 0
+FlingConfirmNo.Text = "Cancel"
+FlingConfirmNo.Font = UIFont
+FlingConfirmNo.TextSize = 13
+FlingConfirmNo.TextColor3 = Color3.fromRGB(255, 255, 255)
+FlingConfirmNo.ZIndex = 51
+FlingConfirmNo.Parent = FlingConfirmPopup
+Instance.new("UICorner", FlingConfirmNo).CornerRadius = UDim.new(0, 8)
+AddPressBounce(FlingConfirmNo)
+
+local FlingConfirmEvent = Instance.new("BindableEvent")
+local flingConfirmBusy = false
+local function ConfirmFlingAgain()
+	if flingConfirmBusy then return false end
+	flingConfirmBusy = true
+	FlingConfirmPopup.Visible = true
+	local result = FlingConfirmEvent.Event:Wait()
+	FlingConfirmPopup.Visible = false
+	flingConfirmBusy = false
+	return result
+end
+FlingConfirmYes.MouseButton1Click:Connect(function() FlingConfirmEvent:Fire(true) end)
+FlingConfirmNo.MouseButton1Click:Connect(function() FlingConfirmEvent:Fire(false) end)
+
+-- Standard exploit fling: a short, very strong BodyVelocity burst (mostly upward, a little
+-- sideways scatter so it doesn't look like a perfectly straight launch) then removed,
+-- letting normal physics take back over. FLING_ALREADY_FLUNG_SPEED is just "is this root
+-- already moving way faster than anything in-game would cause on its own" -- comfortably
+-- above normal run/jump speed, comfortably below what the burst itself produces.
+local FLING_ALREADY_FLUNG_SPEED = 300
+local FLING_BURST_DURATION = 0.15
+
+local function IsAlreadyFlung(targetRoot)
+	return targetRoot.AssemblyLinearVelocity.Magnitude > FLING_ALREADY_FLUNG_SPEED
+end
+
+local function DoFling(targetRoot)
+	local flingForce = Instance.new("BodyVelocity")
+	flingForce.Name = "SerenityFling"
+	flingForce.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+	flingForce.Velocity = Vector3.new(math.random(-400, 400), 900, math.random(-400, 400))
+	flingForce.Parent = targetRoot
+	task.wait(FLING_BURST_DURATION)
+	if flingForce.Parent then flingForce:Destroy() end
+end
+
+local function FlingPlayer(targetPlayer)
+	local character = targetPlayer and targetPlayer.Character
+	local targetRoot = character and character:FindFirstChild("HumanoidRootPart")
+	if not targetRoot then return end
+	if IsAlreadyFlung(targetRoot) then
+		if not ConfirmFlingAgain() then return end
+	end
+	DoFling(targetRoot)
+end
+
+FlingMurdererButton.MouseButton1Click:Connect(function()
+	if not CurrentMurderer then return end
+	task.spawn(FlingPlayer, CurrentMurderer)
+end)
+FlingSheriffButton.MouseButton1Click:Connect(function()
+	if not CurrentSheriff then return end
+	task.spawn(FlingPlayer, CurrentSheriff)
+end)
 
 local function PlayerHasTool(targetPlayer, toolName)
 	local wantedName = toolName:lower()
@@ -1045,13 +1201,19 @@ RunService.Heartbeat:Connect(function()
 	end
 end)
 
--- Auto Stab: equips the Knife (only fires while you're the actual murderer), prioritizes
--- the sheriff, cycles remaining targets, and swings via firetouchinterest -- falls back to
--- a temporary hitbox enlargement on executors without firetouchinterest.
+-- Auto Stab ("kill everyone as murderer"): only ever engages while you're the actual
+-- murderer. Instead of the old version's one-target-per-cycle approach (wait for someone to
+-- wander into range, swing, move to the next), this sweeps every alive player in turn --
+-- teleports YOU to point-blank range of each one, stabs, and moves to the next, clearing
+-- everyone in roughly one pass instead of trickling kills in one at a time. Teleports you
+-- to them rather than them to you: silently moving another player's character via CFrame
+-- has no real effect against a properly server-validated game (you don't have network
+-- ownership of their parts), so it'd just be a local visual illusion with nothing landing --
+-- moving yourself is what actually gets you into firetouchinterest range, the same hit
+-- mechanism the old version already proved works here. Sheriff still goes first (biggest
+-- threat), everyone else follows in whatever order Players:GetPlayers() returns them.
 local autoStabEnabled = false
-local killHitboxOriginals = {}
-local lastKnifeSwing = 0
-local stabTargetIndex = 0
+local autoStabSweeping = false
 
 local function GetLocalKnife()
 	local character = Player.Character
@@ -1061,110 +1223,81 @@ local function GetLocalKnife()
 	return knife and knife:IsA("Tool") and knife or nil
 end
 
+-- Kept as a no-op-safe stub (still called from CloseButton's cleanup below) even though the
+-- sweep version no longer enlarges hitboxes -- firetouchinterest is assumed available, since
+-- that's what the previous version already relied on as its primary path here.
 local function RestoreKillHitboxes()
-	for part, original in pairs(killHitboxOriginals) do
-		if part and part.Parent then
-			part.Size = original.Size
-			part.Transparency = original.Transparency
-			part.CanCollide = original.CanCollide
-			part.CanTouch = original.CanTouch
-			part.Massless = original.Massless
-		end
-	end
-	killHitboxOriginals = {}
+end
+
+local function StabTarget(knife, targetRoot)
+	local knifeHandle = knife:FindFirstChild("Handle") or knife:FindFirstChildWhichIsA("BasePart")
+	if not knifeHandle or type(firetouchinterest) ~= "function" then return end
+	pcall(function() knife:Activate() end)
+	pcall(function()
+		firetouchinterest(knifeHandle, targetRoot, 0)
+		task.wait(0.03)
+		firetouchinterest(knifeHandle, targetRoot, 1)
+	end)
 end
 
 AutoStabToggle.MouseButton1Click:Connect(function()
 	autoStabEnabled = not autoStabEnabled
 	AutoStabToggle.Text = autoStabEnabled and "On" or "Off"
-	if not autoStabEnabled then RestoreKillHitboxes() end
 end)
 
-RunService.Heartbeat:Connect(function()
-	if not ScreenGui.Parent then return end
-	if not autoStabEnabled then return end
-	local knife = GetLocalKnife()
-	local character = Player.Character
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if CurrentMurderer ~= Player or not knife or not humanoid or humanoid.Health <= 0 then
-		RestoreKillHitboxes()
-		return
-	end
-	if knife.Parent ~= character then
-		pcall(function() humanoid:EquipTool(knife) end)
-	end
+task.spawn(function()
+	while true do
+		task.wait(0.1)
+		if not ScreenGui.Parent then return end
+		if autoStabEnabled and not autoStabSweeping then
+			local knife = GetLocalKnife()
+			local character = Player.Character
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			local localRoot = character and character:FindFirstChild("HumanoidRootPart")
+			local canSweep = CurrentMurderer == Player and knife and humanoid and humanoid.Health > 0 and localRoot
 
-	local aliveTargets = {}
-	local priorityRoot = nil
-	if CurrentSheriff and CurrentSheriff ~= Player then
-		local sheriffCharacter = CurrentSheriff.Character
-		local sheriffHumanoid = sheriffCharacter and sheriffCharacter:FindFirstChildOfClass("Humanoid")
-		local sheriffRoot = sheriffCharacter and sheriffCharacter:FindFirstChild("HumanoidRootPart")
-		if sheriffHumanoid and sheriffHumanoid.Health > 0 and sheriffRoot then priorityRoot = sheriffRoot end
-	end
-	if priorityRoot then
-		for part, original in pairs(killHitboxOriginals) do
-			if part ~= priorityRoot then
-				if part and part.Parent then
-					part.Size = original.Size
-					part.Transparency = original.Transparency
-					part.CanCollide = original.CanCollide
-					part.CanTouch = original.CanTouch
-					part.Massless = original.Massless
-				end
-				killHitboxOriginals[part] = nil
+			if canSweep and knife.Parent ~= character then
+				pcall(function() humanoid:EquipTool(knife) end)
 			end
-		end
-	end
 
-	for _, targetPlayer in ipairs(Players:GetPlayers()) do
-		if targetPlayer ~= Player then
-			local targetCharacter = targetPlayer.Character
-			local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
-			local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
-			local isEligible = targetHumanoid and targetHumanoid.Health > 0 and targetRoot and (not priorityRoot or targetRoot == priorityRoot)
-			if isEligible then
-				table.insert(aliveTargets, targetRoot)
-				if type(firetouchinterest) ~= "function" and not killHitboxOriginals[targetRoot] then
-					killHitboxOriginals[targetRoot] = {
-						Size = targetRoot.Size, Transparency = targetRoot.Transparency,
-						CanCollide = targetRoot.CanCollide, CanTouch = targetRoot.CanTouch, Massless = targetRoot.Massless,
-					}
-					targetRoot.Size = Vector3.new(18, 18, 18)
-					targetRoot.Transparency = 1
-					targetRoot.CanCollide = false
-					targetRoot.CanTouch = true
-					targetRoot.Massless = true
+			local targets = {}
+			if canSweep then
+				if CurrentSheriff and CurrentSheriff ~= Player then
+					local sheriffCharacter = CurrentSheriff.Character
+					local sheriffHumanoid = sheriffCharacter and sheriffCharacter:FindFirstChildOfClass("Humanoid")
+					local sheriffRoot = sheriffCharacter and sheriffCharacter:FindFirstChild("HumanoidRootPart")
+					if sheriffHumanoid and sheriffHumanoid.Health > 0 and sheriffRoot then table.insert(targets, sheriffRoot) end
+				end
+				for _, targetPlayer in ipairs(Players:GetPlayers()) do
+					if targetPlayer ~= Player and targetPlayer ~= CurrentSheriff then
+						local targetCharacter = targetPlayer.Character
+						local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
+						local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+						if targetHumanoid and targetHumanoid.Health > 0 and targetRoot then
+							table.insert(targets, targetRoot)
+						end
+					end
 				end
 			end
-		end
-	end
 
-	local now = os.clock()
-	if now - lastKnifeSwing >= 0.1 then
-		lastKnifeSwing = now
-		pcall(function() knife:Activate() end)
-		if #aliveTargets > 0 then
-			stabTargetIndex = (stabTargetIndex % #aliveTargets) + 1
-			local targetRoot = aliveTargets[stabTargetIndex]
-			local knifeHandle = knife:FindFirstChild("Handle") or knife:FindFirstChildWhichIsA("BasePart")
-			if knifeHandle and type(firetouchinterest) == "function" then
-				task.spawn(function()
-					pcall(function()
-						firetouchinterest(knifeHandle, targetRoot, 0)
-						task.wait(0.03)
-						firetouchinterest(knifeHandle, targetRoot, 1)
-					end)
-				end)
+			if canSweep and #targets > 0 then
+				autoStabSweeping = true
+				local returnCFrame = localRoot.CFrame
+				for _, targetRoot in ipairs(targets) do
+					local stillSweeping = autoStabEnabled and CurrentMurderer == Player and localRoot.Parent
+					if not stillSweeping then break end
+					if targetRoot.Parent then
+						SetRootUpright(localRoot, targetRoot.CFrame, (targetRoot.CFrame * CFrame.new(0, 0, 2)).Position)
+						localRoot.AssemblyLinearVelocity = Vector3.zero
+						localRoot.AssemblyAngularVelocity = Vector3.zero
+						task.wait()
+						StabTarget(knife, targetRoot)
+						task.wait(0.05)
+					end
+				end
+				if localRoot.Parent then localRoot.CFrame = returnCFrame end
+				autoStabSweeping = false
 			end
-		end
-		local localRoot = character and character:FindFirstChild("HumanoidRootPart")
-		if localRoot then
-			localRoot.AssemblyAngularVelocity = Vector3.zero
-			if localRoot.AssemblyLinearVelocity.Magnitude > 80 then
-				localRoot.AssemblyLinearVelocity = localRoot.AssemblyLinearVelocity.Unit * 18
-			end
-			SetRootUpright(localRoot, localRoot.CFrame, localRoot.Position)
 		end
 	end
 end)
