@@ -452,8 +452,38 @@ AddPressBounce(SettingsBackButton)
 
 -- Minimize + destroy, smallest they can be while still tappable -- farthest right is
 -- destroy (X), minimize sits directly to its left.
--- Traffic-light style: tiny plain colored circles (yellow = minimize, red = close), no
--- glyph inside either -- a thin darker ring gives them definition without needing text.
+-- Traffic-light style: tiny plain colored circles (green = maximize, yellow = minimize,
+-- red = close), no glyph inside any of them -- a thin darker ring gives them definition
+-- without needing text.
+MaximizeButton = Instance.new("TextButton")
+MaximizeButton.Name = "MaximizeButton"
+MaximizeButton.Size = UDim2.new(0, 12, 0, 12)
+MaximizeButton.Position = UDim2.new(1, -64, 0, HEADER_HEIGHT / 2 - 6)
+MaximizeButton.BackgroundColor3 = Color3.fromRGB(60, 200, 90)
+MaximizeButton.BorderSizePixel = 0
+MaximizeButton.Text = ""
+MaximizeButton.AutoButtonColor = false
+MaximizeButton.Parent = MainFrame
+Instance.new("UICorner", MaximizeButton).CornerRadius = UDim.new(1, 0)
+maximizeButtonStroke = Instance.new("UIStroke")
+maximizeButtonStroke.Color = Color3.fromRGB(30, 145, 60)
+maximizeButtonStroke.Thickness = 1
+maximizeButtonStroke.Parent = MaximizeButton
+MaximizeButton.MouseEnter:Connect(function()
+	TweenService:Create(MaximizeButton, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(105, 222, 130)}):Play()
+end)
+MaximizeButton.MouseLeave:Connect(function()
+	TweenService:Create(MaximizeButton, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(60, 200, 90)}):Play()
+end)
+AddPressBounce(MaximizeButton)
+-- Defined down in the Adjust Gui Size section (needs guiScale/SetGuiScale/MAX_GUI_SCALE,
+-- all declared later) -- guarded since this connects long before that section runs, even
+-- though by the time a real click can ever fire, the whole script has already loaded.
+MaximizeButton.MouseButton1Click:Connect(function()
+	PlayClick()
+	if type(ToggleMaximizeGui) == "function" then ToggleMaximizeGui() end
+end)
+
 MiniButton = Instance.new("TextButton")
 MiniButton.Name = "MiniButton"
 MiniButton.Size = UDim2.new(0, 12, 0, 12)
@@ -4279,7 +4309,7 @@ do
 	LocalCountLabel.Position = UDim2.new(0, 0, 0, SETTINGS_TOP + 276)
 	LocalCountLabel.BackgroundTransparency = 1
 	LocalCountLabel.BorderSizePixel = 0
-	LocalCountLabel.Text = "21 / 200"
+	LocalCountLabel.Text = "20 / 200"
 	LocalCountLabel.Font = UIFont
 	LocalCountLabel.TextSize = 7
 	LocalCountLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
@@ -4822,9 +4852,17 @@ function ToggleGUI()
 	TabDivider.Visible = not minimized
 	ContentArea.Visible = not minimized
 	SettingsIconButton.Visible = not minimized
+	MaximizeButton.Visible = not minimized
 	MiniButton.Visible = not minimized
 	GuiDestroyButton.Visible = not minimized
-	MainFrame.Size = minimized and MINI_SIZE or FULL_SIZE
+	-- The minimized pill is a fixed size no matter what Adjust Gui Size is currently set
+	-- to -- ApplyGuiScale (called below) forces ScaleRootScale back to 1 while minimized
+	-- for exactly this reason, so it only ever needs MINI_SIZE set directly here; the
+	-- FULL_SIZE case is left to ApplyGuiScale so it always matches the current guiScale.
+	if minimized then
+		MainFrame.Size = MINI_SIZE
+	end
+	if type(ApplyGuiScale) == "function" then ApplyGuiScale() end
 	MainCorner.CornerRadius = minimized and MINI_CORNER or FULL_CORNER
 	local timeGoal = minimized and MINI_TIME_GOAL or NORMAL_TIME_GOAL
 	TimeLabel.Position = timeGoal.Position
@@ -5132,9 +5170,16 @@ end
 -- short of overflowing a typical viewport on the high end.
 local MIN_GUI_SCALE, MAX_GUI_SCALE = 0.65, 1.6
 
-local function ApplyGuiScale()
+-- Global, not local -- ToggleGUI (defined earlier, minimize/restore) calls this too, so the
+-- minimized pill always renders at a fixed, guiScale-independent size no matter how big the
+-- full-size window has been dragged. Pinned to Scale=1 while minimized rather than left at
+-- whatever guiScale currently is -- otherwise the pill's own internal layout (clock/icon,
+-- both designed against the small fixed MINI_SIZE footprint) would get stretched by
+-- whatever scale the full-size window happens to be set to, distorting a completely
+-- unrelated fixed-size element.
+function ApplyGuiScale()
 	FULL_SIZE = UDim2.new(0, math.floor(BASE_WIDTH * guiScale), 0, math.floor(BASE_HEIGHT * guiScale))
-	ScaleRootScale.Scale = guiScale
+	ScaleRootScale.Scale = minimized and 1 or guiScale
 	if not minimized then
 		MainFrame.Size = FULL_SIZE
 	end
@@ -5146,6 +5191,24 @@ function SetGuiScale(newScale)
 	ApplyGuiScale()
 	SavedKeybinds.GuiScale = guiScale
 	SavePersistentSettings()
+end
+
+-- Green traffic-light button -- toggles straight to the largest size Adjust Gui Size
+-- supports (same MIN/MAX_GUI_SCALE clamp the resize handles already respect, so "full
+-- screen" here still means "as big as this system was actually designed/tested to go", not
+-- a true edge-to-edge OS fullscreen), remembering whatever scale it was at so a second
+-- click restores it exactly instead of just snapping back to the 1x default.
+preMaximizeScale = nil
+function ToggleMaximizeGui()
+	if minimized then return end
+	if preMaximizeScale and guiScale >= MAX_GUI_SCALE - 0.001 then
+		SetGuiScale(preMaximizeScale)
+		preMaximizeScale = nil
+	else
+		preMaximizeScale = guiScale
+		SetGuiScale(MAX_GUI_SCALE)
+	end
+	MainFrame.Position = ClampToViewport(MainFrame.Position, MainFrame.Size)
 end
 
 -- Three resize grab zones -- right edge (width), bottom edge (height), and the bottom-right
