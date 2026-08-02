@@ -669,7 +669,7 @@ function SelectTab(name)
 	-- close it the same way minimizing already does. Guarded since CloseESPColorPicker is
 	-- defined much further down (in the Visuals tab's own do block).
 	if CloseESPColorPicker then CloseESPColorPicker() end
-	local tabTweenInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local tabTweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
 	for tabName, entry in pairs(Tabs) do
 		-- Button.BackgroundColor3 is already the same purple the toggle switches fill with
 		-- when On -- it just read as a faint tint at 0.85 transparency. Dropping
@@ -719,7 +719,7 @@ function SelectTab(name)
 	newEntry.Page.Position = UDim2.new(0, enterOffset, 0, 0)
 	newEntry.Page.Visible = true
 
-	local slideInfo = TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+	local slideInfo = TweenInfo.new(0.45, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
 	local outTween = TweenService:Create(oldEntry.Page, slideInfo, {Position = UDim2.new(0, exitOffset, 0, 0)})
 	local inTween = TweenService:Create(newEntry.Page, slideInfo, {Position = UDim2.new(0, 0, 0, 0)})
 	PageTweens[oldEntry.Page] = outTween
