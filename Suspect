@@ -406,6 +406,21 @@ RunService.Heartbeat:Connect(function()
 end)
 
 -- ============================================================================
+-- Shared: same trick Main's own Instant Prompt feature uses -- a ProximityPrompt's
+-- HoldDuration means fireproximityprompt has to actually sit through that whole hold
+-- (some executor implementations do simulate the real hold, not an instant tap), and
+-- RequiresLineOfSight can reject the trigger entirely depending on camera angle. Zeroing
+-- both right before firing makes every prompt below trigger instantly and reliably instead
+-- of however long/finicky its real configured hold actually is.
+-- ============================================================================
+local function MakePromptInstant(prompt)
+	pcall(function()
+		prompt.HoldDuration = 0
+		prompt.RequiresLineOfSight = false
+	end)
+end
+
+-- ============================================================================
 -- Auto Task: TaskRemote2 pushes the world Part the server currently wants you at (same
 -- object TaskLocal's own dumped script listens for) -- walk to it and trigger its prompt
 -- the same way. Once triggered, the server pushes a task TYPE (1/2/3) over TaskRemote,
@@ -414,6 +429,19 @@ end)
 -- would read and clicks the same buttons a person would click, so it's driving the actual
 -- completion path (TaskHandler's own script is what fires the real TaskRemote:FireServer
 -- true/false) rather than trying to fake a result and hope the server doesn't check.
+--
+-- Monitor/CodePad/Pressing all live as permanent template children directly under
+-- StarterGui.TasksGui (confirmed by hand, not guessed) -- CodePad and Pressing get reused
+-- in place (TaskHandler just flips CodePad.Visible / adds a "ButtonActive" clone under
+-- Pressing), but Monitor gets :Clone()'d into a SECOND sibling also named "Monitor" that's
+-- the one that actually becomes visible/interactive -- FindFirstChild("Monitor") isn't
+-- reliable there since it can just as easily return the original, permanently-invisible
+-- template instead of the live clone. That mismatch (waiting on the wrong Monitor, or
+-- looking for Pressing nested under a "TaskHandler" folder that was never actually right --
+-- Pressing is TasksGui's own direct child) is almost certainly what "teleported to the
+-- next task and everything just disappeared" was: the detection below timed out doing
+-- nothing, so the Heartbeat loop immediately re-triggered the same still-active prompt a
+-- moment later and stomped whatever had just started opening.
 -- ============================================================================
 local TaskRow, TaskToggle = CreateFeatureRow(2, "Auto Task")
 local ReportRow, ReportToggle = CreateFeatureRow(3, "Auto Report")
@@ -450,22 +478,21 @@ local function FireButton(button)
 	return false
 end
 
-local function WaitForChildTimeout(parent, childName, timeout)
-	local start = os.clock()
-	while os.clock() - start < timeout do
-		local child = parent:FindFirstChild(childName)
-		if child then return child end
-		task.wait(0.1)
+-- Finds the LIVE Monitor clone specifically -- the one with Visible true -- rather than
+-- whichever "Monitor" FindFirstChild happens to return first.
+local function FindVisibleChild(parent, name)
+	for _, child in ipairs(parent:GetChildren()) do
+		if child.Name == name and child.Visible then
+			return child
+		end
 	end
 	return nil
 end
 
 -- Type 1: "Download" -- click the on-screen Button once, then TaskHandler's own script
 -- runs the real 4-second progress fill and fires TaskRemote:FireServer itself.
-local function HandleDownloadTask(tasksGui)
-	local monitor = WaitForChildTimeout(tasksGui, "Monitor", 3)
-	if not monitor then return end
-	local button = WaitForChildTimeout(monitor.Screen, "Button", 2)
+local function HandleDownloadTask(monitor)
+	local button = monitor.Screen:WaitForChild("Button", 2)
 	if button and button.Active then
 		FireButton(button)
 	end
@@ -478,9 +505,7 @@ end
 
 -- Type 3: "Code Pad" -- reads the same 4-digit code TaskHandler's script wrote onto the
 -- in-world Paper prop, clicks each matching digit button, then Finish.
-local function HandleCodeTask(tasksGui)
-	local codePad = WaitForChildTimeout(tasksGui, "CodePad", 3)
-	if not codePad then return end
+local function HandleCodeTask(codePad)
 	local paper = codePad:FindFirstChild("Paper")
 	local codeText = paper and paper:FindFirstChild("textik")
 	local start = os.clock()
@@ -506,10 +531,7 @@ end
 -- position and shrinks back over 1.2s; must click each ButtonActive before it shrinks
 -- back, missing even one aborts the whole minigame (TaskHandler's own logic, not this
 -- script's), so this polls fast and clicks the instant one appears.
-local function HandlePressTask(tasksGui)
-	local taskHandler = tasksGui:FindFirstChild("TaskHandler")
-	local pressing = taskHandler and WaitForChildTimeout(taskHandler, "Pressing", 3)
-	if not pressing then return end
+local function HandlePressTask(pressing)
 	local clicked = {}
 	local start = os.clock()
 	while os.clock() - start < 12 and pressing.Parent do
@@ -533,29 +555,44 @@ local function RunTaskAtPart(part)
 	SetRootUpright(root, root.CFrame, part.Position - Vector3.new(0, 3, 0))
 	task.wait(0.1)
 	if type(fireproximityprompt) ~= "function" then return end
+	MakePromptInstant(prompt)
 	pcall(fireproximityprompt, prompt)
 
 	local playerGui = Player:FindFirstChildOfClass("PlayerGui")
-	local tasksGui = playerGui and WaitForChildTimeout(playerGui, "TasksGui", 2)
+	local tasksGui = playerGui and playerGui:WaitForChild("TasksGui", 2)
 	if not tasksGui then return end
 
-	-- Whichever of the three shows up first is the one that actually opened.
+	-- Whichever of the three actually opens is the one this task turned out to be. Checked
+	-- against a snapshot of Pressing's existing children so a stray leftover ButtonActive
+	-- from a previous attempt can't be mistaken for a fresh one.
+	local pressing = tasksGui:FindFirstChild("Pressing")
+	local preExistingButtons = {}
+	if pressing then
+		for _, child in ipairs(pressing:GetChildren()) do
+			if child.Name == "ButtonActive" then preExistingButtons[child] = true end
+		end
+	end
+
 	local start = os.clock()
-	while os.clock() - start < 2 do
-		if tasksGui:FindFirstChild("Monitor") and tasksGui.Monitor.Visible then
-			HandleDownloadTask(tasksGui)
+	while os.clock() - start < 2.5 do
+		local monitor = FindVisibleChild(tasksGui, "Monitor")
+		if monitor then
+			HandleDownloadTask(monitor)
 			return
 		end
-		if tasksGui:FindFirstChild("CodePad") and tasksGui.CodePad.Visible then
-			HandleCodeTask(tasksGui)
+		if tasksGui.CodePad and tasksGui.CodePad.Visible then
+			HandleCodeTask(tasksGui.CodePad)
 			return
 		end
-		local taskHandler = tasksGui:FindFirstChild("TaskHandler")
-		if taskHandler and taskHandler:FindFirstChild("Pressing") then
-			HandlePressTask(tasksGui)
-			return
+		if pressing then
+			for _, child in ipairs(pressing:GetChildren()) do
+				if child.Name == "ButtonActive" and not preExistingButtons[child] then
+					HandlePressTask(pressing)
+					return
+				end
+			end
 		end
-		task.wait(0.1)
+		task.wait(0.05)
 	end
 end
 
@@ -577,18 +614,30 @@ RunService.Heartbeat:Connect(function()
 	taskState.Busy = true
 	task.spawn(function()
 		pcall(RunTaskAtPart, part)
+		-- Small settle delay before allowing the next attempt -- if the task genuinely
+		-- didn't complete (detection missed something, or the server hasn't advanced
+		-- CurrentPart yet), this stops it from re-triggering the exact same prompt on the
+		-- very next Heartbeat and thrashing whatever GUI state is still mid-cleanup.
+		task.wait(0.5)
 		taskState.Busy = false
 	end)
 end)
 
 -- ============================================================================
--- Auto Report: any live "Dead Body" ProximityPrompt anywhere in the world (matched by its
--- exact ActionText/ObjectText, same pair confirmed on the dump's own DeadPrompt template --
--- not a fixed path, since a real dead body gets spawned wherever the kill happened) gets
--- walked to and triggered, gated behind the ~30s round-start window via
--- Player:GetAttribute("InGame") actually flipping true (confirmed real, not guessed -- see
--- top of file). A separate manual Call Meeting button does the same walk-and-trigger
--- against the world's Emergency button under the same 30s gate.
+-- Auto Report: fully automatic now -- no manual button. Every live "Dead Body"
+-- ProximityPrompt (matched by its exact ActionText/ObjectText, same pair confirmed on the
+-- dump's own DeadPrompt template -- not a fixed path, since a real body spawns wherever
+-- the kill happened) gets walked to and reported; when there's no body to report, the
+-- Emergency button gets walked to and pressed instead. Both gated behind the ~30s
+-- round-start window via Player:GetAttribute("InGame") actually flipping true (confirmed
+-- real, not guessed -- see top of file). The emergency fallback has its own longer
+-- cooldown (60s) so it doesn't just spam-call meetings back to back when no one's dead.
+--
+-- Live prompts are tracked via DescendantAdded/Removing instead of rescanning
+-- workspace:GetDescendants() every frame -- that full-tree walk every single Heartbeat is
+-- almost certainly what "extremely laggy" was. An initial one-time sweep catches anything
+-- already in the world when this loads, then the two connections keep the small cached set
+-- current from there with no further scanning at all.
 -- ============================================================================
 local roundStartedAt = nil
 local function MarkRoundStart()
@@ -604,14 +653,36 @@ local function CanReportYet()
 	return roundStartedAt ~= nil and (os.clock() - roundStartedAt) >= REPORT_COOLDOWN_SECONDS
 end
 
+local function IsDeadBodyPrompt(descendant)
+	return descendant:IsA("ProximityPrompt") and descendant.ActionText == "Report" and descendant.ObjectText == "Dead Body"
+end
+
+local deadBodyPrompts = {}
+for _, descendant in ipairs(workspace:GetDescendants()) do
+	if IsDeadBodyPrompt(descendant) then deadBodyPrompts[descendant] = true end
+end
+workspace.DescendantAdded:Connect(function(descendant)
+	if IsDeadBodyPrompt(descendant) then deadBodyPrompts[descendant] = true end
+end)
+workspace.DescendantRemoving:Connect(function(descendant)
+	deadBodyPrompts[descendant] = nil
+end)
+
 local function FindDeadBodyPrompt()
-	for _, descendant in ipairs(workspace:GetDescendants()) do
-		if descendant:IsA("ProximityPrompt") and descendant.Enabled
-			and descendant.ActionText == "Report" and descendant.ObjectText == "Dead Body" then
-			return descendant
-		end
+	for prompt in pairs(deadBodyPrompts) do
+		if prompt.Parent and prompt.Enabled then return prompt end
+		if not prompt.Parent then deadBodyPrompts[prompt] = nil end
 	end
 	return nil
+end
+
+-- Resolved once -- the Emergency button itself never moves or gets destroyed, unlike
+-- bodies, so there's no need to track it the same way.
+local emergencyPrompt
+do
+	local emergencyModel = workspace:FindFirstChild("EmergencyModel", true)
+	local button = emergencyModel and emergencyModel:FindFirstChild("Button")
+	emergencyPrompt = button and button:FindFirstChildOfClass("ProximityPrompt")
 end
 
 local function WalkAndTrigger(prompt)
@@ -630,11 +701,12 @@ local function WalkAndTrigger(prompt)
 	SetRootUpright(root, root.CFrame, position - Vector3.new(0, 2, 0))
 	task.wait(0.1)
 	if type(fireproximityprompt) == "function" then
+		MakePromptInstant(prompt)
 		pcall(fireproximityprompt, prompt)
 	end
 end
 
-local reportState = {Enabled = false, LastTrigger = 0}
+local reportState = {Enabled = false, LastReport = 0, LastMeetingCall = 0}
 ReportToggle.MouseButton1Click:Connect(function()
 	reportState.Enabled = not reportState.Enabled
 	ReportToggle.Text = reportState.Enabled and "On" or "Off"
@@ -643,37 +715,20 @@ end)
 RunService.Heartbeat:Connect(function()
 	if not ScreenGui.Parent then return end
 	if not reportState.Enabled or not CanReportYet() then return end
-	if os.clock() - reportState.LastTrigger < 3 then return end
 	if workspace:GetAttribute("Meeting") == true then return end
-	local prompt = FindDeadBodyPrompt()
-	if not prompt then return end
-	reportState.LastTrigger = os.clock()
-	task.spawn(WalkAndTrigger, prompt)
-end)
 
-local CallMeetingButton = Instance.new("TextButton")
-CallMeetingButton.Name = "CallMeetingButton"
-CallMeetingButton.Size = UDim2.new(0, 74, 0, 24)
-CallMeetingButton.Position = UDim2.new(1, -136, 0.5, -12)
-CallMeetingButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
-CallMeetingButton.BackgroundTransparency = 0.2
-CallMeetingButton.BorderSizePixel = 0
-CallMeetingButton.Text = "Meeting"
-CallMeetingButton.Font = UIFont
-CallMeetingButton.TextSize = 11
-CallMeetingButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-CallMeetingButton.Parent = ReportRow
-Instance.new("UICorner", CallMeetingButton).CornerRadius = UDim.new(1, 0)
-AddPressBounce(CallMeetingButton)
-CallMeetingButton.MouseButton1Click:Connect(function()
-	if not CanReportYet() then return end
-	if os.clock() - reportState.LastTrigger < 3 then return end
-	local emergencyModel = workspace:FindFirstChild("EmergencyModel", true)
-	local button = emergencyModel and emergencyModel:FindFirstChild("Button")
-	local prompt = button and button:FindFirstChildOfClass("ProximityPrompt")
-	if not prompt then return end
-	reportState.LastTrigger = os.clock()
-	task.spawn(WalkAndTrigger, prompt)
+	local prompt = FindDeadBodyPrompt()
+	if prompt then
+		if os.clock() - reportState.LastReport < 3 then return end
+		reportState.LastReport = os.clock()
+		task.spawn(WalkAndTrigger, prompt)
+		return
+	end
+
+	if emergencyPrompt and os.clock() - reportState.LastMeetingCall >= 60 then
+		reportState.LastMeetingCall = os.clock()
+		task.spawn(WalkAndTrigger, emergencyPrompt)
+	end
 end)
 
 if type(getgenv) == "function" then
