@@ -1,1 +1,725 @@
+-- Suspect module for Serenity. ROUGH DRAFT / PROTOTYPE, built from an actual client-side
+-- dump of the place file (Potassium/Dex export), not guesswork -- but two gaps in that dump
+-- mean two things here are still best-effort:
+--   - The kill weapon's own client script (whatever Tool the killer role gets) wasn't
+--     present in the dump -- a client-side dump only ever captures what's actually loaded
+--     for whoever's playing, and the weapon Tool only exists in a killer's Backpack once
+--     the round actually assigns that role. WeaponEvent (the RemoteEvent it almost
+--     certainly fires) IS confirmed to exist, but its real argument signature and the
+--     server's actual attack cooldown aren't visible from this dump -- Auto Kill below
+--     fires it parameterless (same convention QOD's PlayerTouchedOrClicked uses) on an
+--     adjustable delay (AttackDelayBox) instead of a hardcoded guessed number, specifically
+--     so the "it's slow, might be timed wrong" issue from QOD can actually be tuned live
+--     against Suspect's real cooldown instead of guessed at.
+--   - The ~30s can't-report-immediately window has no dedicated value anywhere in the dump
+--     (no RoundTime/Intermission/GameState). Player:GetAttribute("InGame") IS confirmed
+--     real (TaskFrame's own script branches on it) and flips true right as a round starts,
+--     so that attribute's own change is used as the round-start clock instead of a made-up
+--     timestamp.
+-- Everything else (Auto Task's three minigames, Auto Report's prompt) is built directly
+-- from TaskHandler/TaskLocal/TaskFrame's decompiled source and the actual ProximityPrompt
+-- instances in the dump, not invented.
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+
+local Player = Players.LocalPlayer
+local FrameColor = Color3.fromRGB(3, 3, 3)
+local AccentColor = Color3.fromRGB(255, 255, 255)
+local UIFont = Enum.Font.FredokaOne
+local GameRowTransparency = 0
+
+local function SetRootUpright(root, currentCFrame, targetPosition)
+	local _, yRotation = currentCFrame:ToOrientation()
+	root.CFrame = CFrame.new(targetPosition) * CFrame.Angles(0, yRotation, 0)
+end
+
+-- Ported from QOD verbatim -- confirmed still correct here: TaskFrame's own dumped script
+-- reads workspace.KillerFolder/PlayersFolder the same way, and KillerFrameGame (checked
+-- below) is the exact GUI ActivateButton's own dumped script waits on, so this already
+-- works against Suspect with no changes, matching what's already been observed in-game.
+local function IsPlayerKiller(targetPlayer)
+	targetPlayer = targetPlayer or Player
+	local killerFolder = workspace:FindFirstChild("KillerFolder")
+	if killerFolder and killerFolder:FindFirstChild(targetPlayer.Name) then return true end
+	local function containerSaysKiller(container)
+		if not container then return false end
+		for _, attributeName in ipairs({"Role", "CurrentRole", "RoundRole"}) do
+			local value = container:GetAttribute(attributeName)
+			if type(value) == "string" and value:lower():find("killer", 1, true) then return true end
+		end
+		for _, attributeName in ipairs({"IsKiller", "Killer"}) do
+			if container:GetAttribute(attributeName) == true then return true end
+		end
+		for _, valueName in ipairs({"Role", "CurrentRole", "RoundRole"}) do
+			local valueObject = container:FindFirstChild(valueName)
+			if valueObject and valueObject:IsA("StringValue") and valueObject.Value:lower():find("killer", 1, true) then return true end
+		end
+		for _, valueName in ipairs({"IsKiller", "Killer"}) do
+			local valueObject = container:FindFirstChild(valueName)
+			if valueObject and valueObject:IsA("BoolValue") and valueObject.Value then return true end
+		end
+		return false
+	end
+	if containerSaysKiller(targetPlayer) or containerSaysKiller(targetPlayer.Character) then return true end
+	if targetPlayer.Team and targetPlayer.Team.Name:lower():find("killer", 1, true) then return true end
+	if targetPlayer == Player then
+		local playerGui = Player:FindFirstChildOfClass("PlayerGui")
+		local inGameGui = playerGui and playerGui:FindFirstChild("InGameGui")
+		if inGameGui then
+			for _, frameName in ipairs({"KillerFrameGame2", "KillerFrameGame", "KillerFrame", "KillerGui"}) do
+				local frame = inGameGui:FindFirstChild(frameName, true)
+				if frame and frame:IsA("GuiObject") and frame.Visible then return true end
+			end
+		end
+	end
+	return false
+end
+local function IsSuspectKiller()
+	return IsPlayerKiller(Player)
+end
+
+-- UI: same standalone-panel shell as every other game module (MM2/QOD/UE).
+local existingScreenGui = CoreGui:FindFirstChild("SerenitySuspect")
+if existingScreenGui then existingScreenGui:Destroy() end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "SerenitySuspect"
+ScreenGui.Parent = CoreGui
+ScreenGui.ResetOnSpawn = false
+
+local FULL_HEIGHT = 400
+local MINI_HEIGHT = 44
+
+local PanelFrame = Instance.new("Frame")
+PanelFrame.Name = "SuspectPanel"
+PanelFrame.Size = UDim2.new(0, 280, 0, FULL_HEIGHT)
+PanelFrame.Position = getgenv().Serenity_Suspect_PanelPosition or UDim2.new(0.5, -140, 0.5, -200)
+PanelFrame.AnchorPoint = Vector2.new(0, 0)
+PanelFrame.BackgroundColor3 = FrameColor
+PanelFrame.BorderSizePixel = 0
+PanelFrame.ClipsDescendants = true
+PanelFrame.Active = true
+PanelFrame.Parent = ScreenGui
+
+local PanelCorner = Instance.new("UICorner")
+PanelCorner.CornerRadius = UDim.new(0, 14)
+PanelCorner.Parent = PanelFrame
+
+local PanelScale = Instance.new("UIScale")
+PanelScale.Scale = 0.85
+PanelScale.Parent = PanelFrame
+PanelFrame.BackgroundTransparency = 1
+TweenService:Create(PanelScale, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+TweenService:Create(PanelFrame, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0}):Play()
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Name = "TitleLabel"
+TitleLabel.Size = UDim2.new(0, 160, 0, 24)
+TitleLabel.Position = UDim2.new(0, 16, 0, 10)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "Suspect"
+TitleLabel.Font = UIFont
+TitleLabel.TextSize = 15
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Parent = PanelFrame
+
+local function AddButtonHover(button, hoverColor, normalColor)
+	normalColor = normalColor or button.BackgroundColor3
+	button.MouseEnter:Connect(function()
+		TweenService:Create(button, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = hoverColor}):Play()
+	end)
+	button.MouseLeave:Connect(function()
+		TweenService:Create(button, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = normalColor}):Play()
+	end)
+end
+
+local function GetOrCreateUIScale(target)
+	local scale = target:FindFirstChildOfClass("UIScale")
+	if not scale then
+		scale = Instance.new("UIScale")
+		scale.Parent = target
+	end
+	return scale
+end
+
+local function AddPressBounce(button)
+	local scale = GetOrCreateUIScale(button)
+	local pressed = false
+	local function release()
+		if not pressed then return end
+		pressed = false
+		TweenService:Create(scale, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+	end
+	button.MouseButton1Down:Connect(function()
+		pressed = true
+		TweenService:Create(scale, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 0.8}):Play()
+	end)
+	button.MouseButton1Up:Connect(release)
+	button.MouseLeave:Connect(release)
+end
+
+local function AddFadeDivider(divider)
+	local gradient = Instance.new("UIGradient")
+	gradient.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(0.5, 0),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	gradient.Parent = divider
+end
+
+local MinimizeButton = Instance.new("TextButton")
+MinimizeButton.Name = "MinimizeButton"
+MinimizeButton.Size = UDim2.new(0, 12, 0, 12)
+MinimizeButton.Position = UDim2.new(1, -38, 0, 16)
+MinimizeButton.BackgroundColor3 = Color3.fromRGB(255, 189, 46)
+MinimizeButton.BorderSizePixel = 0
+MinimizeButton.Text = ""
+MinimizeButton.AutoButtonColor = false
+MinimizeButton.Parent = PanelFrame
+Instance.new("UICorner", MinimizeButton).CornerRadius = UDim.new(1, 0)
+local minimizeButtonStroke = Instance.new("UIStroke")
+minimizeButtonStroke.Color = Color3.fromRGB(196, 142, 20)
+minimizeButtonStroke.Thickness = 1
+minimizeButtonStroke.Parent = MinimizeButton
+MinimizeButton.MouseEnter:Connect(function()
+	TweenService:Create(MinimizeButton, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 205, 92)}):Play()
+end)
+MinimizeButton.MouseLeave:Connect(function()
+	TweenService:Create(MinimizeButton, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 189, 46)}):Play()
+end)
+AddPressBounce(MinimizeButton)
+
+local CloseButton = Instance.new("TextButton")
+CloseButton.Name = "CloseButton"
+CloseButton.Size = UDim2.new(0, 12, 0, 12)
+CloseButton.Position = UDim2.new(1, -20, 0, 16)
+CloseButton.BackgroundColor3 = Color3.fromRGB(255, 95, 87)
+CloseButton.BorderSizePixel = 0
+CloseButton.Text = ""
+CloseButton.AutoButtonColor = false
+CloseButton.Parent = PanelFrame
+Instance.new("UICorner", CloseButton).CornerRadius = UDim.new(1, 0)
+local closeButtonStroke = Instance.new("UIStroke")
+closeButtonStroke.Color = Color3.fromRGB(196, 68, 62)
+closeButtonStroke.Thickness = 1
+closeButtonStroke.Parent = CloseButton
+CloseButton.MouseEnter:Connect(function()
+	TweenService:Create(CloseButton, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 130, 123)}):Play()
+end)
+CloseButton.MouseLeave:Connect(function()
+	TweenService:Create(CloseButton, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 95, 87)}):Play()
+end)
+AddPressBounce(CloseButton)
+
+local HeaderDivider = Instance.new("Frame")
+HeaderDivider.Name = "HeaderDivider"
+HeaderDivider.Size = UDim2.new(1, 0, 0, 1)
+HeaderDivider.Position = UDim2.new(0, 0, 0, MINI_HEIGHT)
+HeaderDivider.BackgroundColor3 = AccentColor
+HeaderDivider.BackgroundTransparency = 0.85
+HeaderDivider.Parent = PanelFrame
+AddFadeDivider(HeaderDivider)
+
+local ContentScroll = Instance.new("ScrollingFrame")
+ContentScroll.Name = "ContentScroll"
+ContentScroll.Size = UDim2.new(1, 0, 1, -MINI_HEIGHT - 8)
+ContentScroll.Position = UDim2.new(0, 0, 0, MINI_HEIGHT + 8)
+ContentScroll.BackgroundTransparency = 1
+ContentScroll.BorderSizePixel = 0
+ContentScroll.ScrollBarThickness = 3
+ContentScroll.ScrollBarImageColor3 = AccentColor
+ContentScroll.ScrollBarImageTransparency = 1
+ContentScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+ContentScroll.ElasticBehavior = Enum.ElasticBehavior.Never
+ContentScroll.Parent = PanelFrame
+
+local ContentLayout = Instance.new("UIListLayout")
+ContentLayout.Padding = UDim.new(0, 12)
+ContentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ContentLayout.Parent = ContentScroll
+ContentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	ContentScroll.CanvasSize = UDim2.new(0, 0, 0, ContentLayout.AbsoluteContentSize.Y + 16)
+end)
+
+local ContentPadding = Instance.new("UIPadding")
+ContentPadding.PaddingLeft = UDim.new(0, 16)
+ContentPadding.PaddingRight = UDim.new(0, 16)
+ContentPadding.PaddingTop = UDim.new(0, 4)
+ContentPadding.PaddingBottom = UDim.new(0, 12)
+ContentPadding.Parent = ContentScroll
+
+local ToggleOffColor = Color3.fromRGB(24, 24, 24)
+local ToggleOnColor = Color3.fromRGB(178, 155, 235)
+local ToggleKnobColor = Color3.fromRGB(238, 233, 250)
+
+local function StyleAsToggleSwitch(toggle)
+	toggle.AutoButtonColor = false
+	toggle.TextTransparency = 1
+	toggle.BackgroundColor3 = ToggleOffColor
+	toggle.BackgroundTransparency = 0
+	Instance.new("UICorner", toggle).CornerRadius = UDim.new(1, 0)
+
+	local knobSize = toggle.Size.Y.Offset - 6
+	local knob = Instance.new("Frame")
+	knob.Name = "Knob"
+	knob.AnchorPoint = Vector2.new(0, 0.5)
+	knob.Size = UDim2.new(0, knobSize, 0, knobSize)
+	knob.Position = UDim2.new(0, 3, 0.5, 0)
+	knob.BackgroundColor3 = ToggleKnobColor
+	knob.BorderSizePixel = 0
+	knob.ZIndex = toggle.ZIndex + 1
+	knob.Parent = toggle
+	Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+	toggle:GetPropertyChangedSignal("ZIndex"):Connect(function() knob.ZIndex = toggle.ZIndex + 1 end)
+
+	local function Refresh(animate)
+		local on = toggle.Text == "On"
+		local trackColor = on and ToggleOnColor or ToggleOffColor
+		local knobPosition = on and UDim2.new(1, -3 - knobSize, 0.5, 0) or UDim2.new(0, 3, 0.5, 0)
+		if animate then
+			local tweenInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			TweenService:Create(toggle, tweenInfo, {BackgroundColor3 = trackColor}):Play()
+			TweenService:Create(knob, tweenInfo, {Position = knobPosition}):Play()
+		else
+			toggle.BackgroundColor3 = trackColor
+			knob.Position = knobPosition
+		end
+	end
+
+	toggle:GetPropertyChangedSignal("Text"):Connect(function() Refresh(true) end)
+	Refresh(false)
+end
+
+local nextRowOrder = 1
+local function CreateFeatureRow(order, labelText, parent)
+	local row = Instance.new("Frame")
+	row.Name = labelText:gsub("%s+", "") .. "Row"
+	row.LayoutOrder = order or nextRowOrder
+	nextRowOrder = math.max(nextRowOrder, row.LayoutOrder) + 1
+	row.Size = UDim2.new(1, -10, 0, 48)
+	row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
+	row.BackgroundTransparency = GameRowTransparency
+	row.BorderSizePixel = 0
+	row.Parent = parent or ContentScroll
+	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+
+	local label = Instance.new("TextLabel")
+	label.Name = "Label"
+	label.Size = UDim2.new(0, 140, 1, 0)
+	label.Position = UDim2.new(0, 12, 0, 0)
+	label.BackgroundTransparency = 1
+	label.Text = labelText
+	label.Font = UIFont
+	label.TextSize = 14
+	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextYAlignment = Enum.TextYAlignment.Center
+	label.Parent = row
+
+	local toggle = Instance.new("TextButton")
+	toggle.Name = "Toggle"
+	toggle.Size = UDim2.new(0, 46, 0, 24)
+	toggle.Position = UDim2.new(1, -56, 0.5, -12)
+	toggle.BorderSizePixel = 0
+	toggle.Text = "Off"
+	toggle.Font = UIFont
+	toggle.TextSize = 14
+	toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+	toggle.Parent = row
+	StyleAsToggleSwitch(toggle)
+	AddPressBounce(toggle)
+
+	return row, toggle
+end
+
+-- ============================================================================
+-- Auto Kill: same cycle-and-teleport-adjacent approach as QOD's Auto Kill, against
+-- Suspect's own WeaponEvent instead of PlayerTouchedOrClicked. AttackDelayBox replaces
+-- QOD's hardcoded 0.1s throttle -- tune it live against Suspect's real weapon cooldown
+-- (see the file-level comment at the top for why that number couldn't be read from the
+-- dump) instead of it being baked in wrong.
+-- ============================================================================
+local KillRow, KillToggle = CreateFeatureRow(1, "Auto Kill")
+
+local AttackDelayBox = Instance.new("TextBox")
+AttackDelayBox.Name = "AttackDelayBox"
+AttackDelayBox.Size = UDim2.new(0, 40, 0, 22)
+AttackDelayBox.Position = UDim2.new(1, -108, 0.5, -11)
+AttackDelayBox.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+AttackDelayBox.BackgroundTransparency = 0.2
+AttackDelayBox.BorderSizePixel = 0
+AttackDelayBox.Text = "0.5"
+AttackDelayBox.ClearTextOnFocus = false
+AttackDelayBox.Font = UIFont
+AttackDelayBox.TextSize = 12
+AttackDelayBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+AttackDelayBox.Parent = KillRow
+Instance.new("UICorner", AttackDelayBox).CornerRadius = UDim.new(0, 6)
+
+local killState = {Enabled = false, TargetIndex = 0, LastAttack = 0, Delay = 0.5}
+AttackDelayBox.FocusLost:Connect(function()
+	local parsed = tonumber(AttackDelayBox.Text)
+	if parsed and parsed >= 0 then
+		killState.Delay = parsed
+	end
+	AttackDelayBox.Text = string.format("%.2f", killState.Delay)
+end)
+
+KillToggle.MouseButton1Click:Connect(function()
+	killState.Enabled = not killState.Enabled
+	KillToggle.Text = killState.Enabled and "On" or "Off"
+end)
+
+RunService.Heartbeat:Connect(function()
+	if not ScreenGui.Parent then return end
+	if not killState.Enabled or os.clock() - killState.LastAttack < killState.Delay or not IsSuspectKiller() then return end
+	local character = Player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local playersFolder = workspace:FindFirstChild("PlayersFolder")
+	local weaponEvent = ReplicatedStorage:FindFirstChild("WeaponEvent")
+	if not humanoid or humanoid.Health <= 0 or not root or not playersFolder or not weaponEvent or not weaponEvent:IsA("RemoteEvent") then return end
+
+	local targets = {}
+	for _, targetPlayer in ipairs(Players:GetPlayers()) do
+		if targetPlayer ~= Player and playersFolder:FindFirstChild(targetPlayer.Name) then
+			local targetCharacter = targetPlayer.Character
+			local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
+			local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+			if targetHumanoid and targetHumanoid.Health > 0 and targetRoot then table.insert(targets, targetRoot) end
+		end
+	end
+	if #targets == 0 then return end
+
+	killState.TargetIndex = (killState.TargetIndex % #targets) + 1
+	local targetRoot = targets[killState.TargetIndex]
+	root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 2)
+	root.AssemblyLinearVelocity = Vector3.zero
+	killState.LastAttack = os.clock()
+	pcall(function() weaponEvent:FireServer() end)
+end)
+
+-- ============================================================================
+-- Auto Task: TaskRemote2 pushes the world Part the server currently wants you at (same
+-- object TaskLocal's own dumped script listens for) -- walk to it and trigger its prompt
+-- the same way. Once triggered, the server pushes a task TYPE (1/2/3) over TaskRemote,
+-- and TaskHandler's own already-running script builds the real minigame GUI in response --
+-- this doesn't reimplement that minigame, it just plays it: reads the same text a person
+-- would read and clicks the same buttons a person would click, so it's driving the actual
+-- completion path (TaskHandler's own script is what fires the real TaskRemote:FireServer
+-- true/false) rather than trying to fake a result and hope the server doesn't check.
+-- ============================================================================
+local TaskRow, TaskToggle = CreateFeatureRow(2, "Auto Task")
+local ReportRow, ReportToggle = CreateFeatureRow(3, "Auto Report")
+
+local taskState = {Enabled = false, CurrentPart = nil, Busy = false}
+
+local TaskRemote2 = ReplicatedStorage:WaitForChild("TaskRemote2")
+-- Second listener alongside the game's own TaskLocal -- Roblox lets a RemoteEvent have any
+-- number of OnClientEvent connections, so this doesn't interfere with (or need to touch)
+-- what TaskLocal itself is already doing with the same event.
+TaskRemote2.OnClientEvent:Connect(function(part)
+	if part and part:IsA("BasePart") then
+		taskState.CurrentPart = part
+	else
+		taskState.CurrentPart = nil
+	end
+end)
+
+local function FireButton(button)
+	if not button then return false end
+	if type(firesignal) == "function" then
+		local success = pcall(firesignal, button.MouseButton1Click)
+		if success then return true end
+	end
+	-- Fallback for executors without firesignal -- a real click simulated at the button's
+	-- own screen position. Less reliable (covered/offscreen buttons can miss) but better
+	-- than nothing.
+	if type(mousemoveabs) == "function" and type(mouse1click) == "function" then
+		local pos = button.AbsolutePosition + button.AbsoluteSize / 2
+		pcall(mousemoveabs, pos.X, pos.Y)
+		pcall(mouse1click)
+		return true
+	end
+	return false
+end
+
+local function WaitForChildTimeout(parent, childName, timeout)
+	local start = os.clock()
+	while os.clock() - start < timeout do
+		local child = parent:FindFirstChild(childName)
+		if child then return child end
+		task.wait(0.1)
+	end
+	return nil
+end
+
+-- Type 1: "Download" -- click the on-screen Button once, then TaskHandler's own script
+-- runs the real 4-second progress fill and fires TaskRemote:FireServer itself.
+local function HandleDownloadTask(tasksGui)
+	local monitor = WaitForChildTimeout(tasksGui, "Monitor", 3)
+	if not monitor then return end
+	local button = WaitForChildTimeout(monitor.Screen, "Button", 2)
+	if button and button.Active then
+		FireButton(button)
+	end
+	-- Give the real 4s fill (plus its own finish delay) time to complete on its own.
+	local start = os.clock()
+	while os.clock() - start < 6 and monitor.Parent do
+		task.wait(0.25)
+	end
+end
+
+-- Type 3: "Code Pad" -- reads the same 4-digit code TaskHandler's script wrote onto the
+-- in-world Paper prop, clicks each matching digit button, then Finish.
+local function HandleCodeTask(tasksGui)
+	local codePad = WaitForChildTimeout(tasksGui, "CodePad", 3)
+	if not codePad then return end
+	local paper = codePad:FindFirstChild("Paper")
+	local codeText = paper and paper:FindFirstChild("textik")
+	local start = os.clock()
+	while (not codeText or codeText.Text == "") and os.clock() - start < 2 do
+		task.wait(0.1)
+		paper = codePad:FindFirstChild("Paper")
+		codeText = paper and paper:FindFirstChild("textik")
+	end
+	if not codeText or codeText.Text == "" then return end
+	local code = codeText.Text
+	for i = 1, #code do
+		local digit = code:sub(i, i)
+		local digitButton = codePad:FindFirstChild(digit)
+		FireButton(digitButton)
+		task.wait(0.12)
+	end
+	local finishButton = codePad:FindFirstChild("Finish")
+	FireButton(finishButton)
+	task.wait(0.3)
+end
+
+-- Type 2: "Press or Die" -- five rounds of a button that spawns at a random screen
+-- position and shrinks back over 1.2s; must click each ButtonActive before it shrinks
+-- back, missing even one aborts the whole minigame (TaskHandler's own logic, not this
+-- script's), so this polls fast and clicks the instant one appears.
+local function HandlePressTask(tasksGui)
+	local taskHandler = tasksGui:FindFirstChild("TaskHandler")
+	local pressing = taskHandler and WaitForChildTimeout(taskHandler, "Pressing", 3)
+	if not pressing then return end
+	local clicked = {}
+	local start = os.clock()
+	while os.clock() - start < 12 and pressing.Parent do
+		for _, child in ipairs(pressing:GetChildren()) do
+			if child.Name == "ButtonActive" and not clicked[child] then
+				clicked[child] = true
+				FireButton(child)
+			end
+		end
+		task.wait(0.03)
+	end
+end
+
+local function RunTaskAtPart(part)
+	local prompt = part:FindFirstChildOfClass("ProximityPrompt")
+	if not prompt or not prompt.Enabled then return end
+	local character = Player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+
+	SetRootUpright(root, root.CFrame, part.Position - Vector3.new(0, 3, 0))
+	task.wait(0.1)
+	if type(fireproximityprompt) ~= "function" then return end
+	pcall(fireproximityprompt, prompt)
+
+	local playerGui = Player:FindFirstChildOfClass("PlayerGui")
+	local tasksGui = playerGui and WaitForChildTimeout(playerGui, "TasksGui", 2)
+	if not tasksGui then return end
+
+	-- Whichever of the three shows up first is the one that actually opened.
+	local start = os.clock()
+	while os.clock() - start < 2 do
+		if tasksGui:FindFirstChild("Monitor") and tasksGui.Monitor.Visible then
+			HandleDownloadTask(tasksGui)
+			return
+		end
+		if tasksGui:FindFirstChild("CodePad") and tasksGui.CodePad.Visible then
+			HandleCodeTask(tasksGui)
+			return
+		end
+		local taskHandler = tasksGui:FindFirstChild("TaskHandler")
+		if taskHandler and taskHandler:FindFirstChild("Pressing") then
+			HandlePressTask(tasksGui)
+			return
+		end
+		task.wait(0.1)
+	end
+end
+
+TaskToggle.MouseButton1Click:Connect(function()
+	taskState.Enabled = not taskState.Enabled
+	TaskToggle.Text = taskState.Enabled and "On" or "Off"
+end)
+
+RunService.Heartbeat:Connect(function()
+	if not ScreenGui.Parent then return end
+	if not taskState.Enabled or taskState.Busy then return end
+	if workspace:GetAttribute("Meeting") == true then return end
+	local part = taskState.CurrentPart
+	if not part or not part.Parent then return end
+	local character = Player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then return end
+
+	taskState.Busy = true
+	task.spawn(function()
+		pcall(RunTaskAtPart, part)
+		taskState.Busy = false
+	end)
+end)
+
+-- ============================================================================
+-- Auto Report: any live "Dead Body" ProximityPrompt anywhere in the world (matched by its
+-- exact ActionText/ObjectText, same pair confirmed on the dump's own DeadPrompt template --
+-- not a fixed path, since a real dead body gets spawned wherever the kill happened) gets
+-- walked to and triggered, gated behind the ~30s round-start window via
+-- Player:GetAttribute("InGame") actually flipping true (confirmed real, not guessed -- see
+-- top of file). A separate manual Call Meeting button does the same walk-and-trigger
+-- against the world's Emergency button under the same 30s gate.
+-- ============================================================================
+local roundStartedAt = nil
+local function MarkRoundStart()
+	roundStartedAt = os.clock()
+end
+if Player:GetAttribute("InGame") == true then MarkRoundStart() end
+Player:GetAttributeChangedSignal("InGame"):Connect(function()
+	if Player:GetAttribute("InGame") == true then MarkRoundStart() end
+end)
+
+local REPORT_COOLDOWN_SECONDS = 30
+local function CanReportYet()
+	return roundStartedAt ~= nil and (os.clock() - roundStartedAt) >= REPORT_COOLDOWN_SECONDS
+end
+
+local function FindDeadBodyPrompt()
+	for _, descendant in ipairs(workspace:GetDescendants()) do
+		if descendant:IsA("ProximityPrompt") and descendant.Enabled
+			and descendant.ActionText == "Report" and descendant.ObjectText == "Dead Body" then
+			return descendant
+		end
+	end
+	return nil
+end
+
+local function WalkAndTrigger(prompt)
+	local anchor = prompt.Parent
+	if not anchor then return end
+	local character = Player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+	local position
+	if anchor:IsA("BasePart") then
+		position = anchor.Position
+	elseif anchor:IsA("Model") or anchor:IsA("Attachment") then
+		position = anchor:IsA("Attachment") and anchor.WorldPosition or anchor:GetPivot().Position
+	end
+	if not position then return end
+	SetRootUpright(root, root.CFrame, position - Vector3.new(0, 2, 0))
+	task.wait(0.1)
+	if type(fireproximityprompt) == "function" then
+		pcall(fireproximityprompt, prompt)
+	end
+end
+
+local reportState = {Enabled = false, LastTrigger = 0}
+ReportToggle.MouseButton1Click:Connect(function()
+	reportState.Enabled = not reportState.Enabled
+	ReportToggle.Text = reportState.Enabled and "On" or "Off"
+end)
+
+RunService.Heartbeat:Connect(function()
+	if not ScreenGui.Parent then return end
+	if not reportState.Enabled or not CanReportYet() then return end
+	if os.clock() - reportState.LastTrigger < 3 then return end
+	if workspace:GetAttribute("Meeting") == true then return end
+	local prompt = FindDeadBodyPrompt()
+	if not prompt then return end
+	reportState.LastTrigger = os.clock()
+	task.spawn(WalkAndTrigger, prompt)
+end)
+
+local CallMeetingButton = Instance.new("TextButton")
+CallMeetingButton.Name = "CallMeetingButton"
+CallMeetingButton.Size = UDim2.new(0, 74, 0, 24)
+CallMeetingButton.Position = UDim2.new(1, -136, 0.5, -12)
+CallMeetingButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+CallMeetingButton.BackgroundTransparency = 0.2
+CallMeetingButton.BorderSizePixel = 0
+CallMeetingButton.Text = "Meeting"
+CallMeetingButton.Font = UIFont
+CallMeetingButton.TextSize = 11
+CallMeetingButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+CallMeetingButton.Parent = ReportRow
+Instance.new("UICorner", CallMeetingButton).CornerRadius = UDim.new(1, 0)
+AddPressBounce(CallMeetingButton)
+CallMeetingButton.MouseButton1Click:Connect(function()
+	if not CanReportYet() then return end
+	if os.clock() - reportState.LastTrigger < 3 then return end
+	local emergencyModel = workspace:FindFirstChild("EmergencyModel", true)
+	local button = emergencyModel and emergencyModel:FindFirstChild("Button")
+	local prompt = button and button:FindFirstChildOfClass("ProximityPrompt")
+	if not prompt then return end
+	reportState.LastTrigger = os.clock()
+	task.spawn(WalkAndTrigger, prompt)
+end)
+
+if type(getgenv) == "function" then
+	getgenv().Serenity_Suspect_IsKiller = IsPlayerKiller
+end
+
+-- Minimize
+local minimized = false
+local function ToggleMinimize()
+	minimized = not minimized
+	HeaderDivider.Visible = not minimized
+	ContentScroll.Visible = not minimized
+	PanelFrame.Size = UDim2.new(0, 280, 0, minimized and MINI_HEIGHT or FULL_HEIGHT)
+end
+MinimizeButton.MouseButton1Click:Connect(ToggleMinimize)
+
+local closingPanel = false
+CloseButton.MouseButton1Click:Connect(function()
+	if closingPanel then return end
+	closingPanel = true
+	local fadeOutInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	TweenService:Create(PanelScale, fadeOutInfo, {Scale = 0.85}):Play()
+	local fadeOutTween = TweenService:Create(PanelFrame, fadeOutInfo, {BackgroundTransparency = 1})
+	fadeOutTween:Play()
+	fadeOutTween.Completed:Wait()
+	ScreenGui:Destroy()
+end)
+
+local dragging = false
+local dragStart = nil
+local startPos = nil
+PanelFrame.InputBegan:Connect(function(input)
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+	dragging = true
+	dragStart = input.Position
+	startPos = PanelFrame.Position
+	input.Changed:Connect(function()
+		if input.UserInputState == Enum.UserInputState.End then
+			dragging = false
+		end
+	end)
+end)
+UserInputService.InputChanged:Connect(function(input)
+	if not dragging or (input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch) then return end
+	local delta = input.Position - dragStart
+	PanelFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	getgenv().Serenity_Suspect_PanelPosition = PanelFrame.Position
+end)
 
