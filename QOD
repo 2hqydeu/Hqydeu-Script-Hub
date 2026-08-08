@@ -1,24 +1,10 @@
 -- Suspect module for Serenity. ROUGH DRAFT / PROTOTYPE, built from an actual client-side
--- dump of the place file (Potassium/Dex export), not guesswork -- but two gaps in that dump
--- mean two things here are still best-effort:
---   - The kill weapon's own client script (whatever Tool the killer role gets) wasn't
---     present in the dump -- a client-side dump only ever captures what's actually loaded
---     for whoever's playing, and the weapon Tool only exists in a killer's Backpack once
---     the round actually assigns that role. WeaponEvent (the RemoteEvent it almost
---     certainly fires) IS confirmed to exist, but its real argument signature and the
---     server's actual attack cooldown aren't visible from this dump -- Auto Kill below
---     fires it parameterless (same convention QOD's PlayerTouchedOrClicked uses) on an
---     adjustable delay (AttackDelayBox) instead of a hardcoded guessed number, specifically
---     so the "it's slow, might be timed wrong" issue from QOD can actually be tuned live
---     against Suspect's real cooldown instead of guessed at.
---   - The ~30s can't-report-immediately window has no dedicated value anywhere in the dump
---     (no RoundTime/Intermission/GameState). Player:GetAttribute("InGame") IS confirmed
---     real (TaskFrame's own script branches on it) and flips true right as a round starts,
---     so that attribute's own change is used as the round-start clock instead of a made-up
---     timestamp.
--- Everything else (Auto Task's three minigames, Auto Report's prompt) is built directly
--- from TaskHandler/TaskLocal/TaskFrame's decompiled source and the actual ProximityPrompt
--- instances in the dump, not invented.
+-- dump of the place file (Potassium/Dex export), not guesswork.
+-- Auto Kill and Auto Report are pulled out for now (per request) to focus entirely on
+-- getting Auto Task solid first -- IsPlayerKiller/getgenv's Serenity_Suspect_IsKiller stay
+-- since Main's own ESP uses those regardless of whether this panel has a kill toggle.
+-- Auto Task itself is built directly from TaskHandler/TaskLocal/TaskFrame's decompiled
+-- source and the actual ProximityPrompt instances in the dump, not invented.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -339,53 +325,6 @@ local function CreateFeatureRow(order, labelText, parent)
 end
 
 -- ============================================================================
--- Auto Kill: reverted to a literal line-for-line port of QOD's own Auto Kill (just the
--- remote swapped to WeaponEvent) per direct request -- QOD's version is confirmed to
--- already run fully automatically against Suspect; my own "improved" rewrite (adjustable
--- delay box, explicit look-at facing, an extra settle frame before firing) apparently
--- broke that automatic firing somewhere instead of helping. QOD's version does still have
--- the known hit-connection issue (kills don't always land, or land slowly) -- that's a
--- separate problem to revisit later, not something to fix by deviating from what's
--- actually confirmed working here.
--- ============================================================================
-local KillRow, KillToggle = CreateFeatureRow(1, "Auto Kill")
-
-local killState = {Enabled = false, TargetIndex = 0, LastAttack = 0}
-KillToggle.MouseButton1Click:Connect(function()
-	killState.Enabled = not killState.Enabled
-	KillToggle.Text = killState.Enabled and "On" or "Off"
-end)
-
-RunService.Heartbeat:Connect(function()
-	if not ScreenGui.Parent then return end
-	if not killState.Enabled or os.clock() - killState.LastAttack < 0.1 or not IsSuspectKiller() then return end
-	local character = Player.Character
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	local root = character and character:FindFirstChild("HumanoidRootPart")
-	local playersFolder = workspace:FindFirstChild("PlayersFolder")
-	local weaponEvent = ReplicatedStorage:FindFirstChild("WeaponEvent")
-	if not humanoid or humanoid.Health <= 0 or not root or not playersFolder or not weaponEvent or not weaponEvent:IsA("RemoteEvent") then return end
-
-	local targets = {}
-	for _, targetPlayer in ipairs(Players:GetPlayers()) do
-		if targetPlayer ~= Player and playersFolder:FindFirstChild(targetPlayer.Name) then
-			local targetCharacter = targetPlayer.Character
-			local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
-			local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
-			if targetHumanoid and targetHumanoid.Health > 0 and targetRoot then table.insert(targets, targetRoot) end
-		end
-	end
-	if #targets == 0 then return end
-
-	killState.TargetIndex = (killState.TargetIndex % #targets) + 1
-	local targetRoot = targets[killState.TargetIndex]
-	root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 2)
-	root.AssemblyLinearVelocity = Vector3.zero
-	killState.LastAttack = os.clock()
-	pcall(function() weaponEvent:FireServer() end)
-end)
-
--- ============================================================================
 -- Shared: same trick Main's own Instant Prompt feature uses -- a ProximityPrompt's
 -- HoldDuration means fireproximityprompt has to actually sit through that whole hold
 -- (some executor implementations do simulate the real hold, not an instant tap), and
@@ -423,8 +362,7 @@ end
 -- nothing, so the Heartbeat loop immediately re-triggered the same still-active prompt a
 -- moment later and stomped whatever had just started opening.
 -- ============================================================================
-local TaskRow, TaskToggle = CreateFeatureRow(2, "Auto Task")
-local ReportRow, ReportToggle = CreateFeatureRow(3, "Auto Report")
+local TaskRow, TaskToggle = CreateFeatureRow(1, "Auto Task")
 
 -- Tunable settle delay between teleporting to a task and actually firing its prompt --
 -- triggering the instant the teleport lands is the likely cause of a task's prompt/outline
@@ -472,8 +410,16 @@ end)
 local function FireButton(button)
 	if not button then return false end
 	if type(firesignal) == "function" then
-		local success = pcall(firesignal, button.MouseButton1Click)
-		if success then return true end
+		-- The Download task's own Button is wired to .Activated, not .MouseButton1Click
+		-- (CodePad's digit/Finish buttons and Press-or-Die's ButtonActive both use
+		-- MouseButton1Click instead) -- that mismatch is almost certainly why Download
+		-- never actually pressed: firing MouseButton1Click only runs listeners connected to
+		-- THAT exact signal, never a totally separate Activated connection on the same
+		-- button. Firing both covers whichever one a given button actually uses -- firing a
+		-- signal nothing is connected to is a harmless no-op.
+		local firedActivated = pcall(firesignal, button.Activated)
+		local firedClick = pcall(firesignal, button.MouseButton1Click)
+		if firedActivated or firedClick then return true end
 	end
 	-- Fallback for executors without firesignal -- a real click simulated at the button's
 	-- own screen position. Less reliable (covered/offscreen buttons can miss) but better
@@ -677,161 +623,6 @@ RunService.Heartbeat:Connect(function()
 		task.wait(0.5)
 		taskState.Busy = false
 	end)
-end)
-
--- ============================================================================
--- Auto Report: fully automatic now -- no manual button. Every live "Dead Body"
--- ProximityPrompt (matched by its exact ActionText/ObjectText, same pair confirmed on the
--- dump's own DeadPrompt template -- not a fixed path, since a real body spawns wherever
--- the kill happened) gets walked to and reported; when there's no body to report, the
--- Emergency button gets walked to and pressed instead. Both gated behind the ~30s
--- round-start window via Player:GetAttribute("InGame") actually flipping true (confirmed
--- real, not guessed -- see top of file). The emergency fallback has its own longer
--- cooldown (60s) so it doesn't just spam-call meetings back to back when no one's dead.
---
--- Live prompts are tracked via DescendantAdded/Removing instead of rescanning
--- workspace:GetDescendants() every frame -- that full-tree walk every single Heartbeat is
--- almost certainly what "extremely laggy" was. An initial one-time sweep catches anything
--- already in the world when this loads, then the two connections keep the small cached set
--- current from there with no further scanning at all.
--- ============================================================================
--- Fallback only -- kept in case a map's EmergencyModel.Timer (below) can't be read for
--- some reason, so reporting still eventually unlocks instead of staying gated forever.
-local roundStartedAt = nil
-local function MarkRoundStart()
-	roundStartedAt = os.clock()
-end
-if Player:GetAttribute("InGame") == true then MarkRoundStart() end
-Player:GetAttributeChangedSignal("InGame"):Connect(function()
-	if Player:GetAttribute("InGame") == true then MarkRoundStart() end
-end)
-local REPORT_COOLDOWN_SECONDS = 30
-local function FallbackReportGate()
-	return roundStartedAt ~= nil and (os.clock() - roundStartedAt) >= REPORT_COOLDOWN_SECONDS
-end
-
-local function IsDeadBodyPrompt(descendant)
-	return descendant:IsA("ProximityPrompt") and descendant.ActionText == "Report" and descendant.ObjectText == "Dead Body"
-end
-
-local deadBodyPrompts = {}
-for _, descendant in ipairs(workspace:GetDescendants()) do
-	if IsDeadBodyPrompt(descendant) then deadBodyPrompts[descendant] = true end
-end
-workspace.DescendantAdded:Connect(function(descendant)
-	if IsDeadBodyPrompt(descendant) then deadBodyPrompts[descendant] = true end
-end)
-workspace.DescendantRemoving:Connect(function(descendant)
-	deadBodyPrompts[descendant] = nil
-end)
-
-local function FindDeadBodyPrompt()
-	for prompt in pairs(deadBodyPrompts) do
-		if prompt.Parent and prompt.Enabled then return prompt end
-		if not prompt.Parent then deadBodyPrompts[prompt] = nil end
-	end
-	return nil
-end
-
--- Every map has its own EmergencyModel (e.g. workspace.Map.Airport.EmergencyModel) --
--- FindFirstChild(..., true) searches the whole tree recursively so this finds whichever
--- one actually exists in the currently loaded map without caring what map it is. Retried
--- (not resolved once) since the map might not have finished streaming in yet the moment
--- this script starts.
-local emergencyModel, emergencyPrompt
-local function ResolveEmergencyModel()
-	if emergencyModel and emergencyModel.Parent then return end
-	emergencyModel = workspace:FindFirstChild("EmergencyModel", true)
-	if not emergencyModel then return end
-	local button = emergencyModel:FindFirstChild("Button")
-	emergencyPrompt = button and button:FindFirstChildOfClass("ProximityPrompt")
-end
-ResolveEmergencyModel()
-
--- The world Timer prop (EmergencyModel.Timer) is the real, authoritative "can you report
--- yet" signal -- confirmed to exist per-map, unlike the guessed 30s-since-InGame window
--- this used to lean on entirely. Its exact type isn't pinned down (could be a plain
--- NumberValue, or a Part whose SurfaceGui text just displays the countdown), so this reads
--- whichever it turns out to be: a numeric Value <= 0, or a descendant TextLabel whose text
--- reads as 0/empty/"ready". Falls back to the InGame-based guess only if no Timer-like
--- signal can be found at all.
-local function FindReadableText(timer)
-	if timer:IsA("TextLabel") or timer:IsA("TextButton") then return timer end
-	return timer:FindFirstChildWhichIsA("TextLabel", true) or timer:FindFirstChildWhichIsA("TextButton", true)
-end
-
-local function IsReportReady()
-	ResolveEmergencyModel()
-	if not emergencyModel then return FallbackReportGate() end
-	local timer = emergencyModel:FindFirstChild("Timer")
-	if not timer then return FallbackReportGate() end
-
-	if timer:IsA("ValueBase") then
-		local value = timer.Value
-		if type(value) == "number" then return value <= 0 end
-	end
-
-	local label = FindReadableText(timer)
-	if label then
-		local text = label.Text:lower()
-		if text == "" or text == "0" or text:find("ready", 1, true) or text:find("go", 1, true) then
-			return true
-		end
-		local numeric = tonumber(text:match("%d+"))
-		if numeric then return numeric <= 0 end
-	end
-
-	return FallbackReportGate()
-end
-
-local function WalkAndTrigger(prompt)
-	local anchor = prompt.Parent
-	if not anchor then return end
-	local character = Player.Character
-	local root = character and character:FindFirstChild("HumanoidRootPart")
-	if not root then return end
-	local position
-	if anchor:IsA("BasePart") then
-		position = anchor.Position
-	elseif anchor:IsA("Model") or anchor:IsA("Attachment") then
-		position = anchor:IsA("Attachment") and anchor.WorldPosition or anchor:GetPivot().Position
-	end
-	if not position then return end
-	SetRootUpright(root, root.CFrame, position - Vector3.new(0, 2, 0))
-	root.AssemblyLinearVelocity = Vector3.zero
-	-- One frame, not a real delay -- reporting/calling a meeting should be as close to
-	-- instant as possible, this is only here so the teleport has actually replicated
-	-- before the trigger fires.
-	task.wait()
-	if type(fireproximityprompt) == "function" then
-		MakePromptInstant(prompt)
-		pcall(fireproximityprompt, prompt)
-	end
-end
-
-local reportState = {Enabled = false, LastReport = 0, LastMeetingCall = 0}
-ReportToggle.MouseButton1Click:Connect(function()
-	reportState.Enabled = not reportState.Enabled
-	ReportToggle.Text = reportState.Enabled and "On" or "Off"
-end)
-
-RunService.Heartbeat:Connect(function()
-	if not ScreenGui.Parent then return end
-	if not reportState.Enabled or not IsReportReady() then return end
-	if workspace:GetAttribute("Meeting") == true then return end
-
-	local prompt = FindDeadBodyPrompt()
-	if prompt then
-		if os.clock() - reportState.LastReport < 3 then return end
-		reportState.LastReport = os.clock()
-		task.spawn(WalkAndTrigger, prompt)
-		return
-	end
-
-	if emergencyPrompt and os.clock() - reportState.LastMeetingCall >= 60 then
-		reportState.LastMeetingCall = os.clock()
-		task.spawn(WalkAndTrigger, emergencyPrompt)
-	end
 end)
 
 if type(getgenv) == "function" then
