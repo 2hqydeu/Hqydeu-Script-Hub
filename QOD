@@ -339,38 +339,18 @@ local function CreateFeatureRow(order, labelText, parent)
 end
 
 -- ============================================================================
--- Auto Kill: same cycle-and-teleport-adjacent approach as QOD's Auto Kill, against
--- Suspect's own WeaponEvent instead of PlayerTouchedOrClicked. AttackDelayBox replaces
--- QOD's hardcoded 0.1s throttle -- tune it live against Suspect's real weapon cooldown
--- (see the file-level comment at the top for why that number couldn't be read from the
--- dump) instead of it being baked in wrong.
+-- Auto Kill: reverted to a literal line-for-line port of QOD's own Auto Kill (just the
+-- remote swapped to WeaponEvent) per direct request -- QOD's version is confirmed to
+-- already run fully automatically against Suspect; my own "improved" rewrite (adjustable
+-- delay box, explicit look-at facing, an extra settle frame before firing) apparently
+-- broke that automatic firing somewhere instead of helping. QOD's version does still have
+-- the known hit-connection issue (kills don't always land, or land slowly) -- that's a
+-- separate problem to revisit later, not something to fix by deviating from what's
+-- actually confirmed working here.
 -- ============================================================================
 local KillRow, KillToggle = CreateFeatureRow(1, "Auto Kill")
 
-local AttackDelayBox = Instance.new("TextBox")
-AttackDelayBox.Name = "AttackDelayBox"
-AttackDelayBox.Size = UDim2.new(0, 40, 0, 22)
-AttackDelayBox.Position = UDim2.new(1, -108, 0.5, -11)
-AttackDelayBox.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
-AttackDelayBox.BackgroundTransparency = 0.2
-AttackDelayBox.BorderSizePixel = 0
-AttackDelayBox.Text = "0.5"
-AttackDelayBox.ClearTextOnFocus = false
-AttackDelayBox.Font = UIFont
-AttackDelayBox.TextSize = 12
-AttackDelayBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-AttackDelayBox.Parent = KillRow
-Instance.new("UICorner", AttackDelayBox).CornerRadius = UDim.new(0, 6)
-
-local killState = {Enabled = false, TargetIndex = 0, LastAttack = 0, Delay = 0.5}
-AttackDelayBox.FocusLost:Connect(function()
-	local parsed = tonumber(AttackDelayBox.Text)
-	if parsed and parsed >= 0 then
-		killState.Delay = parsed
-	end
-	AttackDelayBox.Text = string.format("%.2f", killState.Delay)
-end)
-
+local killState = {Enabled = false, TargetIndex = 0, LastAttack = 0}
 KillToggle.MouseButton1Click:Connect(function()
 	killState.Enabled = not killState.Enabled
 	KillToggle.Text = killState.Enabled and "On" or "Off"
@@ -378,7 +358,7 @@ end)
 
 RunService.Heartbeat:Connect(function()
 	if not ScreenGui.Parent then return end
-	if not killState.Enabled or os.clock() - killState.LastAttack < killState.Delay or not IsSuspectKiller() then return end
+	if not killState.Enabled or os.clock() - killState.LastAttack < 0.1 or not IsSuspectKiller() then return end
 	local character = Player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	local root = character and character:FindFirstChild("HumanoidRootPart")
@@ -399,19 +379,9 @@ RunService.Heartbeat:Connect(function()
 
 	killState.TargetIndex = (killState.TargetIndex % #targets) + 1
 	local targetRoot = targets[killState.TargetIndex]
-	-- Positioned a fixed offset from the target and explicitly aimed AT them, instead of
-	-- inheriting the target's own CFrame rotation (which put the killer facing whichever
-	-- way the TARGET happened to be facing, not facing the target at all). QOD's own Auto
-	-- Kill reportedly worked but struggled to actually connect hits -- if the server checks
-	-- the attacker is oriented toward the victim (a common melee-hit validation), never
-	-- actually facing them would explain exactly that symptom.
-	root.CFrame = CFrame.new(targetRoot.Position + Vector3.new(0, 0, 2), targetRoot.Position)
+	root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 2)
 	root.AssemblyLinearVelocity = Vector3.zero
 	killState.LastAttack = os.clock()
-	-- One frame for that position to actually replicate before the attack remote arrives --
-	-- firing the same instant as the CFrame change risks the server processing the attack
-	-- against wherever it last knew the killer to be, not the just-set position.
-	task.wait()
 	pcall(function() weaponEvent:FireServer() end)
 end)
 
@@ -470,7 +440,7 @@ TaskDelayBox.Position = UDim2.new(1, -108, 0.5, -11)
 TaskDelayBox.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 TaskDelayBox.BackgroundTransparency = 0.2
 TaskDelayBox.BorderSizePixel = 0
-TaskDelayBox.Text = "0.75"
+TaskDelayBox.Text = "0.4"
 TaskDelayBox.ClearTextOnFocus = false
 TaskDelayBox.Font = UIFont
 TaskDelayBox.TextSize = 12
@@ -478,7 +448,7 @@ TaskDelayBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 TaskDelayBox.Parent = TaskRow
 Instance.new("UICorner", TaskDelayBox).CornerRadius = UDim.new(0, 6)
 
-local taskState = {Enabled = false, CurrentPart = nil, Busy = false, TriggerDelay = 0.75}
+local taskState = {Enabled = false, CurrentPart = nil, Busy = false, TriggerDelay = 0.4}
 TaskDelayBox.FocusLost:Connect(function()
 	local parsed = tonumber(TaskDelayBox.Text)
 	if parsed and parsed >= 0 then
@@ -584,12 +554,56 @@ local function HandlePressTask(pressing)
 	end
 end
 
+-- Wraps just the teleport-in/trigger/play-the-minigame window in a temporary noclip so
+-- SetRootUpright dropping the killer right next to (or slightly inside) task scenery
+-- doesn't get physics-shoved around or stuck on it -- same accessory/HumanoidRootPart-safe
+-- CanCollide toggle as MM2's Coin Farm noclip. Noclip alone means gravity just pulls
+-- straight through the floor with nothing solid underneath anymore, so this also holds
+-- vertical velocity at zero the whole time, the minimum a "fly" would actually be doing
+-- for this -- horizontal velocity is left alone since nothing here is trying to move you
+-- sideways.
+local function BeginTaskNoclip(character)
+	local touched = {}
+	for _, part in ipairs(character:GetDescendants()) do
+		local parent = part.Parent
+		local isRigAccessory = parent and (parent:IsA("Accessory") or parent:IsA("Tool"))
+		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" and part.CanCollide and not isRigAccessory then
+			touched[part] = true
+			part.CanCollide = false
+		end
+	end
+	local antiFallConnection = RunService.Heartbeat:Connect(function()
+		local root = character:FindFirstChild("HumanoidRootPart")
+		if root then
+			local velocity = root.AssemblyLinearVelocity
+			root.AssemblyLinearVelocity = Vector3.new(velocity.X, 0, velocity.Z)
+		end
+	end)
+	return touched, antiFallConnection
+end
+
+local function EndTaskNoclip(touched, antiFallConnection)
+	if antiFallConnection then antiFallConnection:Disconnect() end
+	for part in pairs(touched) do
+		if part.Parent then part.CanCollide = true end
+	end
+end
+
 local function RunTaskAtPart(part)
 	local prompt = part:FindFirstChildOfClass("ProximityPrompt")
-	if not prompt or not prompt.Enabled then return end
+	if not prompt then return end
 	local character = Player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	if not root then return end
+
+	-- TaskLocal's own script disables this prompt locally the instant ANY Triggered fires
+	-- (including our own simulated one) as a purely cosmetic "task begun" reaction -- that
+	-- doesn't mean the server actually advanced anything. taskState.CurrentPart still
+	-- pointing at this same part on the next attempt means the server hasn't moved on, so
+	-- force it back on and retry instead of treating that local-only Enabled=false as a
+	-- real lock -- bailing out here on every retry (the old behavior) is what left a broken
+	-- task stuck forever with no new one ever generated.
+	prompt.Enabled = true
 
 	SetRootUpright(root, root.CFrame, part.Position - Vector3.new(0, 3, 0))
 	root.AssemblyLinearVelocity = Vector3.zero
@@ -653,7 +667,9 @@ RunService.Heartbeat:Connect(function()
 
 	taskState.Busy = true
 	task.spawn(function()
+		local touched, antiFallConnection = BeginTaskNoclip(character)
 		pcall(RunTaskAtPart, part)
+		EndTaskNoclip(touched, antiFallConnection)
 		-- Small settle delay before allowing the next attempt -- if the task genuinely
 		-- didn't complete (detection missed something, or the server hasn't advanced
 		-- CurrentPart yet), this stops it from re-triggering the exact same prompt on the
