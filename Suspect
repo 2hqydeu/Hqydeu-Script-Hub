@@ -324,29 +324,31 @@ local function CreateFeatureRow(order, labelText, parent)
 end
 
 -- ============================================================================
--- Auto Kill: a literal line-for-line port of QOD's own Auto Kill (just the remote swapped
--- to WeaponEvent) -- QOD's version is confirmed to run fully automatically against
--- Suspect, so this stays a direct port rather than deviating from what's actually
--- confirmed working. It does still have a known hit-connection issue (kills don't always
--- land, or land slowly) -- a separate problem to revisit later, not something to fix by
--- rewriting the parts that already work.
+-- Auto Kill: now a "gather everyone" sweep instead of cycling one target at a time --
+-- ported from a completely different MM2 script's own "Kill EVERYONE as murderer" (that
+-- game's version: equip the Knife, Anchor every other player's HumanoidRootPart, snap them
+-- ALL to one point right in front of you, then fire the attack once so it lands on the
+-- whole pile at the same time). Suspect's actual attack mechanism is still a guess (see the
+-- Tool.Activated + WeaponEvent double-fire below, unchanged from before), but freezing
+-- every target in one spot instead of relying on a clean individual hit on each one in turn
+-- is worth trying regardless of exactly how the hit itself registers. Un-anchors everyone
+-- again after each attempt -- leaving other players permanently frozen in place if a kill
+-- doesn't land would be its own very obvious problem.
 -- ============================================================================
 local KillRow, KillToggle = CreateFeatureRow(1, "Auto Kill")
 
-local killState = {Enabled = false, TargetIndex = 0, LastAttack = 0}
+local killState = {Enabled = false}
 KillToggle.MouseButton1Click:Connect(function()
 	killState.Enabled = not killState.Enabled
 	KillToggle.Text = killState.Enabled and "On" or "Off"
 end)
 
--- Teleporting next to targets was confirmed working -- just never actually killing them.
--- QOD's own attack is a bare remote fire with no Tool involved at all, but Suspect's
--- killer is very likely handed an actual Knife-style Tool (like MM2/QOD's own weapon
--- Tools), and a real attack there normally goes through Tool.Activated -- which is what
--- actually runs the server's hit-detection/raycast before it ever touches WeaponEvent, not
--- something a bare WeaponEvent:FireServer() on its own can substitute for. Same class of
--- bug as the Download task button (a button/tool's real activation signal isn't always the
--- one you'd guess) -- so this now also finds and equips the killer's Tool and fires its
+-- Suspect's killer is very likely handed an actual Knife-style Tool (like MM2/QOD's own
+-- weapon Tools), and a real attack there normally goes through Tool.Activated -- which is
+-- what actually runs the server's hit-detection/raycast before it ever touches WeaponEvent,
+-- not something a bare WeaponEvent:FireServer() on its own can substitute for. Same class
+-- of bug as the Download task button (a button/tool's real activation signal isn't always
+-- the one you'd guess) -- so this finds and equips the killer's Tool and fires its
 -- Activated, alongside the direct remote fire as a fallback in case there isn't one.
 local function GetKillerTool(character)
 	local tool = character:FindFirstChildOfClass("Tool")
@@ -361,39 +363,59 @@ local function GetKillerTool(character)
 	return nil
 end
 
-RunService.Heartbeat:Connect(function()
-	if not ScreenGui.Parent then return end
-	if Player:GetAttribute("InGame") ~= true then return end
-	if not killState.Enabled or os.clock() - killState.LastAttack < 0.1 or not IsSuspectKiller() then return end
-	local character = Player.Character
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	local root = character and character:FindFirstChild("HumanoidRootPart")
-	local playersFolder = workspace:FindFirstChild("PlayersFolder")
-	local weaponEvent = ReplicatedStorage:FindFirstChild("WeaponEvent")
-	if not humanoid or humanoid.Health <= 0 or not root or not playersFolder or not weaponEvent or not weaponEvent:IsA("RemoteEvent") then return end
-
-	local targets = {}
-	for _, targetPlayer in ipairs(Players:GetPlayers()) do
-		if targetPlayer ~= Player and playersFolder:FindFirstChild(targetPlayer.Name) then
-			local targetCharacter = targetPlayer.Character
-			local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
-			local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
-			if targetHumanoid and targetHumanoid.Health > 0 and targetRoot then table.insert(targets, targetRoot) end
-		end
-	end
-	if #targets == 0 then return end
-
-	killState.TargetIndex = (killState.TargetIndex % #targets) + 1
-	local targetRoot = targets[killState.TargetIndex]
-	root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 2)
-	root.AssemblyLinearVelocity = Vector3.zero
-	killState.LastAttack = os.clock()
-
+local function FireAttack(character, weaponEvent)
 	local tool = GetKillerTool(character)
 	if tool and type(firesignal) == "function" then
 		pcall(firesignal, tool.Activated)
 	end
 	pcall(function() weaponEvent:FireServer() end)
+end
+
+task.spawn(function()
+	while true do
+		task.wait(0.5)
+		if not ScreenGui.Parent then return end
+		if killState.Enabled and Player:GetAttribute("InGame") == true and IsSuspectKiller() then
+			local character = Player.Character
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			local root = character and character:FindFirstChild("HumanoidRootPart")
+			local playersFolder = workspace:FindFirstChild("PlayersFolder")
+			local weaponEvent = ReplicatedStorage:FindFirstChild("WeaponEvent")
+			if humanoid and humanoid.Health > 0 and root and playersFolder and weaponEvent and weaponEvent:IsA("RemoteEvent") then
+				local targets = {}
+				for _, targetPlayer in ipairs(Players:GetPlayers()) do
+					if targetPlayer ~= Player and playersFolder:FindFirstChild(targetPlayer.Name) then
+						local targetCharacter = targetPlayer.Character
+						local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
+						local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+						if targetHumanoid and targetHumanoid.Health > 0 and targetRoot then table.insert(targets, targetRoot) end
+					end
+				end
+
+				if #targets > 0 then
+					local gatherCFrame = root.CFrame * CFrame.new(0, 0, -3)
+					for _, targetRoot in ipairs(targets) do
+						targetRoot.Anchored = true
+						targetRoot.CFrame = gatherCFrame
+					end
+
+					-- A handful of attempts while everyone's held in place, not just the one
+					-- shot the source script used -- Suspect's real hit requirements aren't
+					-- confirmed, so this gives it a few tries at actually landing instead of
+					-- one guess.
+					for i = 1, 4 do
+						if not killState.Enabled then break end
+						FireAttack(character, weaponEvent)
+						task.wait(0.15)
+					end
+
+					for _, targetRoot in ipairs(targets) do
+						if targetRoot.Parent then targetRoot.Anchored = false end
+					end
+				end
+			end
+		end
+	end
 end)
 
 -- ============================================================================
@@ -863,13 +885,16 @@ end)
 
 -- ============================================================================
 -- Auto Accuse: once a meeting actually starts (workspace's own "Meeting" attribute, the
--- same one everything above already treats as authoritative), answer both voting
--- questions "Yes" and accuse whoever's currently detected as the killer -- best-effort,
--- built from paths handed over by hand rather than decompiled source (unlike everything
--- above this), so the PlayerList entry lookup below is intentionally flexible (matches on
--- the entry's own Name OR any descendant label's text) rather than assuming one exact
--- structure. Only runs while Auto Report itself is on, since this is that toggle's own
--- follow-through once a meeting it caused (or anyone else's) actually happens.
+-- same one everything above already treats as authoritative), work through the real vote
+-- flow (corrected per direct testing -- the player list is NOT a plain click-to-accuse
+-- row): "have you seen the killer" -> Yes, find the killer's own row in the player list
+-- and click ITS separate "Suspect" button, then a second "vote them out?" confirmation
+-- appears (Question2 is the current best guess for that one) -> Yes. Still best-effort --
+-- built from paths handed over by hand rather than decompiled source like everything above
+-- this, so both the row lookup and the Suspect-button lookup are deliberately flexible
+-- (name match OR any descendant label's text) rather than assuming one exact structure.
+-- Only runs while Auto Report itself is on, since this is that toggle's own follow-through
+-- once a meeting it caused (or anyone else's) actually happens.
 -- ============================================================================
 local function GetKnownKiller()
 	for _, candidate in ipairs(Players:GetPlayers()) do
@@ -880,9 +905,9 @@ local function GetKnownKiller()
 	return nil
 end
 
-local function FindPlayerListEntry(playerList, targetPlayer)
+local function FindKillerRow(playerList, targetPlayer)
 	for _, descendant in ipairs(playerList:GetDescendants()) do
-		if descendant:IsA("GuiButton") then
+		if descendant:IsA("GuiObject") then
 			local matches = descendant.Name == targetPlayer.Name or descendant.Name == targetPlayer.DisplayName
 			if not matches then
 				for _, label in ipairs(descendant:GetDescendants()) do
@@ -902,6 +927,22 @@ local function FindPlayerListEntry(playerList, targetPlayer)
 	return nil
 end
 
+local function FindSuspectButton(row)
+	for _, descendant in ipairs(row:GetDescendants()) do
+		if descendant:IsA("GuiButton") then
+			local name = descendant.Name:lower()
+			local text = (descendant.Text or ""):lower()
+			if name:find("suspect", 1, true) or text:find("suspect", 1, true) then
+				return descendant
+			end
+		end
+	end
+	-- No dedicated Suspect sub-button found -- if the row itself is a button, clicking the
+	-- row directly might be how it actually works.
+	if row:IsA("GuiButton") then return row end
+	return nil
+end
+
 local function AutoAccuseKiller()
 	local playerGui = Player:FindFirstChildOfClass("PlayerGui")
 	local inGameGui = playerGui and playerGui:WaitForChild("InGameGui", 5)
@@ -911,28 +952,38 @@ local function AutoAccuseKiller()
 	local killer = GetKnownKiller()
 	if not killer then return end
 
-	-- Give the frame a moment to actually populate (the PlayerList especially is very
+	-- Give the frame a moment to actually populate (the player list especially is very
 	-- likely built dynamically once the meeting starts, not sitting there in advance).
 	task.wait(1)
 
 	local question1 = votingFrame:FindFirstChild("Question1")
 	FireButton(question1 and question1:FindFirstChild("Yes"))
-	task.wait(0.3)
-	local question2 = votingFrame:FindFirstChild("Question2")
-	FireButton(question2 and question2:FindFirstChild("Yes"))
-	task.wait(0.3)
+	task.wait(0.5)
 
 	local accuse = votingFrame:FindFirstChild("Accuse")
-	local playerList = accuse and accuse:FindFirstChild("PlayerList")
+	local playerList = (accuse and accuse:FindFirstChild("PlayerList")) or votingFrame:FindFirstChild("PlayerList", true)
 	if not playerList then return end
 
 	local start = os.clock()
-	local entry = FindPlayerListEntry(playerList, killer)
-	while not entry and os.clock() - start < 3 do
+	local row = FindKillerRow(playerList, killer)
+	while not row and os.clock() - start < 3 do
 		task.wait(0.2)
-		entry = FindPlayerListEntry(playerList, killer)
+		row = FindKillerRow(playerList, killer)
 	end
-	FireButton(entry)
+	if not row then return end
+	FireButton(FindSuspectButton(row))
+
+	-- The "vote them out?" confirmation only shows up after suspecting someone -- Question2
+	-- is the best current guess for it, waited on (not fired blind) since it likely wasn't
+	-- visible/present until just now.
+	local question2 = votingFrame:FindFirstChild("Question2")
+	if question2 then
+		local waitStart = os.clock()
+		while not question2.Visible and os.clock() - waitStart < 3 do
+			task.wait(0.2)
+		end
+		FireButton(question2:FindFirstChild("Yes"))
+	end
 end
 
 workspace:GetAttributeChangedSignal("Meeting"):Connect(function()
