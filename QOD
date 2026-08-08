@@ -1,32 +1,40 @@
--- Suspect module for Serenity. ROUGH DRAFT / PROTOTYPE, built from an actual client-side
--- dump of the place file (Potassium/Dex export), not guesswork.
--- Auto Kill and Auto Report are pulled out for now (per request) to focus entirely on
--- getting Auto Task solid first -- IsPlayerKiller/getgenv's Serenity_Suspect_IsKiller stay
--- since Main's own ESP uses those regardless of whether this panel has a kill toggle.
--- Auto Task itself is built directly from TaskHandler/TaskLocal/TaskFrame's decompiled
--- source and the actual ProximityPrompt instances in the dump, not invented.
+-- Quiet or Die module for Serenity. Standalone, like UE -- no shared runtime/theme table
+-- to hook into, so this builds its own small panel matching the hub's look. Ported from
+-- the old hub's QOD page: Auto Kill, Auto Farm (+ Safe Place, Mute Audio, tucked behind an
+-- Edit button so the main panel stays uncluttered), Auto Revive, Auto Event (also behind
+-- Edit), and an ESP toggle that labels whoever's currently the killer. The old hub's
+-- ThemeObjects/HubState wiring, keybind rebinding, persistent execution-history panel,
+-- Coins/Wins readout, and Auto Reveal were all dropped -- toggles are plain click buttons.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CoreGui = game:GetService("CoreGui")
+local SoundService = game:GetService("SoundService")
 local TweenService = game:GetService("TweenService")
 
 local Player = Players.LocalPlayer
 local FrameColor = Color3.fromRGB(3, 3, 3)
 local AccentColor = Color3.fromRGB(255, 255, 255)
-local UIFont = Enum.Font.FredokaOne
+local UIFont = Enum.Font.FredokaOne -- more playful/rounded than Ubuntu, per request
 local GameRowTransparency = 0
 
+-- Sets a root's position while keeping it upright (zeroing pitch/roll, keeping the current
+-- facing direction) -- used by Auto Farm's Safe Place drop and Auto Event's approach.
 local function SetRootUpright(root, currentCFrame, targetPosition)
 	local _, yRotation = currentCFrame:ToOrientation()
 	root.CFrame = CFrame.new(targetPosition) * CFrame.Angles(0, yRotation, 0)
 end
 
--- Ported from QOD verbatim -- confirmed still correct here: TaskFrame's own dumped script
--- reads workspace.KillerFolder/PlayersFolder the same way, and KillerFrameGame (checked
--- below) is the exact GUI ActivateButton's own dumped script waits on, so this already
--- works against Suspect with no changes, matching what's already been observed in-game.
+local function IsQuietOrDieSurvivor()
+	local playerGui = Player:FindFirstChildOfClass("PlayerGui")
+	local inGameGui = playerGui and playerGui:FindFirstChild("InGameGui")
+	local playerFrame = inGameGui and inGameGui:FindFirstChild("PlayerFrameGame")
+	return playerFrame ~= nil and playerFrame.Visible and Player:FindFirstChild("InHit") == nil
+end
+
+-- Generalized so ESP can check ANY player, not just the local one -- the killer-frame GUI
+-- check only ever applies to the local player (other players' PlayerGuis aren't readable).
 local function IsPlayerKiller(targetPlayer)
 	targetPlayer = targetPlayer or Player
 	local killerFolder = workspace:FindFirstChild("KillerFolder")
@@ -64,26 +72,37 @@ local function IsPlayerKiller(targetPlayer)
 	end
 	return false
 end
-local function IsSuspectKiller()
+
+local function IsQuietOrDieKiller()
 	return IsPlayerKiller(Player)
 end
 
--- UI: same standalone-panel shell as every other game module (MM2/QOD/UE).
-local existingScreenGui = CoreGui:FindFirstChild("SerenitySuspect")
+-- UI: a small standalone panel, matching Serenity's look for consistency (same shell as UE).
+-- Re-running this script (Scripts tab's Execute/Open button re-executes the whole chunk
+-- every click, it never just no-ops on an already-open panel) used to stack a brand new
+-- ScreenGui on top of any already-open one instead of replacing it -- only one of THIS
+-- game's panel should ever exist at a time, so tear down a previous instance first.
+local existingScreenGui = CoreGui:FindFirstChild("SerenityQOD")
 if existingScreenGui then existingScreenGui:Destroy() end
 
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "SerenitySuspect"
+ScreenGui.Name = "SerenityQOD"
 ScreenGui.Parent = CoreGui
 ScreenGui.ResetOnSpawn = false
 
+-- Standardized to the same 280x400 size as UE/MM2's panels, so one background image size
+-- covers all three game windows.
 local FULL_HEIGHT = 400
 local MINI_HEIGHT = 44
 
 local PanelFrame = Instance.new("Frame")
-PanelFrame.Name = "SuspectPanel"
+PanelFrame.Name = "QODPanel"
 PanelFrame.Size = UDim2.new(0, 280, 0, FULL_HEIGHT)
-PanelFrame.Position = getgenv().Serenity_Suspect_PanelPosition or UDim2.new(0.5, -140, 0.5, -200)
+-- Reopening after closing re-runs this whole script fresh, which would otherwise always
+-- reset back to the centered default position -- getgenv() is the only thing that survives
+-- across separate executions, so the panel's last dragged spot gets remembered there
+-- (written to on every drag update below) and restored here if present.
+PanelFrame.Position = getgenv().Serenity_QOD_PanelPosition or UDim2.new(0.5, -140, 0.5, -200)
 PanelFrame.AnchorPoint = Vector2.new(0, 0)
 PanelFrame.BackgroundColor3 = FrameColor
 PanelFrame.BorderSizePixel = 0
@@ -95,6 +114,13 @@ local PanelCorner = Instance.new("UICorner")
 PanelCorner.CornerRadius = UDim.new(0, 14)
 PanelCorner.Parent = PanelFrame
 
+-- Opens with a quick pop + fade instead of just appearing instantly. UIScale (unlike
+-- BackgroundTransparency) scales the whole rendered panel -- rows, buttons, everything
+-- underneath it -- uniformly, so this doesn't hit the same "children don't fade with the
+-- parent" problem a plain transparency tween would (that's exactly what CanvasGroup was
+-- for over in the main hub, and it turned out to have its own rendering problems on the
+-- actual client -- this sidesteps needing it here at all). PanelScale is reused by the
+-- close animation below.
 local PanelScale = Instance.new("UIScale")
 PanelScale.Scale = 0.85
 PanelScale.Parent = PanelFrame
@@ -102,18 +128,22 @@ PanelFrame.BackgroundTransparency = 1
 TweenService:Create(PanelScale, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
 TweenService:Create(PanelFrame, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0}):Play()
 
+
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
 TitleLabel.Size = UDim2.new(0, 160, 0, 24)
 TitleLabel.Position = UDim2.new(0, 16, 0, 10)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "Suspect"
+TitleLabel.Text = "Quiet or Die"
 TitleLabel.Font = UIFont
 TitleLabel.TextSize = 15
 TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = PanelFrame
 
+-- Small shared polish helpers -- hover brighten, a tactile press-down "squish", and a
+-- divider that fades out at both ends instead of a flat bar. Same visual pass as the main
+-- hub, ported here for a consistent feel across every panel.
 local function AddButtonHover(button, hoverColor, normalColor)
 	normalColor = normalColor or button.BackgroundColor3
 	button.MouseEnter:Connect(function()
@@ -124,6 +154,9 @@ local function AddButtonHover(button, hoverColor, normalColor)
 	end)
 end
 
+-- AddPressBounce and AddHoverPop both animate a control's scale -- Roblox only honors one
+-- UIScale per object, so if each created its own, they'd silently fight. This finds an
+-- existing one on the target before making a new one, so both share the same instance.
 local function GetOrCreateUIScale(target)
 	local scale = target:FindFirstChildOfClass("UIScale")
 	if not scale then
@@ -135,6 +168,11 @@ end
 
 local function AddPressBounce(button)
 	local scale = GetOrCreateUIScale(button)
+	-- Guarded by "pressed" -- this used to reset to Scale=1 on every single MouseLeave,
+	-- which fought a row's hover-pop group: leaving just this control (while the cursor is
+	-- still over the rest of the row) fired this button's own MouseLeave and snapped the
+	-- shared scale back down, even though the row itself was never left. Now MouseLeave
+	-- only resets if a press is actually in progress.
 	local pressed = false
 	local function release()
 		if not pressed then return end
@@ -159,6 +197,10 @@ local function AddFadeDivider(divider)
 	gradient.Parent = divider
 end
 
+
+-- Traffic-light style, matching Serenity's own minimize/close circles: tiny plain colored
+-- circles (yellow = minimize, red = close), no glyph inside either -- a thin darker ring
+-- gives them definition without needing text.
 local MinimizeButton = Instance.new("TextButton")
 MinimizeButton.Name = "MinimizeButton"
 MinimizeButton.Size = UDim2.new(0, 12, 0, 12)
@@ -212,6 +254,8 @@ HeaderDivider.BackgroundTransparency = 0.85
 HeaderDivider.Parent = PanelFrame
 AddFadeDivider(HeaderDivider)
 
+-- Content scrolls (so extra features never get cut off by the fixed panel height) and every
+-- row is spaced out via UIListLayout instead of hand-placed Y offsets.
 local ContentScroll = Instance.new("ScrollingFrame")
 ContentScroll.Name = "ContentScroll"
 ContentScroll.Size = UDim2.new(1, 0, 1, -MINI_HEIGHT - 8)
@@ -229,6 +273,7 @@ local ContentLayout = Instance.new("UIListLayout")
 ContentLayout.Padding = UDim.new(0, 12)
 ContentLayout.SortOrder = Enum.SortOrder.LayoutOrder
 ContentLayout.Parent = ContentScroll
+-- Manual canvas sizing (not AutomaticCanvasSize -- untested against this executor).
 ContentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
 	ContentScroll.CanvasSize = UDim2.new(0, 0, 0, ContentLayout.AbsoluteContentSize.Y + 16)
 end)
@@ -240,9 +285,17 @@ ContentPadding.PaddingTop = UDim.new(0, 4)
 ContentPadding.PaddingBottom = UDim.new(0, 12)
 ContentPadding.Parent = ContentScroll
 
+-- Pill-shaped On/Off switch (oval track + round knob, track fills with a light color when
+-- On) that replaces the old plain "On"/"Off" text button everywhere in this hub. Every
+-- toggle call site already just does `toggle.Text = enabled and "On" or "Off"`, so this
+-- hooks that same Text property instead of needing every call site rewritten: nothing
+-- outside this function has to change to get the new visual.
 local ToggleOffColor = Color3.fromRGB(24, 24, 24)
 local ToggleOnColor = Color3.fromRGB(178, 155, 235)
 local ToggleKnobColor = Color3.fromRGB(238, 233, 250)
+
+-- Quick "pop" -- the actual toggle scales up a hair on hover and springs back down on
+-- leave, never the row itself, so the row's label text never moves.
 
 local function StyleAsToggleSwitch(toggle)
 	toggle.AutoButtonColor = false
@@ -262,6 +315,10 @@ local function StyleAsToggleSwitch(toggle)
 	knob.ZIndex = toggle.ZIndex + 1
 	knob.Parent = toggle
 	Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+	-- The Edit popup bulk-bumps every descendant's ZIndex to one flat value (see
+	-- BumpZIndex further down), which would otherwise flatten the knob to the same layer
+	-- as its own track. Keep it one layer above whatever the track's ZIndex becomes
+	-- instead of a fixed value.
 	toggle:GetPropertyChangedSignal("ZIndex"):Connect(function() knob.ZIndex = toggle.ZIndex + 1 end)
 
 	local function Refresh(animate)
@@ -282,12 +339,17 @@ local function StyleAsToggleSwitch(toggle)
 	Refresh(false)
 end
 
+-- Feature row layout: label left, toggle right. parent defaults to ContentScroll (the main
+-- panel's row list); pass a different one (e.g. a popup's own row list) to place it there
+-- instead. order sets LayoutOrder (rows stack in creation order if not given one).
 local nextRowOrder = 1
 local function CreateFeatureRow(order, labelText, parent)
 	local row = Instance.new("Frame")
 	row.Name = labelText:gsub("%s+", "") .. "Row"
 	row.LayoutOrder = order or nextRowOrder
 	nextRowOrder = math.max(nextRowOrder, row.LayoutOrder) + 1
+	-- Narrowed from full width -- otherwise the row's own right edge (and its rounded
+	-- corner) sits exactly where the scrollbar renders, getting visibly cut off by it.
 	row.Size = UDim2.new(1, -10, 0, 48)
 	row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
 	row.BackgroundTransparency = GameRowTransparency
@@ -320,329 +382,381 @@ local function CreateFeatureRow(order, labelText, parent)
 	toggle.Parent = row
 	StyleAsToggleSwitch(toggle)
 	AddPressBounce(toggle)
+	-- No hover stroke on the toggle itself -- the knob sits almost flush against the pill's
+	-- rounded end, and a stroke curving tightly around that same corner was reading as a
+	-- stray mark/"text" inside the switch.
 
 	return row, toggle
 end
 
--- ============================================================================
--- Shared: same trick Main's own Instant Prompt feature uses -- a ProximityPrompt's
--- HoldDuration means fireproximityprompt has to actually sit through that whole hold
--- (some executor implementations do simulate the real hold, not an instant tap), and
--- RequiresLineOfSight can reject the trigger entirely depending on camera angle. Zeroing
--- both right before firing makes every prompt below trigger instantly and reliably instead
--- of however long/finicky its real configured hold actually is.
--- ============================================================================
-local function MakePromptInstant(prompt)
-	pcall(function()
-		prompt.HoldDuration = 0
-		prompt.RequiresLineOfSight = false
-	end)
-end
+local KillRow, KillToggle = CreateFeatureRow(1, "Auto Kill")
+local FarmRow, FarmToggle = CreateFeatureRow(2, "Auto Farm")
+-- Auto Farm's Edit button: tucked to the left of its toggle, expands an inline section
+-- (order 3, directly under this row) holding Auto Event, Safe Place, and Mute Audio --
+-- keeps the main panel to just the things you'd actually flip often. Inline instead of a
+-- floating centered popup so everything else in the list -- and the options themselves --
+-- stays visible at once, same trick as the Keybind Editor's collapsible sections back in
+-- the main hub: AutomaticSize.Y plus toggling Visible is all UIListLayout needs to reflow
+-- everything below it, no manual resize math.
+local ReviveRow, ReviveToggle = CreateFeatureRow(4, "Auto Revive")
 
--- ============================================================================
--- Auto Task: TaskRemote2 pushes the world Part the server currently wants you at (same
--- object TaskLocal's own dumped script listens for) -- walk to it and trigger its prompt
--- the same way. Once triggered, the server pushes a task TYPE (1/2/3) over TaskRemote,
--- and TaskHandler's own already-running script builds the real minigame GUI in response --
--- this doesn't reimplement that minigame, it just plays it: reads the same text a person
--- would read and clicks the same buttons a person would click, so it's driving the actual
--- completion path (TaskHandler's own script is what fires the real TaskRemote:FireServer
--- true/false) rather than trying to fake a result and hope the server doesn't check.
---
--- Monitor/CodePad/Pressing all live as permanent template children directly under
--- StarterGui.TasksGui (confirmed by hand, not guessed) -- CodePad and Pressing get reused
--- in place (TaskHandler just flips CodePad.Visible / adds a "ButtonActive" clone under
--- Pressing), but Monitor gets :Clone()'d into a SECOND sibling also named "Monitor" that's
--- the one that actually becomes visible/interactive -- FindFirstChild("Monitor") isn't
--- reliable there since it can just as easily return the original, permanently-invisible
--- template instead of the live clone. That mismatch (waiting on the wrong Monitor, or
--- looking for Pressing nested under a "TaskHandler" folder that was never actually right --
--- Pressing is TasksGui's own direct child) is almost certainly what "teleported to the
--- next task and everything just disappeared" was: the detection below timed out doing
--- nothing, so the Heartbeat loop immediately re-triggered the same still-active prompt a
--- moment later and stomped whatever had just started opening.
--- ============================================================================
-local TaskRow, TaskToggle = CreateFeatureRow(1, "Auto Task")
+local FarmEditButton = Instance.new("TextButton")
+FarmEditButton.Name = "EditButton"
+FarmEditButton.Size = UDim2.new(0, 44, 0, 26)
+FarmEditButton.Position = UDim2.new(1, -108, 0.5, -13)
+FarmEditButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+FarmEditButton.BackgroundTransparency = 0.2
+FarmEditButton.BorderSizePixel = 0
+FarmEditButton.Text = "Edit"
+FarmEditButton.Font = UIFont
+FarmEditButton.TextSize = 12
+FarmEditButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+FarmEditButton.Parent = FarmRow
+Instance.new("UICorner", FarmEditButton).CornerRadius = UDim.new(1, 0)
+AddPressBounce(FarmEditButton)
 
--- Tunable settle delay between teleporting to a task and actually firing its prompt --
--- triggering the instant the teleport lands is the likely cause of a task's prompt/outline
--- clearing (proof the trigger DID register) while the actual minigame GUI never opens: the
--- server probably validates you've genuinely been in proximity for a moment, not just
--- teleported in and immediately interacted, and rejects it as suspicious. Live-tunable
--- since there's no way to know the real required window without testing it in Suspect
--- itself.
-local TaskDelayBox = Instance.new("TextBox")
-TaskDelayBox.Name = "TaskDelayBox"
-TaskDelayBox.Size = UDim2.new(0, 40, 0, 22)
-TaskDelayBox.Position = UDim2.new(1, -108, 0.5, -11)
-TaskDelayBox.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
-TaskDelayBox.BackgroundTransparency = 0.2
-TaskDelayBox.BorderSizePixel = 0
-TaskDelayBox.Text = "0.4"
-TaskDelayBox.ClearTextOnFocus = false
-TaskDelayBox.Font = UIFont
-TaskDelayBox.TextSize = 12
-TaskDelayBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-TaskDelayBox.Parent = TaskRow
-Instance.new("UICorner", TaskDelayBox).CornerRadius = UDim.new(0, 6)
+local FarmOptionsContainer = Instance.new("Frame")
+FarmOptionsContainer.Name = "FarmOptionsContainer"
+FarmOptionsContainer.LayoutOrder = 3
+FarmOptionsContainer.Size = UDim2.new(1, -10, 0, 0)
+FarmOptionsContainer.AutomaticSize = Enum.AutomaticSize.Y
+FarmOptionsContainer.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
+FarmOptionsContainer.BackgroundTransparency = GameRowTransparency
+FarmOptionsContainer.BorderSizePixel = 0
+FarmOptionsContainer.Visible = false
+FarmOptionsContainer.Parent = ContentScroll
+Instance.new("UICorner", FarmOptionsContainer).CornerRadius = UDim.new(0, 8)
 
-local taskState = {Enabled = false, CurrentPart = nil, Busy = false, TriggerDelay = 0.4}
-TaskDelayBox.FocusLost:Connect(function()
-	local parsed = tonumber(TaskDelayBox.Text)
-	if parsed and parsed >= 0 then
-		taskState.TriggerDelay = parsed
-	end
-	TaskDelayBox.Text = string.format("%.2f", taskState.TriggerDelay)
+local FarmOptionsPadding = Instance.new("UIPadding")
+FarmOptionsPadding.PaddingTop = UDim.new(0, 10)
+FarmOptionsPadding.PaddingBottom = UDim.new(0, 10)
+FarmOptionsPadding.PaddingLeft = UDim.new(0, 10)
+FarmOptionsPadding.PaddingRight = UDim.new(0, 10)
+FarmOptionsPadding.Parent = FarmOptionsContainer
+
+local farmOptionsLayout = Instance.new("UIListLayout")
+farmOptionsLayout.Padding = UDim.new(0, 8)
+farmOptionsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+farmOptionsLayout.Parent = FarmOptionsContainer
+
+local EventRow, EventToggle = CreateFeatureRow(1, "Auto Event", FarmOptionsContainer)
+local SafePlaceRow, SafePlaceToggle = CreateFeatureRow(2, "Safe Place", FarmOptionsContainer)
+local MuteRow, MuteToggle = CreateFeatureRow(3, "Mute Audio", FarmOptionsContainer)
+
+FarmEditButton.MouseButton1Click:Connect(function()
+	FarmOptionsContainer.Visible = not FarmOptionsContainer.Visible
 end)
 
-local TaskRemote2 = ReplicatedStorage:WaitForChild("TaskRemote2")
--- Second listener alongside the game's own TaskLocal -- Roblox lets a RemoteEvent have any
--- number of OnClientEvent connections, so this doesn't interfere with (or need to touch)
--- what TaskLocal itself is already doing with the same event.
-TaskRemote2.OnClientEvent:Connect(function(part)
-	if part and part:IsA("BasePart") then
-		taskState.CurrentPart = part
-	else
-		taskState.CurrentPart = nil
-	end
-end)
-
-local function FireButton(button)
-	if not button then return false end
-	if type(firesignal) == "function" then
-		-- The Download task's own Button is wired to .Activated, not .MouseButton1Click
-		-- (CodePad's digit/Finish buttons and Press-or-Die's ButtonActive both use
-		-- MouseButton1Click instead) -- that mismatch is almost certainly why Download
-		-- never actually pressed: firing MouseButton1Click only runs listeners connected to
-		-- THAT exact signal, never a totally separate Activated connection on the same
-		-- button. Firing both covers whichever one a given button actually uses -- firing a
-		-- signal nothing is connected to is a harmless no-op.
-		local firedActivated = pcall(firesignal, button.Activated)
-		local firedClick = pcall(firesignal, button.MouseButton1Click)
-		if firedActivated or firedClick then return true end
-	end
-	-- Fallback for executors without firesignal -- a real click simulated at the button's
-	-- own screen position. Less reliable (covered/offscreen buttons can miss) but better
-	-- than nothing.
-	if type(mousemoveabs) == "function" and type(mouse1click) == "function" then
-		local pos = button.AbsolutePosition + button.AbsoluteSize / 2
-		pcall(mousemoveabs, pos.X, pos.Y)
-		pcall(mouse1click)
-		return true
-	end
-	return false
-end
-
--- Finds the LIVE Monitor clone specifically -- the one with Visible true -- rather than
--- whichever "Monitor" FindFirstChild happens to return first.
-local function FindVisibleChild(parent, name)
-	for _, child in ipairs(parent:GetChildren()) do
-		if child.Name == name and child.Visible then
-			return child
-		end
-	end
-	return nil
-end
-
--- Type 1: "Download" -- click the on-screen Button once, then TaskHandler's own script
--- runs the real 4-second progress fill and fires TaskRemote:FireServer itself.
-local function HandleDownloadTask(monitor)
-	local button = monitor.Screen:WaitForChild("Button", 2)
-	if button and button.Active then
-		FireButton(button)
-	end
-	-- Give the real 4s fill (plus its own finish delay) time to complete on its own.
-	local start = os.clock()
-	while os.clock() - start < 6 and monitor.Parent do
-		task.wait(0.25)
-	end
-end
-
--- Type 3: "Code Pad" -- reads the same 4-digit code TaskHandler's script wrote onto the
--- in-world Paper prop, clicks each matching digit button, then Finish.
-local function HandleCodeTask(codePad)
-	local paper = codePad:FindFirstChild("Paper")
-	local codeText = paper and paper:FindFirstChild("textik")
-	local start = os.clock()
-	while (not codeText or codeText.Text == "") and os.clock() - start < 2 do
-		task.wait(0.1)
-		paper = codePad:FindFirstChild("Paper")
-		codeText = paper and paper:FindFirstChild("textik")
-	end
-	if not codeText or codeText.Text == "" then return end
-	local code = codeText.Text
-	for i = 1, #code do
-		local digit = code:sub(i, i)
-		local digitButton = codePad:FindFirstChild(digit)
-		FireButton(digitButton)
-		task.wait(0.12)
-	end
-	local finishButton = codePad:FindFirstChild("Finish")
-	FireButton(finishButton)
-	task.wait(0.3)
-end
-
--- Type 2: "Press or Die" -- five rounds of a button that spawns at a random screen
--- position and shrinks back over 1.2s; must click each ButtonActive before it shrinks
--- back, missing even one aborts the whole minigame (TaskHandler's own logic, not this
--- script's), so this polls fast and clicks the instant one appears.
-local function HandlePressTask(pressing)
-	local clicked = {}
-	local start = os.clock()
-	while os.clock() - start < 12 and pressing.Parent do
-		for _, child in ipairs(pressing:GetChildren()) do
-			if child.Name == "ButtonActive" and not clicked[child] then
-				clicked[child] = true
-				FireButton(child)
-			end
-		end
-		task.wait(0.03)
-	end
-end
-
--- Wraps just the teleport-in/trigger/play-the-minigame window in a temporary noclip so
--- SetRootUpright dropping the killer right next to (or slightly inside) task scenery
--- doesn't get physics-shoved around or stuck on it -- same accessory/HumanoidRootPart-safe
--- CanCollide toggle as MM2's Coin Farm noclip. Noclip alone means gravity just pulls
--- straight through the floor with nothing solid underneath anymore, so this also holds
--- vertical velocity at zero the whole time, the minimum a "fly" would actually be doing
--- for this -- horizontal velocity is left alone since nothing here is trying to move you
--- sideways.
-local function BeginTaskNoclip(character)
-	local touched = {}
-	for _, part in ipairs(character:GetDescendants()) do
-		local parent = part.Parent
-		local isRigAccessory = parent and (parent:IsA("Accessory") or parent:IsA("Tool"))
-		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" and part.CanCollide and not isRigAccessory then
-			touched[part] = true
-			part.CanCollide = false
-		end
-	end
-	local antiFallConnection = RunService.Heartbeat:Connect(function()
-		local root = character:FindFirstChild("HumanoidRootPart")
-		if root then
-			local velocity = root.AssemblyLinearVelocity
-			root.AssemblyLinearVelocity = Vector3.new(velocity.X, 0, velocity.Z)
-		end
-	end)
-	return touched, antiFallConnection
-end
-
-local function EndTaskNoclip(touched, antiFallConnection)
-	if antiFallConnection then antiFallConnection:Disconnect() end
-	for part in pairs(touched) do
-		if part.Parent then part.CanCollide = true end
-	end
-end
-
-local function RunTaskAtPart(part)
-	local prompt = part:FindFirstChildOfClass("ProximityPrompt")
-	if not prompt then return end
-	local character = Player.Character
-	local root = character and character:FindFirstChild("HumanoidRootPart")
-	if not root then return end
-
-	-- TaskLocal's own script disables this prompt locally the instant ANY Triggered fires
-	-- (including our own simulated one) as a purely cosmetic "task begun" reaction -- that
-	-- doesn't mean the server actually advanced anything. taskState.CurrentPart still
-	-- pointing at this same part on the next attempt means the server hasn't moved on, so
-	-- force it back on and retry instead of treating that local-only Enabled=false as a
-	-- real lock -- bailing out here on every retry (the old behavior) is what left a broken
-	-- task stuck forever with no new one ever generated.
-	prompt.Enabled = true
-
-	SetRootUpright(root, root.CFrame, part.Position - Vector3.new(0, 3, 0))
-	root.AssemblyLinearVelocity = Vector3.zero
-	task.wait(taskState.TriggerDelay)
-	if type(fireproximityprompt) ~= "function" then return end
-	MakePromptInstant(prompt)
-	pcall(fireproximityprompt, prompt)
-
-	local playerGui = Player:FindFirstChildOfClass("PlayerGui")
-	local tasksGui = playerGui and playerGui:WaitForChild("TasksGui", 2)
-	if not tasksGui then return end
-
-	-- Whichever of the three actually opens is the one this task turned out to be. Checked
-	-- against a snapshot of Pressing's existing children so a stray leftover ButtonActive
-	-- from a previous attempt can't be mistaken for a fresh one.
-	local pressing = tasksGui:FindFirstChild("Pressing")
-	local preExistingButtons = {}
-	if pressing then
-		for _, child in ipairs(pressing:GetChildren()) do
-			if child.Name == "ButtonActive" then preExistingButtons[child] = true end
-		end
-	end
-
-	local start = os.clock()
-	while os.clock() - start < 2.5 do
-		local monitor = FindVisibleChild(tasksGui, "Monitor")
-		if monitor then
-			HandleDownloadTask(monitor)
-			return
-		end
-		if tasksGui.CodePad and tasksGui.CodePad.Visible then
-			HandleCodeTask(tasksGui.CodePad)
-			return
-		end
-		if pressing then
-			for _, child in ipairs(pressing:GetChildren()) do
-				if child.Name == "ButtonActive" and not preExistingButtons[child] then
-					HandlePressTask(pressing)
-					return
-				end
-			end
-		end
-		task.wait(0.05)
-	end
-end
-
-TaskToggle.MouseButton1Click:Connect(function()
-	taskState.Enabled = not taskState.Enabled
-	TaskToggle.Text = taskState.Enabled and "On" or "Off"
+-- Auto Kill: cycles through living survivors, teleports the killer's root right up against
+-- each in turn, and fires the touch/click attack remote. Ported from the old hub verbatim.
+local killState = {Enabled = false, TargetIndex = 0, LastAttack = 0}
+KillToggle.MouseButton1Click:Connect(function()
+	killState.Enabled = not killState.Enabled
+	KillToggle.Text = killState.Enabled and "On" or "Off"
 end)
 
 RunService.Heartbeat:Connect(function()
 	if not ScreenGui.Parent then return end
-	if not taskState.Enabled or taskState.Busy then return end
-	if workspace:GetAttribute("Meeting") == true then return end
-	local part = taskState.CurrentPart
-	if not part or not part.Parent then return end
+	if not killState.Enabled or os.clock() - killState.LastAttack < 0.1 or not IsQuietOrDieKiller() then return end
 	local character = Player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if not humanoid or humanoid.Health <= 0 then return end
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local playersFolder = workspace:FindFirstChild("PlayersFolder")
+	local attackRemote = ReplicatedStorage:FindFirstChild("PlayerTouchedOrClicked")
+	if not humanoid or humanoid.Health <= 0 or not root or not playersFolder or not attackRemote or not attackRemote:IsA("RemoteEvent") then return end
 
-	taskState.Busy = true
-	task.spawn(function()
-		local touched, antiFallConnection = BeginTaskNoclip(character)
-		pcall(RunTaskAtPart, part)
-		EndTaskNoclip(touched, antiFallConnection)
-		-- Small settle delay before allowing the next attempt -- if the task genuinely
-		-- didn't complete (detection missed something, or the server hasn't advanced
-		-- CurrentPart yet), this stops it from re-triggering the exact same prompt on the
-		-- very next Heartbeat and thrashing whatever GUI state is still mid-cleanup.
-		task.wait(0.5)
-		taskState.Busy = false
-	end)
+	local targets = {}
+	for _, targetPlayer in ipairs(Players:GetPlayers()) do
+		if targetPlayer ~= Player and playersFolder:FindFirstChild(targetPlayer.Name) then
+			local targetCharacter = targetPlayer.Character
+			local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
+			local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+			if targetHumanoid and targetHumanoid.Health > 0 and targetRoot then table.insert(targets, targetRoot) end
+		end
+	end
+	if #targets == 0 then return end
+
+	killState.TargetIndex = (killState.TargetIndex % #targets) + 1
+	local targetRoot = targets[killState.TargetIndex]
+	root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 2)
+	root.AssemblyLinearVelocity = Vector3.zero
+	killState.LastAttack = os.clock()
+	pcall(function() attackRemote:FireServer() end)
 end)
 
-if type(getgenv) == "function" then
-	getgenv().Serenity_Suspect_IsKiller = IsPlayerKiller
+-- Auto Farm: repeatedly fires the taunt ability while surviving, in bursts, same timing as
+-- the old hub. Safe Place drops the character to a fixed out-of-the-way spot first.
+local farmState = {Enabled = false, SafePlace = false, DroppedCharacter = nil, LastEmote = 0, TauntBurst = 3, TauntDelay = 0.02}
+local BASE_SAFE_POSITION = Vector3.new(-82, 53, -145)
+
+local function TriggerQuietOrDieTaunt()
+	local abilityEvent = ReplicatedStorage:FindFirstChild("AbilityEvent")
+	if not abilityEvent or not abilityEvent:IsA("RemoteEvent") then return false end
+	return pcall(function() abilityEvent:FireServer(1) end)
 end
 
--- Minimize
+FarmToggle.MouseButton1Click:Connect(function()
+	farmState.Enabled = not farmState.Enabled
+	farmState.DroppedCharacter = nil
+	if farmState.Enabled then farmState.LastEmote = 0 end
+	FarmToggle.Text = farmState.Enabled and "On" or "Off"
+end)
+
+SafePlaceToggle.MouseButton1Click:Connect(function()
+	farmState.SafePlace = not farmState.SafePlace
+	farmState.DroppedCharacter = nil
+	SafePlaceToggle.Text = farmState.SafePlace and "On" or "Off"
+end)
+
+RunService.Heartbeat:Connect(function()
+	if not ScreenGui.Parent then return end
+	if not farmState.Enabled or not IsQuietOrDieSurvivor() then return end
+	local character = Player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not humanoid or humanoid.Health <= 0 or not root then return end
+	if farmState.SafePlace and farmState.DroppedCharacter ~= character then
+		farmState.DroppedCharacter = character
+		SetRootUpright(root, root.CFrame, BASE_SAFE_POSITION)
+		root.AssemblyLinearVelocity = Vector3.new(0, -3, 0)
+	end
+	local now = os.clock()
+	if farmState.LastEmote ~= 0 and now - farmState.LastEmote < farmState.TauntDelay then return end
+	local fired = false
+	for _ = 1, farmState.TauntBurst do
+		if TriggerQuietOrDieTaunt() then fired = true end
+	end
+	if fired then farmState.LastEmote = now end
+end)
+
+local resetCooldownEvent = ReplicatedStorage:FindFirstChild("ResetCooldownEvent")
+if resetCooldownEvent and resetCooldownEvent:IsA("RemoteEvent") then
+	resetCooldownEvent.OnClientEvent:Connect(function()
+		farmState.LastEmote = 0
+	end)
+end
+
+-- Mute Audio: mutes every Sound found under the places the old hub watched (emote, character,
+-- player gui, camera, SoundService, workspace), tracking original volumes to restore on toggle.
+local mutedSounds = {}
+local audioConnections = {}
+local muteAudioEnabled = false
+
+local function MuteQuietOrDieSound(sound)
+	if not muteAudioEnabled or not sound or not sound:IsA("Sound") then return end
+	if mutedSounds[sound] == nil then mutedSounds[sound] = sound.Volume end
+	sound.Volume = 0
+end
+
+local function SetAudioMuted(enabled)
+	for _, connection in ipairs(audioConnections) do connection:Disconnect() end
+	audioConnections = {}
+	if not enabled then
+		for sound, originalVolume in pairs(mutedSounds) do
+			if sound and sound.Parent then sound.Volume = originalVolume end
+		end
+		mutedSounds = {}
+		return
+	end
+
+	local pendingSounds = {}
+	local processing = false
+	local function queueSound(sound)
+		if sound and sound:IsA("Sound") then table.insert(pendingSounds, sound) end
+		if processing then return end
+		processing = true
+		task.spawn(function()
+			while #pendingSounds > 0 and muteAudioEnabled do
+				for _ = 1, 8 do
+					local nextSound = table.remove(pendingSounds, 1)
+					if not nextSound then break end
+					MuteQuietOrDieSound(nextSound)
+				end
+				task.wait()
+			end
+			processing = false
+		end)
+	end
+	local function watchRoot(rootObject, scanExisting)
+		if not rootObject then return end
+		if rootObject:IsA("Sound") then queueSound(rootObject) end
+		if scanExisting then
+			task.spawn(function()
+				local stack = rootObject:GetChildren()
+				local scanned = 0
+				while #stack > 0 and muteAudioEnabled do
+					local object = table.remove(stack)
+					if not muteAudioEnabled then break end
+					if object:IsA("Sound") then queueSound(object) end
+					for _, child in ipairs(object:GetChildren()) do
+						table.insert(stack, child)
+					end
+					scanned = scanned + 1
+					if scanned % 60 == 0 then task.wait() end
+				end
+			end)
+		end
+		table.insert(audioConnections, rootObject.DescendantAdded:Connect(function(object)
+			if object:IsA("Sound") then queueSound(object) end
+		end))
+	end
+
+	local roots = {Player:FindFirstChild("Emote"), Player.Character, Player:FindFirstChildOfClass("PlayerGui"), workspace.CurrentCamera, SoundService, workspace}
+	for _, rootObject in ipairs(roots) do
+		watchRoot(rootObject, true)
+	end
+	table.insert(audioConnections, Player.ChildAdded:Connect(function(object)
+		if object.Name == "Emote" then watchRoot(object, true) end
+	end))
+	table.insert(audioConnections, Player.CharacterAdded:Connect(function(character)
+		watchRoot(character, true)
+	end))
+end
+
+MuteToggle.MouseButton1Click:Connect(function()
+	muteAudioEnabled = not muteAudioEnabled
+	MuteToggle.Text = muteAudioEnabled and "On" or "Off"
+	SetAudioMuted(muteAudioEnabled)
+end)
+
+-- Auto Revive: fires every nearby, enabled RevivePrompt using fireproximityprompt.
+local reviveState = {Enabled = false, LastCheck = 0, Triggered = {}}
+ReviveToggle.MouseButton1Click:Connect(function()
+	reviveState.Enabled = not reviveState.Enabled
+	reviveState.Triggered = {}
+	ReviveToggle.Text = reviveState.Enabled and "On" or "Off"
+end)
+
+RunService.Heartbeat:Connect(function()
+	if not ScreenGui.Parent then return end
+	if not reviveState.Enabled or os.clock() - reviveState.LastCheck < 0.01 then return end
+	reviveState.LastCheck = os.clock()
+	local playersFolder = workspace:FindFirstChild("PlayersFolder")
+	local character = Player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not playersFolder or not humanoid or humanoid.Health <= 0 then return end
+
+	local now = os.clock()
+	for prompt, lastTriggered in pairs(reviveState.Triggered) do
+		if not prompt.Parent or now - lastTriggered > 0.5 then reviveState.Triggered[prompt] = nil end
+	end
+	for _, targetCharacter in ipairs(playersFolder:GetChildren()) do
+		if targetCharacter ~= character and targetCharacter:IsA("Model") then
+			local targetRoot = targetCharacter:FindFirstChild("HumanoidRootPart")
+			local attachment = (targetRoot and targetRoot:FindFirstChild("ReviveAttachment")) or targetCharacter:FindFirstChild("ReviveAttachment", true)
+			local prompt = attachment and attachment:FindFirstChild("RevivePrompt", true)
+			if prompt and prompt:IsA("ProximityPrompt") and prompt.Enabled
+				and (not reviveState.Triggered[prompt] or now - reviveState.Triggered[prompt] >= 0.02) then
+				reviveState.Triggered[prompt] = now
+				if type(fireproximityprompt) == "function" then
+					local originalHoldDuration = prompt.HoldDuration
+					local originalRequiresLineOfSight = prompt.RequiresLineOfSight
+					pcall(function()
+						prompt.HoldDuration = 0
+						prompt.RequiresLineOfSight = false
+					end)
+					pcall(function() fireproximityprompt(prompt) end)
+					task.delay(0.05, function()
+						if prompt and prompt.Parent then
+							pcall(function()
+								prompt.HoldDuration = originalHoldDuration
+								prompt.RequiresLineOfSight = originalRequiresLineOfSight
+							end)
+						end
+					end)
+				end
+			end
+		end
+	end
+end)
+
+-- Auto Event: walks toward the nearest EventItem in the EventSpawns folder, skipping any
+-- item that's taken too long to reach (probably unreachable/already claimed).
+local eventState = {Enabled = false, LastMove = 0, Current = nil, Started = 0, Skipped = {}}
+EventToggle.MouseButton1Click:Connect(function()
+	eventState.Enabled = not eventState.Enabled
+	eventState.Current = nil
+	eventState.Started = 0
+	EventToggle.Text = eventState.Enabled and "On" or "Off"
+end)
+
+RunService.Heartbeat:Connect(function()
+	if not ScreenGui.Parent then return end
+	if not eventState.Enabled then return end
+	if IsQuietOrDieKiller() then eventState.Current = nil return end
+	if os.clock() - eventState.LastMove < 0.06 then return end
+	eventState.LastMove = os.clock()
+	local character = Player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local eventFolder = workspace:FindFirstChild("EventSpawns")
+	if not humanoid or humanoid.Health <= 0 or not root or not eventFolder then return end
+
+	local now = os.clock()
+	for item, expiresAt in pairs(eventState.Skipped) do
+		if not item.Parent or expiresAt <= now then eventState.Skipped[item] = nil end
+	end
+
+	local target = eventState.Current
+	if not target or not target.Parent or eventState.Skipped[target] then
+		target = nil
+		local closestDistance = math.huge
+		for _, item in ipairs(eventFolder:GetChildren()) do
+			if item.Name:match("^EventItem%d+$") and not eventState.Skipped[item] then
+				local part = item:IsA("BasePart") and item or item:FindFirstChildWhichIsA("BasePart", true)
+				if part then
+					local distance = (root.Position - part.Position).Magnitude
+					if distance < closestDistance then
+						closestDistance = distance
+						target = item
+					end
+				end
+			end
+		end
+		eventState.Current = target
+		eventState.Started = now
+	elseif now - eventState.Started > 1.5 then
+		eventState.Skipped[target] = now + 2
+		eventState.Current = nil
+		return
+	end
+
+	if target and target.Parent then
+		local targetPart = target:IsA("BasePart") and target or target:FindFirstChildWhichIsA("BasePart", true)
+		if targetPart then
+			SetRootUpright(root, root.CFrame, targetPart.Position + Vector3.new(0, -3.5, 0))
+		end
+	end
+end)
+
+-- No standalone ESP feature here anymore -- killer detection is exposed for Main's own
+-- Player ESP (Outline/Box/Labels, Visuals tab) to pick up on directly instead, so there's
+-- one ESP system instead of a separate always-on-somewhere-else one just for this game.
+if type(getgenv) == "function" then
+	getgenv().Serenity_QOD_IsKiller = IsPlayerKiller
+end
+
+-- Minimize: shrinks to just the header, matching Serenity's own minimize behavior. Every
+-- row lives inside ContentScroll now, so hiding that one frame is enough.
 local minimized = false
 local function ToggleMinimize()
 	minimized = not minimized
 	HeaderDivider.Visible = not minimized
 	ContentScroll.Visible = not minimized
 	PanelFrame.Size = UDim2.new(0, 280, 0, minimized and MINI_HEIGHT or FULL_HEIGHT)
+	-- Collapse the Auto Farm Options section on minimize instead of leaving it expanded
+	-- (and wasting space) once the panel gets restored.
+	if minimized then FarmOptionsContainer.Visible = false end
 end
 MinimizeButton.MouseButton1Click:Connect(ToggleMinimize)
 
+-- Plays the reverse of the open animation (pop + fade out) before actually destroying,
+-- instead of just vanishing -- debounced so a double-click mid-fade can't fire this twice.
 local closingPanel = false
 CloseButton.MouseButton1Click:Connect(function()
 	if closingPanel then return end
 	closingPanel = true
+	SetAudioMuted(false)
 	local fadeOutInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 	TweenService:Create(PanelScale, fadeOutInfo, {Scale = 0.85}):Play()
 	local fadeOutTween = TweenService:Create(PanelFrame, fadeOutInfo, {BackgroundTransparency = 1})
@@ -651,6 +765,7 @@ CloseButton.MouseButton1Click:Connect(function()
 	ScreenGui:Destroy()
 end)
 
+-- Dragging
 local dragging = false
 local dragStart = nil
 local startPos = nil
@@ -669,5 +784,5 @@ UserInputService.InputChanged:Connect(function(input)
 	if not dragging or (input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch) then return end
 	local delta = input.Position - dragStart
 	PanelFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-	getgenv().Serenity_Suspect_PanelPosition = PanelFrame.Position
+	getgenv().Serenity_QOD_PanelPosition = PanelFrame.Position
 end)
