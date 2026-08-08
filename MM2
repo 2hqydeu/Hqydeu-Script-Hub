@@ -1262,16 +1262,17 @@ RunService.Heartbeat:Connect(function()
 end)
 
 -- Auto Stab ("kill everyone as murderer"): only ever engages while you're the actual
--- murderer. Instead of the old version's one-target-per-cycle approach (wait for someone to
--- wander into range, swing, move to the next), this sweeps every alive player in turn --
--- teleports YOU to point-blank range of each one, stabs, and moves to the next, clearing
--- everyone in roughly one pass instead of trickling kills in one at a time. Teleports you
--- to them rather than them to you: silently moving another player's character via CFrame
--- has no real effect against a properly server-validated game (you don't have network
--- ownership of their parts), so it'd just be a local visual illusion with nothing landing --
--- moving yourself is what actually gets you into firetouchinterest range, the same hit
--- mechanism the old version already proved works here. Sheriff still goes first (biggest
--- threat), everyone else follows in whatever order Players:GetPlayers() returns them.
+-- murderer. Replaced the previous teleport-to-each-target sweep with a "gather" approach
+-- ported from a different MM2 script's own "Kill EVERYONE as murderer" (that script:
+-- Anchor every other player's HumanoidRootPart and snap them ALL to one point in front of
+-- you, then stab through the pile) -- per direct request, at the explicit tradeoff that
+-- the previous version's own comment here documented moving OTHER players via CFrame as
+-- having no real effect in this game (no network ownership over their parts), which is
+-- exactly what gathering relies on. Kept the actual hit mechanism (StabTarget below,
+-- firetouchinterest against the knife handle) unchanged either way, since that part is the
+-- one actually confirmed working, regardless of how the target got into range. Sheriff
+-- still goes first (biggest threat), everyone else follows in whatever order
+-- Players:GetPlayers() returns them.
 local autoStabEnabled = false
 local autoStabSweeping = false
 
@@ -1342,20 +1343,35 @@ task.spawn(function()
 
 			if canSweep and #targets > 0 then
 				autoStabSweeping = true
-				local returnCFrame = localRoot.CFrame
+
+				-- Snap and hold everyone at one point right in front of you instead of
+				-- visiting each in turn -- you never move, so there's no return-position
+				-- bookkeeping needed either.
+				local gatherCFrame = localRoot.CFrame * CFrame.new(0, 0, -2)
 				for _, targetRoot in ipairs(targets) do
-					local stillSweeping = autoStabEnabled and CurrentMurderer == Player and localRoot.Parent
-					if not stillSweeping then break end
 					if targetRoot.Parent then
-						SetRootUpright(localRoot, targetRoot.CFrame, (targetRoot.CFrame * CFrame.new(0, 0, 2)).Position)
-						localRoot.AssemblyLinearVelocity = Vector3.zero
-						localRoot.AssemblyAngularVelocity = Vector3.zero
-						task.wait()
-						StabTarget(knife, targetRoot)
-						task.wait(0.05)
+						targetRoot.Anchored = true
+						targetRoot.CFrame = gatherCFrame
 					end
 				end
-				if localRoot.Parent then localRoot.CFrame = returnCFrame end
+
+				-- A few passes through the whole pile while everyone's held in place,
+				-- rather than the single stab the source script used -- cheap insurance in
+				-- case the first swing doesn't register on all of them.
+				for pass = 1, 4 do
+					local stillSweeping = autoStabEnabled and CurrentMurderer == Player and localRoot.Parent
+					if not stillSweeping then break end
+					for _, targetRoot in ipairs(targets) do
+						if targetRoot.Parent then
+							StabTarget(knife, targetRoot)
+						end
+					end
+					task.wait(0.1)
+				end
+
+				for _, targetRoot in ipairs(targets) do
+					if targetRoot.Parent then targetRoot.Anchored = false end
+				end
 				autoStabSweeping = false
 			end
 		end
