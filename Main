@@ -4653,7 +4653,8 @@ end
 CreateGameRow(ScriptsPage, 8, "Animal Hospital", "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/Animal_Hospital")
 CreateGameRow(ScriptsPage, 60, "Murder Mystery 2", "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/MM2")
 CreateGameRow(ScriptsPage, 112, "Quiet or Die", "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/QOD")
-CreateGameRow(ScriptsPage, 164, "Undead Expedition", "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/UE")
+CreateGameRow(ScriptsPage, 164, "Suspect", "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/Suspect")
+CreateGameRow(ScriptsPage, 216, "Undead Expedition", "https://raw.githubusercontent.com/2hqydeu/Hqydeu-Script-Hub/refs/heads/main/UE")
 
 -- Infinite Yield / Dex Explorer: standalone utility scripts (not per-game modules), so
 -- unlike CreateGameRow above they get their own row with a separate Destroy button --
@@ -4763,15 +4764,16 @@ function CreateUtilityRow(parent, y, title, url)
 	return row
 end
 
-CreateUtilityRow(ScriptsPage, 216, "Dex Explorer", "https://github.com/AZYsGithub/DexPlusPlus/releases/latest/download/out.lua")
-CreateUtilityRow(ScriptsPage, 268, "Infinite Yield", "https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source")
+CreateUtilityRow(ScriptsPage, 268, "Dex Explorer", "https://github.com/AZYsGithub/DexPlusPlus/releases/latest/download/out.lua")
+CreateUtilityRow(ScriptsPage, 320, "Infinite Yield", "https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source")
 
 -- Was 268 -- barely 1px taller than the 267px viewport, which left almost no real
 -- scroll range at all (the thumb sat at ~99.6% of the track, basically imperceptible as
 -- an actual scrollbar). A modest buffer above the real content (ends around 260) gives it
 -- genuine, visible scrollbar proportions instead. Bumped again (+52) for the new Animal
--- Hospital game row pushing everything below it down by one row's worth of space.
-ScriptsPage.CanvasSize = UDim2.new(0, 0, 0, 392)
+-- Hospital game row, then +52 again for the new Suspect game row, each pushing everything
+-- below it down by one row's worth of space.
+ScriptsPage.CanvasSize = UDim2.new(0, 0, 0, 444)
 
 -- Shared vertical slide-in/out for the Settings/Favorites/Keybind Editor overlays, all of
 -- which share the same rest position. Settings enters from above and exits back up.
