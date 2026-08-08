@@ -339,8 +339,31 @@ KillToggle.MouseButton1Click:Connect(function()
 	KillToggle.Text = killState.Enabled and "On" or "Off"
 end)
 
+-- Teleporting next to targets was confirmed working -- just never actually killing them.
+-- QOD's own attack is a bare remote fire with no Tool involved at all, but Suspect's
+-- killer is very likely handed an actual Knife-style Tool (like MM2/QOD's own weapon
+-- Tools), and a real attack there normally goes through Tool.Activated -- which is what
+-- actually runs the server's hit-detection/raycast before it ever touches WeaponEvent, not
+-- something a bare WeaponEvent:FireServer() on its own can substitute for. Same class of
+-- bug as the Download task button (a button/tool's real activation signal isn't always the
+-- one you'd guess) -- so this now also finds and equips the killer's Tool and fires its
+-- Activated, alongside the direct remote fire as a fallback in case there isn't one.
+local function GetKillerTool(character)
+	local tool = character:FindFirstChildOfClass("Tool")
+	if tool then return tool end
+	local backpack = Player:FindFirstChildOfClass("Backpack")
+	local backpackTool = backpack and backpack:FindFirstChildOfClass("Tool")
+	if backpackTool then
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid then pcall(function() humanoid:EquipTool(backpackTool) end) end
+		return backpackTool
+	end
+	return nil
+end
+
 RunService.Heartbeat:Connect(function()
 	if not ScreenGui.Parent then return end
+	if Player:GetAttribute("InGame") ~= true then return end
 	if not killState.Enabled or os.clock() - killState.LastAttack < 0.1 or not IsSuspectKiller() then return end
 	local character = Player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -365,22 +388,32 @@ RunService.Heartbeat:Connect(function()
 	root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 2)
 	root.AssemblyLinearVelocity = Vector3.zero
 	killState.LastAttack = os.clock()
+
+	local tool = GetKillerTool(character)
+	if tool and type(firesignal) == "function" then
+		pcall(firesignal, tool.Activated)
+	end
 	pcall(function() weaponEvent:FireServer() end)
 end)
 
 -- ============================================================================
--- Shared: same trick Main's own Instant Prompt feature uses -- a ProximityPrompt's
--- HoldDuration means fireproximityprompt has to actually sit through that whole hold
--- (some executor implementations do simulate the real hold, not an instant tap), and
--- RequiresLineOfSight can reject the trigger entirely depending on camera angle. Zeroing
--- both right before firing makes every prompt below trigger instantly and reliably instead
--- of however long/finicky its real configured hold actually is.
+-- Shared: fires a ProximityPrompt reliably. RequiresLineOfSight is dropped first (a real
+-- client-side gate -- worth clearing regardless). For the actual trigger, this passes the
+-- prompt's own real HoldDuration through to fireproximityprompt instead of always trying
+-- an instant zero-hold tap: some servers verify how long a prompt was genuinely held via
+-- their own replicated timing, not the client-readable HoldDuration property, so an
+-- instant fake tap can get silently ignored where a fully "held" one wouldn't -- this is
+-- likely why Emergency (walked to, never actually pressed) failed while Task prompts
+-- (already using a real settle delay before firing) mostly didn't. Falls back to a bare
+-- call if the executor's fireproximityprompt doesn't accept a duration argument.
 -- ============================================================================
-local function MakePromptInstant(prompt)
-	pcall(function()
-		prompt.HoldDuration = 0
-		prompt.RequiresLineOfSight = false
-	end)
+local function TriggerPrompt(prompt)
+	if type(fireproximityprompt) ~= "function" then return false end
+	pcall(function() prompt.RequiresLineOfSight = false end)
+	local holdDuration = prompt.HoldDuration
+	local success = pcall(fireproximityprompt, prompt, holdDuration)
+	if success then return true end
+	return pcall(fireproximityprompt, prompt)
 end
 
 -- ============================================================================
@@ -409,36 +442,10 @@ end
 local TaskRow, TaskToggle = CreateFeatureRow(2, "Auto Task")
 local ReportRow, ReportToggle = CreateFeatureRow(3, "Auto Report")
 
--- Tunable settle delay between teleporting to a task and actually firing its prompt --
--- triggering the instant the teleport lands is the likely cause of a task's prompt/outline
--- clearing (proof the trigger DID register) while the actual minigame GUI never opens: the
--- server probably validates you've genuinely been in proximity for a moment, not just
--- teleported in and immediately interacted, and rejects it as suspicious. Live-tunable
--- since there's no way to know the real required window without testing it in Suspect
--- itself.
-local TaskDelayBox = Instance.new("TextBox")
-TaskDelayBox.Name = "TaskDelayBox"
-TaskDelayBox.Size = UDim2.new(0, 40, 0, 22)
-TaskDelayBox.Position = UDim2.new(1, -108, 0.5, -11)
-TaskDelayBox.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
-TaskDelayBox.BackgroundTransparency = 0.2
-TaskDelayBox.BorderSizePixel = 0
-TaskDelayBox.Text = "0.4"
-TaskDelayBox.ClearTextOnFocus = false
-TaskDelayBox.Font = UIFont
-TaskDelayBox.TextSize = 12
-TaskDelayBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-TaskDelayBox.Parent = TaskRow
-Instance.new("UICorner", TaskDelayBox).CornerRadius = UDim.new(0, 6)
-
-local taskState = {Enabled = false, CurrentPart = nil, Busy = false, TriggerDelay = 0.4}
-TaskDelayBox.FocusLost:Connect(function()
-	local parsed = tonumber(TaskDelayBox.Text)
-	if parsed and parsed >= 0 then
-		taskState.TriggerDelay = parsed
-	end
-	TaskDelayBox.Text = string.format("%.2f", taskState.TriggerDelay)
-end)
+-- Confirmed working well now, so the tunable delay box is gone -- fixed at a shorter
+-- 0.2s instead (down from the 0.4s it was tuned to while confirming the "server needs a
+-- moment before it'll accept the trigger" theory).
+local taskState = {Enabled = false, CurrentPart = nil, Busy = false, TriggerDelay = 0.2}
 
 local TaskRemote2 = ReplicatedStorage:WaitForChild("TaskRemote2")
 -- Second listener alongside the game's own TaskLocal -- Roblox lets a RemoteEvent have any
@@ -451,6 +458,23 @@ TaskRemote2.OnClientEvent:Connect(function(part)
 		taskState.CurrentPart = nil
 	end
 end)
+
+-- Catches whatever task was ALREADY assigned before this script ever started -- TaskRemote2
+-- only fires again once the current task changes, so if this loads mid-round (task already
+-- handed out before injection), the listener above alone never sees it and CurrentPart
+-- stays nil until the current task somehow finishes on its own. TaskLocal's own script
+-- enables exactly one task prompt at a time and disables every other one, so scanning for
+-- whichever "Task" prompt is currently Enabled finds the live one directly, without
+-- needing to know that map's task-folder path.
+local function FindActiveTaskPart()
+	for _, descendant in ipairs(workspace:GetDescendants()) do
+		if descendant:IsA("ProximityPrompt") and descendant.ActionText == "Task" and descendant.Enabled then
+			return descendant.Parent
+		end
+	end
+	return nil
+end
+taskState.CurrentPart = FindActiveTaskPart()
 
 local function FireButton(button)
 	if not button then return false end
@@ -599,9 +623,7 @@ local function RunTaskAtPart(part)
 	SetRootUpright(root, root.CFrame, part.Position - Vector3.new(0, 3, 0))
 	root.AssemblyLinearVelocity = Vector3.zero
 	task.wait(taskState.TriggerDelay)
-	if type(fireproximityprompt) ~= "function" then return end
-	MakePromptInstant(prompt)
-	pcall(fireproximityprompt, prompt)
+	if not TriggerPrompt(prompt) then return end
 
 	local playerGui = Player:FindFirstChildOfClass("PlayerGui")
 	local tasksGui = playerGui and playerGui:WaitForChild("TasksGui", 2)
@@ -644,13 +666,25 @@ end
 TaskToggle.MouseButton1Click:Connect(function()
 	taskState.Enabled = not taskState.Enabled
 	TaskToggle.Text = taskState.Enabled and "On" or "Off"
+	-- Picks up whatever task is already live the moment this gets turned on, instead of
+	-- only ever noticing one via TaskRemote2 firing again in the future -- covers exactly
+	-- the "toggled on mid-round, never finds the task" case.
+	if taskState.Enabled and not taskState.CurrentPart then
+		taskState.CurrentPart = FindActiveTaskPart()
+	end
 end)
 
 RunService.Heartbeat:Connect(function()
 	if not ScreenGui.Parent then return end
+	-- Confirmed real (TaskFrame's own script branches on it) -- true only while actually
+	-- in a live round, false in the lobby/menu. Suspect calls the lobby/spectator state a
+	-- "Ghost" per request, but InGame is the one signal already confirmed to distinguish
+	-- "actually playing" either way, so this is what both Auto Task and Auto Report gate on.
+	if Player:GetAttribute("InGame") ~= true then return end
 	if not taskState.Enabled or taskState.Busy then return end
 	if workspace:GetAttribute("Meeting") == true then return end
-	local part = taskState.CurrentPart
+	local part = taskState.CurrentPart or FindActiveTaskPart()
+	taskState.CurrentPart = part
 	if not part or not part.Parent then return end
 	local character = Player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -664,8 +698,10 @@ RunService.Heartbeat:Connect(function()
 		-- Small settle delay before allowing the next attempt -- if the task genuinely
 		-- didn't complete (detection missed something, or the server hasn't advanced
 		-- CurrentPart yet), this stops it from re-triggering the exact same prompt on the
-		-- very next Heartbeat and thrashing whatever GUI state is still mid-cleanup.
-		task.wait(0.5)
+		-- very next Heartbeat and thrashing whatever GUI state is still mid-cleanup. Cut
+		-- down from 0.5s for speed, now that the detection bugs are fixed and back-to-back
+		-- attempts are less likely to be thrashing anything.
+		task.wait(0.2)
 		taskState.Busy = false
 	end)
 end)
@@ -796,10 +832,7 @@ local function WalkAndTrigger(prompt)
 	-- instant as possible, this is only here so the teleport has actually replicated
 	-- before the trigger fires.
 	task.wait()
-	if type(fireproximityprompt) == "function" then
-		MakePromptInstant(prompt)
-		pcall(fireproximityprompt, prompt)
-	end
+	TriggerPrompt(prompt)
 end
 
 local reportState = {Enabled = false, LastReport = 0, LastMeetingCall = 0}
@@ -810,6 +843,7 @@ end)
 
 RunService.Heartbeat:Connect(function()
 	if not ScreenGui.Parent then return end
+	if Player:GetAttribute("InGame") ~= true then return end
 	if not reportState.Enabled or not IsReportReady() then return end
 	if workspace:GetAttribute("Meeting") == true then return end
 
@@ -824,6 +858,86 @@ RunService.Heartbeat:Connect(function()
 	if emergencyPrompt and os.clock() - reportState.LastMeetingCall >= 60 then
 		reportState.LastMeetingCall = os.clock()
 		task.spawn(WalkAndTrigger, emergencyPrompt)
+	end
+end)
+
+-- ============================================================================
+-- Auto Accuse: once a meeting actually starts (workspace's own "Meeting" attribute, the
+-- same one everything above already treats as authoritative), answer both voting
+-- questions "Yes" and accuse whoever's currently detected as the killer -- best-effort,
+-- built from paths handed over by hand rather than decompiled source (unlike everything
+-- above this), so the PlayerList entry lookup below is intentionally flexible (matches on
+-- the entry's own Name OR any descendant label's text) rather than assuming one exact
+-- structure. Only runs while Auto Report itself is on, since this is that toggle's own
+-- follow-through once a meeting it caused (or anyone else's) actually happens.
+-- ============================================================================
+local function GetKnownKiller()
+	for _, candidate in ipairs(Players:GetPlayers()) do
+		if candidate ~= Player and IsPlayerKiller(candidate) then
+			return candidate
+		end
+	end
+	return nil
+end
+
+local function FindPlayerListEntry(playerList, targetPlayer)
+	for _, descendant in ipairs(playerList:GetDescendants()) do
+		if descendant:IsA("GuiButton") then
+			local matches = descendant.Name == targetPlayer.Name or descendant.Name == targetPlayer.DisplayName
+			if not matches then
+				for _, label in ipairs(descendant:GetDescendants()) do
+					if label:IsA("TextLabel") and label.Text ~= "" then
+						local text = label.Text
+						if text == targetPlayer.Name or text == targetPlayer.DisplayName
+							or text:find(targetPlayer.Name, 1, true) or text:find(targetPlayer.DisplayName, 1, true) then
+							matches = true
+							break
+						end
+					end
+				end
+			end
+			if matches then return descendant end
+		end
+	end
+	return nil
+end
+
+local function AutoAccuseKiller()
+	local playerGui = Player:FindFirstChildOfClass("PlayerGui")
+	local inGameGui = playerGui and playerGui:WaitForChild("InGameGui", 5)
+	local votingFrame = inGameGui and inGameGui:WaitForChild("VotingFrame", 5)
+	if not votingFrame then return end
+
+	local killer = GetKnownKiller()
+	if not killer then return end
+
+	-- Give the frame a moment to actually populate (the PlayerList especially is very
+	-- likely built dynamically once the meeting starts, not sitting there in advance).
+	task.wait(1)
+
+	local question1 = votingFrame:FindFirstChild("Question1")
+	FireButton(question1 and question1:FindFirstChild("Yes"))
+	task.wait(0.3)
+	local question2 = votingFrame:FindFirstChild("Question2")
+	FireButton(question2 and question2:FindFirstChild("Yes"))
+	task.wait(0.3)
+
+	local accuse = votingFrame:FindFirstChild("Accuse")
+	local playerList = accuse and accuse:FindFirstChild("PlayerList")
+	if not playerList then return end
+
+	local start = os.clock()
+	local entry = FindPlayerListEntry(playerList, killer)
+	while not entry and os.clock() - start < 3 do
+		task.wait(0.2)
+		entry = FindPlayerListEntry(playerList, killer)
+	end
+	FireButton(entry)
+end
+
+workspace:GetAttributeChangedSignal("Meeting"):Connect(function()
+	if workspace:GetAttribute("Meeting") == true and reportState.Enabled then
+		task.spawn(AutoAccuseKiller)
 	end
 end)
 
