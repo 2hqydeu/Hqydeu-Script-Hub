@@ -832,7 +832,9 @@ RunService.Heartbeat:Connect(function()
 	end
 
 	local character = Player.Character
-	if workspace:GetAttribute("TasksFinished") == true then
+	-- Also gated on AutoTeleport now -- with it off, this shouldn't be doing ANY automatic
+	-- teleporting, the safe-place hover included, not just skipping the walk-to-task part.
+	if workspace:GetAttribute("TasksFinished") == true and taskState.AutoTeleport then
 		if character then EngageSafePlace(character) end
 		return
 	end
@@ -1009,6 +1011,14 @@ local function WalkAndTrigger(prompt)
 	-- instant as possible, this is only here so the teleport has actually replicated
 	-- before the trigger fires.
 	task.wait()
+	-- Same fix as the task prompts: the Emergency button's own prompt is very likely
+	-- Enabled=false during its countdown and only flips true once the Timer actually hits
+	-- 0 -- IsReportReady() already waits for that, but if Enabled replicates even slightly
+	-- after the Timer value does, this could still walk over and try to fire a prompt
+	-- that's technically still disabled, which fireproximityprompt (correctly) treats as a
+	-- no-op -- exactly "teleports there but doesn't press it." Forcing it on costs nothing
+	-- if it was already enabled.
+	prompt.Enabled = true
 	TriggerPrompt(prompt)
 end
 
@@ -1064,12 +1074,16 @@ end)
 -- Auto Accuse: once a meeting actually starts (workspace's own "Meeting" attribute, the
 -- same one everything above already treats as authoritative), work through the real vote
 -- flow: "have you seen the killer" (Question1) -> Yes, find the killer's own red button
--- directly inside VotingFrame.Accuse and click it, then VotingFrame.Question2 ("vote them
--- out?") -> Yes -- both exact paths confirmed by hand. The accuse-button lookup itself is
--- still deliberately flexible (name match OR any descendant label's text, same as before)
--- since the exact per-player button structure inside Accuse wasn't specified, just that
--- it's red buttons. Only runs while Auto Report itself is on, since this is that toggle's
--- own follow-through once a meeting it caused (or anyone else's) actually happens.
+-- directly inside VotingFrame.Accuse and click it, then a "Kick out {name}?" Yes/No
+-- confirmation with a short visible countdown -- confirmed by screenshot, not a guessed
+-- path (unlike Question1/Accuse above), so it's found by its own displayed text instead of
+-- an assumed instance path. Answered based on whether the named player is actually the
+-- killer (Yes if so, No otherwise) rather than always Yes, in case someone else on the
+-- server ends up nominated instead. The accuse-button lookup itself is still deliberately
+-- flexible (name match OR any descendant label's text) since the exact per-player button
+-- structure inside Accuse wasn't specified, just that it's red buttons. Only runs while
+-- Auto Report itself is on, since this is that toggle's own follow-through once a meeting
+-- it caused (or anyone else's) actually happens.
 -- ============================================================================
 local function GetKnownKiller()
 	for _, candidate in ipairs(Players:GetPlayers()) do
@@ -1117,6 +1131,64 @@ local function FindAccuseButton(accuse, targetPlayer)
 	return nil
 end
 
+-- "Kick out Pandete?" -> extracts "Pandete". Anchored at both ends so it doesn't
+-- accidentally match some other unrelated "Kick out ..." string.
+local function ExtractKickTargetName(text)
+	if not text then return nil end
+	return text:match("^Kick%s+[Oo]ut%s+(.-)%s*%?%s*$")
+end
+
+local function FindPlayerByNameOrDisplay(name)
+	if not name then return nil end
+	for _, candidate in ipairs(Players:GetPlayers()) do
+		if candidate.Name == name or candidate.DisplayName == name then
+			return candidate
+		end
+	end
+	return nil
+end
+
+-- Walks up from the "Kick out ...?" label looking for the smallest ancestor that actually
+-- contains both a Yes and a No button, since the exact dialog structure isn't confirmed.
+local function FindYesNoNear(label)
+	local node = label.Parent
+	for _ = 1, 4 do
+		if not node then break end
+		local yes, no
+		for _, descendant in ipairs(node:GetDescendants()) do
+			if descendant:IsA("GuiButton") then
+				local buttonText = (descendant.Text or ""):lower()
+				local buttonName = descendant.Name:lower()
+				if not yes and (buttonText == "yes" or buttonName == "yes") then yes = descendant end
+				if not no and (buttonText == "no" or buttonName == "no") then no = descendant end
+			end
+		end
+		if yes and no then return yes, no end
+		node = node.Parent
+	end
+	return nil, nil
+end
+
+local function TryHandleKickConfirmation()
+	local playerGui = Player:FindFirstChildOfClass("PlayerGui")
+	if not playerGui then return false end
+	for _, label in ipairs(playerGui:GetDescendants()) do
+		if label:IsA("TextLabel") then
+			local targetName = ExtractKickTargetName(label.Text)
+			if targetName then
+				local yes, no = FindYesNoNear(label)
+				if yes and no then
+					local targetPlayer = FindPlayerByNameOrDisplay(targetName)
+					local isKiller = targetPlayer ~= nil and IsPlayerKiller(targetPlayer)
+					FireButton(isKiller and yes or no)
+					return true
+				end
+			end
+		end
+	end
+	return false
+end
+
 local function AutoAccuseKiller()
 	local playerGui = Player:FindFirstChildOfClass("PlayerGui")
 	local inGameGui = playerGui and playerGui:WaitForChild("InGameGui", 5)
@@ -1146,15 +1218,12 @@ local function AutoAccuseKiller()
 	if not accuseButton then return end
 	FireButton(accuseButton)
 
-	-- Confirmed path -- waited on rather than fired blind in case it only actually becomes
-	-- visible after the accuse button above registers.
-	local question2 = votingFrame:WaitForChild("Question2", 5)
-	if question2 then
-		local waitStart = os.clock()
-		while not question2.Visible and os.clock() - waitStart < 3 do
-			task.wait(0.2)
-		end
-		FireButton(question2:FindFirstChild("Yes"))
+	-- "Kick out {name}?" only has a short visible countdown (~4s in the confirmed
+	-- screenshot), so this polls fairly quickly rather than waiting on a single long timeout.
+	local waitStart = os.clock()
+	while os.clock() - waitStart < 6 do
+		if TryHandleKickConfirmation() then return end
+		task.wait(0.15)
 	end
 end
 
