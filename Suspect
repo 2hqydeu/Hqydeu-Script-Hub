@@ -363,12 +363,35 @@ local function GetKillerTool(character)
 	return nil
 end
 
-local function FireAttack(character, weaponEvent)
+local function GetToolHandle(tool)
+	return tool:FindFirstChild("Handle") or tool:FindFirstChildWhichIsA("BasePart")
+end
+
+-- Confirmed: teleporting works, but nothing was actually taking damage -- Tool.Activated +
+-- WeaponEvent alone apparently isn't Suspect's real hit path either. MM2's own knife (a
+-- different game, but the same style of Tool) deals its damage through Touched events on
+-- the Handle, not a swing animation or remote fire alone -- Suspect's is plausibly the
+-- same, so this also simulates the handle physically touching each gathered target, same
+-- technique as MM2's own StabTarget (firetouchinterest, touch-start then touch-end).
+local function FireAttack(character, weaponEvent, targets)
 	local tool = GetKillerTool(character)
 	if tool and type(firesignal) == "function" then
 		pcall(firesignal, tool.Activated)
 	end
 	pcall(function() weaponEvent:FireServer() end)
+
+	local handle = tool and GetToolHandle(tool)
+	if handle and type(firetouchinterest) == "function" then
+		for _, targetRoot in ipairs(targets) do
+			if targetRoot.Parent then
+				pcall(function()
+					firetouchinterest(handle, targetRoot, 0)
+					task.wait(0.03)
+					firetouchinterest(handle, targetRoot, 1)
+				end)
+			end
+		end
+	end
 end
 
 task.spawn(function()
@@ -405,7 +428,7 @@ task.spawn(function()
 					-- one guess.
 					for i = 1, 4 do
 						if not killState.Enabled then break end
-						FireAttack(character, weaponEvent)
+						FireAttack(character, weaponEvent, targets)
 						task.wait(0.15)
 					end
 
@@ -462,12 +485,67 @@ end
 -- moment later and stomped whatever had just started opening.
 -- ============================================================================
 local TaskRow, TaskToggle = CreateFeatureRow(2, "Auto Task")
-local ReportRow, ReportToggle = CreateFeatureRow(3, "Auto Report")
+
+-- Edit -> inline options, same collapse-in-place pattern as QOD/MM2's own Farm Options --
+-- currently just the one toggle: turning Auto Teleport off keeps everything else (the
+-- prompt-watching/minigame-solving below) running, it just stops this from walking you to
+-- tasks and pressing E itself -- you do that part, it still auto-completes whatever opens.
+local TaskEditButton = Instance.new("TextButton")
+TaskEditButton.Name = "EditButton"
+TaskEditButton.Size = UDim2.new(0, 44, 0, 26)
+TaskEditButton.Position = UDim2.new(1, -108, 0.5, -13)
+TaskEditButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+TaskEditButton.BackgroundTransparency = 0.2
+TaskEditButton.BorderSizePixel = 0
+TaskEditButton.Text = "Edit"
+TaskEditButton.Font = UIFont
+TaskEditButton.TextSize = 12
+TaskEditButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+TaskEditButton.Parent = TaskRow
+Instance.new("UICorner", TaskEditButton).CornerRadius = UDim.new(1, 0)
+AddPressBounce(TaskEditButton)
+
+local TaskOptionsContainer = Instance.new("Frame")
+TaskOptionsContainer.Name = "TaskOptionsContainer"
+TaskOptionsContainer.LayoutOrder = 3
+TaskOptionsContainer.Size = UDim2.new(1, -10, 0, 0)
+TaskOptionsContainer.AutomaticSize = Enum.AutomaticSize.Y
+TaskOptionsContainer.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
+TaskOptionsContainer.BackgroundTransparency = GameRowTransparency
+TaskOptionsContainer.BorderSizePixel = 0
+TaskOptionsContainer.Visible = false
+TaskOptionsContainer.Parent = ContentScroll
+Instance.new("UICorner", TaskOptionsContainer).CornerRadius = UDim.new(0, 8)
+
+local TaskOptionsPadding = Instance.new("UIPadding")
+TaskOptionsPadding.PaddingTop = UDim.new(0, 10)
+TaskOptionsPadding.PaddingBottom = UDim.new(0, 10)
+TaskOptionsPadding.PaddingLeft = UDim.new(0, 10)
+TaskOptionsPadding.PaddingRight = UDim.new(0, 10)
+TaskOptionsPadding.Parent = TaskOptionsContainer
+
+local taskOptionsLayout = Instance.new("UIListLayout")
+taskOptionsLayout.Padding = UDim.new(0, 8)
+taskOptionsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+taskOptionsLayout.Parent = TaskOptionsContainer
+
+local AutoTeleportRow, AutoTeleportToggle = CreateFeatureRow(1, "Auto Teleport", TaskOptionsContainer)
+AutoTeleportToggle.Text = "On"
+
+TaskEditButton.MouseButton1Click:Connect(function()
+	TaskOptionsContainer.Visible = not TaskOptionsContainer.Visible
+end)
+
+local ReportRow, ReportToggle = CreateFeatureRow(4, "Auto Report")
 
 -- Confirmed working well now, so the tunable delay box is gone -- fixed at a shorter
 -- 0.2s instead (down from the 0.4s it was tuned to while confirming the "server needs a
 -- moment before it'll accept the trigger" theory).
-local taskState = {Enabled = false, CurrentPart = nil, Busy = false, TriggerDelay = 0.2}
+local taskState = {Enabled = false, CurrentPart = nil, Busy = false, TriggerDelay = 0.2, AutoTeleport = true}
+AutoTeleportToggle.MouseButton1Click:Connect(function()
+	taskState.AutoTeleport = not taskState.AutoTeleport
+	AutoTeleportToggle.Text = taskState.AutoTeleport and "On" or "Off"
+end)
 
 local TaskRemote2 = ReplicatedStorage:WaitForChild("TaskRemote2")
 -- Second listener alongside the game's own TaskLocal -- Roblox lets a RemoteEvent have any
@@ -626,6 +704,57 @@ local function EndTaskNoclip(touched, antiFallConnection)
 	end
 end
 
+-- Tries to detect and solve whatever minigame is CURRENTLY open, regardless of how it got
+-- that way -- this script teleporting+triggering the prompt itself, or you walking up and
+-- pressing E yourself with Auto Teleport off. Shared by both paths (below) instead of
+-- duplicated, so there's exactly one place that actually plays a minigame.
+local function TryDetectAndSolveOpenTask(tasksGui, preExistingButtons)
+	local monitor = FindVisibleChild(tasksGui, "Monitor")
+	if monitor then
+		HandleDownloadTask(monitor)
+		return true
+	end
+	if tasksGui.CodePad and tasksGui.CodePad.Visible then
+		HandleCodeTask(tasksGui.CodePad)
+		return true
+	end
+	local pressing = tasksGui:FindFirstChild("Pressing")
+	if pressing then
+		for _, child in ipairs(pressing:GetChildren()) do
+			if child.Name == "ButtonActive" and not (preExistingButtons and preExistingButtons[child]) then
+				HandlePressTask(pressing)
+				return true
+			end
+		end
+	end
+	return false
+end
+
+-- True for as long as the watcher below is actively solving something -- checked by
+-- RunTaskAtPart (so Busy spans the whole solve, not just the trigger) and by Auto Report
+-- (so it won't try to walk off and report mid-task -- see the note further down about the
+-- two fighting over character control).
+solvingTask = false
+
+-- Always running while Auto Task is on, independent of Auto Teleport -- this is what
+-- actually plays a minigame open by a manual E-press when teleport-assist is off, and it's
+-- also what RunTaskAtPart (below) waits on after triggering a prompt itself.
+task.spawn(function()
+	while true do
+		task.wait(0.2)
+		if not ScreenGui.Parent then return end
+		if taskState.Enabled and not solvingTask then
+			local playerGui = Player:FindFirstChildOfClass("PlayerGui")
+			local tasksGui = playerGui and playerGui:FindFirstChild("TasksGui")
+			if tasksGui then
+				solvingTask = true
+				pcall(TryDetectAndSolveOpenTask, tasksGui, nil)
+				solvingTask = false
+			end
+		end
+	end
+end)
+
 local function RunTaskAtPart(part)
 	local prompt = part:FindFirstChildOfClass("ProximityPrompt")
 	if not prompt then return end
@@ -647,41 +776,16 @@ local function RunTaskAtPart(part)
 	task.wait(taskState.TriggerDelay)
 	if not TriggerPrompt(prompt) then return end
 
-	local playerGui = Player:FindFirstChildOfClass("PlayerGui")
-	local tasksGui = playerGui and playerGui:WaitForChild("TasksGui", 2)
-	if not tasksGui then return end
-
-	-- Whichever of the three actually opens is the one this task turned out to be. Checked
-	-- against a snapshot of Pressing's existing children so a stray leftover ButtonActive
-	-- from a previous attempt can't be mistaken for a fresh one.
-	local pressing = tasksGui:FindFirstChild("Pressing")
-	local preExistingButtons = {}
-	if pressing then
-		for _, child in ipairs(pressing:GetChildren()) do
-			if child.Name == "ButtonActive" then preExistingButtons[child] = true end
-		end
-	end
-
+	-- The watcher above picks up whatever this trigger just opened -- wait here for it to
+	-- actually notice and finish, so this function (and taskState.Busy, which wraps it)
+	-- covers the whole solve, not just the trigger step.
 	local start = os.clock()
-	while os.clock() - start < 2.5 do
-		local monitor = FindVisibleChild(tasksGui, "Monitor")
-		if monitor then
-			HandleDownloadTask(monitor)
-			return
-		end
-		if tasksGui.CodePad and tasksGui.CodePad.Visible then
-			HandleCodeTask(tasksGui.CodePad)
-			return
-		end
-		if pressing then
-			for _, child in ipairs(pressing:GetChildren()) do
-				if child.Name == "ButtonActive" and not preExistingButtons[child] then
-					HandlePressTask(pressing)
-					return
-				end
-			end
-		end
+	while not solvingTask and os.clock() - start < 2.5 do
 		task.wait(0.05)
+	end
+	start = os.clock()
+	while solvingTask and os.clock() - start < 15 do
+		task.wait(0.1)
 	end
 end
 
@@ -696,19 +800,51 @@ TaskToggle.MouseButton1Click:Connect(function()
 	end
 end)
 
+-- "Safe place" once every task is done -- workspace:GetAttribute("TasksFinished") is
+-- confirmed real (TimeFrame's own dumped script branches on it too), so this isn't a
+-- guessed signal. Reuses the same noclip+anti-fall pair tasks themselves use: teleport
+-- straight up well above the map and hold there, instead of the old behavior of just
+-- sitting at the last task and endlessly re-triggering its now-pointless prompt.
+local safePlace = {Active = false, Touched = nil, AntiFallConnection = nil}
+local function EngageSafePlace(character)
+	if safePlace.Active then return end
+	safePlace.Active = true
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if root then root.CFrame = root.CFrame + Vector3.new(0, 60, 0) end
+	safePlace.Touched, safePlace.AntiFallConnection = BeginTaskNoclip(character)
+end
+local function DisengageSafePlace()
+	if not safePlace.Active then return end
+	EndTaskNoclip(safePlace.Touched, safePlace.AntiFallConnection)
+	safePlace.Touched, safePlace.AntiFallConnection = nil, nil
+	safePlace.Active = false
+end
+
 RunService.Heartbeat:Connect(function()
 	if not ScreenGui.Parent then return end
 	-- Confirmed real (TaskFrame's own script branches on it) -- true only while actually
 	-- in a live round, false in the lobby/menu. Suspect calls the lobby/spectator state a
 	-- "Ghost" per request, but InGame is the one signal already confirmed to distinguish
 	-- "actually playing" either way, so this is what both Auto Task and Auto Report gate on.
-	if Player:GetAttribute("InGame") ~= true then return end
-	if not taskState.Enabled or taskState.Busy then return end
-	if workspace:GetAttribute("Meeting") == true then return end
+	if Player:GetAttribute("InGame") ~= true or not taskState.Enabled or workspace:GetAttribute("Meeting") == true then
+		DisengageSafePlace()
+		return
+	end
+
+	local character = Player.Character
+	if workspace:GetAttribute("TasksFinished") == true then
+		if character then EngageSafePlace(character) end
+		return
+	end
+	DisengageSafePlace()
+
+	-- Same mutual-exclusion reasoning as Auto Report's own Heartbeat below (see its
+	-- comment) -- don't start a new teleport-and-trigger while Auto Report currently has
+	-- the character mid-walk to a body/Emergency.
+	if taskState.Busy or not taskState.AutoTeleport or reportState.Busy then return end
 	local part = taskState.CurrentPart or FindActiveTaskPart()
 	taskState.CurrentPart = part
 	if not part or not part.Parent then return end
-	local character = Player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if not humanoid or humanoid.Health <= 0 then return end
 
@@ -720,9 +856,7 @@ RunService.Heartbeat:Connect(function()
 		-- Small settle delay before allowing the next attempt -- if the task genuinely
 		-- didn't complete (detection missed something, or the server hasn't advanced
 		-- CurrentPart yet), this stops it from re-triggering the exact same prompt on the
-		-- very next Heartbeat and thrashing whatever GUI state is still mid-cleanup. Cut
-		-- down from 0.5s for speed, now that the detection bugs are fixed and back-to-back
-		-- attempts are less likely to be thrashing anything.
+		-- very next Heartbeat and thrashing whatever GUI state is still mid-cleanup.
 		task.wait(0.2)
 		taskState.Busy = false
 	end)
@@ -857,7 +991,13 @@ local function WalkAndTrigger(prompt)
 	TriggerPrompt(prompt)
 end
 
-local reportState = {Enabled = false, LastReport = 0, LastMeetingCall = 0}
+-- Global, not local -- Auto Task's own Heartbeat (declared earlier in the file) reads
+-- reportState.Busy for the same mutual-exclusion check, and a local here wouldn't be
+-- visible as an upvalue to code positioned before this line. Still fine either way: both
+-- are just function bodies that only actually run later (once Heartbeat starts firing),
+-- well after this assignment has already happened during the script's initial top-to-
+-- bottom execution.
+reportState = {Enabled = false, LastReport = 0, LastMeetingCall = 0, Busy = false}
 ReportToggle.MouseButton1Click:Connect(function()
 	reportState.Enabled = not reportState.Enabled
 	ReportToggle.Text = reportState.Enabled and "On" or "Off"
@@ -866,35 +1006,49 @@ end)
 RunService.Heartbeat:Connect(function()
 	if not ScreenGui.Parent then return end
 	if Player:GetAttribute("InGame") ~= true then return end
-	if not reportState.Enabled or not IsReportReady() then return end
+	if not reportState.Enabled or reportState.Busy or not IsReportReady() then return end
 	if workspace:GetAttribute("Meeting") == true then return end
+	-- Auto Task owning the character (walking to a task, or a minigame from THIS session's
+	-- own trigger currently being solved) is very likely why reporting/pressing Emergency
+	-- was going nowhere despite the teleport landing -- pressing E for a report or the
+	-- Emergency button while the game still considers you "in a task" may just not be
+	-- allowed, and either way two of this script's own loops fighting for the same
+	-- HumanoidRootPart every frame was never going to end well. Simplest fix: don't even
+	-- try while Auto Task has something in progress.
+	if taskState.Busy or solvingTask then return end
 
 	local prompt = FindDeadBodyPrompt()
 	if prompt then
 		if os.clock() - reportState.LastReport < 3 then return end
 		reportState.LastReport = os.clock()
-		task.spawn(WalkAndTrigger, prompt)
+		reportState.Busy = true
+		task.spawn(function()
+			WalkAndTrigger(prompt)
+			reportState.Busy = false
+		end)
 		return
 	end
 
 	if emergencyPrompt and os.clock() - reportState.LastMeetingCall >= 60 then
 		reportState.LastMeetingCall = os.clock()
-		task.spawn(WalkAndTrigger, emergencyPrompt)
+		reportState.Busy = true
+		task.spawn(function()
+			WalkAndTrigger(emergencyPrompt)
+			reportState.Busy = false
+		end)
 	end
 end)
 
 -- ============================================================================
 -- Auto Accuse: once a meeting actually starts (workspace's own "Meeting" attribute, the
 -- same one everything above already treats as authoritative), work through the real vote
--- flow (corrected per direct testing -- the player list is NOT a plain click-to-accuse
--- row): "have you seen the killer" -> Yes, find the killer's own row in the player list
--- and click ITS separate "Suspect" button, then a second "vote them out?" confirmation
--- appears (Question2 is the current best guess for that one) -> Yes. Still best-effort --
--- built from paths handed over by hand rather than decompiled source like everything above
--- this, so both the row lookup and the Suspect-button lookup are deliberately flexible
--- (name match OR any descendant label's text) rather than assuming one exact structure.
--- Only runs while Auto Report itself is on, since this is that toggle's own follow-through
--- once a meeting it caused (or anyone else's) actually happens.
+-- flow: "have you seen the killer" (Question1) -> Yes, find the killer's own red button
+-- directly inside VotingFrame.Accuse and click it, then VotingFrame.Question2 ("vote them
+-- out?") -> Yes -- both exact paths confirmed by hand. The accuse-button lookup itself is
+-- still deliberately flexible (name match OR any descendant label's text, same as before)
+-- since the exact per-player button structure inside Accuse wasn't specified, just that
+-- it's red buttons. Only runs while Auto Report itself is on, since this is that toggle's
+-- own follow-through once a meeting it caused (or anyone else's) actually happens.
 -- ============================================================================
 local function GetKnownKiller()
 	for _, candidate in ipairs(Players:GetPlayers()) do
@@ -905,41 +1059,40 @@ local function GetKnownKiller()
 	return nil
 end
 
-local function FindKillerRow(playerList, targetPlayer)
-	for _, descendant in ipairs(playerList:GetDescendants()) do
-		if descendant:IsA("GuiObject") then
-			local matches = descendant.Name == targetPlayer.Name or descendant.Name == targetPlayer.DisplayName
-			if not matches then
-				for _, label in ipairs(descendant:GetDescendants()) do
-					if label:IsA("TextLabel") and label.Text ~= "" then
-						local text = label.Text
-						if text == targetPlayer.Name or text == targetPlayer.DisplayName
-							or text:find(targetPlayer.Name, 1, true) or text:find(targetPlayer.DisplayName, 1, true) then
-							matches = true
-							break
-						end
-					end
-				end
-			end
-			if matches then return descendant end
-		end
-	end
-	return nil
-end
-
-local function FindSuspectButton(row)
-	for _, descendant in ipairs(row:GetDescendants()) do
+local function FindAccuseButton(accuse, targetPlayer)
+	for _, descendant in ipairs(accuse:GetDescendants()) do
 		if descendant:IsA("GuiButton") then
-			local name = descendant.Name:lower()
-			local text = (descendant.Text or ""):lower()
-			if name:find("suspect", 1, true) or text:find("suspect", 1, true) then
+			local name = descendant.Name
+			local text = descendant.Text or ""
+			if name == targetPlayer.Name or name == targetPlayer.DisplayName
+				or text == targetPlayer.Name or text == targetPlayer.DisplayName then
 				return descendant
 			end
 		end
 	end
-	-- No dedicated Suspect sub-button found -- if the row itself is a button, clicking the
-	-- row directly might be how it actually works.
-	if row:IsA("GuiButton") then return row end
+	-- Button itself might just say "Accuse" with the player's name on a sibling label
+	-- instead of on the button -- fall back to matching by nearby container.
+	for _, descendant in ipairs(accuse:GetDescendants()) do
+		if descendant:IsA("GuiObject") then
+			local matches = false
+			for _, label in ipairs(descendant:GetDescendants()) do
+				if label:IsA("TextLabel") and label.Text ~= "" then
+					local text = label.Text
+					if text == targetPlayer.Name or text == targetPlayer.DisplayName
+						or text:find(targetPlayer.Name, 1, true) or text:find(targetPlayer.DisplayName, 1, true) then
+						matches = true
+						break
+					end
+				end
+			end
+			if matches then
+				if descendant:IsA("GuiButton") then return descendant end
+				for _, button in ipairs(descendant:GetDescendants()) do
+					if button:IsA("GuiButton") then return button end
+				end
+			end
+		end
+	end
 	return nil
 end
 
@@ -952,7 +1105,7 @@ local function AutoAccuseKiller()
 	local killer = GetKnownKiller()
 	if not killer then return end
 
-	-- Give the frame a moment to actually populate (the player list especially is very
+	-- Give the frame a moment to actually populate (the accuse buttons especially are very
 	-- likely built dynamically once the meeting starts, not sitting there in advance).
 	task.wait(1)
 
@@ -960,23 +1113,21 @@ local function AutoAccuseKiller()
 	FireButton(question1 and question1:FindFirstChild("Yes"))
 	task.wait(0.5)
 
-	local accuse = votingFrame:FindFirstChild("Accuse")
-	local playerList = (accuse and accuse:FindFirstChild("PlayerList")) or votingFrame:FindFirstChild("PlayerList", true)
-	if not playerList then return end
+	local accuse = votingFrame:WaitForChild("Accuse", 5)
+	if not accuse then return end
 
 	local start = os.clock()
-	local row = FindKillerRow(playerList, killer)
-	while not row and os.clock() - start < 3 do
+	local accuseButton = FindAccuseButton(accuse, killer)
+	while not accuseButton and os.clock() - start < 3 do
 		task.wait(0.2)
-		row = FindKillerRow(playerList, killer)
+		accuseButton = FindAccuseButton(accuse, killer)
 	end
-	if not row then return end
-	FireButton(FindSuspectButton(row))
+	if not accuseButton then return end
+	FireButton(accuseButton)
 
-	-- The "vote them out?" confirmation only shows up after suspecting someone -- Question2
-	-- is the best current guess for it, waited on (not fired blind) since it likely wasn't
-	-- visible/present until just now.
-	local question2 = votingFrame:FindFirstChild("Question2")
+	-- Confirmed path -- waited on rather than fired blind in case it only actually becomes
+	-- visible after the accuse button above registers.
+	local question2 = votingFrame:WaitForChild("Question2", 5)
 	if question2 then
 		local waitStart = os.clock()
 		while not question2.Visible and os.clock() - waitStart < 3 do
