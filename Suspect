@@ -895,8 +895,28 @@ local function FallbackReportGate()
 	return roundStartedAt ~= nil and (os.clock() - roundStartedAt) >= REPORT_COOLDOWN_SECONDS
 end
 
+-- Confirmed: every map has its own Ragdolls folder (e.g. workspace.Map.Prison.Ragdolls)
+-- that a dead player's body actually gets parented into the instant they die -- this is
+-- now the primary signal instead of the property-based guess below. That guess
+-- (ActionText == "Report" and ObjectText == "Dead Body") is kept as a fallback for the same
+-- reason EmergencyModel's Timer has one: it's very plausible a freshly-cloned ragdoll's
+-- ActionText/ObjectText properties replicate a moment AFTER it's actually parented in, in
+-- which case DescendantAdded firing at the exact instant of parenting would check those
+-- properties too early and permanently miss it (that event only ever fires once per
+-- instance) -- anything with a ProximityPrompt that's actually inside the Ragdolls folder
+-- doesn't need that property check at all, since the folder itself already tells you
+-- what it is.
+local ragdollsFolder
+local function ResolveRagdollsFolder()
+	if ragdollsFolder and ragdollsFolder.Parent then return end
+	ragdollsFolder = workspace:FindFirstChild("Ragdolls", true)
+end
+ResolveRagdollsFolder()
+
 local function IsDeadBodyPrompt(descendant)
-	return descendant:IsA("ProximityPrompt") and descendant.ActionText == "Report" and descendant.ObjectText == "Dead Body"
+	if not descendant:IsA("ProximityPrompt") then return false end
+	if descendant.ActionText == "Report" and descendant.ObjectText == "Dead Body" then return true end
+	return ragdollsFolder ~= nil and descendant:IsDescendantOf(ragdollsFolder)
 end
 
 local deadBodyPrompts = {}
@@ -904,6 +924,7 @@ for _, descendant in ipairs(workspace:GetDescendants()) do
 	if IsDeadBodyPrompt(descendant) then deadBodyPrompts[descendant] = true end
 end
 workspace.DescendantAdded:Connect(function(descendant)
+	ResolveRagdollsFolder()
 	if IsDeadBodyPrompt(descendant) then deadBodyPrompts[descendant] = true end
 end)
 workspace.DescendantRemoving:Connect(function(descendant)
