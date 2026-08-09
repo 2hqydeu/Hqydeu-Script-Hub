@@ -933,10 +933,17 @@ workspace.DescendantRemoving:Connect(function(descendant)
 	deadBodyPrompts[descendant] = nil
 end)
 
+-- Enabled is NOT checked here anymore -- confirmed from an actual decompiled dump
+-- (place 121268060261990 Suspect(2).rbxlx) that this game disables ProximityPrompts by
+-- default and only flips them on server-side once some condition is met (same pattern
+-- already relied on for task prompts and the Emergency button below), so a body's own
+-- prompt sitting Enabled=false was very likely why nothing was ever getting reported at all
+-- -- this was gating on a signal that was never expected to be true going in.
+-- WalkAndTrigger below force-enables it right before firing anyway.
 local function FindDeadBodyPrompt()
 	for prompt in pairs(deadBodyPrompts) do
-		if prompt.Parent and prompt.Enabled then return prompt end
-		if not prompt.Parent then deadBodyPrompts[prompt] = nil end
+		if prompt.Parent then return prompt end
+		deadBodyPrompts[prompt] = nil
 	end
 	return nil
 end
@@ -956,40 +963,18 @@ local function ResolveEmergencyModel()
 end
 ResolveEmergencyModel()
 
--- The world Timer prop (EmergencyModel.Timer) is the real, authoritative "can you report
--- yet" signal -- confirmed to exist per-map, unlike the guessed 30s-since-InGame window
--- this used to lean on entirely. Its exact type isn't pinned down (could be a plain
--- NumberValue, or a Part whose SurfaceGui text just displays the countdown), so this reads
--- whichever it turns out to be: a numeric Value <= 0, or a descendant TextLabel whose text
--- reads as 0/empty/"ready". Falls back to the InGame-based guess only if no Timer-like
--- signal can be found at all.
-local function FindReadableText(timer)
-	if timer:IsA("TextLabel") or timer:IsA("TextButton") then return timer end
-	return timer:FindFirstChildWhichIsA("TextLabel", true) or timer:FindFirstChildWhichIsA("TextButton", true)
-end
-
+-- Confirmed from the same dump: EmergencyModel.Timer isn't a NumberValue or a clean
+-- countdown string at all -- it's a physical 3D sign (a UnionOperation part with a
+-- SurfaceGui) whose displayed text format isn't reliable to parse, and the button's own
+-- ProximityPrompt is confirmed Enabled=false at rest. That Enabled flag is the actual
+-- server-authoritative "can you press this yet" signal (the same pattern this game already
+-- uses for task prompts), so this reads that directly instead of guessing at sign text
+-- formatting. Falls back to the InGame-based timer guess only if the model/prompt can't be
+-- resolved at all.
 local function IsReportReady()
 	ResolveEmergencyModel()
-	if not emergencyModel then return FallbackReportGate() end
-	local timer = emergencyModel:FindFirstChild("Timer")
-	if not timer then return FallbackReportGate() end
-
-	if timer:IsA("ValueBase") then
-		local value = timer.Value
-		if type(value) == "number" then return value <= 0 end
-	end
-
-	local label = FindReadableText(timer)
-	if label then
-		local text = label.Text:lower()
-		if text == "" or text == "0" or text:find("ready", 1, true) or text:find("go", 1, true) then
-			return true
-		end
-		local numeric = tonumber(text:match("%d+"))
-		if numeric then return numeric <= 0 end
-	end
-
-	return FallbackReportGate()
+	if not emergencyPrompt then return FallbackReportGate() end
+	return emergencyPrompt.Enabled == true
 end
 
 local function WalkAndTrigger(prompt)
@@ -1034,10 +1019,22 @@ ReportToggle.MouseButton1Click:Connect(function()
 	ReportToggle.Text = reportState.Enabled and "On" or "Off"
 end)
 
-RunService.Heartbeat:Connect(function()
+-- Shared gate + trigger, callable both from the Heartbeat poller below AND directly from an
+-- event the instant it fires (a ragdoll getting added to the Ragdolls folder), instead of
+-- only ever reacting on the next Heartbeat frame. The whole point is getting there before
+-- anyone else on the server does.
+--
+-- Real bug fixed here: the old Heartbeat gated BOTH dead-body reporting AND the Emergency
+-- button behind IsReportReady() (the Emergency meeting-timer/cooldown gate). That's correct
+-- for the Emergency button, but a dead body can legitimately turn up well before that timer
+-- is ready, and reporting one is what CAUSES a meeting -- it was never supposed to wait on
+-- it. That shared, wrongly-scoped gate is almost certainly what made reporting feel
+-- sluggish/not-instant even though the teleport itself was working fine. Emergency-only
+-- callers now pass shouldGateOnTimer = true; body reports pass false.
+local function TryReportNow(prompt, cooldownKey, cooldownSeconds, shouldGateOnTimer)
 	if not ScreenGui.Parent then return end
 	if Player:GetAttribute("InGame") ~= true then return end
-	if not reportState.Enabled or reportState.Busy or not IsReportReady() then return end
+	if not reportState.Enabled or reportState.Busy then return end
 	if workspace:GetAttribute("Meeting") == true then return end
 	-- Auto Task owning the character (walking to a task, or a minigame from THIS session's
 	-- own trigger currently being solved) is very likely why reporting/pressing Emergency
@@ -1047,27 +1044,35 @@ RunService.Heartbeat:Connect(function()
 	-- HumanoidRootPart every frame was never going to end well. Simplest fix: don't even
 	-- try while Auto Task has something in progress.
 	if taskState.Busy or solvingTask then return end
+	if not prompt or not prompt.Parent then return end
+	if shouldGateOnTimer and not IsReportReady() then return end
+	if os.clock() - reportState[cooldownKey] < cooldownSeconds then return end
+	reportState[cooldownKey] = os.clock()
+	reportState.Busy = true
+	task.spawn(function()
+		WalkAndTrigger(prompt)
+		reportState.Busy = false
+	end)
+end
 
+-- Instant reaction: as soon as a body's ProximityPrompt is actually parented into the
+-- Ragdolls folder, try to report it immediately rather than waiting for the next Heartbeat
+-- frame. Separate connection from the cache-populating one earlier in the file (that one has
+-- to run first, and this one needs WalkAndTrigger/reportState which aren't defined until
+-- here) -- Roblox allows multiple listeners on the same event with no conflict.
+workspace.DescendantAdded:Connect(function(descendant)
+	if IsDeadBodyPrompt(descendant) then
+		TryReportNow(descendant, "LastReport", 3, false)
+	end
+end)
+
+RunService.Heartbeat:Connect(function()
 	local prompt = FindDeadBodyPrompt()
 	if prompt then
-		if os.clock() - reportState.LastReport < 3 then return end
-		reportState.LastReport = os.clock()
-		reportState.Busy = true
-		task.spawn(function()
-			WalkAndTrigger(prompt)
-			reportState.Busy = false
-		end)
+		TryReportNow(prompt, "LastReport", 3, false)
 		return
 	end
-
-	if emergencyPrompt and os.clock() - reportState.LastMeetingCall >= 60 then
-		reportState.LastMeetingCall = os.clock()
-		reportState.Busy = true
-		task.spawn(function()
-			WalkAndTrigger(emergencyPrompt)
-			reportState.Busy = false
-		end)
-	end
+	TryReportNow(emergencyPrompt, "LastMeetingCall", 60, true)
 end)
 
 -- ============================================================================
@@ -1085,22 +1090,65 @@ end)
 -- Auto Report itself is on, since this is that toggle's own follow-through once a meeting
 -- it caused (or anyone else's) actually happens.
 -- ============================================================================
-local function GetKnownKiller()
-	for _, candidate in ipairs(Players:GetPlayers()) do
-		if candidate ~= Player and IsPlayerKiller(candidate) then
-			return candidate
+-- Continuously-tracked, round-persistent killer instead of a fresh one-shot scan at
+-- vote-time: a scan done only once right as the vote confirmation UI appears can land in a
+-- window where a role signal (KillerFolder entry, attribute, Team name) is mid-flicker
+-- around the meeting transition, and a one-shot scan also has no way to tell a genuinely
+-- CURRENT killer apart from some other player who happens to still be carrying a stale
+-- leftover attribute/KillerFolder entry from the PREVIOUS round if it wasn't cleaned up
+-- instantly. This instead polls continuously through the round, locks in the first real
+-- match it finds, and holds that value until the round actually restarts (reset on
+-- Player's own InGame attribute flipping back to true) -- same ESP-detection logic
+-- (IsPlayerKiller) as everywhere else, just captured early and cached instead of
+-- re-derived fresh at the one moment it's most likely to be unreliable.
+local knownKiller = nil
+if Player:GetAttribute("InGame") == true then knownKiller = nil end
+Player:GetAttributeChangedSignal("InGame"):Connect(function()
+	if Player:GetAttribute("InGame") == true then knownKiller = nil end
+end)
+task.spawn(function()
+	while true do
+		task.wait(0.5)
+		if not ScreenGui.Parent then return end
+		if Player:GetAttribute("InGame") == true and not knownKiller then
+			for _, candidate in ipairs(Players:GetPlayers()) do
+				if candidate ~= Player and IsPlayerKiller(candidate) then
+					knownKiller = candidate
+					break
+				end
+			end
 		end
 	end
-	return nil
+end)
+
+local function GetKnownKiller()
+	return knownKiller
 end
 
+-- Cheap defensive no-op for the common case (checked against the decompiled dump: none of
+-- the voting labels actually use RichText) -- kept in case that ever changes, since
+-- stripping non-existent tags costs nothing. Declared up here since both FindAccuseButton
+-- and ExtractKickTargetName below need it.
+local function StripRichText(text)
+	return (text:gsub("<[^>]->", ""))
+end
+
+-- PlayerList (VotingFrame.Accuse.PlayerList, confirmed to exist and use a UIGridLayout) is
+-- confirmed empty outside of an active meeting -- its actual per-player buttons are built at
+-- runtime by a script whose source isn't visible client-side, so unlike Question2 there's no
+-- concrete template to target directly. This stays deliberately flexible, matching
+-- case-insensitively so minor display-casing differences don't cause a false miss. Getting
+-- this wrong is low-stakes now: even if it clicks the wrong player's accuse button (or none
+-- at all), the actual "Kick out X?" confirmation is answered separately based on whichever
+-- named player really ends up nominated, not on what this function picked.
 local function FindAccuseButton(accuse, targetPlayer)
+	local targetName = targetPlayer.Name:lower()
+	local targetDisplay = targetPlayer.DisplayName:lower()
 	for _, descendant in ipairs(accuse:GetDescendants()) do
 		if descendant:IsA("GuiButton") then
-			local name = descendant.Name
-			local text = descendant.Text or ""
-			if name == targetPlayer.Name or name == targetPlayer.DisplayName
-				or text == targetPlayer.Name or text == targetPlayer.DisplayName then
+			local name = descendant.Name:lower()
+			local text = StripRichText(descendant.Text or ""):lower()
+			if name == targetName or name == targetDisplay or text == targetName or text == targetDisplay then
 				return descendant
 			end
 		end
@@ -1112,9 +1160,9 @@ local function FindAccuseButton(accuse, targetPlayer)
 			local matches = false
 			for _, label in ipairs(descendant:GetDescendants()) do
 				if label:IsA("TextLabel") and label.Text ~= "" then
-					local text = label.Text
-					if text == targetPlayer.Name or text == targetPlayer.DisplayName
-						or text:find(targetPlayer.Name, 1, true) or text:find(targetPlayer.DisplayName, 1, true) then
+					local text = StripRichText(label.Text):lower()
+					if text == targetName or text == targetDisplay
+						or text:find(targetName, 1, true) or text:find(targetDisplay, 1, true) then
 						matches = true
 						break
 					end
@@ -1135,7 +1183,8 @@ end
 -- accidentally match some other unrelated "Kick out ..." string.
 local function ExtractKickTargetName(text)
 	if not text then return nil end
-	return text:match("^Kick%s+[Oo]ut%s+(.-)%s*%?%s*$")
+	text = StripRichText(text)
+	return text:match("^%s*Kick%s+[Oo]ut%s+(.-)%s*%?%s*$")
 end
 
 local function FindPlayerByNameOrDisplay(name)
@@ -1148,45 +1197,27 @@ local function FindPlayerByNameOrDisplay(name)
 	return nil
 end
 
--- Walks up from the "Kick out ...?" label looking for the smallest ancestor that actually
--- contains both a Yes and a No button, since the exact dialog structure isn't confirmed.
-local function FindYesNoNear(label)
-	local node = label.Parent
-	for _ = 1, 4 do
-		if not node then break end
-		local yes, no
-		for _, descendant in ipairs(node:GetDescendants()) do
-			if descendant:IsA("GuiButton") then
-				local buttonText = (descendant.Text or ""):lower()
-				local buttonName = descendant.Name:lower()
-				if not yes and (buttonText == "yes" or buttonName == "yes") then yes = descendant end
-				if not no and (buttonText == "no" or buttonName == "no") then no = descendant end
-			end
-		end
-		if yes and no then return yes, no end
-		node = node.Parent
-	end
-	return nil, nil
-end
-
-local function TryHandleKickConfirmation()
-	local playerGui = Player:FindFirstChildOfClass("PlayerGui")
-	if not playerGui then return false end
-	for _, label in ipairs(playerGui:GetDescendants()) do
-		if label:IsA("TextLabel") then
-			local targetName = ExtractKickTargetName(label.Text)
-			if targetName then
-				local yes, no = FindYesNoNear(label)
-				if yes and no then
-					local targetPlayer = FindPlayerByNameOrDisplay(targetName)
-					local isKiller = targetPlayer ~= nil and IsPlayerKiller(targetPlayer)
-					FireButton(isKiller and yes or no)
-					return true
-				end
-			end
-		end
-	end
-	return false
+-- Confirmed directly from a decompiled dump of a live meeting (place 121268060261990
+-- Suspect(2).rbxlx): the "Kick out {name}?" confirmation is NOT some generic dialog found by
+-- walking up from matched text -- it's VotingFrame.Question2 itself, a sibling of Question1,
+-- with a TextLabel literally named "username" holding the "Kick out {name}?" text and
+-- TextButtons literally named "Yes"/"No". Going straight to that confirmed path instead of
+-- the old broad "scan every TextLabel in PlayerGui, walk up to 4 ancestors looking for
+-- Yes/No" approach removes basically all the guesswork that was likely why this never fired
+-- -- gated on Question2.Visible so it can't act on the frame's own default/placeholder state.
+local function TryHandleKickConfirmation(votingFrame)
+	local question2 = votingFrame:FindFirstChild("Question2")
+	if not question2 or not question2.Visible then return false end
+	local label = question2:FindFirstChild("username")
+	local yes = question2:FindFirstChild("Yes")
+	local no = question2:FindFirstChild("No")
+	if not (label and yes and no) then return false end
+	local targetName = ExtractKickTargetName(label.Text)
+	if not targetName then return false end
+	local targetPlayer = FindPlayerByNameOrDisplay(targetName)
+	local isKiller = targetPlayer ~= nil and IsPlayerKiller(targetPlayer)
+	FireButton(isKiller and yes or no)
+	return true
 end
 
 local function AutoAccuseKiller()
@@ -1195,34 +1226,41 @@ local function AutoAccuseKiller()
 	local votingFrame = inGameGui and inGameGui:WaitForChild("VotingFrame", 5)
 	if not votingFrame then return end
 
+	-- Real bug fixed here: this used to bail out completely if GetKnownKiller() hadn't
+	-- locked onto anyone yet, which meant the confirmation-watching loop below (which
+	-- doesn't require WE be the one accusing) never even ran -- if anyone else on the server
+	-- nominated someone, the "Kick out X?" question would just sit there unanswered even
+	-- though answering it doesn't depend on us knowing the killer in advance at all. Now
+	-- accusing is just skipped (not the whole function) when we don't have a known killer.
 	local killer = GetKnownKiller()
-	if not killer then return end
+	if killer then
+		-- Give the frame a moment to actually populate (the accuse buttons especially are
+		-- very likely built dynamically once the meeting starts, not sitting there in advance).
+		task.wait(1)
 
-	-- Give the frame a moment to actually populate (the accuse buttons especially are very
-	-- likely built dynamically once the meeting starts, not sitting there in advance).
-	task.wait(1)
+		local question1 = votingFrame:FindFirstChild("Question1")
+		FireButton(question1 and question1:FindFirstChild("Yes"))
+		task.wait(0.5)
 
-	local question1 = votingFrame:FindFirstChild("Question1")
-	FireButton(question1 and question1:FindFirstChild("Yes"))
-	task.wait(0.5)
-
-	local accuse = votingFrame:WaitForChild("Accuse", 5)
-	if not accuse then return end
-
-	local start = os.clock()
-	local accuseButton = FindAccuseButton(accuse, killer)
-	while not accuseButton and os.clock() - start < 3 do
-		task.wait(0.2)
-		accuseButton = FindAccuseButton(accuse, killer)
+		local accuse = votingFrame:WaitForChild("Accuse", 5)
+		if accuse then
+			local start = os.clock()
+			local accuseButton = FindAccuseButton(accuse, killer)
+			while not accuseButton and os.clock() - start < 3 do
+				task.wait(0.2)
+				accuseButton = FindAccuseButton(accuse, killer)
+			end
+			if accuseButton then FireButton(accuseButton) end
+		end
 	end
-	if not accuseButton then return end
-	FireButton(accuseButton)
 
-	-- "Kick out {name}?" only has a short visible countdown (~4s in the confirmed
-	-- screenshot), so this polls fairly quickly rather than waiting on a single long timeout.
+	-- Keep watching for the real "Kick out X?" confirmation regardless of whether we clicked
+	-- an accuse button ourselves above -- someone else on the server may end up nominated
+	-- instead, and this always answers based on whether THAT actual named player is the real
+	-- killer. 20s covers the accuse phase plus a normal vote-confirmation window.
 	local waitStart = os.clock()
-	while os.clock() - waitStart < 6 do
-		if TryHandleKickConfirmation() then return end
+	while os.clock() - waitStart < 20 do
+		if TryHandleKickConfirmation(votingFrame) then return end
 		task.wait(0.15)
 	end
 end
