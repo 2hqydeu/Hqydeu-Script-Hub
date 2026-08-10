@@ -547,17 +547,27 @@ AutoTeleportToggle.MouseButton1Click:Connect(function()
 	AutoTeleportToggle.Text = taskState.AutoTeleport and "On" or "Off"
 end)
 
-local TaskRemote2 = ReplicatedStorage:WaitForChild("TaskRemote2")
+-- Real bug found: this had no timeout, and the hub's own Execute button runs this whole
+-- script SYNCHRONOUSLY (loadstring + pcall on the same thread, blocking until it returns) --
+-- if TaskRemote2 hadn't replicated yet at the moment this script actually ran (executed from
+-- the lobby, before fully loading into a round, etc.), this line alone would hang forever,
+-- which every symptom described (stuck on "Loading...", the whole hub effectively frozen
+-- since the hub's own Busy debounce never gets released either) matches exactly. Bounded to
+-- 10s and guarded instead so the rest of the panel still loads and works even if this one
+-- listener can't be wired up yet.
+local TaskRemote2 = ReplicatedStorage:WaitForChild("TaskRemote2", 10)
 -- Second listener alongside the game's own TaskLocal -- Roblox lets a RemoteEvent have any
 -- number of OnClientEvent connections, so this doesn't interfere with (or need to touch)
 -- what TaskLocal itself is already doing with the same event.
-TaskRemote2.OnClientEvent:Connect(function(part)
-	if part and part:IsA("BasePart") then
-		taskState.CurrentPart = part
-	else
-		taskState.CurrentPart = nil
-	end
-end)
+if TaskRemote2 then
+	TaskRemote2.OnClientEvent:Connect(function(part)
+		if part and part:IsA("BasePart") then
+			taskState.CurrentPart = part
+		else
+			taskState.CurrentPart = nil
+		end
+	end)
+end
 
 -- Catches whatever task was ALREADY assigned before this script ever started -- TaskRemote2
 -- only fires again once the current task changes, so if this loads mid-round (task already

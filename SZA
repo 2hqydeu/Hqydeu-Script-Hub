@@ -423,9 +423,21 @@ local RRow, RToggle = CreateFeatureRow(3, "Spam R", AbilityOptionsContainer)
 -- .Text) but never wires a click handler to actually flip .Text itself -- HealthToggle got
 -- one added manually above, these three didn't, so clicking them animated nothing and
 -- Text just stayed "Off" forever, which is exactly why they never enabled.
-for _, toggle in ipairs({QToggle, EToggle, RToggle}) do
+--
+-- Still reported broken even with the above wired up. Diagnostic prints added so the next
+-- test tells us definitively whether the click is even being detected at all versus
+-- something failing silently after -- deliberately NOT also connecting .Activated here on
+-- top of .MouseButton1Click the way FireButton does elsewhere in this hub: those two both
+-- fire for a single ordinary mouse click, so wiring the same flip-the-state logic to both
+-- would flip it on and then immediately back off on every click, netting zero change --
+-- which would look exactly like "clicking does nothing," so that combination is specifically
+-- avoided here.
+for _, entry in ipairs({{"Q", QToggle}, {"E", EToggle}, {"R", RToggle}}) do
+	local label, toggle = entry[1], entry[2]
 	toggle.MouseButton1Click:Connect(function()
+		print("[SZA] Spam " .. label .. " toggle clicked, was: " .. toggle.Text)
 		toggle.Text = toggle.Text == "On" and "Off" or "On"
+		print("[SZA] Spam " .. label .. " toggle now: " .. toggle.Text)
 	end)
 end
 
