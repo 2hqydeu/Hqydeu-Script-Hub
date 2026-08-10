@@ -422,22 +422,11 @@ local RRow, RToggle = CreateFeatureRow(3, "Spam R", AbilityOptionsContainer)
 -- Real bug: CreateFeatureRow builds the toggle's look (StyleAsToggleSwitch reacts to
 -- .Text) but never wires a click handler to actually flip .Text itself -- HealthToggle got
 -- one added manually above, these three didn't, so clicking them animated nothing and
--- Text just stayed "Off" forever, which is exactly why they never enabled.
---
--- Still reported broken even with the above wired up. Diagnostic prints added so the next
--- test tells us definitively whether the click is even being detected at all versus
--- something failing silently after -- deliberately NOT also connecting .Activated here on
--- top of .MouseButton1Click the way FireButton does elsewhere in this hub: those two both
--- fire for a single ordinary mouse click, so wiring the same flip-the-state logic to both
--- would flip it on and then immediately back off on every click, netting zero change --
--- which would look exactly like "clicking does nothing," so that combination is specifically
--- avoided here.
-for _, entry in ipairs({{"Q", QToggle}, {"E", EToggle}, {"R", RToggle}}) do
-	local label, toggle = entry[1], entry[2]
+-- Text just stayed "Off" forever, which is exactly why they never enabled. Confirmed
+-- working now (diagnostic prints from while tracking this down removed).
+for _, toggle in ipairs({QToggle, EToggle, RToggle}) do
 	toggle.MouseButton1Click:Connect(function()
-		print("[SZA] Spam " .. label .. " toggle clicked, was: " .. toggle.Text)
 		toggle.Text = toggle.Text == "On" and "Off" or "On"
-		print("[SZA] Spam " .. label .. " toggle now: " .. toggle.Text)
 	end)
 end
 
@@ -474,19 +463,133 @@ local abilityKeys = {
 	{keyCode = Enum.KeyCode.E, toggle = EToggle},
 	{keyCode = Enum.KeyCode.R, toggle = RToggle},
 }
+-- Sped up from the original 0.1s wait + 0.05s hold (~6.6 presses/sec) to a 0.02s hold +
+-- 0.02s gap (~25/sec) -- the key-simulation itself is essentially free client-side (it's
+-- not rendering or physics work, just synthetic input events), so this shouldn't add any
+-- real client-side lag. The only real tradeoff is more RemoteEvent traffic hitting the
+-- server if the ability system fires one per press attempt, which is a server/network
+-- concern rather than a client lag one -- if it turns out to cause rubber-banding or
+-- similar, dial PRESS_HOLD/PRESS_GAP back down.
+local PRESS_HOLD = 0.02
+local PRESS_GAP = 0.02
 for _, ability in ipairs(abilityKeys) do
 	task.spawn(function()
 		while true do
-			task.wait(0.1)
+			task.wait(PRESS_GAP)
 			if not ScreenGui.Parent then return end
 			if ability.toggle.Text == "On" then
 				PressAbilityKey(ability.keyCode)
-				task.wait(0.05)
+				task.wait(PRESS_HOLD)
 				ReleaseAbilityKey(ability.keyCode)
 			end
 		end
 	end)
 end
+
+-- ============================================================================
+-- Reduce Lag: confirmed from the dump that a single round had 210 individual zombie models
+-- live simultaneously, each a full R6 rig (Head/Torso/Left Arm/Right Arm/Left Leg/Right Leg/
+-- HumanoidRootPart, each with its own decals and ragdoll BallSocketConstraints) sitting in
+-- workspace.Zombies_Local -- that volume of fully-rendered, fully-collidable rigs is almost
+-- certainly the real lag source, and the "_Local" naming (also on the separate
+-- FriendlyZombies_Local folder) strongly implies these are client-side-only cosmetic
+-- copies -- the server broadcasts state and each client renders its own -- so stripping them
+-- down visually should have zero effect on actual hit registration, purely a rendering/
+-- physics-cost cut. Head is left alone (still visible, still collidable) so you can still
+-- see where zombies actually are and land hits/aim; every other BasePart gets
+-- Transparency = 1 and CanCollide = false (removing both the render cost AND the physics
+-- cost of 200+ collidable rigs able to bump into you). Nothing is destroyed, so turning this
+-- back off restores every part exactly as it was.
+-- ============================================================================
+local ZOMBIE_CONTAINER_NAMES = {"Zombies_Local", "FriendlyZombies_Local"}
+local reduceLagState = {Enabled = false}
+local strippedParts = {}
+
+local function StripZombiePart(part)
+	if strippedParts[part] then return end
+	strippedParts[part] = {Transparency = part.Transparency, CanCollide = part.CanCollide}
+	part.Transparency = 1
+	part.CanCollide = false
+end
+
+local function RestoreZombiePart(part)
+	local original = strippedParts[part]
+	if not original then return end
+	strippedParts[part] = nil
+	if not part.Parent then return end
+	pcall(function()
+		part.Transparency = original.Transparency
+		part.CanCollide = original.CanCollide
+	end)
+end
+
+local function ApplyReduceLagToModel(model)
+	for _, part in ipairs(model:GetChildren()) do
+		if part:IsA("BasePart") and part.Name ~= "Head" then
+			StripZombiePart(part)
+		end
+	end
+end
+
+local function RestoreModel(model)
+	for _, part in ipairs(model:GetChildren()) do
+		if part:IsA("BasePart") then
+			RestoreZombiePart(part)
+		end
+	end
+end
+
+local watchedZombieContainers = {}
+local function WatchZombieContainer(container)
+	if watchedZombieContainers[container] then return end
+	watchedZombieContainers[container] = true
+	for _, model in ipairs(container:GetChildren()) do
+		if model:IsA("Model") and reduceLagState.Enabled then ApplyReduceLagToModel(model) end
+	end
+	container.ChildAdded:Connect(function(model)
+		if model:IsA("Model") and reduceLagState.Enabled then ApplyReduceLagToModel(model) end
+	end)
+end
+
+local function TryWatchZombieContainers()
+	for _, name in ipairs(ZOMBIE_CONTAINER_NAMES) do
+		local container = workspace:FindFirstChild(name)
+		if container then WatchZombieContainer(container) end
+	end
+end
+TryWatchZombieContainers()
+workspace.ChildAdded:Connect(function(child)
+	if table.find(ZOMBIE_CONTAINER_NAMES, child.Name) then
+		WatchZombieContainer(child)
+	end
+end)
+
+-- Order 4, not 3 -- AbilityOptionsContainer (a plain Frame, not built via CreateFeatureRow)
+-- already occupies LayoutOrder 3 as a sibling within ContentScroll.
+local ReduceLagRow, ReduceLagToggle = CreateFeatureRow(4, "Reduce Lag")
+ReduceLagToggle.MouseButton1Click:Connect(function()
+	ReduceLagToggle.Text = ReduceLagToggle.Text == "On" and "Off" or "On"
+	reduceLagState.Enabled = ReduceLagToggle.Text == "On"
+	if reduceLagState.Enabled then
+		for _, name in ipairs(ZOMBIE_CONTAINER_NAMES) do
+			local container = workspace:FindFirstChild(name)
+			if container then
+				for _, model in ipairs(container:GetChildren()) do
+					if model:IsA("Model") then ApplyReduceLagToModel(model) end
+				end
+			end
+		end
+	else
+		for _, name in ipairs(ZOMBIE_CONTAINER_NAMES) do
+			local container = workspace:FindFirstChild(name)
+			if container then
+				for _, model in ipairs(container:GetChildren()) do
+					if model:IsA("Model") then RestoreModel(model) end
+				end
+			end
+		end
+	end
+end)
 
 -- Minimize
 local minimized = false
