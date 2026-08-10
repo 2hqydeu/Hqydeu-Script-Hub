@@ -77,15 +77,22 @@ TweenService:Create(PanelFrame, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.
 
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
-TitleLabel.Size = UDim2.new(0, 160, 0, 24)
+-- Widened from 160 (fit for "SZA") and given TextScaled + a max-size constraint so "Survive
+-- Zombie Arena" shrinks to fit instead of clipping, regardless of exact pixel width at
+-- render time.
+TitleLabel.Size = UDim2.new(0, 210, 0, 24)
 TitleLabel.Position = UDim2.new(0, 16, 0, 10)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "SZA"
+TitleLabel.Text = "Survive Zombie Arena"
 TitleLabel.Font = UIFont
 TitleLabel.TextSize = 15
+TitleLabel.TextScaled = true
 TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = PanelFrame
+local TitleLabelSizeConstraint = Instance.new("UITextSizeConstraint")
+TitleLabelSizeConstraint.MaxTextSize = 15
+TitleLabelSizeConstraint.Parent = TitleLabel
 
 local function AddButtonHover(button, hoverColor, normalColor)
 	normalColor = normalColor or button.BackgroundColor3
@@ -349,37 +356,18 @@ RunService.Heartbeat:Connect(function()
 end)
 
 -- ============================================================================
--- Ability Spam: no toggle on the main row itself (unlike Spam Buy Health) since the real
--- controls are the three individual Q/E/R toggles inside Edit -- same collapse-in-place
--- pattern as Suspect's Auto Task -> Edit -> Auto Teleport.
+-- Ability Spam: now has a real master toggle (same semantics as Suspect's "Auto Task" ->
+-- Edit -> "Auto Teleport" -- the master gates the whole feature; if it's Off nothing spams
+-- regardless of what the individual Q/E/R toggles say). Edit still opens the same
+-- per-ability Q/E/R breakdown as before, just now for choosing WHICH keys spam while the
+-- master is on, rather than being the only on/off control.
 -- ============================================================================
-local AbilityRow = Instance.new("Frame")
-AbilityRow.Name = "AbilitySpamRow"
-AbilityRow.LayoutOrder = 2
-AbilityRow.Size = UDim2.new(1, -10, 0, 48)
-AbilityRow.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
-AbilityRow.BackgroundTransparency = GameRowTransparency
-AbilityRow.BorderSizePixel = 0
-AbilityRow.Parent = ContentScroll
-Instance.new("UICorner", AbilityRow).CornerRadius = UDim.new(0, 8)
-
-local AbilityLabel = Instance.new("TextLabel")
-AbilityLabel.Name = "Label"
-AbilityLabel.Size = UDim2.new(0, 140, 1, 0)
-AbilityLabel.Position = UDim2.new(0, 12, 0, 0)
-AbilityLabel.BackgroundTransparency = 1
-AbilityLabel.Text = "Ability Spam"
-AbilityLabel.Font = UIFont
-AbilityLabel.TextSize = 14
-AbilityLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-AbilityLabel.TextXAlignment = Enum.TextXAlignment.Left
-AbilityLabel.TextYAlignment = Enum.TextYAlignment.Center
-AbilityLabel.Parent = AbilityRow
+local AbilityRow, AbilityToggle = CreateFeatureRow(2, "Ability Spam")
 
 local AbilityEditButton = Instance.new("TextButton")
 AbilityEditButton.Name = "EditButton"
 AbilityEditButton.Size = UDim2.new(0, 44, 0, 26)
-AbilityEditButton.Position = UDim2.new(1, -56, 0.5, -13)
+AbilityEditButton.Position = UDim2.new(1, -108, 0.5, -13)
 AbilityEditButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
 AbilityEditButton.BackgroundTransparency = 0.2
 AbilityEditButton.BorderSizePixel = 0
@@ -390,6 +378,12 @@ AbilityEditButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 AbilityEditButton.Parent = AbilityRow
 Instance.new("UICorner", AbilityEditButton).CornerRadius = UDim.new(1, 0)
 AddPressBounce(AbilityEditButton)
+
+local abilitySpamState = {Enabled = false}
+AbilityToggle.MouseButton1Click:Connect(function()
+	AbilityToggle.Text = AbilityToggle.Text == "On" and "Off" or "On"
+	abilitySpamState.Enabled = AbilityToggle.Text == "On"
+end)
 
 local AbilityOptionsContainer = Instance.new("Frame")
 AbilityOptionsContainer.Name = "AbilityOptionsContainer"
@@ -477,7 +471,7 @@ for _, ability in ipairs(abilityKeys) do
 		while true do
 			task.wait(PRESS_GAP)
 			if not ScreenGui.Parent then return end
-			if ability.toggle.Text == "On" then
+			if abilitySpamState.Enabled and ability.toggle.Text == "On" then
 				PressAbilityKey(ability.keyCode)
 				task.wait(PRESS_HOLD)
 				ReleaseAbilityKey(ability.keyCode)
@@ -500,10 +494,19 @@ end
 -- Transparency = 1 and CanCollide = false (removing both the render cost AND the physics
 -- cost of 200+ collidable rigs able to bump into you). Nothing is destroyed, so turning this
 -- back off restores every part exactly as it was.
+--
+-- Edit adds two refinements, both on by default whenever the master toggle is: Head ESP
+-- (a Highlight on each remaining Head -- no distance/name labels, just an outline, since
+-- that's genuinely all that was asked for) and lightly culling Bullet Tracers rather than
+-- removing them outright (workspace.Bullets_Local, same "_Local = client-only cosmetic"
+-- reasoning as the zombie folders -- roughly half of newly-spawned tracer instances are
+-- destroyed the instant they're added, before they've rendered at all, cutting visual
+-- clutter/render count without eliminating the effect).
 -- ============================================================================
 local ZOMBIE_CONTAINER_NAMES = {"Zombies_Local", "FriendlyZombies_Local"}
-local reduceLagState = {Enabled = false}
+local reduceLagState = {Enabled = false, HeadESP = true, LessenTracers = true}
 local strippedParts = {}
+local headHighlights = {}
 
 local function StripZombiePart(part)
 	if strippedParts[part] then return end
@@ -523,12 +526,36 @@ local function RestoreZombiePart(part)
 	end)
 end
 
+local function SetHeadESP(head, on)
+	if on then
+		if headHighlights[head] or not head.Parent then return end
+		local highlight = Instance.new("Highlight")
+		highlight.Name = "SZA_HeadESP"
+		highlight.FillColor = Color3.fromRGB(255, 70, 70)
+		highlight.FillTransparency = 0.5
+		highlight.OutlineColor = Color3.fromRGB(255, 70, 70)
+		highlight.OutlineTransparency = 0
+		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		highlight.Adornee = head
+		highlight.Parent = head
+		headHighlights[head] = highlight
+	else
+		local highlight = headHighlights[head]
+		if highlight then
+			highlight:Destroy()
+			headHighlights[head] = nil
+		end
+	end
+end
+
 local function ApplyReduceLagToModel(model)
+	local head = model:FindFirstChild("Head")
 	for _, part in ipairs(model:GetChildren()) do
-		if part:IsA("BasePart") and part.Name ~= "Head" then
+		if part:IsA("BasePart") and part ~= head then
 			StripZombiePart(part)
 		end
 	end
+	if head then SetHeadESP(head, reduceLagState.HeadESP) end
 end
 
 local function RestoreModel(model)
@@ -537,6 +564,30 @@ local function RestoreModel(model)
 			RestoreZombiePart(part)
 		end
 	end
+	local head = model:FindFirstChild("Head")
+	if head then SetHeadESP(head, false) end
+end
+
+local function ForEachTrackedZombieModel(callback)
+	for _, name in ipairs(ZOMBIE_CONTAINER_NAMES) do
+		local container = workspace:FindFirstChild(name)
+		if container then
+			for _, model in ipairs(container:GetChildren()) do
+				if model:IsA("Model") then callback(model) end
+			end
+		end
+	end
+end
+
+-- Only needs to touch ESP, not re-strip parts -- called when the Head ESP sub-toggle
+-- changes while Reduce Lag is already active, so already-stripped zombies pick up the
+-- change immediately instead of waiting for the next one to spawn.
+local function RefreshAllHeadESP()
+	if not reduceLagState.Enabled then return end
+	ForEachTrackedZombieModel(function(model)
+		local head = model:FindFirstChild("Head")
+		if head then SetHeadESP(head, reduceLagState.HeadESP) end
+	end)
 end
 
 local watchedZombieContainers = {}
@@ -564,30 +615,93 @@ workspace.ChildAdded:Connect(function(child)
 	end
 end)
 
+local watchingBullets = false
+local function TryWatchBullets()
+	if watchingBullets then return end
+	local container = workspace:FindFirstChild("Bullets_Local")
+	if not container then return end
+	watchingBullets = true
+	container.ChildAdded:Connect(function(bullet)
+		if not (reduceLagState.Enabled and reduceLagState.LessenTracers) then return end
+		if math.random() < 0.5 then
+			bullet:Destroy()
+		end
+	end)
+end
+TryWatchBullets()
+workspace.ChildAdded:Connect(function(child)
+	if child.Name == "Bullets_Local" then TryWatchBullets() end
+end)
+
 -- Order 4, not 3 -- AbilityOptionsContainer (a plain Frame, not built via CreateFeatureRow)
 -- already occupies LayoutOrder 3 as a sibling within ContentScroll.
 local ReduceLagRow, ReduceLagToggle = CreateFeatureRow(4, "Reduce Lag")
+
+local ReduceLagEditButton = Instance.new("TextButton")
+ReduceLagEditButton.Name = "EditButton"
+ReduceLagEditButton.Size = UDim2.new(0, 44, 0, 26)
+ReduceLagEditButton.Position = UDim2.new(1, -108, 0.5, -13)
+ReduceLagEditButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+ReduceLagEditButton.BackgroundTransparency = 0.2
+ReduceLagEditButton.BorderSizePixel = 0
+ReduceLagEditButton.Text = "Edit"
+ReduceLagEditButton.Font = UIFont
+ReduceLagEditButton.TextSize = 12
+ReduceLagEditButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ReduceLagEditButton.Parent = ReduceLagRow
+Instance.new("UICorner", ReduceLagEditButton).CornerRadius = UDim.new(1, 0)
+AddPressBounce(ReduceLagEditButton)
+
+local ReduceLagOptionsContainer = Instance.new("Frame")
+ReduceLagOptionsContainer.Name = "ReduceLagOptionsContainer"
+ReduceLagOptionsContainer.LayoutOrder = 5
+ReduceLagOptionsContainer.Size = UDim2.new(1, -10, 0, 0)
+ReduceLagOptionsContainer.AutomaticSize = Enum.AutomaticSize.Y
+ReduceLagOptionsContainer.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
+ReduceLagOptionsContainer.BackgroundTransparency = GameRowTransparency
+ReduceLagOptionsContainer.BorderSizePixel = 0
+ReduceLagOptionsContainer.Visible = false
+ReduceLagOptionsContainer.Parent = ContentScroll
+Instance.new("UICorner", ReduceLagOptionsContainer).CornerRadius = UDim.new(0, 8)
+
+local ReduceLagOptionsPadding = Instance.new("UIPadding")
+ReduceLagOptionsPadding.PaddingTop = UDim.new(0, 10)
+ReduceLagOptionsPadding.PaddingBottom = UDim.new(0, 10)
+ReduceLagOptionsPadding.PaddingLeft = UDim.new(0, 10)
+ReduceLagOptionsPadding.PaddingRight = UDim.new(0, 10)
+ReduceLagOptionsPadding.Parent = ReduceLagOptionsContainer
+
+local reduceLagOptionsLayout = Instance.new("UIListLayout")
+reduceLagOptionsLayout.Padding = UDim.new(0, 8)
+reduceLagOptionsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+reduceLagOptionsLayout.Parent = ReduceLagOptionsContainer
+
+local HeadESPRow, HeadESPToggle = CreateFeatureRow(1, "Head ESP", ReduceLagOptionsContainer)
+HeadESPToggle.Text = "On"
+local TracersRow, TracersToggle = CreateFeatureRow(2, "Bullet Tracers", ReduceLagOptionsContainer)
+TracersToggle.Text = "On"
+
+HeadESPToggle.MouseButton1Click:Connect(function()
+	HeadESPToggle.Text = HeadESPToggle.Text == "On" and "Off" or "On"
+	reduceLagState.HeadESP = HeadESPToggle.Text == "On"
+	RefreshAllHeadESP()
+end)
+TracersToggle.MouseButton1Click:Connect(function()
+	TracersToggle.Text = TracersToggle.Text == "On" and "Off" or "On"
+	reduceLagState.LessenTracers = TracersToggle.Text == "On"
+end)
+
+ReduceLagEditButton.MouseButton1Click:Connect(function()
+	ReduceLagOptionsContainer.Visible = not ReduceLagOptionsContainer.Visible
+end)
+
 ReduceLagToggle.MouseButton1Click:Connect(function()
 	ReduceLagToggle.Text = ReduceLagToggle.Text == "On" and "Off" or "On"
 	reduceLagState.Enabled = ReduceLagToggle.Text == "On"
 	if reduceLagState.Enabled then
-		for _, name in ipairs(ZOMBIE_CONTAINER_NAMES) do
-			local container = workspace:FindFirstChild(name)
-			if container then
-				for _, model in ipairs(container:GetChildren()) do
-					if model:IsA("Model") then ApplyReduceLagToModel(model) end
-				end
-			end
-		end
+		ForEachTrackedZombieModel(ApplyReduceLagToModel)
 	else
-		for _, name in ipairs(ZOMBIE_CONTAINER_NAMES) do
-			local container = workspace:FindFirstChild(name)
-			if container then
-				for _, model in ipairs(container:GetChildren()) do
-					if model:IsA("Model") then RestoreModel(model) end
-				end
-			end
-		end
+		ForEachTrackedZombieModel(RestoreModel)
 	end
 end)
 
