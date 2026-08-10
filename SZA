@@ -44,6 +44,9 @@ local GameRowTransparency = 0
 -- UI: same standalone-panel shell as every other game module (MM2/QOD/UE/Suspect).
 local existingScreenGui = CoreGui:FindFirstChild("SerenitySZA")
 if existingScreenGui then existingScreenGui:Destroy() end
+-- Auto Aim below binds a RenderStep by name -- BindToRenderStep errors if that name is
+-- already bound, which re-executing this script a second time would otherwise hit.
+pcall(function() RunService:UnbindFromRenderStep("SZA_AutoAim") end)
 
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SerenitySZA"
@@ -702,6 +705,298 @@ ReduceLagToggle.MouseButton1Click:Connect(function()
 		ForEachTrackedZombieModel(ApplyReduceLagToModel)
 	else
 		ForEachTrackedZombieModel(RestoreModel)
+	end
+end)
+
+-- Only Zombies_Local, not FriendlyZombies_Local -- Auto Aim shouldn't lock onto allies, and
+-- the HUD's "zombie count" means actual threats, not friendly units.
+local function ForEachHostileZombieModel(callback)
+	local container = workspace:FindFirstChild("Zombies_Local")
+	if not container then return end
+	for _, model in ipairs(container:GetChildren()) do
+		if model:IsA("Model") then callback(model) end
+	end
+end
+
+-- ============================================================================
+-- Auto Aim: snaps the camera to look at the nearest hostile zombie's Head. The nearest-
+-- target search runs on its own throttled loop (0.15s) rather than every render frame --
+-- with up to ~200 zombies at once (confirmed from the dump), doing that full distance scan
+-- at render-step frequency would undercut the whole point of Reduce Lag. The actual camera
+-- orientation update still happens every frame (BindToRenderStep, priority just after
+-- Roblox's own default camera script) so the look stays smooth between target re-scans,
+-- using whatever the cached target's CURRENT position is that frame.
+-- ============================================================================
+local autoAimState = {Enabled = false}
+local autoAimTarget = nil
+
+local AutoAimRow, AutoAimToggle = CreateFeatureRow(6, "Auto Aim")
+AutoAimToggle.MouseButton1Click:Connect(function()
+	AutoAimToggle.Text = AutoAimToggle.Text == "On" and "Off" or "On"
+	autoAimState.Enabled = AutoAimToggle.Text == "On"
+	if not autoAimState.Enabled then autoAimTarget = nil end
+end)
+
+task.spawn(function()
+	while true do
+		task.wait(0.15)
+		if not ScreenGui.Parent then return end
+		if autoAimState.Enabled then
+			local character = Player.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart")
+			if root then
+				local nearestHead, nearestDist = nil, math.huge
+				ForEachHostileZombieModel(function(model)
+					local head = model:FindFirstChild("Head")
+					if head then
+						local dist = (head.Position - root.Position).Magnitude
+						if dist < nearestDist then
+							nearestDist = dist
+							nearestHead = head
+						end
+					end
+				end)
+				autoAimTarget = nearestHead
+			else
+				autoAimTarget = nil
+			end
+		end
+	end
+end)
+
+RunService:BindToRenderStep("SZA_AutoAim", Enum.RenderPriority.Camera.Value + 1, function()
+	if not autoAimState.Enabled then return end
+	if not autoAimTarget or not autoAimTarget.Parent then return end
+	local camera = workspace.CurrentCamera
+	if not camera then return end
+	camera.CFrame = CFrame.lookAt(camera.CFrame.Position, autoAimTarget.Position)
+end)
+
+-- ============================================================================
+-- HUD: zombie count (Zombies_Local only, same reasoning as Auto Aim) and a gems/minute
+-- rate. Confirmed real path for the currency readout: PlayerGui.MainGui.MineralsDisplay's
+-- own TextLabel (showed "100" in the dump) -- ParseCount below handles comma-separated
+-- ("207,207") and K/M/B-suffixed values generically, in case the real number ever gets
+-- large enough to display that way. Rate is a running average since the HUD was last
+-- turned on (baseline value + baseline timestamp, not a sliding window), reset every time
+-- it's toggled on.
+-- ============================================================================
+local function ParseCount(text)
+	if not text then return nil end
+	text = text:gsub(",", ""):gsub("%s", "")
+	if text == "" then return nil end
+	local suffix = text:sub(-1):upper()
+	local multiplier = 1
+	if suffix == "K" then
+		multiplier = 1000
+		text = text:sub(1, -2)
+	elseif suffix == "M" then
+		multiplier = 1000000
+		text = text:sub(1, -2)
+	elseif suffix == "B" then
+		multiplier = 1000000000
+		text = text:sub(1, -2)
+	end
+	local number = tonumber(text)
+	if not number then return nil end
+	return number * multiplier
+end
+
+local mineralsLabel
+local function ResolveMineralsLabel()
+	if mineralsLabel and mineralsLabel.Parent then return end
+	local playerGui = Player:FindFirstChildOfClass("PlayerGui")
+	local mainGui = playerGui and playerGui:FindFirstChild("MainGui")
+	local mineralsDisplay = mainGui and mainGui:FindFirstChild("MineralsDisplay")
+	mineralsLabel = mineralsDisplay and mineralsDisplay:FindFirstChildOfClass("TextLabel")
+end
+
+local function GetMineralsCount()
+	ResolveMineralsLabel()
+	if not mineralsLabel then return nil end
+	return ParseCount(mineralsLabel.Text)
+end
+
+local hudState = {Enabled = false}
+local gemsBaseline, gemsBaselineTime = nil, nil
+local function ResetGemsBaseline()
+	gemsBaseline = GetMineralsCount()
+	gemsBaselineTime = os.clock()
+end
+
+local HudFrame = Instance.new("Frame")
+HudFrame.Name = "Hud"
+HudFrame.Position = UDim2.new(0, 12, 0, 12)
+HudFrame.Size = UDim2.new(0, 170, 0, 54)
+HudFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+HudFrame.BackgroundTransparency = 0.25
+HudFrame.BorderSizePixel = 0
+HudFrame.Visible = false
+HudFrame.Parent = ScreenGui
+Instance.new("UICorner", HudFrame).CornerRadius = UDim.new(0, 8)
+
+local HudPadding = Instance.new("UIPadding")
+HudPadding.PaddingLeft = UDim.new(0, 10)
+HudPadding.PaddingTop = UDim.new(0, 8)
+HudPadding.Parent = HudFrame
+
+local HudLayout = Instance.new("UIListLayout")
+HudLayout.Padding = UDim.new(0, 2)
+HudLayout.Parent = HudFrame
+
+local ZombieCountLabel = Instance.new("TextLabel")
+ZombieCountLabel.Size = UDim2.new(1, -16, 0, 20)
+ZombieCountLabel.BackgroundTransparency = 1
+ZombieCountLabel.Font = UIFont
+ZombieCountLabel.TextSize = 14
+ZombieCountLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+ZombieCountLabel.TextXAlignment = Enum.TextXAlignment.Left
+ZombieCountLabel.Text = "Zombies: --"
+ZombieCountLabel.Parent = HudFrame
+
+local GemsRateLabel = Instance.new("TextLabel")
+GemsRateLabel.Size = UDim2.new(1, -16, 0, 20)
+GemsRateLabel.BackgroundTransparency = 1
+GemsRateLabel.Font = UIFont
+GemsRateLabel.TextSize = 14
+GemsRateLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+GemsRateLabel.TextXAlignment = Enum.TextXAlignment.Left
+GemsRateLabel.Text = "Gems/min: --"
+GemsRateLabel.Parent = HudFrame
+
+local HudRow, HudToggle = CreateFeatureRow(7, "HUD")
+HudToggle.MouseButton1Click:Connect(function()
+	HudToggle.Text = HudToggle.Text == "On" and "Off" or "On"
+	hudState.Enabled = HudToggle.Text == "On"
+	HudFrame.Visible = hudState.Enabled
+	if hudState.Enabled then ResetGemsBaseline() end
+end)
+
+task.spawn(function()
+	while true do
+		task.wait(1)
+		if not ScreenGui.Parent then return end
+		if hudState.Enabled then
+			local zombieCount = 0
+			ForEachHostileZombieModel(function() zombieCount = zombieCount + 1 end)
+			ZombieCountLabel.Text = "Zombies: " .. zombieCount
+
+			local current = GetMineralsCount()
+			local elapsedMinutes = gemsBaselineTime and (os.clock() - gemsBaselineTime) / 60
+			if current and gemsBaseline and elapsedMinutes and elapsedMinutes > 0.02 then
+				local rate = (current - gemsBaseline) / elapsedMinutes
+				GemsRateLabel.Text = "Gems/min: " .. math.floor(rate + 0.5)
+			else
+				GemsRateLabel.Text = "Gems/min: --"
+			end
+		end
+	end
+end)
+
+-- ============================================================================
+-- Minimap: a simple north-up radar (not rotated to face direction -- world-relative dots,
+-- same convention plenty of games use for a corner radar) showing both zombie containers
+-- (unlike Auto Aim/HUD, awareness of friendly units on the radar is still useful) within
+-- MINIMAP_RANGE studs, projected onto the XZ plane. One dot Frame per model, reused across
+-- updates and only created/destroyed as zombies enter/leave range or die.
+-- ============================================================================
+local MINIMAP_SIZE = 150
+local MINIMAP_RANGE = 120
+
+local MinimapFrame = Instance.new("Frame")
+MinimapFrame.Name = "Minimap"
+MinimapFrame.AnchorPoint = Vector2.new(1, 0)
+MinimapFrame.Position = UDim2.new(1, -12, 0, 12)
+MinimapFrame.Size = UDim2.new(0, MINIMAP_SIZE, 0, MINIMAP_SIZE)
+MinimapFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+MinimapFrame.BackgroundTransparency = 0.25
+MinimapFrame.BorderSizePixel = 0
+MinimapFrame.ClipsDescendants = true
+MinimapFrame.Visible = false
+MinimapFrame.Parent = ScreenGui
+Instance.new("UICorner", MinimapFrame).CornerRadius = UDim.new(1, 0)
+local minimapStroke = Instance.new("UIStroke")
+minimapStroke.Color = Color3.fromRGB(255, 255, 255)
+minimapStroke.Transparency = 0.7
+minimapStroke.Parent = MinimapFrame
+
+local MinimapPlayerDot = Instance.new("Frame")
+MinimapPlayerDot.Name = "PlayerDot"
+MinimapPlayerDot.AnchorPoint = Vector2.new(0.5, 0.5)
+MinimapPlayerDot.Position = UDim2.new(0.5, 0, 0.5, 0)
+MinimapPlayerDot.Size = UDim2.new(0, 8, 0, 8)
+MinimapPlayerDot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+MinimapPlayerDot.BorderSizePixel = 0
+MinimapPlayerDot.ZIndex = 5
+MinimapPlayerDot.Parent = MinimapFrame
+Instance.new("UICorner", MinimapPlayerDot).CornerRadius = UDim.new(1, 0)
+
+local minimapState = {Enabled = false}
+local minimapDots = {}
+
+local function GetOrCreateMinimapDot(model)
+	local dot = minimapDots[model]
+	if dot then return dot end
+	dot = Instance.new("Frame")
+	dot.Name = "ZombieDot"
+	dot.AnchorPoint = Vector2.new(0.5, 0.5)
+	dot.Size = UDim2.new(0, 6, 0, 6)
+	dot.BackgroundColor3 = Color3.fromRGB(255, 70, 70)
+	dot.BorderSizePixel = 0
+	dot.ZIndex = 4
+	dot.Parent = MinimapFrame
+	Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+	minimapDots[model] = dot
+	return dot
+end
+
+local function RemoveMinimapDot(model)
+	local dot = minimapDots[model]
+	if dot then
+		dot:Destroy()
+		minimapDots[model] = nil
+	end
+end
+
+local function UpdateMinimap()
+	local character = Player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+	local playerPos = root.Position
+	local seen = {}
+	ForEachTrackedZombieModel(function(model)
+		local head = model:FindFirstChild("Head")
+		if not head then return end
+		local delta = head.Position - playerPos
+		if Vector2.new(delta.X, delta.Z).Magnitude > MINIMAP_RANGE then
+			RemoveMinimapDot(model)
+			return
+		end
+		seen[model] = true
+		local dot = GetOrCreateMinimapDot(model)
+		local scale = (MINIMAP_SIZE / 2) / MINIMAP_RANGE
+		dot.Position = UDim2.new(0, MINIMAP_SIZE / 2 + delta.X * scale, 0, MINIMAP_SIZE / 2 + delta.Z * scale)
+	end)
+	for model in pairs(minimapDots) do
+		if not seen[model] then RemoveMinimapDot(model) end
+	end
+end
+
+local MinimapRow, MinimapToggle = CreateFeatureRow(8, "Minimap")
+MinimapToggle.MouseButton1Click:Connect(function()
+	MinimapToggle.Text = MinimapToggle.Text == "On" and "Off" or "On"
+	minimapState.Enabled = MinimapToggle.Text == "On"
+	MinimapFrame.Visible = minimapState.Enabled
+	if not minimapState.Enabled then
+		for model in pairs(minimapDots) do RemoveMinimapDot(model) end
+	end
+end)
+
+task.spawn(function()
+	while true do
+		task.wait(0.1)
+		if not ScreenGui.Parent then return end
+		if minimapState.Enabled then UpdateMinimap() end
 	end
 end)
 
