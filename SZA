@@ -1,1 +1,511 @@
+-- SZA (Survive Zombie Arena) module for Serenity. ROUGH DRAFT / PROTOTYPE, built from an
+-- actual client-side dump of the place file (Potassium/Dex export: place 98927955463992
+-- Arena.rbxlx), not guesswork.
+--
+-- Confirmed from the dump: the real Buy Health button lives at
+-- PlayerGui.MainGui.ControlPanel2.HealthUpgrade (a TextButton -- cost "25", heals to "100"
+-- per its own child labels), and there's a matching RemoteEvent at ReplicatedStorage.
+-- Remotes.UpgradeRemotes.PurchaseHealthUpgrade, but no decompiled client script anywhere in
+-- the dump actually calls that remote (with whatever arguments it expects), so its call
+-- signature isn't guessed at all here -- this clicks the real button instead and lets the
+-- game's own already-working handler take it from there, same approach used everywhere else
+-- in this hub whenever a remote's arguments aren't confirmed. The "press C to buy" keybind
+-- mentioned wasn't found in any decompiled script either (no literal KeyCode.C reference
+-- turned up anywhere in the dump), so it's not simulated -- clicking the real button works
+-- regardless of whatever key the game itself has bound to it.
+--
+-- Ability Spam is the opposite situation: no dedicated ability-cast GUI button turned up
+-- anywhere under MainGui (its top level is all shop/currency UI -- Minerals, gear upgrades,
+-- Buy Health, robux offers), and no literal "KeyCode.Q/E/R" text turned up in any decompiled
+-- script either -- plausible if the real binding builds Enum.KeyCode[key] from a config
+-- table rather than writing the enum out literally, which wouldn't show up as that exact
+-- text. Real ability plumbing IS confirmed to exist (ReplicatedStorage.Remotes has a
+-- RemoteEvent literally named "Ability", plus per-class ability ModuleScripts like
+-- WorldEnderAbilityClient/StarShooterAbilityClient, and Souls has its own SoulsChanged/
+-- GetSouls remotes matching what you described), just not its exact call signature or
+-- keybind wiring. Given that and no clickable button to fall back to, this simulates the
+-- actual Q/E/R keypresses instead -- same keypress/keyrelease -> VirtualInputManager
+-- fallback chain already used successfully in UE and Animal_Hospital -- so it works
+-- regardless of the underlying binding mechanism, same reasoning as clicking a real button.
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+
+local Player = Players.LocalPlayer
+local FrameColor = Color3.fromRGB(3, 3, 3)
+local AccentColor = Color3.fromRGB(255, 255, 255)
+local UIFont = Enum.Font.FredokaOne
+local GameRowTransparency = 0
+
+-- UI: same standalone-panel shell as every other game module (MM2/QOD/UE/Suspect).
+local existingScreenGui = CoreGui:FindFirstChild("SerenitySZA")
+if existingScreenGui then existingScreenGui:Destroy() end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "SerenitySZA"
+ScreenGui.Parent = CoreGui
+ScreenGui.ResetOnSpawn = false
+
+local FULL_HEIGHT = 400
+local MINI_HEIGHT = 44
+
+local PanelFrame = Instance.new("Frame")
+PanelFrame.Name = "SZAPanel"
+PanelFrame.Size = UDim2.new(0, 280, 0, FULL_HEIGHT)
+PanelFrame.Position = getgenv().Serenity_SZA_PanelPosition or UDim2.new(0.5, -140, 0.5, -200)
+PanelFrame.AnchorPoint = Vector2.new(0, 0)
+PanelFrame.BackgroundColor3 = FrameColor
+PanelFrame.BorderSizePixel = 0
+PanelFrame.ClipsDescendants = true
+PanelFrame.Active = true
+PanelFrame.Parent = ScreenGui
+
+local PanelCorner = Instance.new("UICorner")
+PanelCorner.CornerRadius = UDim.new(0, 14)
+PanelCorner.Parent = PanelFrame
+
+local PanelScale = Instance.new("UIScale")
+PanelScale.Scale = 0.85
+PanelScale.Parent = PanelFrame
+PanelFrame.BackgroundTransparency = 1
+TweenService:Create(PanelScale, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+TweenService:Create(PanelFrame, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0}):Play()
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Name = "TitleLabel"
+TitleLabel.Size = UDim2.new(0, 160, 0, 24)
+TitleLabel.Position = UDim2.new(0, 16, 0, 10)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "SZA"
+TitleLabel.Font = UIFont
+TitleLabel.TextSize = 15
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Parent = PanelFrame
+
+local function AddButtonHover(button, hoverColor, normalColor)
+	normalColor = normalColor or button.BackgroundColor3
+	button.MouseEnter:Connect(function()
+		TweenService:Create(button, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = hoverColor}):Play()
+	end)
+	button.MouseLeave:Connect(function()
+		TweenService:Create(button, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = normalColor}):Play()
+	end)
+end
+
+local function GetOrCreateUIScale(target)
+	local scale = target:FindFirstChildOfClass("UIScale")
+	if not scale then
+		scale = Instance.new("UIScale")
+		scale.Parent = target
+	end
+	return scale
+end
+
+local function AddPressBounce(button)
+	local scale = GetOrCreateUIScale(button)
+	local pressed = false
+	local function release()
+		if not pressed then return end
+		pressed = false
+		TweenService:Create(scale, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+	end
+	button.MouseButton1Down:Connect(function()
+		pressed = true
+		TweenService:Create(scale, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 0.8}):Play()
+	end)
+	button.MouseButton1Up:Connect(release)
+	button.MouseLeave:Connect(release)
+end
+
+local function AddFadeDivider(divider)
+	local gradient = Instance.new("UIGradient")
+	gradient.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(0.5, 0),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	gradient.Parent = divider
+end
+
+local MinimizeButton = Instance.new("TextButton")
+MinimizeButton.Name = "MinimizeButton"
+MinimizeButton.Size = UDim2.new(0, 12, 0, 12)
+MinimizeButton.Position = UDim2.new(1, -38, 0, 16)
+MinimizeButton.BackgroundColor3 = Color3.fromRGB(255, 189, 46)
+MinimizeButton.BorderSizePixel = 0
+MinimizeButton.Text = ""
+MinimizeButton.AutoButtonColor = false
+MinimizeButton.Parent = PanelFrame
+Instance.new("UICorner", MinimizeButton).CornerRadius = UDim.new(1, 0)
+local minimizeButtonStroke = Instance.new("UIStroke")
+minimizeButtonStroke.Color = Color3.fromRGB(196, 142, 20)
+minimizeButtonStroke.Thickness = 1
+minimizeButtonStroke.Parent = MinimizeButton
+MinimizeButton.MouseEnter:Connect(function()
+	TweenService:Create(MinimizeButton, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 205, 92)}):Play()
+end)
+MinimizeButton.MouseLeave:Connect(function()
+	TweenService:Create(MinimizeButton, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 189, 46)}):Play()
+end)
+AddPressBounce(MinimizeButton)
+
+local CloseButton = Instance.new("TextButton")
+CloseButton.Name = "CloseButton"
+CloseButton.Size = UDim2.new(0, 12, 0, 12)
+CloseButton.Position = UDim2.new(1, -20, 0, 16)
+CloseButton.BackgroundColor3 = Color3.fromRGB(255, 95, 87)
+CloseButton.BorderSizePixel = 0
+CloseButton.Text = ""
+CloseButton.AutoButtonColor = false
+CloseButton.Parent = PanelFrame
+Instance.new("UICorner", CloseButton).CornerRadius = UDim.new(1, 0)
+local closeButtonStroke = Instance.new("UIStroke")
+closeButtonStroke.Color = Color3.fromRGB(196, 68, 62)
+closeButtonStroke.Thickness = 1
+closeButtonStroke.Parent = CloseButton
+CloseButton.MouseEnter:Connect(function()
+	TweenService:Create(CloseButton, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 130, 123)}):Play()
+end)
+CloseButton.MouseLeave:Connect(function()
+	TweenService:Create(CloseButton, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 95, 87)}):Play()
+end)
+AddPressBounce(CloseButton)
+
+local HeaderDivider = Instance.new("Frame")
+HeaderDivider.Name = "HeaderDivider"
+HeaderDivider.Size = UDim2.new(1, 0, 0, 1)
+HeaderDivider.Position = UDim2.new(0, 0, 0, MINI_HEIGHT)
+HeaderDivider.BackgroundColor3 = AccentColor
+HeaderDivider.BackgroundTransparency = 0.85
+HeaderDivider.Parent = PanelFrame
+AddFadeDivider(HeaderDivider)
+
+local ContentScroll = Instance.new("ScrollingFrame")
+ContentScroll.Name = "ContentScroll"
+ContentScroll.Size = UDim2.new(1, 0, 1, -MINI_HEIGHT - 8)
+ContentScroll.Position = UDim2.new(0, 0, 0, MINI_HEIGHT + 8)
+ContentScroll.BackgroundTransparency = 1
+ContentScroll.BorderSizePixel = 0
+ContentScroll.ScrollBarThickness = 3
+ContentScroll.ScrollBarImageColor3 = AccentColor
+ContentScroll.ScrollBarImageTransparency = 1
+ContentScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+ContentScroll.ElasticBehavior = Enum.ElasticBehavior.Never
+ContentScroll.Parent = PanelFrame
+
+local ContentLayout = Instance.new("UIListLayout")
+ContentLayout.Padding = UDim.new(0, 12)
+ContentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ContentLayout.Parent = ContentScroll
+ContentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	ContentScroll.CanvasSize = UDim2.new(0, 0, 0, ContentLayout.AbsoluteContentSize.Y + 16)
+end)
+
+local ContentPadding = Instance.new("UIPadding")
+ContentPadding.PaddingLeft = UDim.new(0, 16)
+ContentPadding.PaddingRight = UDim.new(0, 16)
+ContentPadding.PaddingTop = UDim.new(0, 4)
+ContentPadding.PaddingBottom = UDim.new(0, 12)
+ContentPadding.Parent = ContentScroll
+
+local ToggleOffColor = Color3.fromRGB(24, 24, 24)
+local ToggleOnColor = Color3.fromRGB(178, 155, 235)
+local ToggleKnobColor = Color3.fromRGB(238, 233, 250)
+
+local function StyleAsToggleSwitch(toggle)
+	toggle.AutoButtonColor = false
+	toggle.TextTransparency = 1
+	toggle.BackgroundColor3 = ToggleOffColor
+	toggle.BackgroundTransparency = 0
+	Instance.new("UICorner", toggle).CornerRadius = UDim.new(1, 0)
+
+	local knobSize = toggle.Size.Y.Offset - 6
+	local knob = Instance.new("Frame")
+	knob.Name = "Knob"
+	knob.AnchorPoint = Vector2.new(0, 0.5)
+	knob.Size = UDim2.new(0, knobSize, 0, knobSize)
+	knob.Position = UDim2.new(0, 3, 0.5, 0)
+	knob.BackgroundColor3 = ToggleKnobColor
+	knob.BorderSizePixel = 0
+	knob.ZIndex = toggle.ZIndex + 1
+	knob.Parent = toggle
+	Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+	toggle:GetPropertyChangedSignal("ZIndex"):Connect(function() knob.ZIndex = toggle.ZIndex + 1 end)
+
+	local function Refresh(animate)
+		local on = toggle.Text == "On"
+		local trackColor = on and ToggleOnColor or ToggleOffColor
+		local knobPosition = on and UDim2.new(1, -3 - knobSize, 0.5, 0) or UDim2.new(0, 3, 0.5, 0)
+		if animate then
+			local tweenInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			TweenService:Create(toggle, tweenInfo, {BackgroundColor3 = trackColor}):Play()
+			TweenService:Create(knob, tweenInfo, {Position = knobPosition}):Play()
+		else
+			toggle.BackgroundColor3 = trackColor
+			knob.Position = knobPosition
+		end
+	end
+
+	toggle:GetPropertyChangedSignal("Text"):Connect(function() Refresh(true) end)
+	Refresh(false)
+end
+
+local nextRowOrder = 1
+local function CreateFeatureRow(order, labelText, parent)
+	local row = Instance.new("Frame")
+	row.Name = labelText:gsub("%s+", "") .. "Row"
+	row.LayoutOrder = order or nextRowOrder
+	nextRowOrder = math.max(nextRowOrder, row.LayoutOrder) + 1
+	row.Size = UDim2.new(1, -10, 0, 48)
+	row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
+	row.BackgroundTransparency = GameRowTransparency
+	row.BorderSizePixel = 0
+	row.Parent = parent or ContentScroll
+	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+
+	local label = Instance.new("TextLabel")
+	label.Name = "Label"
+	label.Size = UDim2.new(0, 140, 1, 0)
+	label.Position = UDim2.new(0, 12, 0, 0)
+	label.BackgroundTransparency = 1
+	label.Text = labelText
+	label.Font = UIFont
+	label.TextSize = 14
+	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextYAlignment = Enum.TextYAlignment.Center
+	label.Parent = row
+
+	local toggle = Instance.new("TextButton")
+	toggle.Name = "Toggle"
+	toggle.Size = UDim2.new(0, 46, 0, 24)
+	toggle.Position = UDim2.new(1, -56, 0.5, -12)
+	toggle.BorderSizePixel = 0
+	toggle.Text = "Off"
+	toggle.Font = UIFont
+	toggle.TextSize = 14
+	toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+	toggle.Parent = row
+	StyleAsToggleSwitch(toggle)
+	AddPressBounce(toggle)
+
+	return row, toggle
+end
+
+-- Fires both Activated and MouseButton1Click -- same fix already proven necessary elsewhere
+-- in this hub (Suspect's Download task button turned out to be wired to .Activated only),
+-- so covering both regardless of which one HealthUpgrade actually uses is cheap insurance.
+local function FireButton(button)
+	if not button then return false end
+	if type(firesignal) == "function" then
+		local firedActivated = pcall(firesignal, button.Activated)
+		local firedClick = pcall(firesignal, button.MouseButton1Click)
+		if firedActivated or firedClick then return true end
+	end
+	if type(mousemoveabs) == "function" and type(mouse1click) == "function" then
+		local pos = button.AbsolutePosition + button.AbsoluteSize / 2
+		pcall(mousemoveabs, pos.X, pos.Y)
+		pcall(mouse1click)
+		return true
+	end
+	return false
+end
+
+-- ============================================================================
+-- Spam Buy Health: fires the real in-game Buy Health button (confirmed path:
+-- PlayerGui.MainGui.ControlPanel2.HealthUpgrade) every frame while enabled, rather than
+-- guessing at the matching RemoteEvent's arguments -- see header comment for why. The
+-- server naturally stops this from doing anything once currency runs out, same as any
+-- normal repeated click would.
+-- ============================================================================
+local healthButton
+local function ResolveHealthButton()
+	if healthButton and healthButton.Parent then return end
+	local playerGui = Player:FindFirstChildOfClass("PlayerGui")
+	local mainGui = playerGui and playerGui:FindFirstChild("MainGui")
+	local controlPanel = mainGui and mainGui:FindFirstChild("ControlPanel2")
+	healthButton = controlPanel and controlPanel:FindFirstChild("HealthUpgrade")
+end
+ResolveHealthButton()
+
+local HealthRow, HealthToggle = CreateFeatureRow(1, "Spam Buy Health")
+
+local healthState = {Enabled = false}
+HealthToggle.MouseButton1Click:Connect(function()
+	HealthToggle.Text = HealthToggle.Text == "On" and "Off" or "On"
+	healthState.Enabled = HealthToggle.Text == "On"
+end)
+
+RunService.Heartbeat:Connect(function()
+	if not ScreenGui.Parent then return end
+	if not healthState.Enabled then return end
+	ResolveHealthButton()
+	FireButton(healthButton)
+end)
+
+-- ============================================================================
+-- Ability Spam: no toggle on the main row itself (unlike Spam Buy Health) since the real
+-- controls are the three individual Q/E/R toggles inside Edit -- same collapse-in-place
+-- pattern as Suspect's Auto Task -> Edit -> Auto Teleport.
+-- ============================================================================
+local AbilityRow = Instance.new("Frame")
+AbilityRow.Name = "AbilitySpamRow"
+AbilityRow.LayoutOrder = 2
+AbilityRow.Size = UDim2.new(1, -10, 0, 48)
+AbilityRow.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
+AbilityRow.BackgroundTransparency = GameRowTransparency
+AbilityRow.BorderSizePixel = 0
+AbilityRow.Parent = ContentScroll
+Instance.new("UICorner", AbilityRow).CornerRadius = UDim.new(0, 8)
+
+local AbilityLabel = Instance.new("TextLabel")
+AbilityLabel.Name = "Label"
+AbilityLabel.Size = UDim2.new(0, 140, 1, 0)
+AbilityLabel.Position = UDim2.new(0, 12, 0, 0)
+AbilityLabel.BackgroundTransparency = 1
+AbilityLabel.Text = "Ability Spam"
+AbilityLabel.Font = UIFont
+AbilityLabel.TextSize = 14
+AbilityLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+AbilityLabel.TextXAlignment = Enum.TextXAlignment.Left
+AbilityLabel.TextYAlignment = Enum.TextYAlignment.Center
+AbilityLabel.Parent = AbilityRow
+
+local AbilityEditButton = Instance.new("TextButton")
+AbilityEditButton.Name = "EditButton"
+AbilityEditButton.Size = UDim2.new(0, 44, 0, 26)
+AbilityEditButton.Position = UDim2.new(1, -56, 0.5, -13)
+AbilityEditButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+AbilityEditButton.BackgroundTransparency = 0.2
+AbilityEditButton.BorderSizePixel = 0
+AbilityEditButton.Text = "Edit"
+AbilityEditButton.Font = UIFont
+AbilityEditButton.TextSize = 12
+AbilityEditButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+AbilityEditButton.Parent = AbilityRow
+Instance.new("UICorner", AbilityEditButton).CornerRadius = UDim.new(1, 0)
+AddPressBounce(AbilityEditButton)
+
+local AbilityOptionsContainer = Instance.new("Frame")
+AbilityOptionsContainer.Name = "AbilityOptionsContainer"
+AbilityOptionsContainer.LayoutOrder = 3
+AbilityOptionsContainer.Size = UDim2.new(1, -10, 0, 0)
+AbilityOptionsContainer.AutomaticSize = Enum.AutomaticSize.Y
+AbilityOptionsContainer.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
+AbilityOptionsContainer.BackgroundTransparency = GameRowTransparency
+AbilityOptionsContainer.BorderSizePixel = 0
+AbilityOptionsContainer.Visible = false
+AbilityOptionsContainer.Parent = ContentScroll
+Instance.new("UICorner", AbilityOptionsContainer).CornerRadius = UDim.new(0, 8)
+
+local AbilityOptionsPadding = Instance.new("UIPadding")
+AbilityOptionsPadding.PaddingTop = UDim.new(0, 10)
+AbilityOptionsPadding.PaddingBottom = UDim.new(0, 10)
+AbilityOptionsPadding.PaddingLeft = UDim.new(0, 10)
+AbilityOptionsPadding.PaddingRight = UDim.new(0, 10)
+AbilityOptionsPadding.Parent = AbilityOptionsContainer
+
+local abilityOptionsLayout = Instance.new("UIListLayout")
+abilityOptionsLayout.Padding = UDim.new(0, 8)
+abilityOptionsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+abilityOptionsLayout.Parent = AbilityOptionsContainer
+
+local QRow, QToggle = CreateFeatureRow(1, "Spam Q", AbilityOptionsContainer)
+local ERow, EToggle = CreateFeatureRow(2, "Spam E", AbilityOptionsContainer)
+local RRow, RToggle = CreateFeatureRow(3, "Spam R", AbilityOptionsContainer)
+
+AbilityEditButton.MouseButton1Click:Connect(function()
+	AbilityOptionsContainer.Visible = not AbilityOptionsContainer.Visible
+end)
+
+-- Same fallback chain as UE/Animal_Hospital's own key-simulation helpers: a real
+-- keypress/keyrelease exploit function first, VirtualInputManager as the fallback.
+local function PressAbilityKey(keyCode)
+	if type(keypress) == "function" then
+		local ok = pcall(keypress, keyCode)
+		if ok then return true end
+	end
+	return pcall(function()
+		VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
+	end)
+end
+local function ReleaseAbilityKey(keyCode)
+	if type(keyrelease) == "function" then
+		local ok = pcall(keyrelease, keyCode)
+		if ok then return end
+	end
+	pcall(function()
+		VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
+	end)
+end
+
+-- One independent loop per ability so all three can spam concurrently rather than taking
+-- turns -- costs (gems/souls, whichever this class's abilities actually use) and cooldowns
+-- are left entirely to the server to enforce, same as a person mashing the key would hit.
+local abilityKeys = {
+	{keyCode = Enum.KeyCode.Q, toggle = QToggle},
+	{keyCode = Enum.KeyCode.E, toggle = EToggle},
+	{keyCode = Enum.KeyCode.R, toggle = RToggle},
+}
+for _, ability in ipairs(abilityKeys) do
+	task.spawn(function()
+		while true do
+			task.wait(0.1)
+			if not ScreenGui.Parent then return end
+			if ability.toggle.Text == "On" then
+				PressAbilityKey(ability.keyCode)
+				task.wait(0.05)
+				ReleaseAbilityKey(ability.keyCode)
+			end
+		end
+	end)
+end
+
+-- Minimize
+local minimized = false
+local function ToggleMinimize()
+	minimized = not minimized
+	HeaderDivider.Visible = not minimized
+	ContentScroll.Visible = not minimized
+	PanelFrame.Size = UDim2.new(0, 280, 0, minimized and MINI_HEIGHT or FULL_HEIGHT)
+end
+MinimizeButton.MouseButton1Click:Connect(ToggleMinimize)
+
+local closingPanel = false
+CloseButton.MouseButton1Click:Connect(function()
+	if closingPanel then return end
+	closingPanel = true
+	local fadeOutInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	TweenService:Create(PanelScale, fadeOutInfo, {Scale = 0.85}):Play()
+	local fadeOutTween = TweenService:Create(PanelFrame, fadeOutInfo, {BackgroundTransparency = 1})
+	fadeOutTween:Play()
+	fadeOutTween.Completed:Wait()
+	ScreenGui:Destroy()
+end)
+
+local dragging = false
+local dragStart = nil
+local startPos = nil
+PanelFrame.InputBegan:Connect(function(input)
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+	dragging = true
+	dragStart = input.Position
+	startPos = PanelFrame.Position
+	input.Changed:Connect(function()
+		if input.UserInputState == Enum.UserInputState.End then
+			dragging = false
+		end
+	end)
+end)
+UserInputService.InputChanged:Connect(function(input)
+	if not dragging or (input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch) then return end
+	local delta = input.Position - dragStart
+	PanelFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	getgenv().Serenity_SZA_PanelPosition = PanelFrame.Position
+end)
 
