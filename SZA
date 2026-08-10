@@ -788,7 +788,12 @@ end
 local FARM_HEIGHT = 25
 local FARM_REPOSITION_INTERVAL = 5
 
-local farmState = {Enabled = false, AntiFallConnection = nil, NoclipOriginal = {}}
+-- Enabled is the toggle's user-facing intent (on the instant you click it, before the
+-- countdown even starts); Engaged is whether the real effects -- noclip, anti-fall,
+-- repositioning, and the fire loop -- are actually allowed to run. They used to be the same
+-- flag, which meant the fire loop (and noclip) started immediately on toggle instead of
+-- waiting out the 3-second countdown like the countdown itself implies they should.
+local farmState = {Enabled = false, Engaged = false, AntiFallConnection = nil, NoclipOriginal = {}}
 
 -- Nearest hostile zombie's ground position -- the reposition snap targets X/Z from this and
 -- adds FARM_HEIGHT on top for Y. Falls back to nil (caller decides what to do) if no
@@ -830,6 +835,7 @@ local function EngageFarm()
 	local character = Player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	if not character or not root then return end
+	farmState.Engaged = true
 	EquipAnyWeapon()
 
 	RepositionFarmOverMobs()
@@ -849,9 +855,9 @@ local function EngageFarm()
 	end)
 
 	task.spawn(function()
-		while farmState.Enabled do
+		while farmState.Engaged do
 			task.wait(FARM_REPOSITION_INTERVAL)
-			if not farmState.Enabled then return end
+			if not farmState.Engaged then return end
 			RepositionFarmOverMobs()
 		end
 	end)
@@ -865,6 +871,7 @@ local function EngageFarm()
 end
 
 local function DisengageFarm()
+	farmState.Engaged = false
 	if farmState.AntiFallConnection then
 		farmState.AntiFallConnection:Disconnect()
 		farmState.AntiFallConnection = nil
@@ -989,7 +996,7 @@ end)
 -- changed so turning Farm off restores exactly that, not anything that was already
 -- non-collidable for some other reason).
 RunService.Stepped:Connect(function()
-	if not farmState.Enabled then return end
+	if not farmState.Engaged then return end
 	local character = Player.Character
 	if not character then return end
 	for _, part in ipairs(character:GetDescendants()) do
@@ -1005,12 +1012,14 @@ RunService.Stepped:Connect(function()
 end)
 
 -- Repeated click loop for firing (see header comment for why not a single sustained hold),
--- plus keeping a weapon equipped in case it ever gets unequipped mid-farm.
+-- plus keeping a weapon equipped in case it ever gets unequipped mid-farm. Gated on Engaged,
+-- not Enabled -- this is exactly the loop that was clicking during the 3-second countdown
+-- before Engaged existed to distinguish "toggled on" from "actually started."
 task.spawn(function()
 	while true do
 		task.wait(0.1)
 		if not ScreenGui.Parent then return end
-		if farmState.Enabled then
+		if farmState.Engaged then
 			EquipAnyWeapon()
 			PressWeaponButton()
 			task.wait(0.05)
