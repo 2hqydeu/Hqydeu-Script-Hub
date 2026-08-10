@@ -473,8 +473,18 @@ local abilityKeys = {
 -- still don't fire, try raising this further before suspecting something else.
 local PRESS_HOLD = 0.15
 local PRESS_GAP = 0.05
-for _, ability in ipairs(abilityKeys) do
+-- Real bug: all three loops started back-to-back with identical timing, so with more than
+-- one ability toggle on, their presses landed at almost the exact same instant every cycle.
+-- If the game only accepts one ability input per instant (or gives priority to whichever it
+-- sees first), that's a race one key would consistently win and the others would
+-- consistently lose -- matches "one works great, the other hardly does anything" exactly.
+-- Staggering each loop's start across the cycle keeps them from ever landing on top of each
+-- other, and since every loop repeats at the same PRESS_GAP+PRESS_HOLD period, that spacing
+-- holds for the entire time Ability Spam runs, not just the first cycle.
+local ABILITY_CYCLE = PRESS_GAP + PRESS_HOLD
+for index, ability in ipairs(abilityKeys) do
 	task.spawn(function()
+		task.wait((index - 1) * (ABILITY_CYCLE / #abilityKeys))
 		while true do
 			task.wait(PRESS_GAP)
 			if not ScreenGui.Parent then return end
