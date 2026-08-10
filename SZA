@@ -498,16 +498,20 @@ end
 -- cost of 200+ collidable rigs able to bump into you). Nothing is destroyed, so turning this
 -- back off restores every part exactly as it was.
 --
--- Edit adds two refinements, both on by default whenever the master toggle is: Head ESP
--- (a Highlight on each remaining Head -- no distance/name labels, just an outline, since
--- that's genuinely all that was asked for) and lightly culling Bullet Tracers rather than
--- removing them outright (workspace.Bullets_Local, same "_Local = client-only cosmetic"
--- reasoning as the zombie folders -- roughly half of newly-spawned tracer instances are
--- destroyed the instant they're added, before they've rendered at all, cutting visual
--- clutter/render count without eliminating the effect).
+-- Edit adds one refinement, on by default whenever the master toggle is: Head ESP (a
+-- Highlight on each remaining Head -- no distance/name labels, just an outline, since
+-- that's genuinely all that was asked for).
+--
+-- A Bullet Tracer lessening option (culling ~half of new workspace.Bullets_Local children
+-- on the same "_Local = client-only cosmetic" assumption as the zombie folders) was tried
+-- and removed -- turned out wrong in practice: destroying those instances measurably cut
+-- down actual gun fire/hit output, meaning Bullets_Local isn't purely cosmetic the way the
+-- zombie folders are (very likely tied to client-side hit-registration/travel logic, not
+-- just visuals). Not reworked blindly since what actually broke isn't confirmed -- would
+-- need to inspect a live bullet instance's real structure first.
 -- ============================================================================
 local ZOMBIE_CONTAINER_NAMES = {"Zombies_Local", "FriendlyZombies_Local"}
-local reduceLagState = {Enabled = false, HeadESP = true, LessenTracers = true}
+local reduceLagState = {Enabled = false, HeadESP = true}
 local strippedParts = {}
 local headHighlights = {}
 
@@ -618,24 +622,6 @@ workspace.ChildAdded:Connect(function(child)
 	end
 end)
 
-local watchingBullets = false
-local function TryWatchBullets()
-	if watchingBullets then return end
-	local container = workspace:FindFirstChild("Bullets_Local")
-	if not container then return end
-	watchingBullets = true
-	container.ChildAdded:Connect(function(bullet)
-		if not (reduceLagState.Enabled and reduceLagState.LessenTracers) then return end
-		if math.random() < 0.5 then
-			bullet:Destroy()
-		end
-	end)
-end
-TryWatchBullets()
-workspace.ChildAdded:Connect(function(child)
-	if child.Name == "Bullets_Local" then TryWatchBullets() end
-end)
-
 -- Order 4, not 3 -- AbilityOptionsContainer (a plain Frame, not built via CreateFeatureRow)
 -- already occupies LayoutOrder 3 as a sibling within ContentScroll.
 local ReduceLagRow, ReduceLagToggle = CreateFeatureRow(4, "Reduce Lag")
@@ -681,17 +667,11 @@ reduceLagOptionsLayout.Parent = ReduceLagOptionsContainer
 
 local HeadESPRow, HeadESPToggle = CreateFeatureRow(1, "Head ESP", ReduceLagOptionsContainer)
 HeadESPToggle.Text = "On"
-local TracersRow, TracersToggle = CreateFeatureRow(2, "Bullet Tracers", ReduceLagOptionsContainer)
-TracersToggle.Text = "On"
 
 HeadESPToggle.MouseButton1Click:Connect(function()
 	HeadESPToggle.Text = HeadESPToggle.Text == "On" and "Off" or "On"
 	reduceLagState.HeadESP = HeadESPToggle.Text == "On"
 	RefreshAllHeadESP()
-end)
-TracersToggle.MouseButton1Click:Connect(function()
-	TracersToggle.Text = TracersToggle.Text == "On" and "Off" or "On"
-	reduceLagState.LessenTracers = TracersToggle.Text == "On"
 end)
 
 ReduceLagEditButton.MouseButton1Click:Connect(function()
@@ -719,61 +699,170 @@ local function ForEachHostileZombieModel(callback)
 end
 
 -- ============================================================================
--- Auto Aim: snaps the camera to look at the nearest hostile zombie's Head. The nearest-
--- target search runs on its own throttled loop (0.15s) rather than every render frame --
--- with up to ~200 zombies at once (confirmed from the dump), doing that full distance scan
--- at render-step frequency would undercut the whole point of Reduce Lag. The actual camera
--- orientation update still happens every frame (BindToRenderStep, priority just after
--- Roblox's own default camera script) so the look stays smooth between target re-scans,
--- using whatever the cached target's CURRENT position is that frame.
+-- Auto Shoot is the main feature now (holds the fire button down rather than clicking
+-- repeatedly -- you mentioned weapons here fire off a held mouse button, not click-by-
+-- click, so that's what's simulated: one press when turned on, one release when turned
+-- off, not a click loop). Auto Aim moved inside Edit as a refinement -- gated on Auto
+-- Shoot's own master toggle, same "master gates the whole feature, Edit refines it"
+-- pattern as Ability Spam and Reduce Lag elsewhere in this file.
+--
+-- Real bug fixed in Auto Aim itself: the nearest-target scan ran in a bare task.spawn loop
+-- with no error handling -- if literally anything in a single iteration threw (a zombie
+-- getting destroyed mid-read between the FindFirstChild("Head") check and reading its
+-- Position is a very plausible everyday race, given a wave game deletes them constantly),
+-- an uncaught error inside a task.spawn'd coroutine kills that coroutine PERMANENTLY, not
+-- just that one iteration -- the loop would just never run again, leaving whatever target
+-- it had cached (frequently a since-destroyed one, since that's what likely errored) stuck
+-- forever. That lines up exactly with "worked for a few seconds then broke": it worked
+-- until the first mid-scan error, then silently died for good. Now wrapped in pcall so one
+-- bad iteration can't take down every iteration after it.
 -- ============================================================================
+local function PressMouse1()
+	if type(mouse1press) == "function" then
+		local ok = pcall(mouse1press)
+		if ok then return true end
+	end
+	local loc = UserInputService:GetMouseLocation()
+	return pcall(function()
+		VirtualInputManager:SendMouseButtonEvent(loc.X, loc.Y, 0, true, game, 1)
+	end)
+end
+local function ReleaseMouse1()
+	if type(mouse1release) == "function" then
+		local ok = pcall(mouse1release)
+		if ok then return end
+	end
+	local loc = UserInputService:GetMouseLocation()
+	pcall(function()
+		VirtualInputManager:SendMouseButtonEvent(loc.X, loc.Y, 0, false, game, 1)
+	end)
+end
+
+local autoShootState = {Enabled = false, Pressed = false}
 local autoAimState = {Enabled = false}
 local autoAimTarget = nil
 
-local AutoAimRow, AutoAimToggle = CreateFeatureRow(6, "Auto Aim")
+local function UpdateAutoShootPressState()
+	if autoShootState.Enabled and not autoShootState.Pressed then
+		if PressMouse1() then autoShootState.Pressed = true end
+	elseif not autoShootState.Enabled and autoShootState.Pressed then
+		ReleaseMouse1()
+		autoShootState.Pressed = false
+	end
+end
+
+local AutoShootRow, AutoShootToggle = CreateFeatureRow(6, "Auto Shoot")
+
+local AutoShootEditButton = Instance.new("TextButton")
+AutoShootEditButton.Name = "EditButton"
+AutoShootEditButton.Size = UDim2.new(0, 44, 0, 26)
+AutoShootEditButton.Position = UDim2.new(1, -108, 0.5, -13)
+AutoShootEditButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+AutoShootEditButton.BackgroundTransparency = 0.2
+AutoShootEditButton.BorderSizePixel = 0
+AutoShootEditButton.Text = "Edit"
+AutoShootEditButton.Font = UIFont
+AutoShootEditButton.TextSize = 12
+AutoShootEditButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+AutoShootEditButton.Parent = AutoShootRow
+Instance.new("UICorner", AutoShootEditButton).CornerRadius = UDim.new(1, 0)
+AddPressBounce(AutoShootEditButton)
+
+local AutoShootOptionsContainer = Instance.new("Frame")
+AutoShootOptionsContainer.Name = "AutoShootOptionsContainer"
+AutoShootOptionsContainer.LayoutOrder = 7
+AutoShootOptionsContainer.Size = UDim2.new(1, -10, 0, 0)
+AutoShootOptionsContainer.AutomaticSize = Enum.AutomaticSize.Y
+AutoShootOptionsContainer.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
+AutoShootOptionsContainer.BackgroundTransparency = GameRowTransparency
+AutoShootOptionsContainer.BorderSizePixel = 0
+AutoShootOptionsContainer.Visible = false
+AutoShootOptionsContainer.Parent = ContentScroll
+Instance.new("UICorner", AutoShootOptionsContainer).CornerRadius = UDim.new(0, 8)
+
+local AutoShootOptionsPadding = Instance.new("UIPadding")
+AutoShootOptionsPadding.PaddingTop = UDim.new(0, 10)
+AutoShootOptionsPadding.PaddingBottom = UDim.new(0, 10)
+AutoShootOptionsPadding.PaddingLeft = UDim.new(0, 10)
+AutoShootOptionsPadding.PaddingRight = UDim.new(0, 10)
+AutoShootOptionsPadding.Parent = AutoShootOptionsContainer
+
+local autoShootOptionsLayout = Instance.new("UIListLayout")
+autoShootOptionsLayout.Padding = UDim.new(0, 8)
+autoShootOptionsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+autoShootOptionsLayout.Parent = AutoShootOptionsContainer
+
+-- Off by default -- unlike Reduce Lag's sub-toggles, camera-snapping is a much more
+-- noticeable/disruptive behavior than a background rendering tweak, so this stays an
+-- explicit opt-in rather than assumed-on the moment Auto Shoot is enabled.
+local AutoAimRow, AutoAimToggle = CreateFeatureRow(1, "Auto Aim", AutoShootOptionsContainer)
+
 AutoAimToggle.MouseButton1Click:Connect(function()
 	AutoAimToggle.Text = AutoAimToggle.Text == "On" and "Off" or "On"
 	autoAimState.Enabled = AutoAimToggle.Text == "On"
 	if not autoAimState.Enabled then autoAimTarget = nil end
 end)
 
+AutoShootEditButton.MouseButton1Click:Connect(function()
+	AutoShootOptionsContainer.Visible = not AutoShootOptionsContainer.Visible
+end)
+
+AutoShootToggle.MouseButton1Click:Connect(function()
+	AutoShootToggle.Text = AutoShootToggle.Text == "On" and "Off" or "On"
+	autoShootState.Enabled = AutoShootToggle.Text == "On"
+	UpdateAutoShootPressState()
+	if not autoShootState.Enabled then autoAimTarget = nil end
+end)
+
 task.spawn(function()
 	while true do
 		task.wait(0.15)
-		if not ScreenGui.Parent then return end
-		if autoAimState.Enabled then
-			local character = Player.Character
-			local root = character and character:FindFirstChild("HumanoidRootPart")
-			if root then
-				local nearestHead, nearestDist = nil, math.huge
-				ForEachHostileZombieModel(function(model)
-					local head = model:FindFirstChild("Head")
-					if head then
-						local dist = (head.Position - root.Position).Magnitude
-						if dist < nearestDist then
-							nearestDist = dist
-							nearestHead = head
-						end
-					end
-				end)
-				autoAimTarget = nearestHead
-			else
-				autoAimTarget = nil
-			end
+		if not ScreenGui.Parent then
+			if autoShootState.Pressed then ReleaseMouse1() end
+			return
 		end
+		if autoShootState.Enabled and autoAimState.Enabled then
+			local ok = pcall(function()
+				local character = Player.Character
+				local root = character and character:FindFirstChild("HumanoidRootPart")
+				if root then
+					local nearestHead, nearestDist = nil, math.huge
+					ForEachHostileZombieModel(function(model)
+						local head = model:FindFirstChild("Head")
+						if head then
+							local dist = (head.Position - root.Position).Magnitude
+							if dist < nearestDist then
+								nearestDist = dist
+								nearestHead = head
+							end
+						end
+					end)
+					autoAimTarget = nearestHead
+				else
+					autoAimTarget = nil
+				end
+			end)
+			if not ok then autoAimTarget = nil end
+		end
+		-- Self-healing re-assertion: if the held mouse button ever gets silently released
+		-- by something else (a menu stealing focus, a respawn, whatever), this notices and
+		-- re-presses within a beat instead of Auto Shoot quietly going dead.
+		UpdateAutoShootPressState()
 	end
 end)
 
 RunService:BindToRenderStep("SZA_AutoAim", Enum.RenderPriority.Camera.Value + 1, function()
-	if not autoAimState.Enabled then return end
+	if not (autoShootState.Enabled and autoAimState.Enabled) then return end
 	if not autoAimTarget or not autoAimTarget.Parent then return end
 	local camera = workspace.CurrentCamera
 	if not camera then return end
-	camera.CFrame = CFrame.lookAt(camera.CFrame.Position, autoAimTarget.Position)
+	pcall(function()
+		camera.CFrame = CFrame.lookAt(camera.CFrame.Position, autoAimTarget.Position)
+	end)
 end)
 
 -- ============================================================================
--- HUD: zombie count (Zombies_Local only, same reasoning as Auto Aim) and a gems/minute
+-- HUD: zombie count (Zombies_Local only, same reasoning as Auto Aim) and a gems/second
 -- rate. Confirmed real path for the currency readout: PlayerGui.MainGui.MineralsDisplay's
 -- own TextLabel (showed "100" in the dump) -- ParseCount below handles comma-separated
 -- ("207,207") and K/M/B-suffixed values generically, in case the real number ever gets
@@ -861,10 +950,10 @@ GemsRateLabel.Font = UIFont
 GemsRateLabel.TextSize = 14
 GemsRateLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 GemsRateLabel.TextXAlignment = Enum.TextXAlignment.Left
-GemsRateLabel.Text = "Gems/min: --"
+GemsRateLabel.Text = "Gems/sec: --"
 GemsRateLabel.Parent = HudFrame
 
-local HudRow, HudToggle = CreateFeatureRow(7, "HUD")
+local HudRow, HudToggle = CreateFeatureRow(8, "HUD")
 HudToggle.MouseButton1Click:Connect(function()
 	HudToggle.Text = HudToggle.Text == "On" and "Off" or "On"
 	hudState.Enabled = HudToggle.Text == "On"
@@ -882,121 +971,14 @@ task.spawn(function()
 			ZombieCountLabel.Text = "Zombies: " .. zombieCount
 
 			local current = GetMineralsCount()
-			local elapsedMinutes = gemsBaselineTime and (os.clock() - gemsBaselineTime) / 60
-			if current and gemsBaseline and elapsedMinutes and elapsedMinutes > 0.02 then
-				local rate = (current - gemsBaseline) / elapsedMinutes
-				GemsRateLabel.Text = "Gems/min: " .. math.floor(rate + 0.5)
+			local elapsedSeconds = gemsBaselineTime and (os.clock() - gemsBaselineTime)
+			if current and gemsBaseline and elapsedSeconds and elapsedSeconds > 1 then
+				local rate = (current - gemsBaseline) / elapsedSeconds
+				GemsRateLabel.Text = "Gems/sec: " .. string.format("%.1f", rate)
 			else
-				GemsRateLabel.Text = "Gems/min: --"
+				GemsRateLabel.Text = "Gems/sec: --"
 			end
 		end
-	end
-end)
-
--- ============================================================================
--- Minimap: a simple north-up radar (not rotated to face direction -- world-relative dots,
--- same convention plenty of games use for a corner radar) showing both zombie containers
--- (unlike Auto Aim/HUD, awareness of friendly units on the radar is still useful) within
--- MINIMAP_RANGE studs, projected onto the XZ plane. One dot Frame per model, reused across
--- updates and only created/destroyed as zombies enter/leave range or die.
--- ============================================================================
-local MINIMAP_SIZE = 150
-local MINIMAP_RANGE = 120
-
-local MinimapFrame = Instance.new("Frame")
-MinimapFrame.Name = "Minimap"
-MinimapFrame.AnchorPoint = Vector2.new(1, 0)
-MinimapFrame.Position = UDim2.new(1, -12, 0, 12)
-MinimapFrame.Size = UDim2.new(0, MINIMAP_SIZE, 0, MINIMAP_SIZE)
-MinimapFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-MinimapFrame.BackgroundTransparency = 0.25
-MinimapFrame.BorderSizePixel = 0
-MinimapFrame.ClipsDescendants = true
-MinimapFrame.Visible = false
-MinimapFrame.Parent = ScreenGui
-Instance.new("UICorner", MinimapFrame).CornerRadius = UDim.new(1, 0)
-local minimapStroke = Instance.new("UIStroke")
-minimapStroke.Color = Color3.fromRGB(255, 255, 255)
-minimapStroke.Transparency = 0.7
-minimapStroke.Parent = MinimapFrame
-
-local MinimapPlayerDot = Instance.new("Frame")
-MinimapPlayerDot.Name = "PlayerDot"
-MinimapPlayerDot.AnchorPoint = Vector2.new(0.5, 0.5)
-MinimapPlayerDot.Position = UDim2.new(0.5, 0, 0.5, 0)
-MinimapPlayerDot.Size = UDim2.new(0, 8, 0, 8)
-MinimapPlayerDot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-MinimapPlayerDot.BorderSizePixel = 0
-MinimapPlayerDot.ZIndex = 5
-MinimapPlayerDot.Parent = MinimapFrame
-Instance.new("UICorner", MinimapPlayerDot).CornerRadius = UDim.new(1, 0)
-
-local minimapState = {Enabled = false}
-local minimapDots = {}
-
-local function GetOrCreateMinimapDot(model)
-	local dot = minimapDots[model]
-	if dot then return dot end
-	dot = Instance.new("Frame")
-	dot.Name = "ZombieDot"
-	dot.AnchorPoint = Vector2.new(0.5, 0.5)
-	dot.Size = UDim2.new(0, 6, 0, 6)
-	dot.BackgroundColor3 = Color3.fromRGB(255, 70, 70)
-	dot.BorderSizePixel = 0
-	dot.ZIndex = 4
-	dot.Parent = MinimapFrame
-	Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
-	minimapDots[model] = dot
-	return dot
-end
-
-local function RemoveMinimapDot(model)
-	local dot = minimapDots[model]
-	if dot then
-		dot:Destroy()
-		minimapDots[model] = nil
-	end
-end
-
-local function UpdateMinimap()
-	local character = Player.Character
-	local root = character and character:FindFirstChild("HumanoidRootPart")
-	if not root then return end
-	local playerPos = root.Position
-	local seen = {}
-	ForEachTrackedZombieModel(function(model)
-		local head = model:FindFirstChild("Head")
-		if not head then return end
-		local delta = head.Position - playerPos
-		if Vector2.new(delta.X, delta.Z).Magnitude > MINIMAP_RANGE then
-			RemoveMinimapDot(model)
-			return
-		end
-		seen[model] = true
-		local dot = GetOrCreateMinimapDot(model)
-		local scale = (MINIMAP_SIZE / 2) / MINIMAP_RANGE
-		dot.Position = UDim2.new(0, MINIMAP_SIZE / 2 + delta.X * scale, 0, MINIMAP_SIZE / 2 + delta.Z * scale)
-	end)
-	for model in pairs(minimapDots) do
-		if not seen[model] then RemoveMinimapDot(model) end
-	end
-end
-
-local MinimapRow, MinimapToggle = CreateFeatureRow(8, "Minimap")
-MinimapToggle.MouseButton1Click:Connect(function()
-	MinimapToggle.Text = MinimapToggle.Text == "On" and "Off" or "On"
-	minimapState.Enabled = MinimapToggle.Text == "On"
-	MinimapFrame.Visible = minimapState.Enabled
-	if not minimapState.Enabled then
-		for model in pairs(minimapDots) do RemoveMinimapDot(model) end
-	end
-end)
-
-task.spawn(function()
-	while true do
-		task.wait(0.1)
-		if not ScreenGui.Parent then return end
-		if minimapState.Enabled then UpdateMinimap() end
 	end
 end)
 
