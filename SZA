@@ -419,6 +419,16 @@ local QRow, QToggle = CreateFeatureRow(1, "Spam Q", AbilityOptionsContainer)
 local ERow, EToggle = CreateFeatureRow(2, "Spam E", AbilityOptionsContainer)
 local RRow, RToggle = CreateFeatureRow(3, "Spam R", AbilityOptionsContainer)
 
+-- Real bug: CreateFeatureRow builds the toggle's look (StyleAsToggleSwitch reacts to
+-- .Text) but never wires a click handler to actually flip .Text itself -- HealthToggle got
+-- one added manually above, these three didn't, so clicking them animated nothing and
+-- Text just stayed "Off" forever, which is exactly why they never enabled.
+for _, toggle in ipairs({QToggle, EToggle, RToggle}) do
+	toggle.MouseButton1Click:Connect(function()
+		toggle.Text = toggle.Text == "On" and "Off" or "On"
+	end)
+end
+
 AbilityEditButton.MouseButton1Click:Connect(function()
 	AbilityOptionsContainer.Visible = not AbilityOptionsContainer.Visible
 end)
@@ -508,4 +518,3 @@ UserInputService.InputChanged:Connect(function(input)
 	PanelFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
 	getgenv().Serenity_SZA_PanelPosition = PanelFrame.Position
 end)
-
