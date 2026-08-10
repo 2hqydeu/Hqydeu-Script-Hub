@@ -773,7 +773,13 @@ local function EquipAnyWeapon()
 end
 
 local FARM_FLY_SPEED = 10
-local FARM_HEIGHT = 60
+-- Was 60 -- you mentioned the game's own aim-assist/lock-on needs you within some distance
+-- of a target to actually engage, so floating that high was very likely outside its range
+-- entirely. Dropped to a height that's still comfortably above head-height on the ground
+-- (out of easy melee reach) but far closer to the crowd -- a guess at the right number
+-- since the lock-on's actual max range isn't confirmed, so treat this as a starting point
+-- to tune from based on how it feels in practice.
+local FARM_HEIGHT = 25
 
 local farmState = {Enabled = false, BodyVelocity = nil, BodyGyro = nil, NoclipOriginal = {}}
 
@@ -821,15 +827,83 @@ end
 
 local FarmRow, FarmToggle = CreateFeatureRow(6, "Farm")
 
+-- ============================================================================
+-- Countdown + Stop overlay: the repeated click-to-fire loop clicks wherever your cursor
+-- CURRENTLY is -- if it was still sitting over the Farm toggle the instant it turned on,
+-- that meant rapidly re-clicking the panel itself, which is exactly what made it feel stuck
+-- ("can't get off the GUI"). A 3-second delay before Farm actually engages gives you a
+-- window to move your mouse into the game world first, and a dedicated Stop button --
+-- visible for as long as Farm is on, not just during the countdown -- gives you an
+-- on-screen escape hatch beyond the F keybind. Styled to match UE's own structure-alert
+-- notifications (GothamBlack, white text with a black stroke, no background box), per
+-- request.
+-- ============================================================================
+local FarmStopButton = Instance.new("TextButton")
+FarmStopButton.Name = "FarmStop"
+FarmStopButton.AnchorPoint = Vector2.new(0.5, 0)
+FarmStopButton.Size = UDim2.new(0, 140, 0, 36)
+FarmStopButton.Position = UDim2.new(0.5, 0, 0, 50)
+FarmStopButton.BackgroundColor3 = Color3.fromRGB(200, 45, 45)
+FarmStopButton.BorderSizePixel = 0
+FarmStopButton.Text = "STOP FARM"
+FarmStopButton.Font = Enum.Font.GothamBlack
+FarmStopButton.TextSize = 15
+FarmStopButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+FarmStopButton.Visible = false
+FarmStopButton.ZIndex = 210
+FarmStopButton.Parent = ScreenGui
+Instance.new("UICorner", FarmStopButton).CornerRadius = UDim.new(0, 8)
+AddPressBounce(FarmStopButton)
+
+local FarmCountdownLabel = Instance.new("TextLabel")
+FarmCountdownLabel.Name = "FarmCountdown"
+FarmCountdownLabel.AnchorPoint = Vector2.new(0.5, 0)
+FarmCountdownLabel.Size = UDim2.new(0, 400, 0, 32)
+FarmCountdownLabel.Position = UDim2.new(0.5, 0, 0, 90)
+FarmCountdownLabel.BackgroundTransparency = 1
+FarmCountdownLabel.Text = ""
+FarmCountdownLabel.RichText = true
+FarmCountdownLabel.Font = Enum.Font.GothamBlack
+FarmCountdownLabel.TextSize = 19
+FarmCountdownLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+FarmCountdownLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+FarmCountdownLabel.TextStrokeTransparency = 0
+FarmCountdownLabel.TextXAlignment = Enum.TextXAlignment.Center
+FarmCountdownLabel.Visible = false
+FarmCountdownLabel.ZIndex = 210
+FarmCountdownLabel.Parent = ScreenGui
+
+local farmCountdownToken = 0
+
 local function SetFarmEnabled(enabled)
+	if enabled == farmState.Enabled then return end
 	farmState.Enabled = enabled
 	FarmToggle.Text = enabled and "On" or "Off"
+	FarmStopButton.Visible = enabled
+	farmCountdownToken = farmCountdownToken + 1
+
 	if enabled then
-		EngageFarm()
+		local myToken = farmCountdownToken
+		FarmCountdownLabel.Visible = true
+		task.spawn(function()
+			for secondsLeft = 3, 1, -1 do
+				if farmCountdownToken ~= myToken then return end
+				FarmCountdownLabel.Text = "Farm starting in " .. secondsLeft .. "..."
+				task.wait(1)
+			end
+			if farmCountdownToken ~= myToken then return end
+			FarmCountdownLabel.Visible = false
+			EngageFarm()
+		end)
 	else
+		FarmCountdownLabel.Visible = false
 		DisengageFarm()
 	end
 end
+
+FarmStopButton.MouseButton1Click:Connect(function()
+	SetFarmEnabled(false)
+end)
 
 FarmToggle.MouseButton1Click:Connect(function()
 	SetFarmEnabled(not farmState.Enabled)
