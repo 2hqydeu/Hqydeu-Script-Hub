@@ -433,21 +433,24 @@ AbilityEditButton.MouseButton1Click:Connect(function()
 	AbilityOptionsContainer.Visible = not AbilityOptionsContainer.Visible
 end)
 
--- Same fallback chain as UE/Animal_Hospital's own key-simulation helpers: a real
--- keypress/keyrelease exploit function first, VirtualInputManager as the fallback.
+-- Was a fallback chain (keypress first, VirtualInputManager only if keypress errored) --
+-- changed to fire BOTH unconditionally every time, same reasoning as FireButton firing both
+-- Activated and MouseButton1Click elsewhere in this hub. The problem: pcall(keypress, ...)
+-- not erroring only proves the CALL didn't crash, not that the game actually registered a
+-- real press -- if this executor's keypress silently no-ops for whatever reason instead of
+-- throwing, the old code would count that as "handled" and never even try
+-- VirtualInputManager, which lines up exactly with "being pressed but not doing anything."
 local function PressAbilityKey(keyCode)
 	if type(keypress) == "function" then
-		local ok = pcall(keypress, keyCode)
-		if ok then return true end
+		pcall(keypress, keyCode)
 	end
-	return pcall(function()
+	pcall(function()
 		VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
 	end)
 end
 local function ReleaseAbilityKey(keyCode)
 	if type(keyrelease) == "function" then
-		local ok = pcall(keyrelease, keyCode)
-		if ok then return end
+		pcall(keyrelease, keyCode)
 	end
 	pcall(function()
 		VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
@@ -462,15 +465,14 @@ local abilityKeys = {
 	{keyCode = Enum.KeyCode.E, toggle = EToggle},
 	{keyCode = Enum.KeyCode.R, toggle = RToggle},
 }
--- Sped up from the original 0.1s wait + 0.05s hold (~6.6 presses/sec) to a 0.02s hold +
--- 0.02s gap (~25/sec) -- the key-simulation itself is essentially free client-side (it's
--- not rendering or physics work, just synthetic input events), so this shouldn't add any
--- real client-side lag. The only real tradeoff is more RemoteEvent traffic hitting the
--- server if the ability system fires one per press attempt, which is a server/network
--- concern rather than a client lag one -- if it turns out to cause rubber-banding or
--- similar, dial PRESS_HOLD/PRESS_GAP back down.
-local PRESS_HOLD = 0.02
-local PRESS_GAP = 0.02
+-- The 0.02s hold from the speed-up round was very likely too brief for the game's own input
+-- handling to register as a genuine press at all -- UE's own proven-working key-hold
+-- (PressInteractKey/ReleaseInteractKey) uses 0.3s, 15x longer, which lines up with
+-- "presses are happening but not doing anything." Bumped to 0.15s as a middle ground --
+-- still far faster than manual play, but long enough to actually register. If abilities
+-- still don't fire, try raising this further before suspecting something else.
+local PRESS_HOLD = 0.15
+local PRESS_GAP = 0.05
 for _, ability in ipairs(abilityKeys) do
 	task.spawn(function()
 		while true do
