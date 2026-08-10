@@ -44,8 +44,10 @@ local GameRowTransparency = 0
 -- UI: same standalone-panel shell as every other game module (MM2/QOD/UE/Suspect).
 local existingScreenGui = CoreGui:FindFirstChild("SerenitySZA")
 if existingScreenGui then existingScreenGui:Destroy() end
--- Farm below binds a RenderStep by name -- BindToRenderStep errors if that name is already
--- bound, which re-executing this script a second time would otherwise hit.
+-- Farm no longer binds a RenderStep itself, but an older version of this script still
+-- running (before re-executing this one) might have -- clean up any stale binding so it
+-- doesn't error trying to bind the same name twice, and so the old version's callback
+-- can't keep running alongside this one.
 pcall(function() RunService:UnbindFromRenderStep("SZA_Farm") end)
 
 local ScreenGui = Instance.new("ScreenGui")
@@ -713,33 +715,28 @@ local function ForEachHostileZombieModel(callback)
 end
 
 -- ============================================================================
--- Farm, rebuilt after the first version's real problems:
+-- Farm, rebuilt again -- still drifting even with the BodyVelocity/BodyGyro anchor from the
+-- last round. That combo only ever fights VELOCITY (holds it at zero once per frame), which
+-- can suppress acceleration but never corrects position that already drifted between one
+-- frame's correction and the next -- over enough frames those tiny uncorrected nudges add
+-- up to visible drift, which matches exactly what kept happening. Velocity-only correction
+-- was never going to fully solve it.
 --
--- 1. It wasn't actually flight, just a one-time teleport-up plus zeroing vertical velocity
---    -- nothing ever countered horizontal drift, so any residual momentum just accumulated
---    unopposed (the reported "drifts off in every which way"), and zeroing velocity alone
---    is weaker than an actual anchor -- over time it lost the fight against gravity/physics
---    (the reported "fell down after a while"). Replaced with the exact same BodyVelocity +
---    BodyGyro "zero-G anchor" technique Main's own proven Fly feature already uses
---    (MaxForce = math.huge zeroes out gravity AND drift, not just vertical velocity), plus
---    real WASD-relative-to-camera + Space/Shift movement -- an actual fly, not a fixed
---    hover, so you can freely reposition over the crowd.
--- 2. Forcing the camera to a hard first-person-style straight-down lock AND recentering the
---    mouse cursor every single render frame is what made it impossible to even click the
---    toggle back off (the cursor was being yanked back to center faster than a click could
---    land) -- neither is done anymore. Farm no longer touches the camera or mouse position
---    at all after the initial engage, so third-person control stays entirely yours. A dedicated
---    F keybind is also added as a hard off-switch regardless of UI state, just in case.
--- 3. You noticed the game itself has its own proximity-based aim-assist/lock-on once
---    airborne with the crosshair roughly near a target -- so precise aiming was never
---    actually necessary. Firing is now a repeated press+release click loop (like Ability
---    Spam) instead of a single sustained hold, since you weren't sure hold-to-fire was
---    reliable for these tools ("if needed just click regularly") -- repeated clicks satisfy
---    both a click-based and a hold-based weapon script.
+-- Switched to what you actually suggested: no more manual WASD/Space/Shift flight at all
+-- (removed per your request for a fixed height instead of free-fly), just noclip + a light
+-- Heartbeat anti-fall to survive the gaps, PLUS a hard position snap -- teleported straight
+-- to (nearest hostile zombie's X/Z, that same zombie's ground Y + FARM_HEIGHT) immediately
+-- on engage and again every FARM_REPOSITION_INTERVAL seconds after that. A position snap
+-- can't accumulate drift the way a velocity correction can -- it just overwrites wherever
+-- you ended up with the correct spot outright, and re-centers over the crowd as it moves
+-- between waves as a bonus. Height also stays relative to the zombies' own ground position
+-- (not a fixed world Y), so it keeps making sense across different maps/terrain.
 --
--- Neither LavaBow nor Interstellar (confirmed real Tools under ReplicatedStorage.Assets.
--- Guns) has a firing script living inside the Tool itself, so this equips whatever Tool is
--- already in Backpack rather than hardcoding either by name.
+-- The auto lock-on discovery still applies -- firing is a repeated press+release click loop
+-- (see PressWeaponButton/ReleaseWeaponButton below), and neither LavaBow nor Interstellar
+-- (confirmed real Tools under ReplicatedStorage.Assets.Guns) has a firing script inside the
+-- Tool itself, so this equips whatever Tool is already in Backpack rather than hardcoding
+-- either by name.
 -- ============================================================================
 local function PressWeaponButton()
 	if type(mouse1press) == "function" then
@@ -772,16 +769,50 @@ local function EquipAnyWeapon()
 	if tool then humanoid:EquipTool(tool) end
 end
 
-local FARM_FLY_SPEED = 10
--- Was 60 -- you mentioned the game's own aim-assist/lock-on needs you within some distance
--- of a target to actually engage, so floating that high was very likely outside its range
--- entirely. Dropped to a height that's still comfortably above head-height on the ground
--- (out of easy melee reach) but far closer to the crowd -- a guess at the right number
--- since the lock-on's actual max range isn't confirmed, so treat this as a starting point
--- to tune from based on how it feels in practice.
+-- Was 60, then 25 while Fly was still involved -- you mentioned the game's own aim-assist/
+-- lock-on needs you within some distance of a target to actually engage. Kept at 25 as the
+-- height OFFSET above wherever the nearest zombie's own ground position currently is (not a
+-- fixed world Y), so it stays sensible across maps/terrain and re-centers as the crowd moves.
 local FARM_HEIGHT = 25
+local FARM_REPOSITION_INTERVAL = 5
 
-local farmState = {Enabled = false, BodyVelocity = nil, BodyGyro = nil, NoclipOriginal = {}}
+local farmState = {Enabled = false, AntiFallConnection = nil, NoclipOriginal = {}}
+
+-- Nearest hostile zombie's ground position -- the reposition snap targets X/Z from this and
+-- adds FARM_HEIGHT on top for Y. Falls back to nil (caller decides what to do) if no
+-- zombies are currently tracked, e.g. between waves.
+local function GetFarmTargetGroundPosition()
+	local character = Player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local nearestPosition, nearestDistance = nil, math.huge
+	ForEachHostileZombieModel(function(model)
+		local zombieRoot = model:FindFirstChild("HumanoidRootPart")
+		if not zombieRoot then return end
+		if root then
+			local distance = (zombieRoot.Position - root.Position).Magnitude
+			if distance < nearestDistance then
+				nearestDistance = distance
+				nearestPosition = zombieRoot.Position
+			end
+		elseif not nearestPosition then
+			nearestPosition = zombieRoot.Position
+		end
+	end)
+	return nearestPosition
+end
+
+-- The actual anti-drift fix -- a hard position snap can't accumulate error the way
+-- continuously correcting velocity can, since it just overwrites wherever you ended up with
+-- the right spot outright instead of trying to gradually steer back to it.
+local function RepositionFarmOverMobs()
+	local character = Player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+	local targetGround = GetFarmTargetGroundPosition()
+	if not targetGround then return end
+	local _, yaw = root.CFrame:ToOrientation()
+	root.CFrame = CFrame.new(targetGround.X, targetGround.Y + FARM_HEIGHT, targetGround.Z) * CFrame.Angles(0, yaw, 0)
+end
 
 local function EngageFarm()
 	local character = Player.Character
@@ -789,21 +820,32 @@ local function EngageFarm()
 	if not character or not root then return end
 	EquipAnyWeapon()
 
-	farmState.BodyVelocity = Instance.new("BodyVelocity")
-	farmState.BodyVelocity.Velocity = Vector3.zero
-	farmState.BodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-	farmState.BodyVelocity.Parent = root
+	RepositionFarmOverMobs()
+	-- No zombies tracked yet to reposition onto (e.g. between waves) -- still get some
+	-- height so noclip/anti-fall have somewhere sane to hold in the meantime.
+	if not GetFarmTargetGroundPosition() then
+		root.CFrame = root.CFrame + Vector3.new(0, FARM_HEIGHT, 0)
+	end
 
-	farmState.BodyGyro = Instance.new("BodyGyro")
-	farmState.BodyGyro.P = 9e4
-	farmState.BodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-	farmState.BodyGyro.CFrame = root.CFrame
-	farmState.BodyGyro.Parent = root
+	farmState.AntiFallConnection = RunService.Heartbeat:Connect(function()
+		local currentCharacter = Player.Character
+		local currentRoot = currentCharacter and currentCharacter:FindFirstChild("HumanoidRootPart")
+		if currentRoot then
+			currentRoot.AssemblyLinearVelocity = Vector3.zero
+			currentRoot.AssemblyAngularVelocity = Vector3.zero
+		end
+	end)
 
-	root.CFrame = root.CFrame + Vector3.new(0, FARM_HEIGHT, 0)
+	task.spawn(function()
+		while farmState.Enabled do
+			task.wait(FARM_REPOSITION_INTERVAL)
+			if not farmState.Enabled then return end
+			RepositionFarmOverMobs()
+		end
+	end)
 
 	-- One-time courtesy tilt so you start out already looking roughly toward the ground --
-	-- not the hard -90 first-person-style lock from before, and never reasserted after this.
+	-- never reasserted after this, so third-person control stays entirely yours from here.
 	local camera = workspace.CurrentCamera
 	if camera then
 		camera.CFrame = CFrame.new(camera.CFrame.Position) * CFrame.Angles(-math.rad(55), 0, 0)
@@ -811,8 +853,10 @@ local function EngageFarm()
 end
 
 local function DisengageFarm()
-	if farmState.BodyVelocity then farmState.BodyVelocity:Destroy() farmState.BodyVelocity = nil end
-	if farmState.BodyGyro then farmState.BodyGyro:Destroy() farmState.BodyGyro = nil end
+	if farmState.AntiFallConnection then
+		farmState.AntiFallConnection:Disconnect()
+		farmState.AntiFallConnection = nil
+	end
 	for part, wasCollidable in pairs(farmState.NoclipOriginal) do
 		if part and part.Parent then part.CanCollide = wasCollidable end
 	end
@@ -926,36 +970,6 @@ Player.CharacterAdded:Connect(function()
 		task.wait(1)
 		EngageFarm()
 	end
-end)
-
--- Real fly movement -- ported directly from Main's own Fly feature (BodyGyro kept at the
--- camera's yaw, WASD/Space/Shift nudge the root CFrame relative to camera directions, zero
--- velocity re-applied every frame so nothing accumulates).
-RunService:BindToRenderStep("SZA_Farm", Enum.RenderPriority.Camera.Value + 1, function()
-	if not farmState.Enabled then return end
-	local character = Player.Character
-	local root = character and character:FindFirstChild("HumanoidRootPart")
-	local camera = workspace.CurrentCamera
-	if not (root and farmState.BodyGyro and camera) then return end
-	if UserInputService:GetFocusedTextBox() then
-		root.AssemblyLinearVelocity = Vector3.zero
-		root.AssemblyAngularVelocity = Vector3.zero
-		return
-	end
-	local moveDir = Vector3.zero
-	if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir += camera.CFrame.LookVector end
-	if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir -= camera.CFrame.LookVector end
-	if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir -= camera.CFrame.RightVector end
-	if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir += camera.CFrame.RightVector end
-	if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir += Vector3.new(0, 1, 0) end
-	if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir -= Vector3.new(0, 1, 0) end
-	if moveDir.Magnitude > 0 then
-		root.CFrame = root.CFrame + (moveDir * (FARM_FLY_SPEED / 50))
-	end
-	local _, yaw = camera.CFrame:ToOrientation()
-	farmState.BodyGyro.CFrame = CFrame.new(root.Position) * CFrame.Angles(0, yaw, 0)
-	root.AssemblyLinearVelocity = Vector3.zero
-	root.AssemblyAngularVelocity = Vector3.zero
 end)
 
 -- Real noclip -- ported directly from Main's own NoClip (continuously forces every
