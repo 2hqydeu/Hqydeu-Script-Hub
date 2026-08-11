@@ -457,45 +457,52 @@ local function ReleaseAbilityKey(keyCode)
 	end)
 end
 
--- One independent loop per ability so all three can spam concurrently rather than taking
--- turns -- costs (gems/souls, whichever this class's abilities actually use) and cooldowns
--- are left entirely to the server to enforce, same as a person mashing the key would hit.
+-- The 0.02s hold from the speed-up round was very likely too brief for the game's own input
+-- handling to register as a genuine press at all -- UE's own proven-working key-hold
+-- (PressInteractKey/ReleaseInteractKey) uses 0.3s, 15x longer, which lines up with
+-- "presses are happening but not doing anything." Bumped to 0.15s as a middle ground --
+-- still far faster than manual play, but long enough to actually register.
 local abilityKeys = {
 	{keyCode = Enum.KeyCode.Q, toggle = QToggle},
 	{keyCode = Enum.KeyCode.E, toggle = EToggle},
 	{keyCode = Enum.KeyCode.R, toggle = RToggle},
 }
--- The 0.02s hold from the speed-up round was very likely too brief for the game's own input
--- handling to register as a genuine press at all -- UE's own proven-working key-hold
--- (PressInteractKey/ReleaseInteractKey) uses 0.3s, 15x longer, which lines up with
--- "presses are happening but not doing anything." Bumped to 0.15s as a middle ground --
--- still far faster than manual play, but long enough to actually register. If abilities
--- still don't fire, try raising this further before suspecting something else.
 local PRESS_HOLD = 0.15
 local PRESS_GAP = 0.05
--- Real bug: all three loops started back-to-back with identical timing, so with more than
--- one ability toggle on, their presses landed at almost the exact same instant every cycle.
--- If the game only accepts one ability input per instant (or gives priority to whichever it
--- sees first), that's a race one key would consistently win and the others would
--- consistently lose -- matches "one works great, the other hardly does anything" exactly.
--- Staggering each loop's start across the cycle keeps them from ever landing on top of each
--- other, and since every loop repeats at the same PRESS_GAP+PRESS_HOLD period, that spacing
--- holds for the entire time Ability Spam runs, not just the first cycle.
-local ABILITY_CYCLE = PRESS_GAP + PRESS_HOLD
-for index, ability in ipairs(abilityKeys) do
-	task.spawn(function()
-		task.wait((index - 1) * (ABILITY_CYCLE / #abilityKeys))
-		while true do
-			task.wait(PRESS_GAP)
-			if not ScreenGui.Parent then return end
-			if abilitySpamState.Enabled and ability.toggle.Text == "On" then
-				PressAbilityKey(ability.keyCode)
-				task.wait(PRESS_HOLD)
-				ReleaseAbilityKey(ability.keyCode)
+
+-- Second real bug, found after staggering (see git history) didn't fully fix the imbalance:
+-- three INDEPENDENT loops each still attempt a cast every cycle regardless of what the other
+-- two are doing. If this game gates ability casts behind a single shared cooldown/debounce
+-- (one cast accepted at a time, no matter which key), a fixed stagger order means whichever
+-- key's turn lands first in every cycle keeps re-winning that shared gate every single time --
+-- Q before E before R, forever, since their relative order never changes. That matches
+-- "E fires way more than R" being a consistent imbalance rather than random luck: E's press
+-- always arrives before R's within the same 0.2s window, so R keeps finding the gate already
+-- closed by E's cast a moment earlier.
+--
+-- Fixed by collapsing the three loops into one, which round-robins through whichever keys are
+-- currently toggled on -- only one key is ever pressed per PRESS_GAP tick, and the rotation
+-- pointer advances regardless of which keys are enabled, so every toggled-on key gets an equal,
+-- alternating turn instead of always racing the same fixed order.
+local nextAbilityIndex = 1
+task.spawn(function()
+	while true do
+		task.wait(PRESS_GAP)
+		if not ScreenGui.Parent then return end
+		if abilitySpamState.Enabled then
+			for _ = 1, #abilityKeys do
+				local ability = abilityKeys[nextAbilityIndex]
+				nextAbilityIndex = (nextAbilityIndex % #abilityKeys) + 1
+				if ability.toggle.Text == "On" then
+					PressAbilityKey(ability.keyCode)
+					task.wait(PRESS_HOLD)
+					ReleaseAbilityKey(ability.keyCode)
+					break
+				end
 			end
 		end
-	end)
-end
+	end
+end)
 
 -- ============================================================================
 -- Reduce Lag: confirmed from the dump that a single round had 210 individual zombie models
