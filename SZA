@@ -949,10 +949,18 @@ end
 -- whatever's below/around, instead of continuously chasing individual clusters -- these
 -- coordinates are from your own testing, not derived from anything in the place dump, and
 -- only make sense on this one map. A different map would need different coordinates (or just
--- the RepositionFarmOverMobs chase above) to make any sense at all.
-local FARM_SWEEP_BASE_POSITION = Vector3.new(-122, 29, 64)
+-- the RepositionFarmOverMobs chase above) to make any sense at all. Y lowered from 29 -- say
+-- if it needs to go further.
+local FARM_SWEEP_BASE_POSITION = Vector3.new(-122, 19, 64)
 local FARM_SWEEP_HALF_WIDTH = 25
 local FARM_SWEEP_PERIOD = 6
+
+-- Fixed, not recomputed from wherever the crowd happens to be -- turns out regular zombies
+-- don't need aim-locking at all (splash/pierce plus sweeping the width covers them from a
+-- level shot), and constantly re-orienting toward a shifting centroid was exactly what read
+-- as swaying. A constant direction means only position changes now, nothing rotates. Flip
+-- the sign if this turns out to be facing away from the map instead of toward it.
+local FARM_SWEEP_FACING_DIRECTION = Vector3.new(0, 0, -1)
 
 -- Reset at the start of every EngageFarm so the sweep always starts from the same phase
 -- (dead center) instead of continuing wherever a previous run happened to leave off.
@@ -961,24 +969,15 @@ local farmSweepStartClock = nil
 -- Smooth, framerate-independent back-and-forth motion -- a sine wave eases naturally at each
 -- end instead of snapping direction instantly, which is smoother than either teleporting
 -- between two points or trying to simulate literal A/D key holds (which would also fight the
--- anti-fall Heartbeat below, since that unconditionally zeroes velocity every frame). Sweeps
--- along whichever horizontal axis is perpendicular to wherever GetFarmClusterTarget currently
--- points, so "left and right" tracks the actual direction toward the crowd/boss each moment
--- rather than a fixed world axis that only happens to line up with it from one angle.
+-- anti-fall Heartbeat below, since that unconditionally zeroes velocity every frame). The
+-- strafe axis is perpendicular to the now-fixed facing direction, which for (0, 0, -1) works
+-- out to pure world-X -- exactly the single axis asked for.
 local function GetFarmSweepPosition()
 	if not farmSweepStartClock then farmSweepStartClock = os.clock() end
 	local elapsed = os.clock() - farmSweepStartClock
 	local sweepOffset = math.sin(elapsed / FARM_SWEEP_PERIOD * (2 * math.pi)) * FARM_SWEEP_HALF_WIDTH
-
-	local aimTarget = GetFarmClusterTarget()
-	local facingDirection = Vector3.new(0, 0, -1)
-	if aimTarget then
-		local horizontal = Vector3.new(aimTarget.X - FARM_SWEEP_BASE_POSITION.X, 0, aimTarget.Z - FARM_SWEEP_BASE_POSITION.Z)
-		if horizontal.Magnitude > 0.01 then facingDirection = horizontal.Unit end
-	end
-	local strafeAxis = Vector3.new(-facingDirection.Z, 0, facingDirection.X)
-
-	return FARM_SWEEP_BASE_POSITION + strafeAxis * sweepOffset, facingDirection
+	local strafeAxis = Vector3.new(-FARM_SWEEP_FACING_DIRECTION.Z, 0, FARM_SWEEP_FACING_DIRECTION.X)
+	return FARM_SWEEP_BASE_POSITION + strafeAxis * sweepOffset
 end
 
 -- Confirmed from the place dump's real GunClient.GetAutoAimTarget: on PC it only computes a
@@ -1015,15 +1014,25 @@ local function StartFarmAim()
 		local root = character and character:FindFirstChild("HumanoidRootPart")
 		if not currentCamera or not root then return end
 
-		-- While no boss is up, sweep the fixed post instead of chasing anything -- checked
-		-- directly here (not just relying on GetFarmClusterTarget's own internal check) so
-		-- positioning and aiming both agree on whether a boss is currently up. The periodic
-		-- task in EngageFarm handles repositioning FOR the boss case instead (see below).
-		if not FindBossModel() then
-			local sweepPosition, facingDirection = GetFarmSweepPosition()
-			root.CFrame = CFrame.lookAt(sweepPosition, sweepPosition + facingDirection)
+		-- No more aim-locking onto regular zombies -- turns out sweeping a fixed width while
+		-- facing forward and holding the trigger already connects with the whole area (splash
+		-- damage/piercing doing the rest), and continuously re-aiming toward a shifting
+		-- centroid was exactly what read as swaying. So with no boss up: sweep position AND
+		-- camera both just track the fixed facing direction, nothing rotates, and the mouse
+		-- cursor is left alone entirely (no target to point it at). HoldFireForAlly is reset
+		-- since there's no crosshair here to check an ally's distance against -- ally-safety
+		-- only really applies once we're actually aiming at something, i.e. the boss below.
+		local bossModel = FindBossModel()
+		if not bossModel then
+			local sweepPosition = GetFarmSweepPosition()
+			root.CFrame = CFrame.lookAt(sweepPosition, sweepPosition + FARM_SWEEP_FACING_DIRECTION)
+			local cameraPosition = sweepPosition - FARM_SWEEP_FACING_DIRECTION * FARM_CAMERA_BACK_DISTANCE + Vector3.new(0, FARM_CAMERA_HEIGHT_OFFSET, 0)
+			currentCamera.CFrame = CFrame.lookAt(cameraPosition, sweepPosition + FARM_SWEEP_FACING_DIRECTION)
+			farmState.HoldFireForAlly = false
+			return
 		end
 
+		-- Yeti/Ultra Yeti present -- full lock-on, unchanged from before.
 		local aimTarget = GetFarmClusterTarget()
 		if not aimTarget then return end
 
@@ -1085,8 +1094,8 @@ local function EngageFarm()
 	if FindBossModel() then
 		RepositionFarmOverMobs()
 	else
-		local sweepPosition, facingDirection = GetFarmSweepPosition()
-		root.CFrame = CFrame.lookAt(sweepPosition, sweepPosition + facingDirection)
+		local sweepPosition = GetFarmSweepPosition()
+		root.CFrame = CFrame.lookAt(sweepPosition, sweepPosition + FARM_SWEEP_FACING_DIRECTION)
 	end
 
 	farmState.AntiFallConnection = RunService.Heartbeat:Connect(function()
