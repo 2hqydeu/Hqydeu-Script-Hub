@@ -777,6 +777,11 @@ end
 -- between waves as a bonus. Height also stays relative to the zombies' own ground position
 -- (not a fixed world Y), so it keeps making sense across different maps/terrain.
 --
+-- UPDATE: this hover-directly-above-target snap is now only used while a boss is up. The
+-- default, no-boss behavior is a fixed-post sweep at Tundra-specific coordinates instead (see
+-- GetFarmSweepPosition further down) -- per your own testing, spraying the whole area from one
+-- good spot beats continuously chasing individual clusters around.
+--
 -- The auto lock-on discovery still applies -- firing is a real held-down mouse button (see
 -- PressWeaponButton/ReleaseWeaponButton/HoldFarmWeapon below), and neither LavaBow nor
 -- Interstellar (confirmed real Tools under ReplicatedStorage.Assets.Guns) has a firing script
@@ -940,6 +945,42 @@ local function RepositionFarmOverMobs()
 	root.CFrame = CFrame.new(targetGround.X, targetGround.Y + FARM_HEIGHT, targetGround.Z) * CFrame.Angles(0, yaw, 0)
 end
 
+-- Tundra-only fixed post: floating spot to sweep back and forth from while spraying
+-- whatever's below/around, instead of continuously chasing individual clusters -- these
+-- coordinates are from your own testing, not derived from anything in the place dump, and
+-- only make sense on this one map. A different map would need different coordinates (or just
+-- the RepositionFarmOverMobs chase above) to make any sense at all.
+local FARM_SWEEP_BASE_POSITION = Vector3.new(-122, 29, 64)
+local FARM_SWEEP_HALF_WIDTH = 25
+local FARM_SWEEP_PERIOD = 6
+
+-- Reset at the start of every EngageFarm so the sweep always starts from the same phase
+-- (dead center) instead of continuing wherever a previous run happened to leave off.
+local farmSweepStartClock = nil
+
+-- Smooth, framerate-independent back-and-forth motion -- a sine wave eases naturally at each
+-- end instead of snapping direction instantly, which is smoother than either teleporting
+-- between two points or trying to simulate literal A/D key holds (which would also fight the
+-- anti-fall Heartbeat below, since that unconditionally zeroes velocity every frame). Sweeps
+-- along whichever horizontal axis is perpendicular to wherever GetFarmClusterTarget currently
+-- points, so "left and right" tracks the actual direction toward the crowd/boss each moment
+-- rather than a fixed world axis that only happens to line up with it from one angle.
+local function GetFarmSweepPosition()
+	if not farmSweepStartClock then farmSweepStartClock = os.clock() end
+	local elapsed = os.clock() - farmSweepStartClock
+	local sweepOffset = math.sin(elapsed / FARM_SWEEP_PERIOD * (2 * math.pi)) * FARM_SWEEP_HALF_WIDTH
+
+	local aimTarget = GetFarmClusterTarget()
+	local facingDirection = Vector3.new(0, 0, -1)
+	if aimTarget then
+		local horizontal = Vector3.new(aimTarget.X - FARM_SWEEP_BASE_POSITION.X, 0, aimTarget.Z - FARM_SWEEP_BASE_POSITION.Z)
+		if horizontal.Magnitude > 0.01 then facingDirection = horizontal.Unit end
+	end
+	local strafeAxis = Vector3.new(-facingDirection.Z, 0, facingDirection.X)
+
+	return FARM_SWEEP_BASE_POSITION + strafeAxis * sweepOffset, facingDirection
+end
+
 -- Confirmed from the place dump's real GunClient.GetAutoAimTarget: on PC it only computes a
 -- genuinely aimed shot if it finds a zombie within ~120 screen-pixels of wherever
 -- LocalPlayer:GetMouse() actually is, and only if that zombie is roughly in front of the
@@ -973,6 +1014,16 @@ local function StartFarmAim()
 		local character = Player.Character
 		local root = character and character:FindFirstChild("HumanoidRootPart")
 		if not currentCamera or not root then return end
+
+		-- While no boss is up, sweep the fixed post instead of chasing anything -- checked
+		-- directly here (not just relying on GetFarmClusterTarget's own internal check) so
+		-- positioning and aiming both agree on whether a boss is currently up. The periodic
+		-- task in EngageFarm handles repositioning FOR the boss case instead (see below).
+		if not FindBossModel() then
+			local sweepPosition, facingDirection = GetFarmSweepPosition()
+			root.CFrame = CFrame.lookAt(sweepPosition, sweepPosition + facingDirection)
+		end
+
 		local aimTarget = GetFarmClusterTarget()
 		if not aimTarget then return end
 
@@ -1028,11 +1079,14 @@ local function EngageFarm()
 	farmState.Engaged = true
 	EquipBestWeapon()
 
-	RepositionFarmOverMobs()
-	-- No zombies tracked yet to reposition onto (e.g. between waves) -- still get some
-	-- height so noclip/anti-fall have somewhere sane to hold in the meantime.
-	if not GetFarmClusterTarget() then
-		root.CFrame = root.CFrame + Vector3.new(0, FARM_HEIGHT, 0)
+	-- Fresh sweep phase every engage, so it always starts dead center instead of wherever a
+	-- previous run's clock happened to leave off.
+	farmSweepStartClock = os.clock()
+	if FindBossModel() then
+		RepositionFarmOverMobs()
+	else
+		local sweepPosition, facingDirection = GetFarmSweepPosition()
+		root.CFrame = CFrame.lookAt(sweepPosition, sweepPosition + facingDirection)
 	end
 
 	farmState.AntiFallConnection = RunService.Heartbeat:Connect(function()
@@ -1044,11 +1098,17 @@ local function EngageFarm()
 		end
 	end)
 
+	-- Only repositions (hovers directly above whatever GetFarmClusterTarget returns) while a
+	-- boss is up -- StartFarmAim's own per-frame check drives the sweep the rest of the time,
+	-- and letting both fight over root.CFrame would mean popping back to hovering over the
+	-- crowd every FARM_REPOSITION_INTERVAL seconds instead of a clean continuous sweep.
 	task.spawn(function()
 		while farmState.Engaged do
 			task.wait(FARM_REPOSITION_INTERVAL)
 			if not farmState.Engaged then return end
-			RepositionFarmOverMobs()
+			if FindBossModel() then
+				RepositionFarmOverMobs()
+			end
 		end
 	end)
 
