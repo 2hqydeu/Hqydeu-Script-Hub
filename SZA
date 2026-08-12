@@ -782,11 +782,18 @@ end
 -- GetFarmSweepPosition further down) -- per your own testing, spraying the whole area from one
 -- good spot beats continuously chasing individual clusters around.
 --
--- The auto lock-on discovery still applies -- firing is a real held-down mouse button (see
--- PressWeaponButton/ReleaseWeaponButton/HoldFarmWeapon below), and neither LavaBow nor
--- Interstellar (confirmed real Tools under ReplicatedStorage.Assets.Guns) has a firing script
--- inside the Tool itself, so this fires by holding the button rather than calling either by
--- name directly -- EquipBestWeapon below is what actually chooses which of them gets equipped.
+-- The auto lock-on discovery still applies -- firing is a repeated press+release click loop
+-- (see PressWeaponButton/ReleaseWeaponButton below), and neither LavaBow nor Interstellar
+-- (confirmed real Tools under ReplicatedStorage.Assets.Guns) has a firing script inside the
+-- Tool itself, so this fires by clicking rather than calling either by name directly --
+-- EquipBestWeapon below is what actually chooses which of them gets equipped.
+--
+-- (A hold-down version was tried -- fires faster/gap-free since the game's own per-frame
+-- loop repeats TryFire() the whole time IsFiring is true, gated only by the weapon's real
+-- FireRate -- but a real held-down synthetic click either got silently cancelled by any
+-- genuine manual click, or, once re-asserted every tick to correct that, broke real clicks on
+-- the panel itself. Back to plain repeated clicking, which doesn't have either problem: your
+-- mouse works normally, and this can't get stuck since every cycle presses then releases.)
 -- ============================================================================
 local function PressWeaponButton()
 	if type(mouse1press) == "function" then
@@ -837,34 +844,6 @@ local function EquipBestWeapon()
 	if equipped then return end
 	local tool = backpack and backpack:FindFirstChildOfClass("Tool")
 	if tool then humanoid:EquipTool(tool) end
-end
-
--- Confirmed from the place dump's GunClient.Update: holding MouseButton1 down just sets
--- IsFiring = true once (InputBegan/InputEnded), and a separate per-frame loop already calls
--- TryFire() every single frame IsFiring is true -- itself gated by CheckFireRate against the
--- equipped weapon's real FireRate (0.168s for Interstellar, 1.25s for LavaBow). So a genuine
--- press-and-hold fires at the weapon's actual max rate with no gaps, rather than however often
--- a repeated click loop happens to land. weaponHeld tracks whether we're currently holding, so
--- ReleaseFarmWeapon (called on ally-holdoff and on stop) and HoldFarmWeapon (called once
--- clear/engaged) only ever send one real down/up transition each, not one per tick.
---
--- Tried re-asserting the press every tick instead (to self-correct IsFiring getting set false
--- by a genuine manual click) -- reverted, since that meant a real synthetic MouseButton1 down
--- every 0.1s at wherever the actual cursor was, which broke real clicks on the panel itself
--- whenever the cursor was over it. Back to press-once for now; a manual click stopping
--- auto-fire until Auto Farm is toggled is the known tradeoff.
-local weaponHeld = false
-
-local function HoldFarmWeapon()
-	if weaponHeld then return end
-	PressWeaponButton()
-	weaponHeld = true
-end
-
-local function ReleaseFarmWeapon()
-	if not weaponHeld then return end
-	ReleaseWeaponButton()
-	weaponHeld = false
 end
 
 -- Was 60, then 25 while Fly was still involved -- you mentioned the game's own aim-assist/
@@ -1147,7 +1126,6 @@ end
 local function DisengageFarm()
 	farmState.Engaged = false
 	StopFarmAim()
-	ReleaseFarmWeapon()
 	if farmState.AntiFallConnection then
 		farmState.AntiFallConnection:Disconnect()
 		farmState.AntiFallConnection = nil
@@ -1314,27 +1292,24 @@ RunService.Stepped:Connect(function()
 	end
 end)
 
--- Holds the weapon button down for as long as Auto Farm is actually allowed to shoot (see
--- HoldFarmWeapon/ReleaseFarmWeapon above for why holding beats repeated clicks), releasing
--- the instant it isn't -- Engaged goes false (stopping/countdown not finished yet) or
--- HoldFireForAlly gets set (StartFarmAim's per-frame ally check) -- and re-holding once
--- clear again. Also keeps a weapon equipped in case it ever gets unequipped mid-farm.
+-- Repeated click loop for firing (see header comment for why not a single sustained hold),
+-- plus keeping a weapon equipped in case it ever gets unequipped mid-farm. Gated on Engaged,
+-- not Enabled -- this is exactly the loop that was clicking during the 3-second countdown
+-- before Engaged existed to distinguish "toggled on" from "actually started." Also skips
+-- firing entirely while HoldFireForAlly is set (StartFarmAim's per-frame ally check above) --
+-- still aims/repositions as normal, just doesn't pull the trigger until the ally clears out
+-- of the crosshair's area.
 task.spawn(function()
 	while true do
 		task.wait(0.1)
-		if not ScreenGui.Parent then
-			ReleaseFarmWeapon()
-			return
-		end
+		if not ScreenGui.Parent then return end
 		if farmState.Engaged then
 			EquipBestWeapon()
-			if farmState.HoldFireForAlly then
-				ReleaseFarmWeapon()
-			else
-				HoldFarmWeapon()
+			if not farmState.HoldFireForAlly then
+				PressWeaponButton()
+				task.wait(0.05)
+				ReleaseWeaponButton()
 			end
-		else
-			ReleaseFarmWeapon()
 		end
 	end
 end)
