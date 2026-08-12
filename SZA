@@ -744,6 +744,21 @@ local function ForEachFriendlyZombieModel(callback)
 	end
 end
 
+-- Confirmed from the place dump's BossCatalog: the Yeti boss's two tiers are ModelName
+-- "Yeti" (Rare) and "UltraYeti" (Ultra), and its own entry in the internal Zombies registry
+-- uses RenderFolder = the same folder regular zombies render into -- so the boss shows up as
+-- just another Model inside Zombies_Local, not a separate container. Case-insensitive
+-- substring match catches both tiers off one real Model name each.
+local function FindBossModel()
+	local bossModel = nil
+	ForEachHostileZombieModel(function(model)
+		if not bossModel and model.Name:lower():find("yeti", 1, true) then
+			bossModel = model
+		end
+	end)
+	return bossModel
+end
+
 -- ============================================================================
 -- Farm, rebuilt again -- still drifting even with the BodyVelocity/BodyGyro anchor from the
 -- last round. That combo only ever fights VELOCITY (holds it at zero once per frame), which
@@ -762,11 +777,11 @@ end
 -- between waves as a bonus. Height also stays relative to the zombies' own ground position
 -- (not a fixed world Y), so it keeps making sense across different maps/terrain.
 --
--- The auto lock-on discovery still applies -- firing is a repeated press+release click loop
--- (see PressWeaponButton/ReleaseWeaponButton below), and neither LavaBow nor Interstellar
--- (confirmed real Tools under ReplicatedStorage.Assets.Guns) has a firing script inside the
--- Tool itself, so this fires by clicking rather than calling either by name directly --
--- EquipBestWeapon below is what actually chooses which of them ends up equipped.
+-- The auto lock-on discovery still applies -- firing is a real held-down mouse button (see
+-- PressWeaponButton/ReleaseWeaponButton/HoldFarmWeapon below), and neither LavaBow nor
+-- Interstellar (confirmed real Tools under ReplicatedStorage.Assets.Guns) has a firing script
+-- inside the Tool itself, so this fires by holding the button rather than calling either by
+-- name directly -- EquipBestWeapon below is what actually chooses which of them gets equipped.
 -- ============================================================================
 local function PressWeaponButton()
 	if type(mouse1press) == "function" then
@@ -819,6 +834,28 @@ local function EquipBestWeapon()
 	if tool then humanoid:EquipTool(tool) end
 end
 
+-- Confirmed from the place dump's GunClient.Update: holding MouseButton1 down just sets
+-- IsFiring = true once (InputBegan/InputEnded), and a separate per-frame loop already calls
+-- TryFire() every single frame IsFiring is true -- itself gated by CheckFireRate against the
+-- equipped weapon's real FireRate (0.168s for Interstellar, 1.25s for LavaBow). So a genuine
+-- press-and-hold fires at the weapon's actual max rate with no gaps, rather than however often
+-- a repeated click loop happens to land. weaponHeld tracks whether we're currently holding, so
+-- ReleaseFarmWeapon (called on ally-holdoff and on stop) and HoldFarmWeapon (called once
+-- clear/engaged) only ever send one real down/up transition each, not one per tick.
+local weaponHeld = false
+
+local function HoldFarmWeapon()
+	if weaponHeld then return end
+	PressWeaponButton()
+	weaponHeld = true
+end
+
+local function ReleaseFarmWeapon()
+	if not weaponHeld then return end
+	ReleaseWeaponButton()
+	weaponHeld = false
+end
+
 -- Was 60, then 25 while Fly was still involved -- you mentioned the game's own aim-assist/
 -- lock-on needs you within some distance of a target to actually engage. Kept at 25 as the
 -- height OFFSET above wherever the nearest zombie's own ground position currently is (not a
@@ -845,7 +882,18 @@ local farmState = {Enabled = false, Engaged = false, AntiFallConnection = nil, N
 -- use this, so the AoE splash lands in the middle of the group it can actually reach instead
 -- of wherever the single closest zombie happens to be standing. Falls back to nil (caller
 -- decides what to do) if no zombies are currently tracked, e.g. between waves.
+--
+-- Exception: while a Yeti/Ultra Yeti is present, this fully locks onto it instead -- ignoring
+-- every regular zombie entirely rather than averaging it into a crowd centroid -- since the
+-- boss is the one that actually takes forever to kill and everything else nearby is
+-- comparatively trivial by comparison.
 local function GetFarmClusterTarget()
+	local bossModel = FindBossModel()
+	if bossModel then
+		local bossRoot = bossModel:FindFirstChild("HumanoidRootPart")
+		if bossRoot then return bossRoot.Position end
+	end
+
 	local character = Player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	local originPosition = root and root.Position
@@ -1010,6 +1058,7 @@ end
 local function DisengageFarm()
 	farmState.Engaged = false
 	StopFarmAim()
+	ReleaseFarmWeapon()
 	if farmState.AntiFallConnection then
 		farmState.AntiFallConnection:Disconnect()
 		farmState.AntiFallConnection = nil
@@ -1176,24 +1225,27 @@ RunService.Stepped:Connect(function()
 	end
 end)
 
--- Repeated click loop for firing (see header comment for why not a single sustained hold),
--- plus keeping a weapon equipped in case it ever gets unequipped mid-farm. Gated on Engaged,
--- not Enabled -- this is exactly the loop that was clicking during the 3-second countdown
--- before Engaged existed to distinguish "toggled on" from "actually started." Also skips
--- firing entirely while HoldFireForAlly is set (StartFarmAim's per-frame ally check above) --
--- still aims/repositions as normal, just doesn't pull the trigger until the ally clears out
--- of the crosshair's area.
+-- Holds the weapon button down for as long as Auto Farm is actually allowed to shoot (see
+-- HoldFarmWeapon/ReleaseFarmWeapon above for why holding beats repeated clicks), releasing
+-- the instant it isn't -- Engaged goes false (stopping/countdown not finished yet) or
+-- HoldFireForAlly gets set (StartFarmAim's per-frame ally check) -- and re-holding once
+-- clear again. Also keeps a weapon equipped in case it ever gets unequipped mid-farm.
 task.spawn(function()
 	while true do
 		task.wait(0.1)
-		if not ScreenGui.Parent then return end
+		if not ScreenGui.Parent then
+			ReleaseFarmWeapon()
+			return
+		end
 		if farmState.Engaged then
 			EquipBestWeapon()
-			if not farmState.HoldFireForAlly then
-				PressWeaponButton()
-				task.wait(0.05)
-				ReleaseWeaponButton()
+			if farmState.HoldFireForAlly then
+				ReleaseFarmWeapon()
+			else
+				HoldFarmWeapon()
 			end
+		else
+			ReleaseFarmWeapon()
 		end
 	end
 end)
