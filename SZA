@@ -844,21 +844,23 @@ end
 -- TryFire() every single frame IsFiring is true -- itself gated by CheckFireRate against the
 -- equipped weapon's real FireRate (0.168s for Interstellar, 1.25s for LavaBow). So a genuine
 -- press-and-hold fires at the weapon's actual max rate with no gaps, rather than however often
--- a repeated click loop happens to land. weaponHeld tracks whether we're currently holding, so
--- ReleaseFarmWeapon (called on ally-holdoff and on stop) and HoldFarmWeapon (called once
--- clear/engaged) only ever send one real down/up transition each, not one per tick.
-local weaponHeld = false
-
+-- a repeated click loop happens to land.
+--
+-- Real bug: IsFiring is one global flag driven by ANY real MouseButton1 InputBegan/InputEnded,
+-- not just ours -- so an actual manual click while Auto Farm is holding fires a real
+-- InputEnded the instant you release it, which the game reads as "let go of the trigger" and
+-- sets IsFiring false, even though our own press was never released. HoldFarmWeapon used to
+-- skip re-pressing once it thought it was already holding, so it never noticed or corrected
+-- that -- auto-fire would just stay stopped until Auto Farm got toggled off and back on.
+-- Fixed by re-asserting the press every tick instead of once: harmless if IsFiring is already
+-- true, and self-corrects a manual-click interruption within at most 0.1s (the fire loop's
+-- own tick rate) instead of getting stuck.
 local function HoldFarmWeapon()
-	if weaponHeld then return end
 	PressWeaponButton()
-	weaponHeld = true
 end
 
 local function ReleaseFarmWeapon()
-	if not weaponHeld then return end
 	ReleaseWeaponButton()
-	weaponHeld = false
 end
 
 -- Was 60, then 25 while Fly was still involved -- you mentioned the game's own aim-assist/
@@ -952,7 +954,10 @@ end
 -- the RepositionFarmOverMobs chase above) to make any sense at all. Y lowered from 29 -- say
 -- if it needs to go further.
 local FARM_SWEEP_BASE_POSITION = Vector3.new(-122, 19, 64)
-local FARM_SWEEP_HALF_WIDTH = 25
+-- Asymmetric per feedback -- the strafe axis's positive direction (+X, see strafeAxis below)
+-- is your right, so this reaches quite a bit further that way than to the left.
+local FARM_SWEEP_LEFT_WIDTH = 25
+local FARM_SWEEP_RIGHT_WIDTH = 50
 local FARM_SWEEP_PERIOD = 6
 
 -- Fixed, not recomputed from wherever the crowd happens to be -- turns out regular zombies
@@ -971,11 +976,14 @@ local farmSweepStartClock = nil
 -- between two points or trying to simulate literal A/D key holds (which would also fight the
 -- anti-fall Heartbeat below, since that unconditionally zeroes velocity every frame). The
 -- strafe axis is perpendicular to the now-fixed facing direction, which for (0, 0, -1) works
--- out to pure world-X -- exactly the single axis asked for.
+-- out to pure world-X -- exactly the single axis asked for. Split into left/right widths
+-- (picking whichever applies by the sine's current sign) instead of one symmetric width, so
+-- the reach can differ per side while the motion through center stays smooth and continuous.
 local function GetFarmSweepPosition()
 	if not farmSweepStartClock then farmSweepStartClock = os.clock() end
 	local elapsed = os.clock() - farmSweepStartClock
-	local sweepOffset = math.sin(elapsed / FARM_SWEEP_PERIOD * (2 * math.pi)) * FARM_SWEEP_HALF_WIDTH
+	local sineValue = math.sin(elapsed / FARM_SWEEP_PERIOD * (2 * math.pi))
+	local sweepOffset = sineValue >= 0 and sineValue * FARM_SWEEP_RIGHT_WIDTH or sineValue * FARM_SWEEP_LEFT_WIDTH
 	local strafeAxis = Vector3.new(-FARM_SWEEP_FACING_DIRECTION.Z, 0, FARM_SWEEP_FACING_DIRECTION.X)
 	return FARM_SWEEP_BASE_POSITION + strafeAxis * sweepOffset
 end
@@ -997,6 +1005,13 @@ end
 -- to confirm them against since there's no real "camera" data to check.
 local FARM_CAMERA_BACK_DISTANCE = 20
 local FARM_CAMERA_HEIGHT_OFFSET = 12
+-- Only applied to the fixed-facing sweep camera below, not the boss lock-on camera further
+-- down -- that one already looks directly at the boss's real position, and biasing it
+-- upward would just throw off precision on the one target that actually needs it. Look-at
+-- point is well out in front (not just 1 stud) so this offset comes out as a gentle pitch
+-- rather than an almost-straight-up stare.
+local FARM_CAMERA_LOOKAHEAD_DISTANCE = 40
+local FARM_CAMERA_UP_TILT = 12
 -- A bit more generous than the game's own ~120px lock-on radius, so the crosshair steers
 -- clear of an ally with some margin instead of right up against the exact threshold.
 local FARM_ALLY_SAFE_PIXELS = 130
@@ -1027,7 +1042,8 @@ local function StartFarmAim()
 			local sweepPosition = GetFarmSweepPosition()
 			root.CFrame = CFrame.lookAt(sweepPosition, sweepPosition + FARM_SWEEP_FACING_DIRECTION)
 			local cameraPosition = sweepPosition - FARM_SWEEP_FACING_DIRECTION * FARM_CAMERA_BACK_DISTANCE + Vector3.new(0, FARM_CAMERA_HEIGHT_OFFSET, 0)
-			currentCamera.CFrame = CFrame.lookAt(cameraPosition, sweepPosition + FARM_SWEEP_FACING_DIRECTION)
+			local cameraLookAt = sweepPosition + FARM_SWEEP_FACING_DIRECTION * FARM_CAMERA_LOOKAHEAD_DISTANCE + Vector3.new(0, FARM_CAMERA_UP_TILT, 0)
+			currentCamera.CFrame = CFrame.lookAt(cameraPosition, cameraLookAt)
 			farmState.HoldFireForAlly = false
 			return
 		end
