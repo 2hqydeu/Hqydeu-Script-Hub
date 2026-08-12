@@ -733,6 +733,17 @@ local function ForEachHostileZombieModel(callback)
 	end
 end
 
+-- The allies from Reduce Lag's Head ESP (green) -- used by Auto Farm's aim loop below to
+-- avoid pointing the crosshair at one, since the game's own auto-aim can't tell an ally
+-- apart from a hostile on its own (same rig, see Reduce Lag's notes).
+local function ForEachFriendlyZombieModel(callback)
+	local container = workspace:FindFirstChild("FriendlyZombies_Local")
+	if not container then return end
+	for _, model in ipairs(container:GetChildren()) do
+		if model:IsA("Model") then callback(model) end
+	end
+end
+
 -- ============================================================================
 -- Farm, rebuilt again -- still drifting even with the BodyVelocity/BodyGyro anchor from the
 -- last round. That combo only ever fights VELOCITY (holds it at zero once per frame), which
@@ -826,7 +837,7 @@ local FARM_REPOSITION_INTERVAL = 2
 -- repositioning, and the fire loop -- are actually allowed to run. They used to be the same
 -- flag, which meant the fire loop (and noclip) started immediately on toggle instead of
 -- waiting out the 3-second countdown like the countdown itself implies they should.
-local farmState = {Enabled = false, Engaged = false, AntiFallConnection = nil, NoclipOriginal = {}}
+local farmState = {Enabled = false, Engaged = false, AntiFallConnection = nil, NoclipOriginal = {}, HoldFireForAlly = false}
 
 -- Nearest hostile zombie's position and, if others are within FARM_CLUSTER_RADIUS of it, the
 -- centroid of that whole group instead of just the one nearest straggler -- both the
@@ -891,6 +902,17 @@ end
 -- -- that's the real reason Farm "worked" but felt slow. Fixed by taking the camera over
 -- (Scriptable) and continuously pointing both it and the real mouse cursor at the crowd's
 -- centroid every frame, so the game's own auto-aim has something to actually lock onto.
+--
+-- Camera sits pulled back and raised from the character (along the horizontal direction
+-- toward the aim target) rather than exactly at the character's own position, which read as
+-- forced first-person -- distance/height here are just handles to taste, nothing in the dump
+-- to confirm them against since there's no real "camera" data to check.
+local FARM_CAMERA_BACK_DISTANCE = 20
+local FARM_CAMERA_HEIGHT_OFFSET = 12
+-- A bit more generous than the game's own ~120px lock-on radius, so the crosshair steers
+-- clear of an ally with some margin instead of right up against the exact threshold.
+local FARM_ALLY_SAFE_PIXELS = 130
+
 local farmAimConnection
 
 local function StartFarmAim()
@@ -905,9 +927,35 @@ local function StartFarmAim()
 		if not currentCamera or not root then return end
 		local aimTarget = GetFarmClusterTarget()
 		if not aimTarget then return end
-		currentCamera.CFrame = CFrame.lookAt(root.Position, aimTarget)
+
+		local horizontalDirection = Vector3.new(aimTarget.X - root.Position.X, 0, aimTarget.Z - root.Position.Z)
+		horizontalDirection = horizontalDirection.Magnitude > 0.01 and horizontalDirection.Unit or Vector3.new(0, 0, -1)
+		local cameraPosition = root.Position - horizontalDirection * FARM_CAMERA_BACK_DISTANCE + Vector3.new(0, FARM_CAMERA_HEIGHT_OFFSET, 0)
+		currentCamera.CFrame = CFrame.lookAt(cameraPosition, aimTarget)
+
 		local screenPoint, onScreen = currentCamera:WorldToScreenPoint(aimTarget)
-		if onScreen and type(mousemoveabs) == "function" then
+		if not onScreen then return end
+
+		-- FriendlyZombies_Local models use the identical rig to hostiles (confirmed in Reduce
+		-- Lag's own notes), so the game's aim-lock has no way to tell them apart from a
+		-- hostile on its own -- withhold firing (see the fire loop below) the moment an ally
+		-- drifts within the same on-screen area the crosshair is aiming at, and resume once
+		-- it's clear, rather than risk landing an explosive arrow on one.
+		local allyTooClose = false
+		ForEachFriendlyZombieModel(function(model)
+			if allyTooClose then return end
+			local friendlyRoot = model:FindFirstChild("HumanoidRootPart")
+			if not friendlyRoot then return end
+			local friendlyScreenPoint, friendlyOnScreen = currentCamera:WorldToScreenPoint(friendlyRoot.Position)
+			if not friendlyOnScreen then return end
+			local dx, dy = friendlyScreenPoint.X - screenPoint.X, friendlyScreenPoint.Y - screenPoint.Y
+			if math.sqrt(dx * dx + dy * dy) <= FARM_ALLY_SAFE_PIXELS then
+				allyTooClose = true
+			end
+		end)
+		farmState.HoldFireForAlly = allyTooClose
+
+		if type(mousemoveabs) == "function" then
 			pcall(mousemoveabs, screenPoint.X, screenPoint.Y)
 		end
 	end)
@@ -918,6 +966,7 @@ local function StopFarmAim()
 		farmAimConnection:Disconnect()
 		farmAimConnection = nil
 	end
+	farmState.HoldFireForAlly = false
 	local camera = workspace.CurrentCamera
 	if camera then
 		camera.CameraType = Enum.CameraType.Custom
@@ -1130,16 +1179,21 @@ end)
 -- Repeated click loop for firing (see header comment for why not a single sustained hold),
 -- plus keeping a weapon equipped in case it ever gets unequipped mid-farm. Gated on Engaged,
 -- not Enabled -- this is exactly the loop that was clicking during the 3-second countdown
--- before Engaged existed to distinguish "toggled on" from "actually started."
+-- before Engaged existed to distinguish "toggled on" from "actually started." Also skips
+-- firing entirely while HoldFireForAlly is set (StartFarmAim's per-frame ally check above) --
+-- still aims/repositions as normal, just doesn't pull the trigger until the ally clears out
+-- of the crosshair's area.
 task.spawn(function()
 	while true do
 		task.wait(0.1)
 		if not ScreenGui.Parent then return end
 		if farmState.Engaged then
 			EquipBestWeapon()
-			PressWeaponButton()
-			task.wait(0.05)
-			ReleaseWeaponButton()
+			if not farmState.HoldFireForAlly then
+				PressWeaponButton()
+				task.wait(0.05)
+				ReleaseWeaponButton()
+			end
 		end
 	end
 end)
