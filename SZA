@@ -754,8 +754,8 @@ end
 -- The auto lock-on discovery still applies -- firing is a repeated press+release click loop
 -- (see PressWeaponButton/ReleaseWeaponButton below), and neither LavaBow nor Interstellar
 -- (confirmed real Tools under ReplicatedStorage.Assets.Guns) has a firing script inside the
--- Tool itself, so this equips whatever Tool is already in Backpack rather than hardcoding
--- either by name.
+-- Tool itself, so this fires by clicking rather than calling either by name directly --
+-- EquipBestWeapon below is what actually chooses which of them ends up equipped.
 -- ============================================================================
 local function PressWeaponButton()
 	if type(mouse1press) == "function" then
@@ -778,12 +778,32 @@ local function ReleaseWeaponButton()
 	end)
 end
 
-local function EquipAnyWeapon()
+-- Confirmed from GunConfig in the place dump: Interstellar (0.168s fire rate, pierces 4
+-- targets, its own small impact burst) and LavaBow (2160 direct / 3600 explosion damage in a
+-- 21-stud radius) are both real and dramatically stronger than a generic weapon -- which gun
+-- ends up equipped matters far more to kill speed than anything about movement or aim.
+-- Actively prefers them, in this order, over "whatever's first in Backpack"; falls back to
+-- that only if neither is owned.
+local PREFERRED_WEAPON_NAMES = {"Interstellar", "LavaBow"}
+
+local function EquipBestWeapon()
 	local character = Player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if not humanoid or not character then return end
-	if character:FindFirstChildOfClass("Tool") then return end
 	local backpack = Player:FindFirstChildOfClass("Backpack")
+
+	local equipped = character:FindFirstChildOfClass("Tool")
+	if equipped and table.find(PREFERRED_WEAPON_NAMES, equipped.Name) then return end
+
+	for _, name in ipairs(PREFERRED_WEAPON_NAMES) do
+		local preferred = backpack and backpack:FindFirstChild(name)
+		if preferred and preferred:IsA("Tool") then
+			humanoid:EquipTool(preferred)
+			return
+		end
+	end
+
+	if equipped then return end
 	local tool = backpack and backpack:FindFirstChildOfClass("Tool")
 	if tool then humanoid:EquipTool(tool) end
 end
@@ -793,7 +813,13 @@ end
 -- height OFFSET above wherever the nearest zombie's own ground position currently is (not a
 -- fixed world Y), so it stays sensible across maps/terrain and re-centers as the crowd moves.
 local FARM_HEIGHT = 25
-local FARM_REPOSITION_INTERVAL = 5
+-- Zombies within this of the nearest one count as the same "cluster" for both the reposition
+-- snap and the continuous aim target (see GetFarmClusterTarget/StartFarmAim below).
+local FARM_CLUSTER_RADIUS = 45
+-- Was 5 -- now that Farm actually aims instead of firing blind (see StartFarmAim), a stale
+-- hover position means aiming at where the crowd USED to be, not where it is. Shortened so it
+-- re-centers close enough to real time as the group moves or thins out from kills.
+local FARM_REPOSITION_INTERVAL = 2
 
 -- Enabled is the toggle's user-facing intent (on the instant you click it, before the
 -- countdown even starts); Engaged is whether the real effects -- noclip, anti-fall,
@@ -802,27 +828,44 @@ local FARM_REPOSITION_INTERVAL = 5
 -- waiting out the 3-second countdown like the countdown itself implies they should.
 local farmState = {Enabled = false, Engaged = false, AntiFallConnection = nil, NoclipOriginal = {}}
 
--- Nearest hostile zombie's ground position -- the reposition snap targets X/Z from this and
--- adds FARM_HEIGHT on top for Y. Falls back to nil (caller decides what to do) if no
--- zombies are currently tracked, e.g. between waves.
-local function GetFarmTargetGroundPosition()
+-- Nearest hostile zombie's position and, if others are within FARM_CLUSTER_RADIUS of it, the
+-- centroid of that whole group instead of just the one nearest straggler -- both the
+-- reposition snap (X/Z, +FARM_HEIGHT for Y) and the continuous aim target (StartFarmAim)
+-- use this, so the AoE splash lands in the middle of the group it can actually reach instead
+-- of wherever the single closest zombie happens to be standing. Falls back to nil (caller
+-- decides what to do) if no zombies are currently tracked, e.g. between waves.
+local function GetFarmClusterTarget()
 	local character = Player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
-	local nearestPosition, nearestDistance = nil, math.huge
+	local originPosition = root and root.Position
+
+	local positions = {}
 	ForEachHostileZombieModel(function(model)
 		local zombieRoot = model:FindFirstChild("HumanoidRootPart")
-		if not zombieRoot then return end
-		if root then
-			local distance = (zombieRoot.Position - root.Position).Magnitude
+		if zombieRoot then table.insert(positions, zombieRoot.Position) end
+	end)
+	if #positions == 0 then return nil end
+
+	local nearestPosition = positions[1]
+	if originPosition then
+		local nearestDistance = (positions[1] - originPosition).Magnitude
+		for _, position in ipairs(positions) do
+			local distance = (position - originPosition).Magnitude
 			if distance < nearestDistance then
 				nearestDistance = distance
-				nearestPosition = zombieRoot.Position
+				nearestPosition = position
 			end
-		elseif not nearestPosition then
-			nearestPosition = zombieRoot.Position
 		end
-	end)
-	return nearestPosition
+	end
+
+	local sumPosition, count = Vector3.zero, 0
+	for _, position in ipairs(positions) do
+		if (position - nearestPosition).Magnitude <= FARM_CLUSTER_RADIUS then
+			sumPosition = sumPosition + position
+			count = count + 1
+		end
+	end
+	return sumPosition / count
 end
 
 -- The actual anti-drift fix -- a hard position snap can't accumulate error the way
@@ -832,10 +875,53 @@ local function RepositionFarmOverMobs()
 	local character = Player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	if not root then return end
-	local targetGround = GetFarmTargetGroundPosition()
+	local targetGround = GetFarmClusterTarget()
 	if not targetGround then return end
 	local _, yaw = root.CFrame:ToOrientation()
 	root.CFrame = CFrame.new(targetGround.X, targetGround.Y + FARM_HEIGHT, targetGround.Z) * CFrame.Angles(0, yaw, 0)
+end
+
+-- Confirmed from the place dump's real GunClient.GetAutoAimTarget: on PC it only computes a
+-- genuinely aimed shot if it finds a zombie within ~120 screen-pixels of wherever
+-- LocalPlayer:GetMouse() actually is, and only if that zombie is roughly in front of the
+-- camera -- otherwise GetAimDirection falls back to the character's flat horizontal
+-- LookVector with the vertical component forced to 0, no matter how the camera is tilted.
+-- Farm used to tilt the camera once at engage and never touch the mouse again, so almost
+-- every shot fired while hovering above a crowd flew out dead level, clean over their heads
+-- -- that's the real reason Farm "worked" but felt slow. Fixed by taking the camera over
+-- (Scriptable) and continuously pointing both it and the real mouse cursor at the crowd's
+-- centroid every frame, so the game's own auto-aim has something to actually lock onto.
+local farmAimConnection
+
+local function StartFarmAim()
+	local camera = workspace.CurrentCamera
+	if not camera then return end
+	camera.CameraType = Enum.CameraType.Scriptable
+	farmAimConnection = RunService.RenderStepped:Connect(function()
+		if not farmState.Engaged then return end
+		local currentCamera = workspace.CurrentCamera
+		local character = Player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if not currentCamera or not root then return end
+		local aimTarget = GetFarmClusterTarget()
+		if not aimTarget then return end
+		currentCamera.CFrame = CFrame.lookAt(root.Position, aimTarget)
+		local screenPoint, onScreen = currentCamera:WorldToScreenPoint(aimTarget)
+		if onScreen and type(mousemoveabs) == "function" then
+			pcall(mousemoveabs, screenPoint.X, screenPoint.Y)
+		end
+	end)
+end
+
+local function StopFarmAim()
+	if farmAimConnection then
+		farmAimConnection:Disconnect()
+		farmAimConnection = nil
+	end
+	local camera = workspace.CurrentCamera
+	if camera then
+		camera.CameraType = Enum.CameraType.Custom
+	end
 end
 
 local function EngageFarm()
@@ -843,12 +929,12 @@ local function EngageFarm()
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	if not character or not root then return end
 	farmState.Engaged = true
-	EquipAnyWeapon()
+	EquipBestWeapon()
 
 	RepositionFarmOverMobs()
 	-- No zombies tracked yet to reposition onto (e.g. between waves) -- still get some
 	-- height so noclip/anti-fall have somewhere sane to hold in the meantime.
-	if not GetFarmTargetGroundPosition() then
+	if not GetFarmClusterTarget() then
 		root.CFrame = root.CFrame + Vector3.new(0, FARM_HEIGHT, 0)
 	end
 
@@ -869,16 +955,12 @@ local function EngageFarm()
 		end
 	end)
 
-	-- One-time courtesy tilt so you start out already looking roughly toward the ground --
-	-- never reasserted after this, so third-person control stays entirely yours from here.
-	local camera = workspace.CurrentCamera
-	if camera then
-		camera.CFrame = CFrame.new(camera.CFrame.Position) * CFrame.Angles(-math.rad(55), 0, 0)
-	end
+	StartFarmAim()
 end
 
 local function DisengageFarm()
 	farmState.Engaged = false
+	StopFarmAim()
 	if farmState.AntiFallConnection then
 		farmState.AntiFallConnection:Disconnect()
 		farmState.AntiFallConnection = nil
@@ -895,18 +977,20 @@ local function DisengageFarm()
 	end
 end
 
-local FarmRow, FarmToggle = CreateFeatureRow(6, "Farm")
+local FarmRow, FarmToggle = CreateFeatureRow(6, "Auto Farm")
 
 -- ============================================================================
 -- Countdown + Stop overlay: the repeated click-to-fire loop clicks wherever your cursor
--- CURRENTLY is -- if it was still sitting over the Farm toggle the instant it turned on,
+-- CURRENTLY is -- if it was still sitting over the Auto Farm toggle the instant it turned on,
 -- that meant rapidly re-clicking the panel itself, which is exactly what made it feel stuck
--- ("can't get off the GUI"). A 3-second delay before Farm actually engages gives you a
+-- ("can't get off the GUI"). A 3-second delay before Auto Farm actually engages gives you a
 -- window to move your mouse into the game world first, and a dedicated Stop button --
--- visible for as long as Farm is on, not just during the countdown -- gives you an
--- on-screen escape hatch beyond the F keybind. Styled to match UE's own structure-alert
--- notifications (GothamBlack, white text with a black stroke, no background box), per
--- request.
+-- visible for as long as Auto Farm is on, not just during the countdown -- gives you an
+-- on-screen escape hatch beyond the F/Shift+F keybinds. Styled to match UE's own
+-- structure-alert notifications (GothamBlack, white text with a black stroke, no background
+-- box), per request. A small notice label under it calls out that Auto Farm now drives the
+-- real mouse cursor on its own (see StartFarmAim) -- not obvious from the UI otherwise, and
+-- worth knowing before your cursor starts moving by itself.
 -- ============================================================================
 local FarmStopButton = Instance.new("TextButton")
 FarmStopButton.Name = "FarmStop"
@@ -915,7 +999,7 @@ FarmStopButton.Size = UDim2.new(0, 140, 0, 36)
 FarmStopButton.Position = UDim2.new(0.5, 0, 0, 50)
 FarmStopButton.BackgroundColor3 = Color3.fromRGB(200, 45, 45)
 FarmStopButton.BorderSizePixel = 0
-FarmStopButton.Text = "STOP FARM"
+FarmStopButton.Text = "STOP AUTO FARM"
 FarmStopButton.Font = Enum.Font.GothamBlack
 FarmStopButton.TextSize = 15
 FarmStopButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -925,11 +1009,28 @@ FarmStopButton.Parent = ScreenGui
 Instance.new("UICorner", FarmStopButton).CornerRadius = UDim.new(0, 8)
 AddPressBounce(FarmStopButton)
 
+local FarmNoticeLabel = Instance.new("TextLabel")
+FarmNoticeLabel.Name = "FarmNotice"
+FarmNoticeLabel.AnchorPoint = Vector2.new(0.5, 0)
+FarmNoticeLabel.Size = UDim2.new(0, 320, 0, 16)
+FarmNoticeLabel.Position = UDim2.new(0.5, 0, 0, 88)
+FarmNoticeLabel.BackgroundTransparency = 1
+FarmNoticeLabel.Text = "Moves your mouse to aim -- Shift+F force-stops"
+FarmNoticeLabel.Font = UIFont
+FarmNoticeLabel.TextSize = 12
+FarmNoticeLabel.TextTransparency = 0.2
+FarmNoticeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+FarmNoticeLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+FarmNoticeLabel.TextStrokeTransparency = 0.5
+FarmNoticeLabel.Visible = false
+FarmNoticeLabel.ZIndex = 210
+FarmNoticeLabel.Parent = ScreenGui
+
 local FarmCountdownLabel = Instance.new("TextLabel")
 FarmCountdownLabel.Name = "FarmCountdown"
 FarmCountdownLabel.AnchorPoint = Vector2.new(0.5, 0)
 FarmCountdownLabel.Size = UDim2.new(0, 400, 0, 32)
-FarmCountdownLabel.Position = UDim2.new(0.5, 0, 0, 90)
+FarmCountdownLabel.Position = UDim2.new(0.5, 0, 0, 110)
 FarmCountdownLabel.BackgroundTransparency = 1
 FarmCountdownLabel.Text = ""
 FarmCountdownLabel.RichText = true
@@ -950,6 +1051,7 @@ local function SetFarmEnabled(enabled)
 	farmState.Enabled = enabled
 	FarmToggle.Text = enabled and "On" or "Off"
 	FarmStopButton.Visible = enabled
+	FarmNoticeLabel.Visible = enabled
 	farmCountdownToken = farmCountdownToken + 1
 
 	if enabled then
@@ -958,7 +1060,7 @@ local function SetFarmEnabled(enabled)
 		task.spawn(function()
 			for secondsLeft = 3, 1, -1 do
 				if farmCountdownToken ~= myToken then return end
-				FarmCountdownLabel.Text = "Farm starting in " .. secondsLeft .. "..."
+				FarmCountdownLabel.Text = "Auto Farm starting in " .. secondsLeft .. "..."
 				task.wait(1)
 			end
 			if farmCountdownToken ~= myToken then return end
@@ -979,13 +1081,20 @@ FarmToggle.MouseButton1Click:Connect(function()
 	SetFarmEnabled(not farmState.Enabled)
 end)
 
--- Hard off-switch independent of the UI -- shouldn't be needed anymore now that Farm no
--- longer fights the mouse cursor, but kept as a safety net given how badly stuck the first
--- version could leave you.
+-- F toggles Auto Farm on/off same as clicking the row's own toggle. Shift+F is a dedicated
+-- emergency stop instead of another toggle -- always stops, never starts -- since Auto Farm
+-- now drives the real mouse cursor while engaged (see StartFarmAim), a keyboard-only escape
+-- hatch that doesn't depend on where the cursor currently is matters more than it used to.
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then return end
 	if input.KeyCode == Enum.KeyCode.F then
-		SetFarmEnabled(not farmState.Enabled)
+		local shiftHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+			or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+		if shiftHeld then
+			SetFarmEnabled(false)
+		else
+			SetFarmEnabled(not farmState.Enabled)
+		end
 	end
 end)
 
@@ -1027,7 +1136,7 @@ task.spawn(function()
 		task.wait(0.1)
 		if not ScreenGui.Parent then return end
 		if farmState.Engaged then
-			EquipAnyWeapon()
+			EquipBestWeapon()
 			PressWeaponButton()
 			task.wait(0.05)
 			ReleaseWeaponButton()
