@@ -863,6 +863,24 @@ local function ReleaseFarmWeapon()
 	ReleaseWeaponButton()
 end
 
+-- Real bug, round two: PanelFrame is Active = true, so it (and everything on it) consumes
+-- clicks before they reach the 3D world -- the game's own IsFiring listener even explicitly
+-- ignores any click with gameProcessedEvent set, i.e. one a GUI already consumed. Re-pressing
+-- every tick (the fix above) means that every 0.1s we were sending a real synthetic
+-- MouseButton1 down at wherever your ACTUAL cursor happened to be -- which, the moment you
+-- opened the panel and moved your mouse onto a toggle to click it, was on top of PanelFrame
+-- itself. That synthetic down landing on a button mid-click reads as noise to Roblox's normal
+-- click handling, breaking your real click. Fixed by skipping the press (and releasing if
+-- currently held) whenever the cursor is currently over this panel, resuming automatically
+-- once it moves off.
+local function IsMouseOverFarmPanel()
+	local mouseLocation = UserInputService:GetMouseLocation()
+	local topLeft = PanelFrame.AbsolutePosition
+	local size = PanelFrame.AbsoluteSize
+	return mouseLocation.X >= topLeft.X and mouseLocation.X <= topLeft.X + size.X
+		and mouseLocation.Y >= topLeft.Y and mouseLocation.Y <= topLeft.Y + size.Y
+end
+
 -- Was 60, then 25 while Fly was still involved -- you mentioned the game's own aim-assist/
 -- lock-on needs you within some distance of a target to actually engage. Kept at 25 as the
 -- height OFFSET above wherever the nearest zombie's own ground position currently is (not a
@@ -1312,9 +1330,10 @@ end)
 
 -- Holds the weapon button down for as long as Auto Farm is actually allowed to shoot (see
 -- HoldFarmWeapon/ReleaseFarmWeapon above for why holding beats repeated clicks), releasing
--- the instant it isn't -- Engaged goes false (stopping/countdown not finished yet) or
--- HoldFireForAlly gets set (StartFarmAim's per-frame ally check) -- and re-holding once
--- clear again. Also keeps a weapon equipped in case it ever gets unequipped mid-farm.
+-- the instant it isn't -- Engaged goes false (stopping/countdown not finished yet),
+-- HoldFireForAlly gets set (StartFarmAim's per-frame ally check), or the cursor is currently
+-- over this panel (IsMouseOverFarmPanel, see above) -- and re-holding once clear again. Also
+-- keeps a weapon equipped in case it ever gets unequipped mid-farm.
 task.spawn(function()
 	while true do
 		task.wait(0.1)
@@ -1324,7 +1343,7 @@ task.spawn(function()
 		end
 		if farmState.Engaged then
 			EquipBestWeapon()
-			if farmState.HoldFireForAlly then
+			if farmState.HoldFireForAlly or IsMouseOverFarmPanel() then
 				ReleaseFarmWeapon()
 			else
 				HoldFarmWeapon()
