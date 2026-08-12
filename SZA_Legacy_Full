@@ -1,0 +1,1425 @@
+-- SZA_Legacy_Full: the dynamic crowd-chasing version of Auto Farm, preserved as of commit
+-- 8fd07c7 -- before it got replaced with a Tundra-specific fixed-post sweep in SZA proper.
+-- Kept whole (same convention as Main_Legacy_Full/UE_Legacy_Full) since it still works fine
+-- and isn't tied to one map's coordinates the way the new version is -- it chases whatever
+-- zombie cluster is nearest wherever you actually are, hovering and aiming continuously,
+-- rather than sweeping a fixed spot. Worth falling back to on any map other than Tundra, or
+-- if the fixed post ever needs re-deriving from scratch.
+--
+-- Not maintained going forward -- SZA is the active module. This is a reference copy only.
+
+-- SZA (Survive Zombie Arena) module for Serenity. ROUGH DRAFT / PROTOTYPE, built from an
+-- actual client-side dump of the place file (Potassium/Dex export: place 98927955463992
+-- Arena.rbxlx), not guesswork.
+--
+-- Confirmed from the dump: the real Buy Health button lives at
+-- PlayerGui.MainGui.ControlPanel2.HealthUpgrade (a TextButton -- cost "25", heals to "100"
+-- per its own child labels), and there's a matching RemoteEvent at ReplicatedStorage.
+-- Remotes.UpgradeRemotes.PurchaseHealthUpgrade, but no decompiled client script anywhere in
+-- the dump actually calls that remote (with whatever arguments it expects), so its call
+-- signature isn't guessed at all here -- this clicks the real button instead and lets the
+-- game's own already-working handler take it from there, same approach used everywhere else
+-- in this hub whenever a remote's arguments aren't confirmed. The "press C to buy" keybind
+-- mentioned wasn't found in any decompiled script either (no literal KeyCode.C reference
+-- turned up anywhere in the dump), so it's not simulated -- clicking the real button works
+-- regardless of whatever key the game itself has bound to it.
+--
+-- Ability Spam is the opposite situation: no dedicated ability-cast GUI button turned up
+-- anywhere under MainGui (its top level is all shop/currency UI -- Minerals, gear upgrades,
+-- Buy Health, robux offers), and no literal "KeyCode.Q/E/R" text turned up in any decompiled
+-- script either -- plausible if the real binding builds Enum.KeyCode[key] from a config
+-- table rather than writing the enum out literally, which wouldn't show up as that exact
+-- text. Real ability plumbing IS confirmed to exist (ReplicatedStorage.Remotes has a
+-- RemoteEvent literally named "Ability", plus per-class ability ModuleScripts like
+-- WorldEnderAbilityClient/StarShooterAbilityClient, and Souls has its own SoulsChanged/
+-- GetSouls remotes matching what you described), just not its exact call signature or
+-- keybind wiring. Given that and no clickable button to fall back to, this simulates the
+-- actual Q/E/R keypresses instead -- same keypress/keyrelease -> VirtualInputManager
+-- fallback chain already used successfully in UE and Animal_Hospital -- so it works
+-- regardless of the underlying binding mechanism, same reasoning as clicking a real button.
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+
+local Player = Players.LocalPlayer
+local FrameColor = Color3.fromRGB(3, 3, 3)
+local AccentColor = Color3.fromRGB(255, 255, 255)
+local UIFont = Enum.Font.FredokaOne
+local GameRowTransparency = 0
+
+-- UI: same standalone-panel shell as every other game module (MM2/QOD/UE/Suspect).
+local existingScreenGui = CoreGui:FindFirstChild("SerenitySZA")
+if existingScreenGui then existingScreenGui:Destroy() end
+-- Farm no longer binds a RenderStep itself, but an older version of this script still
+-- running (before re-executing this one) might have -- clean up any stale binding so it
+-- doesn't error trying to bind the same name twice, and so the old version's callback
+-- can't keep running alongside this one.
+pcall(function() RunService:UnbindFromRenderStep("SZA_Farm") end)
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "SerenitySZA"
+ScreenGui.Parent = CoreGui
+ScreenGui.ResetOnSpawn = false
+
+local FULL_HEIGHT = 400
+local MINI_HEIGHT = 44
+
+local PanelFrame = Instance.new("Frame")
+PanelFrame.Name = "SZAPanel"
+PanelFrame.Size = UDim2.new(0, 280, 0, FULL_HEIGHT)
+PanelFrame.Position = getgenv().Serenity_SZA_PanelPosition or UDim2.new(0.5, -140, 0.5, -200)
+PanelFrame.AnchorPoint = Vector2.new(0, 0)
+PanelFrame.BackgroundColor3 = FrameColor
+PanelFrame.BorderSizePixel = 0
+PanelFrame.ClipsDescendants = true
+PanelFrame.Active = true
+PanelFrame.Parent = ScreenGui
+
+local PanelCorner = Instance.new("UICorner")
+PanelCorner.CornerRadius = UDim.new(0, 14)
+PanelCorner.Parent = PanelFrame
+
+local PanelScale = Instance.new("UIScale")
+PanelScale.Scale = 0.85
+PanelScale.Parent = PanelFrame
+PanelFrame.BackgroundTransparency = 1
+TweenService:Create(PanelScale, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+TweenService:Create(PanelFrame, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0}):Play()
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Name = "TitleLabel"
+-- Widened from 160 (fit for "SZA") and given TextScaled + a max-size constraint so "Survive
+-- Zombie Arena" shrinks to fit instead of clipping, regardless of exact pixel width at
+-- render time.
+TitleLabel.Size = UDim2.new(0, 210, 0, 24)
+TitleLabel.Position = UDim2.new(0, 16, 0, 10)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "Survive Zombie Arena"
+TitleLabel.Font = UIFont
+TitleLabel.TextSize = 15
+TitleLabel.TextScaled = true
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Parent = PanelFrame
+local TitleLabelSizeConstraint = Instance.new("UITextSizeConstraint")
+TitleLabelSizeConstraint.MaxTextSize = 15
+TitleLabelSizeConstraint.Parent = TitleLabel
+
+local function AddButtonHover(button, hoverColor, normalColor)
+	normalColor = normalColor or button.BackgroundColor3
+	button.MouseEnter:Connect(function()
+		TweenService:Create(button, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = hoverColor}):Play()
+	end)
+	button.MouseLeave:Connect(function()
+		TweenService:Create(button, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = normalColor}):Play()
+	end)
+end
+
+local function GetOrCreateUIScale(target)
+	local scale = target:FindFirstChildOfClass("UIScale")
+	if not scale then
+		scale = Instance.new("UIScale")
+		scale.Parent = target
+	end
+	return scale
+end
+
+local function AddPressBounce(button)
+	local scale = GetOrCreateUIScale(button)
+	local pressed = false
+	local function release()
+		if not pressed then return end
+		pressed = false
+		TweenService:Create(scale, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+	end
+	button.MouseButton1Down:Connect(function()
+		pressed = true
+		TweenService:Create(scale, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 0.8}):Play()
+	end)
+	button.MouseButton1Up:Connect(release)
+	button.MouseLeave:Connect(release)
+end
+
+local function AddFadeDivider(divider)
+	local gradient = Instance.new("UIGradient")
+	gradient.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(0.5, 0),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	gradient.Parent = divider
+end
+
+local MinimizeButton = Instance.new("TextButton")
+MinimizeButton.Name = "MinimizeButton"
+MinimizeButton.Size = UDim2.new(0, 12, 0, 12)
+MinimizeButton.Position = UDim2.new(1, -38, 0, 16)
+MinimizeButton.BackgroundColor3 = Color3.fromRGB(255, 189, 46)
+MinimizeButton.BorderSizePixel = 0
+MinimizeButton.Text = ""
+MinimizeButton.AutoButtonColor = false
+MinimizeButton.Parent = PanelFrame
+Instance.new("UICorner", MinimizeButton).CornerRadius = UDim.new(1, 0)
+local minimizeButtonStroke = Instance.new("UIStroke")
+minimizeButtonStroke.Color = Color3.fromRGB(196, 142, 20)
+minimizeButtonStroke.Thickness = 1
+minimizeButtonStroke.Parent = MinimizeButton
+MinimizeButton.MouseEnter:Connect(function()
+	TweenService:Create(MinimizeButton, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 205, 92)}):Play()
+end)
+MinimizeButton.MouseLeave:Connect(function()
+	TweenService:Create(MinimizeButton, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 189, 46)}):Play()
+end)
+AddPressBounce(MinimizeButton)
+
+local CloseButton = Instance.new("TextButton")
+CloseButton.Name = "CloseButton"
+CloseButton.Size = UDim2.new(0, 12, 0, 12)
+CloseButton.Position = UDim2.new(1, -20, 0, 16)
+CloseButton.BackgroundColor3 = Color3.fromRGB(255, 95, 87)
+CloseButton.BorderSizePixel = 0
+CloseButton.Text = ""
+CloseButton.AutoButtonColor = false
+CloseButton.Parent = PanelFrame
+Instance.new("UICorner", CloseButton).CornerRadius = UDim.new(1, 0)
+local closeButtonStroke = Instance.new("UIStroke")
+closeButtonStroke.Color = Color3.fromRGB(196, 68, 62)
+closeButtonStroke.Thickness = 1
+closeButtonStroke.Parent = CloseButton
+CloseButton.MouseEnter:Connect(function()
+	TweenService:Create(CloseButton, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 130, 123)}):Play()
+end)
+CloseButton.MouseLeave:Connect(function()
+	TweenService:Create(CloseButton, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255, 95, 87)}):Play()
+end)
+AddPressBounce(CloseButton)
+
+local HeaderDivider = Instance.new("Frame")
+HeaderDivider.Name = "HeaderDivider"
+HeaderDivider.Size = UDim2.new(1, 0, 0, 1)
+HeaderDivider.Position = UDim2.new(0, 0, 0, MINI_HEIGHT)
+HeaderDivider.BackgroundColor3 = AccentColor
+HeaderDivider.BackgroundTransparency = 0.85
+HeaderDivider.Parent = PanelFrame
+AddFadeDivider(HeaderDivider)
+
+local ContentScroll = Instance.new("ScrollingFrame")
+ContentScroll.Name = "ContentScroll"
+ContentScroll.Size = UDim2.new(1, 0, 1, -MINI_HEIGHT - 8)
+ContentScroll.Position = UDim2.new(0, 0, 0, MINI_HEIGHT + 8)
+ContentScroll.BackgroundTransparency = 1
+ContentScroll.BorderSizePixel = 0
+ContentScroll.ScrollBarThickness = 3
+ContentScroll.ScrollBarImageColor3 = AccentColor
+ContentScroll.ScrollBarImageTransparency = 1
+ContentScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+ContentScroll.ElasticBehavior = Enum.ElasticBehavior.Never
+ContentScroll.Parent = PanelFrame
+
+local ContentLayout = Instance.new("UIListLayout")
+ContentLayout.Padding = UDim.new(0, 12)
+ContentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ContentLayout.Parent = ContentScroll
+ContentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	ContentScroll.CanvasSize = UDim2.new(0, 0, 0, ContentLayout.AbsoluteContentSize.Y + 16)
+end)
+
+local ContentPadding = Instance.new("UIPadding")
+ContentPadding.PaddingLeft = UDim.new(0, 16)
+ContentPadding.PaddingRight = UDim.new(0, 16)
+ContentPadding.PaddingTop = UDim.new(0, 4)
+ContentPadding.PaddingBottom = UDim.new(0, 12)
+ContentPadding.Parent = ContentScroll
+
+local ToggleOffColor = Color3.fromRGB(24, 24, 24)
+local ToggleOnColor = Color3.fromRGB(178, 155, 235)
+local ToggleKnobColor = Color3.fromRGB(238, 233, 250)
+
+local function StyleAsToggleSwitch(toggle)
+	toggle.AutoButtonColor = false
+	toggle.TextTransparency = 1
+	toggle.BackgroundColor3 = ToggleOffColor
+	toggle.BackgroundTransparency = 0
+	Instance.new("UICorner", toggle).CornerRadius = UDim.new(1, 0)
+
+	local knobSize = toggle.Size.Y.Offset - 6
+	local knob = Instance.new("Frame")
+	knob.Name = "Knob"
+	knob.AnchorPoint = Vector2.new(0, 0.5)
+	knob.Size = UDim2.new(0, knobSize, 0, knobSize)
+	knob.Position = UDim2.new(0, 3, 0.5, 0)
+	knob.BackgroundColor3 = ToggleKnobColor
+	knob.BorderSizePixel = 0
+	knob.ZIndex = toggle.ZIndex + 1
+	knob.Parent = toggle
+	Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+	toggle:GetPropertyChangedSignal("ZIndex"):Connect(function() knob.ZIndex = toggle.ZIndex + 1 end)
+
+	local function Refresh(animate)
+		local on = toggle.Text == "On"
+		local trackColor = on and ToggleOnColor or ToggleOffColor
+		local knobPosition = on and UDim2.new(1, -3 - knobSize, 0.5, 0) or UDim2.new(0, 3, 0.5, 0)
+		if animate then
+			local tweenInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			TweenService:Create(toggle, tweenInfo, {BackgroundColor3 = trackColor}):Play()
+			TweenService:Create(knob, tweenInfo, {Position = knobPosition}):Play()
+		else
+			toggle.BackgroundColor3 = trackColor
+			knob.Position = knobPosition
+		end
+	end
+
+	toggle:GetPropertyChangedSignal("Text"):Connect(function() Refresh(true) end)
+	Refresh(false)
+end
+
+local nextRowOrder = 1
+local function CreateFeatureRow(order, labelText, parent)
+	local row = Instance.new("Frame")
+	row.Name = labelText:gsub("%s+", "") .. "Row"
+	row.LayoutOrder = order or nextRowOrder
+	nextRowOrder = math.max(nextRowOrder, row.LayoutOrder) + 1
+	row.Size = UDim2.new(1, -10, 0, 48)
+	row.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
+	row.BackgroundTransparency = GameRowTransparency
+	row.BorderSizePixel = 0
+	row.Parent = parent or ContentScroll
+	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+
+	local label = Instance.new("TextLabel")
+	label.Name = "Label"
+	label.Size = UDim2.new(0, 140, 1, 0)
+	label.Position = UDim2.new(0, 12, 0, 0)
+	label.BackgroundTransparency = 1
+	label.Text = labelText
+	label.Font = UIFont
+	label.TextSize = 14
+	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextYAlignment = Enum.TextYAlignment.Center
+	label.Parent = row
+
+	local toggle = Instance.new("TextButton")
+	toggle.Name = "Toggle"
+	toggle.Size = UDim2.new(0, 46, 0, 24)
+	toggle.Position = UDim2.new(1, -56, 0.5, -12)
+	toggle.BorderSizePixel = 0
+	toggle.Text = "Off"
+	toggle.Font = UIFont
+	toggle.TextSize = 14
+	toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+	toggle.Parent = row
+	StyleAsToggleSwitch(toggle)
+	AddPressBounce(toggle)
+
+	return row, toggle
+end
+
+-- Fires both Activated and MouseButton1Click -- same fix already proven necessary elsewhere
+-- in this hub (Suspect's Download task button turned out to be wired to .Activated only),
+-- so covering both regardless of which one HealthUpgrade actually uses is cheap insurance.
+local function FireButton(button)
+	if not button then return false end
+	if type(firesignal) == "function" then
+		local firedActivated = pcall(firesignal, button.Activated)
+		local firedClick = pcall(firesignal, button.MouseButton1Click)
+		if firedActivated or firedClick then return true end
+	end
+	if type(mousemoveabs) == "function" and type(mouse1click) == "function" then
+		local pos = button.AbsolutePosition + button.AbsoluteSize / 2
+		pcall(mousemoveabs, pos.X, pos.Y)
+		pcall(mouse1click)
+		return true
+	end
+	return false
+end
+
+-- ============================================================================
+-- Spam Buy Health: fires the real in-game Buy Health button (confirmed path:
+-- PlayerGui.MainGui.ControlPanel2.HealthUpgrade) every frame while enabled, rather than
+-- guessing at the matching RemoteEvent's arguments -- see header comment for why. The
+-- server naturally stops this from doing anything once currency runs out, same as any
+-- normal repeated click would.
+-- ============================================================================
+local healthButton
+local function ResolveHealthButton()
+	if healthButton and healthButton.Parent then return end
+	local playerGui = Player:FindFirstChildOfClass("PlayerGui")
+	local mainGui = playerGui and playerGui:FindFirstChild("MainGui")
+	local controlPanel = mainGui and mainGui:FindFirstChild("ControlPanel2")
+	healthButton = controlPanel and controlPanel:FindFirstChild("HealthUpgrade")
+end
+ResolveHealthButton()
+
+local HealthRow, HealthToggle = CreateFeatureRow(1, "Spam Buy Health")
+
+local healthState = {Enabled = false}
+HealthToggle.MouseButton1Click:Connect(function()
+	HealthToggle.Text = HealthToggle.Text == "On" and "Off" or "On"
+	healthState.Enabled = HealthToggle.Text == "On"
+end)
+
+RunService.Heartbeat:Connect(function()
+	if not ScreenGui.Parent then return end
+	if not healthState.Enabled then return end
+	ResolveHealthButton()
+	FireButton(healthButton)
+end)
+
+-- ============================================================================
+-- Ability Spam: now has a real master toggle (same semantics as Suspect's "Auto Task" ->
+-- Edit -> "Auto Teleport" -- the master gates the whole feature; if it's Off nothing spams
+-- regardless of what the individual Q/E/R toggles say). Edit still opens the same
+-- per-ability Q/E/R breakdown as before, just now for choosing WHICH keys spam while the
+-- master is on, rather than being the only on/off control.
+-- ============================================================================
+local AbilityRow, AbilityToggle = CreateFeatureRow(2, "Ability Spam")
+
+local AbilityEditButton = Instance.new("TextButton")
+AbilityEditButton.Name = "EditButton"
+AbilityEditButton.Size = UDim2.new(0, 44, 0, 26)
+AbilityEditButton.Position = UDim2.new(1, -108, 0.5, -13)
+AbilityEditButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+AbilityEditButton.BackgroundTransparency = 0.2
+AbilityEditButton.BorderSizePixel = 0
+AbilityEditButton.Text = "Edit"
+AbilityEditButton.Font = UIFont
+AbilityEditButton.TextSize = 12
+AbilityEditButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+AbilityEditButton.Parent = AbilityRow
+Instance.new("UICorner", AbilityEditButton).CornerRadius = UDim.new(1, 0)
+AddPressBounce(AbilityEditButton)
+
+local abilitySpamState = {Enabled = false}
+AbilityToggle.MouseButton1Click:Connect(function()
+	AbilityToggle.Text = AbilityToggle.Text == "On" and "Off" or "On"
+	abilitySpamState.Enabled = AbilityToggle.Text == "On"
+end)
+
+local AbilityOptionsContainer = Instance.new("Frame")
+AbilityOptionsContainer.Name = "AbilityOptionsContainer"
+AbilityOptionsContainer.LayoutOrder = 3
+AbilityOptionsContainer.Size = UDim2.new(1, -10, 0, 0)
+AbilityOptionsContainer.AutomaticSize = Enum.AutomaticSize.Y
+AbilityOptionsContainer.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
+AbilityOptionsContainer.BackgroundTransparency = GameRowTransparency
+AbilityOptionsContainer.BorderSizePixel = 0
+AbilityOptionsContainer.Visible = false
+AbilityOptionsContainer.Parent = ContentScroll
+Instance.new("UICorner", AbilityOptionsContainer).CornerRadius = UDim.new(0, 8)
+
+local AbilityOptionsPadding = Instance.new("UIPadding")
+AbilityOptionsPadding.PaddingTop = UDim.new(0, 10)
+AbilityOptionsPadding.PaddingBottom = UDim.new(0, 10)
+AbilityOptionsPadding.PaddingLeft = UDim.new(0, 10)
+AbilityOptionsPadding.PaddingRight = UDim.new(0, 10)
+AbilityOptionsPadding.Parent = AbilityOptionsContainer
+
+local abilityOptionsLayout = Instance.new("UIListLayout")
+abilityOptionsLayout.Padding = UDim.new(0, 8)
+abilityOptionsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+abilityOptionsLayout.Parent = AbilityOptionsContainer
+
+local QRow, QToggle = CreateFeatureRow(1, "Spam Q", AbilityOptionsContainer)
+local ERow, EToggle = CreateFeatureRow(2, "Spam E", AbilityOptionsContainer)
+local RRow, RToggle = CreateFeatureRow(3, "Spam R", AbilityOptionsContainer)
+
+-- Real bug: CreateFeatureRow builds the toggle's look (StyleAsToggleSwitch reacts to
+-- .Text) but never wires a click handler to actually flip .Text itself -- HealthToggle got
+-- one added manually above, these three didn't, so clicking them animated nothing and
+-- Text just stayed "Off" forever, which is exactly why they never enabled. Confirmed
+-- working now (diagnostic prints from while tracking this down removed).
+for _, toggle in ipairs({QToggle, EToggle, RToggle}) do
+	toggle.MouseButton1Click:Connect(function()
+		toggle.Text = toggle.Text == "On" and "Off" or "On"
+	end)
+end
+
+AbilityEditButton.MouseButton1Click:Connect(function()
+	AbilityOptionsContainer.Visible = not AbilityOptionsContainer.Visible
+end)
+
+-- Was a fallback chain (keypress first, VirtualInputManager only if keypress errored) --
+-- changed to fire BOTH unconditionally every time, same reasoning as FireButton firing both
+-- Activated and MouseButton1Click elsewhere in this hub. The problem: pcall(keypress, ...)
+-- not erroring only proves the CALL didn't crash, not that the game actually registered a
+-- real press -- if this executor's keypress silently no-ops for whatever reason instead of
+-- throwing, the old code would count that as "handled" and never even try
+-- VirtualInputManager, which lines up exactly with "being pressed but not doing anything."
+local function PressAbilityKey(keyCode)
+	if type(keypress) == "function" then
+		pcall(keypress, keyCode)
+	end
+	pcall(function()
+		VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
+	end)
+end
+local function ReleaseAbilityKey(keyCode)
+	if type(keyrelease) == "function" then
+		pcall(keyrelease, keyCode)
+	end
+	pcall(function()
+		VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
+	end)
+end
+
+-- The 0.02s hold from the speed-up round was very likely too brief for the game's own input
+-- handling to register as a genuine press at all -- UE's own proven-working key-hold
+-- (PressInteractKey/ReleaseInteractKey) uses 0.3s, 15x longer, which lines up with
+-- "presses are happening but not doing anything." Bumped to 0.15s as a middle ground --
+-- still far faster than manual play, but long enough to actually register.
+local abilityKeys = {
+	{keyCode = Enum.KeyCode.Q, toggle = QToggle},
+	{keyCode = Enum.KeyCode.E, toggle = EToggle},
+	{keyCode = Enum.KeyCode.R, toggle = RToggle},
+}
+local PRESS_HOLD = 0.15
+local PRESS_GAP = 0.05
+
+-- Second real bug, found after staggering (see git history) didn't fully fix the imbalance:
+-- three INDEPENDENT loops each still attempt a cast every cycle regardless of what the other
+-- two are doing. If this game gates ability casts behind a single shared cooldown/debounce
+-- (one cast accepted at a time, no matter which key), a fixed stagger order means whichever
+-- key's turn lands first in every cycle keeps re-winning that shared gate every single time --
+-- Q before E before R, forever, since their relative order never changes. That matches
+-- "E fires way more than R" being a consistent imbalance rather than random luck: E's press
+-- always arrives before R's within the same 0.2s window, so R keeps finding the gate already
+-- closed by E's cast a moment earlier.
+--
+-- Fixed by collapsing the three loops into one, which round-robins through whichever keys are
+-- currently toggled on -- only one key is ever pressed per PRESS_GAP tick, and the rotation
+-- pointer advances regardless of which keys are enabled, so every toggled-on key gets an equal,
+-- alternating turn instead of always racing the same fixed order.
+local nextAbilityIndex = 1
+task.spawn(function()
+	while true do
+		task.wait(PRESS_GAP)
+		if not ScreenGui.Parent then return end
+		if abilitySpamState.Enabled then
+			for _ = 1, #abilityKeys do
+				local ability = abilityKeys[nextAbilityIndex]
+				nextAbilityIndex = (nextAbilityIndex % #abilityKeys) + 1
+				if ability.toggle.Text == "On" then
+					PressAbilityKey(ability.keyCode)
+					task.wait(PRESS_HOLD)
+					ReleaseAbilityKey(ability.keyCode)
+					break
+				end
+			end
+		end
+	end
+end)
+
+-- ============================================================================
+-- Reduce Lag: confirmed from the dump that a single round had 210 individual zombie models
+-- live simultaneously, each a full R6 rig (Head/Torso/Left Arm/Right Arm/Left Leg/Right Leg/
+-- HumanoidRootPart, each with its own decals and ragdoll BallSocketConstraints) sitting in
+-- workspace.Zombies_Local -- that volume of fully-rendered, fully-collidable rigs is almost
+-- certainly the real lag source, and the "_Local" naming (also on the separate
+-- FriendlyZombies_Local folder) strongly implies these are client-side-only cosmetic
+-- copies -- the server broadcasts state and each client renders its own -- so stripping them
+-- down visually should have zero effect on actual hit registration, purely a rendering/
+-- physics-cost cut. Head is left alone (still visible, still collidable) so you can still
+-- see where zombies actually are and land hits/aim; every other BasePart gets
+-- Transparency = 1 and CanCollide = false (removing both the render cost AND the physics
+-- cost of 200+ collidable rigs able to bump into you). Nothing is destroyed, so turning this
+-- back off restores every part exactly as it was.
+--
+-- Edit adds one refinement, on by default whenever the master toggle is: Head ESP (a
+-- Highlight on each remaining Head -- no distance/name labels, just an outline, since
+-- that's genuinely all that was asked for).
+--
+-- A Bullet Tracer lessening option (culling ~half of new workspace.Bullets_Local children
+-- on the same "_Local = client-only cosmetic" assumption as the zombie folders) was tried
+-- and removed -- turned out wrong in practice: destroying those instances measurably cut
+-- down actual gun fire/hit output, meaning Bullets_Local isn't purely cosmetic the way the
+-- zombie folders are (very likely tied to client-side hit-registration/travel logic, not
+-- just visuals). Not reworked blindly since what actually broke isn't confirmed -- would
+-- need to inspect a live bullet instance's real structure first.
+-- ============================================================================
+local ZOMBIE_CONTAINER_NAMES = {"Zombies_Local", "FriendlyZombies_Local"}
+local reduceLagState = {Enabled = false, HeadESP = true}
+local strippedParts = {}
+local headHighlights = {}
+
+local function StripZombiePart(part)
+	if strippedParts[part] then return end
+	strippedParts[part] = {Transparency = part.Transparency, CanCollide = part.CanCollide}
+	part.Transparency = 1
+	part.CanCollide = false
+end
+
+local function RestoreZombiePart(part)
+	local original = strippedParts[part]
+	if not original then return end
+	strippedParts[part] = nil
+	if not part.Parent then return end
+	pcall(function()
+		part.Transparency = original.Transparency
+		part.CanCollide = original.CanCollide
+	end)
+end
+
+local HOSTILE_ESP_COLOR = Color3.fromRGB(255, 70, 70)
+local FRIENDLY_ESP_COLOR = Color3.fromRGB(80, 255, 120)
+
+-- Confirmed from the new save instance: FriendlyZombies_Local models use the exact same
+-- rig structure as hostile ones (just an extra particle/glow on Head), so the only thing
+-- that actually needs to change is which color gets used -- determined by which container
+-- the model's Parent currently is, not by anything on the model itself.
+local function GetESPColorForModel(model)
+	if model.Parent and model.Parent.Name == "FriendlyZombies_Local" then
+		return FRIENDLY_ESP_COLOR
+	end
+	return HOSTILE_ESP_COLOR
+end
+
+local function SetHeadESP(head, on, color)
+	if on then
+		if headHighlights[head] or not head.Parent then return end
+		local highlight = Instance.new("Highlight")
+		highlight.Name = "SZA_HeadESP"
+		highlight.FillColor = color
+		highlight.FillTransparency = 0.5
+		highlight.OutlineColor = color
+		highlight.OutlineTransparency = 0
+		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		highlight.Adornee = head
+		highlight.Parent = head
+		headHighlights[head] = highlight
+	else
+		local highlight = headHighlights[head]
+		if highlight then
+			highlight:Destroy()
+			headHighlights[head] = nil
+		end
+	end
+end
+
+local function ApplyReduceLagToModel(model)
+	local head = model:FindFirstChild("Head")
+	for _, part in ipairs(model:GetChildren()) do
+		if part:IsA("BasePart") and part ~= head then
+			StripZombiePart(part)
+		end
+	end
+	if head then SetHeadESP(head, reduceLagState.HeadESP, GetESPColorForModel(model)) end
+end
+
+local function RestoreModel(model)
+	for _, part in ipairs(model:GetChildren()) do
+		if part:IsA("BasePart") then
+			RestoreZombiePart(part)
+		end
+	end
+	local head = model:FindFirstChild("Head")
+	if head then SetHeadESP(head, false) end
+end
+
+local function ForEachTrackedZombieModel(callback)
+	for _, name in ipairs(ZOMBIE_CONTAINER_NAMES) do
+		local container = workspace:FindFirstChild(name)
+		if container then
+			for _, model in ipairs(container:GetChildren()) do
+				if model:IsA("Model") then callback(model) end
+			end
+		end
+	end
+end
+
+-- Only needs to touch ESP, not re-strip parts -- called when the Head ESP sub-toggle
+-- changes while Reduce Lag is already active, so already-stripped zombies pick up the
+-- change immediately instead of waiting for the next one to spawn.
+local function RefreshAllHeadESP()
+	if not reduceLagState.Enabled then return end
+	ForEachTrackedZombieModel(function(model)
+		local head = model:FindFirstChild("Head")
+		if head then SetHeadESP(head, reduceLagState.HeadESP, GetESPColorForModel(model)) end
+	end)
+end
+
+local watchedZombieContainers = {}
+local function WatchZombieContainer(container)
+	if watchedZombieContainers[container] then return end
+	watchedZombieContainers[container] = true
+	for _, model in ipairs(container:GetChildren()) do
+		if model:IsA("Model") and reduceLagState.Enabled then ApplyReduceLagToModel(model) end
+	end
+	container.ChildAdded:Connect(function(model)
+		if model:IsA("Model") and reduceLagState.Enabled then ApplyReduceLagToModel(model) end
+	end)
+end
+
+local function TryWatchZombieContainers()
+	for _, name in ipairs(ZOMBIE_CONTAINER_NAMES) do
+		local container = workspace:FindFirstChild(name)
+		if container then WatchZombieContainer(container) end
+	end
+end
+TryWatchZombieContainers()
+workspace.ChildAdded:Connect(function(child)
+	if table.find(ZOMBIE_CONTAINER_NAMES, child.Name) then
+		WatchZombieContainer(child)
+	end
+end)
+
+-- Order 4, not 3 -- AbilityOptionsContainer (a plain Frame, not built via CreateFeatureRow)
+-- already occupies LayoutOrder 3 as a sibling within ContentScroll.
+local ReduceLagRow, ReduceLagToggle = CreateFeatureRow(4, "Reduce Lag")
+
+local ReduceLagEditButton = Instance.new("TextButton")
+ReduceLagEditButton.Name = "EditButton"
+ReduceLagEditButton.Size = UDim2.new(0, 44, 0, 26)
+ReduceLagEditButton.Position = UDim2.new(1, -108, 0.5, -13)
+ReduceLagEditButton.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+ReduceLagEditButton.BackgroundTransparency = 0.2
+ReduceLagEditButton.BorderSizePixel = 0
+ReduceLagEditButton.Text = "Edit"
+ReduceLagEditButton.Font = UIFont
+ReduceLagEditButton.TextSize = 12
+ReduceLagEditButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ReduceLagEditButton.Parent = ReduceLagRow
+Instance.new("UICorner", ReduceLagEditButton).CornerRadius = UDim.new(1, 0)
+AddPressBounce(ReduceLagEditButton)
+
+local ReduceLagOptionsContainer = Instance.new("Frame")
+ReduceLagOptionsContainer.Name = "ReduceLagOptionsContainer"
+ReduceLagOptionsContainer.LayoutOrder = 5
+ReduceLagOptionsContainer.Size = UDim2.new(1, -10, 0, 0)
+ReduceLagOptionsContainer.AutomaticSize = Enum.AutomaticSize.Y
+ReduceLagOptionsContainer.BackgroundColor3 = Color3.fromRGB(9, 9, 9)
+ReduceLagOptionsContainer.BackgroundTransparency = GameRowTransparency
+ReduceLagOptionsContainer.BorderSizePixel = 0
+ReduceLagOptionsContainer.Visible = false
+ReduceLagOptionsContainer.Parent = ContentScroll
+Instance.new("UICorner", ReduceLagOptionsContainer).CornerRadius = UDim.new(0, 8)
+
+local ReduceLagOptionsPadding = Instance.new("UIPadding")
+ReduceLagOptionsPadding.PaddingTop = UDim.new(0, 10)
+ReduceLagOptionsPadding.PaddingBottom = UDim.new(0, 10)
+ReduceLagOptionsPadding.PaddingLeft = UDim.new(0, 10)
+ReduceLagOptionsPadding.PaddingRight = UDim.new(0, 10)
+ReduceLagOptionsPadding.Parent = ReduceLagOptionsContainer
+
+local reduceLagOptionsLayout = Instance.new("UIListLayout")
+reduceLagOptionsLayout.Padding = UDim.new(0, 8)
+reduceLagOptionsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+reduceLagOptionsLayout.Parent = ReduceLagOptionsContainer
+
+local HeadESPRow, HeadESPToggle = CreateFeatureRow(1, "Head ESP", ReduceLagOptionsContainer)
+HeadESPToggle.Text = "On"
+
+HeadESPToggle.MouseButton1Click:Connect(function()
+	HeadESPToggle.Text = HeadESPToggle.Text == "On" and "Off" or "On"
+	reduceLagState.HeadESP = HeadESPToggle.Text == "On"
+	RefreshAllHeadESP()
+end)
+
+ReduceLagEditButton.MouseButton1Click:Connect(function()
+	ReduceLagOptionsContainer.Visible = not ReduceLagOptionsContainer.Visible
+end)
+
+ReduceLagToggle.MouseButton1Click:Connect(function()
+	ReduceLagToggle.Text = ReduceLagToggle.Text == "On" and "Off" or "On"
+	reduceLagState.Enabled = ReduceLagToggle.Text == "On"
+	if reduceLagState.Enabled then
+		ForEachTrackedZombieModel(ApplyReduceLagToModel)
+	else
+		ForEachTrackedZombieModel(RestoreModel)
+	end
+end)
+
+-- Only Zombies_Local, not FriendlyZombies_Local -- the HUD's "zombie count" means actual
+-- threats, not friendly units.
+local function ForEachHostileZombieModel(callback)
+	local container = workspace:FindFirstChild("Zombies_Local")
+	if not container then return end
+	for _, model in ipairs(container:GetChildren()) do
+		if model:IsA("Model") then callback(model) end
+	end
+end
+
+-- The allies from Reduce Lag's Head ESP (green) -- used by Auto Farm's aim loop below to
+-- avoid pointing the crosshair at one, since the game's own auto-aim can't tell an ally
+-- apart from a hostile on its own (same rig, see Reduce Lag's notes).
+local function ForEachFriendlyZombieModel(callback)
+	local container = workspace:FindFirstChild("FriendlyZombies_Local")
+	if not container then return end
+	for _, model in ipairs(container:GetChildren()) do
+		if model:IsA("Model") then callback(model) end
+	end
+end
+
+-- Confirmed from the place dump's BossCatalog: the Yeti boss's two tiers are ModelName
+-- "Yeti" (Rare) and "UltraYeti" (Ultra), and its own entry in the internal Zombies registry
+-- uses RenderFolder = the same folder regular zombies render into -- so the boss shows up as
+-- just another Model inside Zombies_Local, not a separate container. Case-insensitive
+-- substring match catches both tiers off one real Model name each.
+local function FindBossModel()
+	local bossModel = nil
+	ForEachHostileZombieModel(function(model)
+		if not bossModel and model.Name:lower():find("yeti", 1, true) then
+			bossModel = model
+		end
+	end)
+	return bossModel
+end
+
+-- ============================================================================
+-- Farm, rebuilt again -- still drifting even with the BodyVelocity/BodyGyro anchor from the
+-- last round. That combo only ever fights VELOCITY (holds it at zero once per frame), which
+-- can suppress acceleration but never corrects position that already drifted between one
+-- frame's correction and the next -- over enough frames those tiny uncorrected nudges add
+-- up to visible drift, which matches exactly what kept happening. Velocity-only correction
+-- was never going to fully solve it.
+--
+-- Switched to what you actually suggested: no more manual WASD/Space/Shift flight at all
+-- (removed per your request for a fixed height instead of free-fly), just noclip + a light
+-- Heartbeat anti-fall to survive the gaps, PLUS a hard position snap -- teleported straight
+-- to (nearest hostile zombie's X/Z, that same zombie's ground Y + FARM_HEIGHT) immediately
+-- on engage and again every FARM_REPOSITION_INTERVAL seconds after that. A position snap
+-- can't accumulate drift the way a velocity correction can -- it just overwrites wherever
+-- you ended up with the correct spot outright, and re-centers over the crowd as it moves
+-- between waves as a bonus. Height also stays relative to the zombies' own ground position
+-- (not a fixed world Y), so it keeps making sense across different maps/terrain.
+--
+-- The auto lock-on discovery still applies -- firing is a real held-down mouse button (see
+-- PressWeaponButton/ReleaseWeaponButton/HoldFarmWeapon below), and neither LavaBow nor
+-- Interstellar (confirmed real Tools under ReplicatedStorage.Assets.Guns) has a firing script
+-- inside the Tool itself, so this fires by holding the button rather than calling either by
+-- name directly -- EquipBestWeapon below is what actually chooses which of them gets equipped.
+-- ============================================================================
+local function PressWeaponButton()
+	if type(mouse1press) == "function" then
+		local ok = pcall(mouse1press)
+		if ok then return true end
+	end
+	local loc = UserInputService:GetMouseLocation()
+	return pcall(function()
+		VirtualInputManager:SendMouseButtonEvent(loc.X, loc.Y, 0, true, game, 1)
+	end)
+end
+local function ReleaseWeaponButton()
+	if type(mouse1release) == "function" then
+		local ok = pcall(mouse1release)
+		if ok then return end
+	end
+	local loc = UserInputService:GetMouseLocation()
+	pcall(function()
+		VirtualInputManager:SendMouseButtonEvent(loc.X, loc.Y, 0, false, game, 1)
+	end)
+end
+
+-- Confirmed from GunConfig in the place dump: Interstellar (0.168s fire rate, pierces 4
+-- targets, its own small impact burst) and LavaBow (2160 direct / 3600 explosion damage in a
+-- 21-stud radius) are both real and dramatically stronger than a generic weapon -- which gun
+-- ends up equipped matters far more to kill speed than anything about movement or aim.
+-- Actively prefers them, in this order, over "whatever's first in Backpack"; falls back to
+-- that only if neither is owned.
+local PREFERRED_WEAPON_NAMES = {"Interstellar", "LavaBow"}
+
+local function EquipBestWeapon()
+	local character = Player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or not character then return end
+	local backpack = Player:FindFirstChildOfClass("Backpack")
+
+	local equipped = character:FindFirstChildOfClass("Tool")
+	if equipped and table.find(PREFERRED_WEAPON_NAMES, equipped.Name) then return end
+
+	for _, name in ipairs(PREFERRED_WEAPON_NAMES) do
+		local preferred = backpack and backpack:FindFirstChild(name)
+		if preferred and preferred:IsA("Tool") then
+			humanoid:EquipTool(preferred)
+			return
+		end
+	end
+
+	if equipped then return end
+	local tool = backpack and backpack:FindFirstChildOfClass("Tool")
+	if tool then humanoid:EquipTool(tool) end
+end
+
+-- Confirmed from the place dump's GunClient.Update: holding MouseButton1 down just sets
+-- IsFiring = true once (InputBegan/InputEnded), and a separate per-frame loop already calls
+-- TryFire() every single frame IsFiring is true -- itself gated by CheckFireRate against the
+-- equipped weapon's real FireRate (0.168s for Interstellar, 1.25s for LavaBow). So a genuine
+-- press-and-hold fires at the weapon's actual max rate with no gaps, rather than however often
+-- a repeated click loop happens to land. weaponHeld tracks whether we're currently holding, so
+-- ReleaseFarmWeapon (called on ally-holdoff and on stop) and HoldFarmWeapon (called once
+-- clear/engaged) only ever send one real down/up transition each, not one per tick.
+local weaponHeld = false
+
+local function HoldFarmWeapon()
+	if weaponHeld then return end
+	PressWeaponButton()
+	weaponHeld = true
+end
+
+local function ReleaseFarmWeapon()
+	if not weaponHeld then return end
+	ReleaseWeaponButton()
+	weaponHeld = false
+end
+
+-- Was 60, then 25 while Fly was still involved -- you mentioned the game's own aim-assist/
+-- lock-on needs you within some distance of a target to actually engage. Kept at 25 as the
+-- height OFFSET above wherever the nearest zombie's own ground position currently is (not a
+-- fixed world Y), so it stays sensible across maps/terrain and re-centers as the crowd moves.
+local FARM_HEIGHT = 25
+-- Zombies within this of the nearest one count as the same "cluster" for both the reposition
+-- snap and the continuous aim target (see GetFarmClusterTarget/StartFarmAim below).
+local FARM_CLUSTER_RADIUS = 45
+-- Was 5 -- now that Farm actually aims instead of firing blind (see StartFarmAim), a stale
+-- hover position means aiming at where the crowd USED to be, not where it is. Shortened so it
+-- re-centers close enough to real time as the group moves or thins out from kills.
+local FARM_REPOSITION_INTERVAL = 2
+
+-- Enabled is the toggle's user-facing intent (on the instant you click it, before the
+-- countdown even starts); Engaged is whether the real effects -- noclip, anti-fall,
+-- repositioning, and the fire loop -- are actually allowed to run. They used to be the same
+-- flag, which meant the fire loop (and noclip) started immediately on toggle instead of
+-- waiting out the 3-second countdown like the countdown itself implies they should.
+local farmState = {Enabled = false, Engaged = false, AntiFallConnection = nil, NoclipOriginal = {}, HoldFireForAlly = false}
+
+-- Nearest hostile zombie's position and, if others are within FARM_CLUSTER_RADIUS of it, the
+-- centroid of that whole group instead of just the one nearest straggler -- both the
+-- reposition snap (X/Z, +FARM_HEIGHT for Y) and the continuous aim target (StartFarmAim)
+-- use this, so the AoE splash lands in the middle of the group it can actually reach instead
+-- of wherever the single closest zombie happens to be standing. Falls back to nil (caller
+-- decides what to do) if no zombies are currently tracked, e.g. between waves.
+--
+-- Exception: while a Yeti/Ultra Yeti is present, this fully locks onto it instead -- ignoring
+-- every regular zombie entirely rather than averaging it into a crowd centroid -- since the
+-- boss is the one that actually takes forever to kill and everything else nearby is
+-- comparatively trivial by comparison.
+local function GetFarmClusterTarget()
+	local bossModel = FindBossModel()
+	if bossModel then
+		local bossRoot = bossModel:FindFirstChild("HumanoidRootPart")
+		if bossRoot then return bossRoot.Position end
+	end
+
+	local character = Player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local originPosition = root and root.Position
+
+	local positions = {}
+	ForEachHostileZombieModel(function(model)
+		local zombieRoot = model:FindFirstChild("HumanoidRootPart")
+		if zombieRoot then table.insert(positions, zombieRoot.Position) end
+	end)
+	if #positions == 0 then return nil end
+
+	local nearestPosition = positions[1]
+	if originPosition then
+		local nearestDistance = (positions[1] - originPosition).Magnitude
+		for _, position in ipairs(positions) do
+			local distance = (position - originPosition).Magnitude
+			if distance < nearestDistance then
+				nearestDistance = distance
+				nearestPosition = position
+			end
+		end
+	end
+
+	local sumPosition, count = Vector3.zero, 0
+	for _, position in ipairs(positions) do
+		if (position - nearestPosition).Magnitude <= FARM_CLUSTER_RADIUS then
+			sumPosition = sumPosition + position
+			count = count + 1
+		end
+	end
+	return sumPosition / count
+end
+
+-- The actual anti-drift fix -- a hard position snap can't accumulate error the way
+-- continuously correcting velocity can, since it just overwrites wherever you ended up with
+-- the right spot outright instead of trying to gradually steer back to it.
+local function RepositionFarmOverMobs()
+	local character = Player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+	local targetGround = GetFarmClusterTarget()
+	if not targetGround then return end
+	local _, yaw = root.CFrame:ToOrientation()
+	root.CFrame = CFrame.new(targetGround.X, targetGround.Y + FARM_HEIGHT, targetGround.Z) * CFrame.Angles(0, yaw, 0)
+end
+
+-- Confirmed from the place dump's real GunClient.GetAutoAimTarget: on PC it only computes a
+-- genuinely aimed shot if it finds a zombie within ~120 screen-pixels of wherever
+-- LocalPlayer:GetMouse() actually is, and only if that zombie is roughly in front of the
+-- camera -- otherwise GetAimDirection falls back to the character's flat horizontal
+-- LookVector with the vertical component forced to 0, no matter how the camera is tilted.
+-- Farm used to tilt the camera once at engage and never touch the mouse again, so almost
+-- every shot fired while hovering above a crowd flew out dead level, clean over their heads
+-- -- that's the real reason Farm "worked" but felt slow. Fixed by taking the camera over
+-- (Scriptable) and continuously pointing both it and the real mouse cursor at the crowd's
+-- centroid every frame, so the game's own auto-aim has something to actually lock onto.
+--
+-- Camera sits pulled back and raised from the character (along the horizontal direction
+-- toward the aim target) rather than exactly at the character's own position, which read as
+-- forced first-person -- distance/height here are just handles to taste, nothing in the dump
+-- to confirm them against since there's no real "camera" data to check.
+local FARM_CAMERA_BACK_DISTANCE = 20
+local FARM_CAMERA_HEIGHT_OFFSET = 12
+-- A bit more generous than the game's own ~120px lock-on radius, so the crosshair steers
+-- clear of an ally with some margin instead of right up against the exact threshold.
+local FARM_ALLY_SAFE_PIXELS = 130
+
+local farmAimConnection
+
+local function StartFarmAim()
+	local camera = workspace.CurrentCamera
+	if not camera then return end
+	camera.CameraType = Enum.CameraType.Scriptable
+	farmAimConnection = RunService.RenderStepped:Connect(function()
+		if not farmState.Engaged then return end
+		local currentCamera = workspace.CurrentCamera
+		local character = Player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if not currentCamera or not root then return end
+		local aimTarget = GetFarmClusterTarget()
+		if not aimTarget then return end
+
+		local horizontalDirection = Vector3.new(aimTarget.X - root.Position.X, 0, aimTarget.Z - root.Position.Z)
+		horizontalDirection = horizontalDirection.Magnitude > 0.01 and horizontalDirection.Unit or Vector3.new(0, 0, -1)
+		local cameraPosition = root.Position - horizontalDirection * FARM_CAMERA_BACK_DISTANCE + Vector3.new(0, FARM_CAMERA_HEIGHT_OFFSET, 0)
+		currentCamera.CFrame = CFrame.lookAt(cameraPosition, aimTarget)
+
+		local screenPoint, onScreen = currentCamera:WorldToScreenPoint(aimTarget)
+		if not onScreen then return end
+
+		-- FriendlyZombies_Local models use the identical rig to hostiles (confirmed in Reduce
+		-- Lag's own notes), so the game's aim-lock has no way to tell them apart from a
+		-- hostile on its own -- withhold firing (see the fire loop below) the moment an ally
+		-- drifts within the same on-screen area the crosshair is aiming at, and resume once
+		-- it's clear, rather than risk landing an explosive arrow on one.
+		local allyTooClose = false
+		ForEachFriendlyZombieModel(function(model)
+			if allyTooClose then return end
+			local friendlyRoot = model:FindFirstChild("HumanoidRootPart")
+			if not friendlyRoot then return end
+			local friendlyScreenPoint, friendlyOnScreen = currentCamera:WorldToScreenPoint(friendlyRoot.Position)
+			if not friendlyOnScreen then return end
+			local dx, dy = friendlyScreenPoint.X - screenPoint.X, friendlyScreenPoint.Y - screenPoint.Y
+			if math.sqrt(dx * dx + dy * dy) <= FARM_ALLY_SAFE_PIXELS then
+				allyTooClose = true
+			end
+		end)
+		farmState.HoldFireForAlly = allyTooClose
+
+		if type(mousemoveabs) == "function" then
+			pcall(mousemoveabs, screenPoint.X, screenPoint.Y)
+		end
+	end)
+end
+
+local function StopFarmAim()
+	if farmAimConnection then
+		farmAimConnection:Disconnect()
+		farmAimConnection = nil
+	end
+	farmState.HoldFireForAlly = false
+	local camera = workspace.CurrentCamera
+	if camera then
+		camera.CameraType = Enum.CameraType.Custom
+	end
+end
+
+local function EngageFarm()
+	local character = Player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not character or not root then return end
+	farmState.Engaged = true
+	EquipBestWeapon()
+
+	RepositionFarmOverMobs()
+	-- No zombies tracked yet to reposition onto (e.g. between waves) -- still get some
+	-- height so noclip/anti-fall have somewhere sane to hold in the meantime.
+	if not GetFarmClusterTarget() then
+		root.CFrame = root.CFrame + Vector3.new(0, FARM_HEIGHT, 0)
+	end
+
+	farmState.AntiFallConnection = RunService.Heartbeat:Connect(function()
+		local currentCharacter = Player.Character
+		local currentRoot = currentCharacter and currentCharacter:FindFirstChild("HumanoidRootPart")
+		if currentRoot then
+			currentRoot.AssemblyLinearVelocity = Vector3.zero
+			currentRoot.AssemblyAngularVelocity = Vector3.zero
+		end
+	end)
+
+	task.spawn(function()
+		while farmState.Engaged do
+			task.wait(FARM_REPOSITION_INTERVAL)
+			if not farmState.Engaged then return end
+			RepositionFarmOverMobs()
+		end
+	end)
+
+	StartFarmAim()
+end
+
+local function DisengageFarm()
+	farmState.Engaged = false
+	StopFarmAim()
+	ReleaseFarmWeapon()
+	if farmState.AntiFallConnection then
+		farmState.AntiFallConnection:Disconnect()
+		farmState.AntiFallConnection = nil
+	end
+	for part, wasCollidable in pairs(farmState.NoclipOriginal) do
+		if part and part.Parent then part.CanCollide = wasCollidable end
+	end
+	table.clear(farmState.NoclipOriginal)
+	local character = Player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if root then
+		root.AssemblyLinearVelocity = Vector3.zero
+		root.AssemblyAngularVelocity = Vector3.zero
+	end
+end
+
+local FarmRow, FarmToggle = CreateFeatureRow(6, "Auto Farm")
+
+-- ============================================================================
+-- Countdown + Stop overlay: the repeated click-to-fire loop clicks wherever your cursor
+-- CURRENTLY is -- if it was still sitting over the Auto Farm toggle the instant it turned on,
+-- that meant rapidly re-clicking the panel itself, which is exactly what made it feel stuck
+-- ("can't get off the GUI"). A 3-second delay before Auto Farm actually engages gives you a
+-- window to move your mouse into the game world first, and a dedicated Stop button --
+-- visible for as long as Auto Farm is on, not just during the countdown -- gives you an
+-- on-screen escape hatch beyond the F/Shift+F keybinds. Styled to match UE's own
+-- structure-alert notifications (GothamBlack, white text with a black stroke, no background
+-- box), per request. A small notice label under it calls out that Auto Farm now drives the
+-- real mouse cursor on its own (see StartFarmAim) -- not obvious from the UI otherwise, and
+-- worth knowing before your cursor starts moving by itself.
+-- ============================================================================
+local FarmStopButton = Instance.new("TextButton")
+FarmStopButton.Name = "FarmStop"
+FarmStopButton.AnchorPoint = Vector2.new(0.5, 0)
+FarmStopButton.Size = UDim2.new(0, 140, 0, 36)
+FarmStopButton.Position = UDim2.new(0.5, 0, 0, 50)
+FarmStopButton.BackgroundColor3 = Color3.fromRGB(200, 45, 45)
+FarmStopButton.BorderSizePixel = 0
+FarmStopButton.Text = "STOP AUTO FARM"
+FarmStopButton.Font = Enum.Font.GothamBlack
+FarmStopButton.TextSize = 15
+FarmStopButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+FarmStopButton.Visible = false
+FarmStopButton.ZIndex = 210
+FarmStopButton.Parent = ScreenGui
+Instance.new("UICorner", FarmStopButton).CornerRadius = UDim.new(0, 8)
+AddPressBounce(FarmStopButton)
+
+local FarmNoticeLabel = Instance.new("TextLabel")
+FarmNoticeLabel.Name = "FarmNotice"
+FarmNoticeLabel.AnchorPoint = Vector2.new(0.5, 0)
+FarmNoticeLabel.Size = UDim2.new(0, 320, 0, 16)
+FarmNoticeLabel.Position = UDim2.new(0.5, 0, 0, 88)
+FarmNoticeLabel.BackgroundTransparency = 1
+FarmNoticeLabel.Text = "Moves your mouse to aim -- Shift+F force-stops"
+FarmNoticeLabel.Font = UIFont
+FarmNoticeLabel.TextSize = 12
+FarmNoticeLabel.TextTransparency = 0.2
+FarmNoticeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+FarmNoticeLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+FarmNoticeLabel.TextStrokeTransparency = 0.5
+FarmNoticeLabel.Visible = false
+FarmNoticeLabel.ZIndex = 210
+FarmNoticeLabel.Parent = ScreenGui
+
+local FarmCountdownLabel = Instance.new("TextLabel")
+FarmCountdownLabel.Name = "FarmCountdown"
+FarmCountdownLabel.AnchorPoint = Vector2.new(0.5, 0)
+FarmCountdownLabel.Size = UDim2.new(0, 400, 0, 32)
+FarmCountdownLabel.Position = UDim2.new(0.5, 0, 0, 110)
+FarmCountdownLabel.BackgroundTransparency = 1
+FarmCountdownLabel.Text = ""
+FarmCountdownLabel.RichText = true
+FarmCountdownLabel.Font = Enum.Font.GothamBlack
+FarmCountdownLabel.TextSize = 19
+FarmCountdownLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+FarmCountdownLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+FarmCountdownLabel.TextStrokeTransparency = 0
+FarmCountdownLabel.TextXAlignment = Enum.TextXAlignment.Center
+FarmCountdownLabel.Visible = false
+FarmCountdownLabel.ZIndex = 210
+FarmCountdownLabel.Parent = ScreenGui
+
+local farmCountdownToken = 0
+
+local function SetFarmEnabled(enabled)
+	if enabled == farmState.Enabled then return end
+	farmState.Enabled = enabled
+	FarmToggle.Text = enabled and "On" or "Off"
+	FarmStopButton.Visible = enabled
+	FarmNoticeLabel.Visible = enabled
+	farmCountdownToken = farmCountdownToken + 1
+
+	if enabled then
+		local myToken = farmCountdownToken
+		FarmCountdownLabel.Visible = true
+		task.spawn(function()
+			for secondsLeft = 3, 1, -1 do
+				if farmCountdownToken ~= myToken then return end
+				FarmCountdownLabel.Text = "Auto Farm starting in " .. secondsLeft .. "..."
+				task.wait(1)
+			end
+			if farmCountdownToken ~= myToken then return end
+			FarmCountdownLabel.Visible = false
+			EngageFarm()
+		end)
+	else
+		FarmCountdownLabel.Visible = false
+		DisengageFarm()
+	end
+end
+
+FarmStopButton.MouseButton1Click:Connect(function()
+	SetFarmEnabled(false)
+end)
+
+FarmToggle.MouseButton1Click:Connect(function()
+	SetFarmEnabled(not farmState.Enabled)
+end)
+
+-- F toggles Auto Farm on/off same as clicking the row's own toggle. Shift+F is a dedicated
+-- emergency stop instead of another toggle -- always stops, never starts -- since Auto Farm
+-- now drives the real mouse cursor while engaged (see StartFarmAim), a keyboard-only escape
+-- hatch that doesn't depend on where the cursor currently is matters more than it used to.
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	if input.KeyCode == Enum.KeyCode.F then
+		local shiftHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+			or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+		if shiftHeld then
+			SetFarmEnabled(false)
+		else
+			SetFarmEnabled(not farmState.Enabled)
+		end
+	end
+end)
+
+-- Re-engages automatically after a respawn instead of silently leaving Farm "on" by its own
+-- toggle state while actually doing nothing on the new character.
+Player.CharacterAdded:Connect(function()
+	if farmState.Enabled then
+		task.wait(1)
+		EngageFarm()
+	end
+end)
+
+-- Real noclip -- ported directly from Main's own NoClip (continuously forces every
+-- currently-collidable BasePart to CanCollide = false, remembering only what it actually
+-- changed so turning Farm off restores exactly that, not anything that was already
+-- non-collidable for some other reason).
+RunService.Stepped:Connect(function()
+	if not farmState.Engaged then return end
+	local character = Player.Character
+	if not character then return end
+	for _, part in ipairs(character:GetDescendants()) do
+		if part:IsA("BasePart") and part.CanCollide then
+			local parent = part.Parent
+			local isRigAccessory = parent and (parent:IsA("Accessory") or parent:IsA("Tool"))
+			if not isRigAccessory then
+				farmState.NoclipOriginal[part] = true
+				part.CanCollide = false
+			end
+		end
+	end
+end)
+
+-- Holds the weapon button down for as long as Auto Farm is actually allowed to shoot (see
+-- HoldFarmWeapon/ReleaseFarmWeapon above for why holding beats repeated clicks), releasing
+-- the instant it isn't -- Engaged goes false (stopping/countdown not finished yet) or
+-- HoldFireForAlly gets set (StartFarmAim's per-frame ally check) -- and re-holding once
+-- clear again. Also keeps a weapon equipped in case it ever gets unequipped mid-farm.
+task.spawn(function()
+	while true do
+		task.wait(0.1)
+		if not ScreenGui.Parent then
+			ReleaseFarmWeapon()
+			return
+		end
+		if farmState.Engaged then
+			EquipBestWeapon()
+			if farmState.HoldFireForAlly then
+				ReleaseFarmWeapon()
+			else
+				HoldFarmWeapon()
+			end
+		else
+			ReleaseFarmWeapon()
+		end
+	end
+end)
+
+-- ============================================================================
+-- HUD: zombie count (Zombies_Local only, same reasoning as above) and a gems/second
+-- rate. Confirmed real path for the currency readout: PlayerGui.MainGui.MineralsDisplay's
+-- own TextLabel (showed "100" in the dump) -- ParseCount below handles comma-separated
+-- ("207,207") and K/M/B-suffixed values generically, in case the real number ever gets
+-- large enough to display that way. Rate is a running average since the HUD was last
+-- turned on (baseline value + baseline timestamp, not a sliding window), reset every time
+-- it's toggled on.
+-- ============================================================================
+local function ParseCount(text)
+	if not text then return nil end
+	text = text:gsub(",", ""):gsub("%s", "")
+	if text == "" then return nil end
+	local suffix = text:sub(-1):upper()
+	local multiplier = 1
+	if suffix == "K" then
+		multiplier = 1000
+		text = text:sub(1, -2)
+	elseif suffix == "M" then
+		multiplier = 1000000
+		text = text:sub(1, -2)
+	elseif suffix == "B" then
+		multiplier = 1000000000
+		text = text:sub(1, -2)
+	end
+	local number = tonumber(text)
+	if not number then return nil end
+	return number * multiplier
+end
+
+local mineralsLabel
+local function ResolveMineralsLabel()
+	if mineralsLabel and mineralsLabel.Parent then return end
+	local playerGui = Player:FindFirstChildOfClass("PlayerGui")
+	local mainGui = playerGui and playerGui:FindFirstChild("MainGui")
+	local mineralsDisplay = mainGui and mainGui:FindFirstChild("MineralsDisplay")
+	mineralsLabel = mineralsDisplay and mineralsDisplay:FindFirstChildOfClass("TextLabel")
+end
+
+local function GetMineralsCount()
+	ResolveMineralsLabel()
+	if not mineralsLabel then return nil end
+	return ParseCount(mineralsLabel.Text)
+end
+
+local hudState = {Enabled = false}
+local gemsBaseline, gemsBaselineTime = nil, nil
+local function ResetGemsBaseline()
+	gemsBaseline = GetMineralsCount()
+	gemsBaselineTime = os.clock()
+end
+
+local HudFrame = Instance.new("Frame")
+HudFrame.Name = "Hud"
+HudFrame.Position = UDim2.new(0, 12, 0, 12)
+HudFrame.Size = UDim2.new(0, 170, 0, 54)
+HudFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+HudFrame.BackgroundTransparency = 0.25
+HudFrame.BorderSizePixel = 0
+HudFrame.Visible = false
+HudFrame.Parent = ScreenGui
+Instance.new("UICorner", HudFrame).CornerRadius = UDim.new(0, 8)
+
+local HudPadding = Instance.new("UIPadding")
+HudPadding.PaddingLeft = UDim.new(0, 10)
+HudPadding.PaddingTop = UDim.new(0, 8)
+HudPadding.Parent = HudFrame
+
+local HudLayout = Instance.new("UIListLayout")
+HudLayout.Padding = UDim.new(0, 2)
+HudLayout.Parent = HudFrame
+
+local ZombieCountLabel = Instance.new("TextLabel")
+ZombieCountLabel.Size = UDim2.new(1, -16, 0, 20)
+ZombieCountLabel.BackgroundTransparency = 1
+ZombieCountLabel.Font = UIFont
+ZombieCountLabel.TextSize = 14
+ZombieCountLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+ZombieCountLabel.TextXAlignment = Enum.TextXAlignment.Left
+ZombieCountLabel.Text = "Zombies: --"
+ZombieCountLabel.Parent = HudFrame
+
+local GemsRateLabel = Instance.new("TextLabel")
+GemsRateLabel.Size = UDim2.new(1, -16, 0, 20)
+GemsRateLabel.BackgroundTransparency = 1
+GemsRateLabel.Font = UIFont
+GemsRateLabel.TextSize = 14
+GemsRateLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+GemsRateLabel.TextXAlignment = Enum.TextXAlignment.Left
+GemsRateLabel.Text = "Gems/sec: --"
+GemsRateLabel.Parent = HudFrame
+
+local HudRow, HudToggle = CreateFeatureRow(7, "HUD")
+HudToggle.MouseButton1Click:Connect(function()
+	HudToggle.Text = HudToggle.Text == "On" and "Off" or "On"
+	hudState.Enabled = HudToggle.Text == "On"
+	HudFrame.Visible = hudState.Enabled
+	if hudState.Enabled then ResetGemsBaseline() end
+end)
+
+task.spawn(function()
+	while true do
+		task.wait(1)
+		if not ScreenGui.Parent then return end
+		if hudState.Enabled then
+			local zombieCount = 0
+			ForEachHostileZombieModel(function() zombieCount = zombieCount + 1 end)
+			ZombieCountLabel.Text = "Zombies: " .. zombieCount
+
+			local current = GetMineralsCount()
+			local elapsedSeconds = gemsBaselineTime and (os.clock() - gemsBaselineTime)
+			if current and gemsBaseline and elapsedSeconds and elapsedSeconds > 1 then
+				local rate = (current - gemsBaseline) / elapsedSeconds
+				GemsRateLabel.Text = "Gems/sec: " .. string.format("%.1f", rate)
+			else
+				GemsRateLabel.Text = "Gems/sec: --"
+			end
+		end
+	end
+end)
+
+-- Minimize
+local minimized = false
+local function ToggleMinimize()
+	minimized = not minimized
+	HeaderDivider.Visible = not minimized
+	ContentScroll.Visible = not minimized
+	PanelFrame.Size = UDim2.new(0, 280, 0, minimized and MINI_HEIGHT or FULL_HEIGHT)
+end
+MinimizeButton.MouseButton1Click:Connect(ToggleMinimize)
+
+local closingPanel = false
+CloseButton.MouseButton1Click:Connect(function()
+	if closingPanel then return end
+	closingPanel = true
+	local fadeOutInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	TweenService:Create(PanelScale, fadeOutInfo, {Scale = 0.85}):Play()
+	local fadeOutTween = TweenService:Create(PanelFrame, fadeOutInfo, {BackgroundTransparency = 1})
+	fadeOutTween:Play()
+	fadeOutTween.Completed:Wait()
+	ScreenGui:Destroy()
+end)
+
+local dragging = false
+local dragStart = nil
+local startPos = nil
+PanelFrame.InputBegan:Connect(function(input)
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+	dragging = true
+	dragStart = input.Position
+	startPos = PanelFrame.Position
+	input.Changed:Connect(function()
+		if input.UserInputState == Enum.UserInputState.End then
+			dragging = false
+		end
+	end)
+end)
+UserInputService.InputChanged:Connect(function(input)
+	if not dragging or (input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch) then return end
+	local delta = input.Position - dragStart
+	PanelFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	getgenv().Serenity_SZA_PanelPosition = PanelFrame.Position
+end)
